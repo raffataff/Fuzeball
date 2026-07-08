@@ -27,8 +27,8 @@ function pickActiveRods(dt){
    const ranked=tr.slice().sort((a,b)=>{
     const behindA=Math.max(0,(a.x-bx)*dir);
     const behindB=Math.max(0,(b.x-bx)*dir);
-    const penaltyA=behindA>8?behindA*10:0;
-    const penaltyB=behindB>8?behindB*10:0;
+    const penaltyA=behindA>10?behindA*10:0;
+    const penaltyB=behindB>10?behindB*10:0;
     return (Math.abs(a.x-bx)+penaltyA)-(Math.abs(b.x-bx)+penaltyB);
    });
    const pick=[];if(forced)pick.push(forced);
