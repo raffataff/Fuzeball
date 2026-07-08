@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FUZEBALL — 3D Foosball</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<div id="hud" class="hidden">
+  <div id="sb">
+    <span class="nm r" id="sbRN">RED</span><span class="sc r" id="sbRS">0</span>
+    <span class="colon">:</span>
+    <span class="sc b" id="sbBS">0</span><span class="nm b" id="sbBN">BLUE</span>
+  </div>
+  <div id="matchTime">00:00</div>
+  <div id="fxchips"></div>
+  <div id="ballTag">⚽ CLASSIC</div>
+  <div id="chips"></div>
+  <div id="hint">◀ ▶ / Q E — switch rod &nbsp;·&nbsp; ▲ ▼ / mouse — slide<br>SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera</div>
+  <div id="banner"></div>
+  <div id="count"></div>
+  <div id="camInfo"></div>
+  <div id="ballSpeed"></div>
+</div>
+
+<div id="menu" class="screen">
+  <h1 class="logo">FUZEBALL</h1>
+  <div class="tagline">3D Table Football · Arcade Physics</div>
+  <div class="modeRow">
+    <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY RED</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
+    <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY BLUE</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
+    <div class="modeCard ai" id="btnAI"><div class="ico">🤖</div><div class="big">AI SHOWDOWN</div><div class="sub">Sit back &amp; spectate</div></div>
+    <div class="modeCard league" id="btnLeague"><div class="ico">🏆</div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
+  </div>
+  <div class="panelWrap">
+    <div class="panel">
+      <h3>Match Setup</h3>
+      <div class="row"><label><span class="lblR">RED</span> AI</label><select id="setDiffRed"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
+      <div class="row"><label><span class="lblB">BLUE</span> AI</label><select id="setDiffBlue"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
+      <div class="row"><label>Goals to win</label><select id="setGoals"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
+       <div class="row"><label>Table theme</label><select id="setTheme"><option value="classic">Classic Club</option><option value="neon">Neon Nights</option><option value="royal">Royal Arena</option><option value="verdant">Verdant Field</option></select></div>
+       <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
+      <div class="row"><label>Special balls</label><input type="checkbox" id="setSpecial" checked></div>
+      <div class="row"><label>Power-ups</label><input type="checkbox" id="setPower" checked></div>
+      <div class="row"><label>Auto rod switch</label><input type="checkbox" id="setAuto" checked></div>
+      <div class="row"><label>Sound</label><input type="checkbox" id="setSound" checked></div>
+    </div>
+    <div class="panel kitPanel">
+      <h3>Teams &amp; Kits</h3>
+      <div class="kitCols">
+        <div class="kitCol">
+          <input type="text" id="nameRed" class="kitName" maxlength="10" value="RED">
+          <div class="kitFig" id="kitFig0" title="Click to customize"><span class="kitCap" id="kitCap0">Cyborg</span></div>
+          <div class="kitPal" id="kitPal0"></div>
+        </div>
+        <div class="kitCol">
+          <input type="text" id="nameBlue" class="kitName" maxlength="10" value="BLUE">
+          <div class="kitFig" id="kitFig1" title="Click to customize"><span class="kitCap" id="kitCap1">Cyborg</span></div>
+          <div class="kitPal" id="kitPal1"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Controls</h3>
+      <div class="ctl">
+        <b>◀ ▶ / Q E</b><span>switch rod</span>
+        <b>▲ ▼ / MOUSE</b><span>slide players</span>
+        <b>SPACE / CLICK</b><span>kick</span>
+        <b>SHIFT / R-CLICK</b><span>raise players</span>
+        <b>1 – 4</b><span>select rod</span>
+        <b>V</b><span>camera view</span>
+        <b>ESC</b><span>pause</span>
+      </div>
+    </div>
+  </div>
+  <div class="foot">First to score wins the crowd · special balls drop from above</div>
+</div>
+
+<div id="customize" class="screen hidden">
+  <div class="czWrap">
+    <div class="czStage">
+      <canvas id="pvCanvas"></canvas>
+      <div class="czTeamTgl">
+        <button class="teamBtn on" id="czTeamR">RED KIT</button>
+        <button class="teamBtn" id="czTeamB">BLUE KIT</button>
+      </div>
+      <div class="czStageBar">
+        <button class="miniBtn" id="czSpin">⟳ SPIN</button>
+        <button class="miniBtn" id="czView">⌖ RESET VIEW</button>
+        <button class="miniBtn" id="czSnap">📷 SNAPSHOT</button>
+      </div>
+      <div class="czDrag">drag to rotate · scroll to zoom</div>
+    </div>
+    <div class="czPanel">
+      <h2 class="czTitle">CUSTOMIZE</h2>
+      <div class="czSect">
+        <h4>Figurine</h4>
+        <div id="czModels" class="czModels"></div>
+      </div>
+      <div class="czSect">
+        <h4>Kit colour</h4>
+        <div id="czSwatch" class="czSwatch"></div>
+        <div class="czRow">
+          <input type="color" id="czColor">
+          <span class="czHex" id="czHex">#ffffff</span>
+          <button class="miniBtn" id="czRand">🎲 RANDOM</button>
+        </div>
+      </div>
+      <div class="czSect">
+        <h4>Finish</h4>
+        <div id="czFinish" class="czChips"></div>
+        <div class="czSlide"><label>Metallic</label><input type="range" id="czMetal" min="0" max="1" step="0.01"><span class="czVal" id="czMetalV"></span></div>
+        <div class="czSlide"><label>Roughness</label><input type="range" id="czRough" min="0" max="1" step="0.01"><span class="czVal" id="czRoughV"></span></div>
+        <div class="czSlide"><label>Glow</label><input type="range" id="czGlow" min="0" max="2" step="0.01"><span class="czVal" id="czGlowV"></span></div>
+        <div class="czSlide"><label>Size</label><input type="range" id="czScale" min="0.7" max="1.4" step="0.01"><span class="czVal" id="czScaleV"></span></div>
+        <div class="czSlide"><label>Rotation</label><input type="range" id="czYaw" min="-3.15" max="3.15" step="0.01"><span class="czVal" id="czYawV"></span></div>
+      </div>
+      <div class="btnRow">
+        <button class="btn" id="czDoneBtn">◀ Done</button>
+        <button class="btn ghost" id="czResetBtn">Reset all</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="league" class="screen hidden">
+  <h2 class="lgTitle">FUZEBALL LEAGUE</h2>
+  <div class="lgSub" id="lgSeasonTag">SEASON 1</div>
+  <div class="lgWrap">
+    <div class="panel">
+      <h3>Standings</h3>
+      <div id="lgTable"></div>
+    </div>
+    <div class="lgSide">
+      <div class="panel">
+        <h3>Next Match</h3>
+        <div class="lgFixture" id="lgFixture"></div>
+        <div class="row" id="lgControlRow"><label>Control</label><select id="lgControl">
+          <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
+          <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
+        </select></div>
+        <button class="btn lgPlayBtn" id="lgPlay">▶ Play Match</button>
+        <div id="lgRound"></div>
+      </div>
+      <div class="panel hidden" id="lgLastPanel">
+        <h3>Last Round</h3>
+        <div id="lgLast"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Squad · <span class="lgUPWrap"><span id="lgUP">0</span> ⚙ parts</span></h3>
+      <div id="lgSquad"></div>
+    </div>
+    <div class="panel hidden lgScout" id="lgScout">
+      <h3 id="lgScoutName">SCOUT</h3>
+      <div class="lgScoutRec" id="lgScoutRec"></div>
+      <div class="lgScoutRate" id="lgScoutBody"></div>
+    </div>
+  </div>
+  <div class="btnRow">
+    <button class="btn ghost" id="lgNew">Reset League</button>
+    <button class="btn ghost" id="lgBack">◀ Main Menu</button>
+  </div>
+  <div class="panel hidden lgHist" id="lgHistPanel">
+    <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
+    <div id="lgHist"></div>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <h2>PAUSED</h2>
+  <div class="btnRow">
+    <button class="btn" id="btnResume">Resume</button>
+    <button class="btn ghost" id="btnRestart">Restart</button>
+    <button class="btn ghost" id="btnPauseMenu">Main Menu</button>
+  </div>
+</div>
+
+<div id="lgForfeit" class="screen hidden">
+  <h2>FORFEIT MATCH?</h2>
+  <div id="lgForfeitMsg">Recorded as a 0–5 loss</div>
+  <div class="btnRow">
+    <button class="btn" id="btnForfeit">Forfeit</button>
+    <button class="btn ghost" id="btnForfeitCancel">Cancel</button>
+  </div>
+</div>
+
+<div id="lgTape" class="screen hidden">
+  <div class="lgTapeRow" id="lgTapeBody"></div>
+  <div class="lgTapeRound" id="lgTapeRound"></div>
+  <div class="lgTapeHint">click to skip</div>
+</div>
+
+<div id="win" class="screen hidden">
+  <h2 id="winTitle">RED WINS!</h2>
+  <div id="winScore">5 — 3</div>
+  <div id="winStats"></div>
+  <div class="btnRow">
+    <button class="btn hidden" id="btnWinContinue">Continue ▶</button>
+    <button class="btn" id="btnRematch">Rematch</button>
+    <button class="btn ghost" id="btnWinMenu">Main Menu</button>
+  </div>
+</div>
+
+<!-- Three.js r128 from CDN (unchanged) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+<!-- Game modules. Load order matters: helpers → config → systems → main.
+     These are plain (non-module) scripts so they share one global scope and
+     work from file://, http(s), and an Electron/Steam wrapper alike. -->
+<script src="js/core.js"></script>
+<script src="js/config.js"></script>
+<script src="js/arena.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/state.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/world.js"></script>
+<script src="js/balls.js"></script>
+<script src="js/rods.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/input.js"></script>
+<script src="js/powerups.js"></script>
+<script src="js/flow.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/league.js"></script>
+<script src="js/customize.js"></script>
+<script src="js/models.js"></script>
+<script src="js/debug.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
