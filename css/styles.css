@@ -7,18 +7,18 @@ canvas#game{position:fixed;inset:0;display:block;cursor:crosshair}
 h1.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(44px,7vw,86px);letter-spacing:.08em;background:linear-gradient(180deg,#fff 15%,#9fc2ff 45%,#2f6bff 85%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 22px rgba(80,140,255,.55));animation:logoPulse 3s ease-in-out infinite}
 @keyframes logoPulse{50%{filter:drop-shadow(0 0 38px rgba(120,170,255,.85))}}
 .tagline{font-size:17px;letter-spacing:.42em;color:#8fa3c8;margin:4px 0 26px;text-transform:uppercase}
-.modeRow{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:22px}
-.modeCard{width:216px;padding:18px 14px;border-radius:14px;background:var(--glass);border:1px solid var(--edge);cursor:pointer;text-align:center;transition:transform .15s,box-shadow .15s,border-color .15s;pointer-events:auto}
+.modeRow{display:flex;gap:14px;justify-content:center;margin:0 auto 22px;max-width:940px;padding:0 12px}
+.modeCard{flex:1 1 0;min-width:0;max-width:220px;padding:16px 12px;border-radius:14px;background:linear-gradient(180deg,rgba(22,28,50,.95),rgba(16,20,34,.92));border:1px solid var(--edge);border-top:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 6px 18px rgba(0,0,0,.45);cursor:pointer;text-align:center;transition:transform .12s,box-shadow .15s,border-color .15s;pointer-events:auto}
 .modeCard:hover{transform:translateY(-4px) scale(1.03)}
 .modeCard .big{font-family:'Orbitron',sans-serif;font-weight:800;font-size:19px;letter-spacing:.05em}
 .modeCard .sub{font-size:14px;color:#93a5c6;margin-top:6px}
-.modeCard.red:hover{border-color:var(--c0);box-shadow:0 0 26px color-mix(in srgb,var(--c0) 45%,transparent)}
-.modeCard.blue:hover{border-color:var(--c1);box-shadow:0 0 26px color-mix(in srgb,var(--c1) 45%,transparent)}
-.modeCard.ai:hover{border-color:#a06bff;box-shadow:0 0 26px rgba(160,107,255,.4)}
+.modeCard.red:hover{border-color:var(--c0);box-shadow:0 0 28px color-mix(in srgb,var(--c0) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--c0) 18%,transparent)}
+.modeCard.blue:hover{border-color:var(--c1);box-shadow:0 0 28px color-mix(in srgb,var(--c1) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--c1) 18%,transparent)}
+.modeCard.ai:hover{border-color:#a06bff;box-shadow:0 0 28px rgba(160,107,255,.55),inset 0 0 22px rgba(160,107,255,.18)}
 .modeCard .ico{font-size:30px;margin-bottom:8px}
-.panelWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;max-width:980px}
-.panel{background:var(--glass);border:1px solid var(--edge);border-radius:14px;padding:16px 20px;min-width:300px;pointer-events:auto}
-.panel h3{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.22em;color:#7f93ba;margin-bottom:12px;text-transform:uppercase}
+.panelWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1100px;width:100%;padding:16px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
+.panel{flex:1 1 0;min-width:0;min-height:260px;background:linear-gradient(180deg,var(--glass) 0%,rgba(12,16,28,.95) 100%);border:1px solid var(--edge);border-top:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 20px;pointer-events:auto;box-shadow:inset 0 2px 8px rgba(0,0,0,.5),0 8px 28px rgba(0,0,0,.35)}
+.panel h3{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.22em;color:#7f93ba;margin-bottom:12px;text-transform:uppercase;text-shadow:0 0 8px rgba(80,120,200,.3)}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;font-size:16px;font-weight:600}
 .row label{color:#c6d2ea}
 .row label .lblR{color:var(--c0);font-weight:800;letter-spacing:.08em}
@@ -31,9 +31,9 @@ input[type=text]{width:110px;text-transform:uppercase}
 .rodOpt{pointer-events:auto;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:4px 7px;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#7f93ba;transition:all .12s;text-transform:uppercase}
 .rodOpt:hover{transform:translateY(-1px);border-color:#5a8cff;color:#e8ecf5}
 .rodOpt.on{color:#fff;border-color:var(--tc,#5a8cff);background:#1a2848;box-shadow:0 0 10px color-mix(in srgb,var(--tc,#5a8cff) 40%,transparent)}
-.ctl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:15px}
-.ctl b{font-family:'Orbitron',sans-serif;font-size:11.5px;background:#182238;border:1px solid var(--edge);border-radius:6px;padding:3px 8px;text-align:center;color:#bcd0f2;white-space:nowrap}
-.ctl span{color:#93a5c6;align-self:center}
+.ctl{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:14px;align-content:center}
+.ctl b{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:800;background:#182238;border:1px solid var(--edge);border-bottom:2px solid rgba(255,255,255,.1);border-radius:5px;padding:3px 7px;text-align:center;color:#bcd0f2;white-space:nowrap;letter-spacing:.04em;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);display:block}
+.ctl span{color:#93a5c6;font-size:12px;letter-spacing:.03em;text-align:center;display:block}
 .foot{margin-top:20px;font-size:13px;letter-spacing:.2em;color:#5d6f92;text-transform:uppercase}
 /* HUD */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:20}
@@ -85,7 +85,7 @@ input[type=text]{width:110px;text-transform:uppercase}
 .czOpen:hover{box-shadow:0 0 22px rgba(160,107,255,.55);border-color:#a06bff}
 .panel .czOpen{width:100%;margin-top:14px}
 /* menu kit columns (team 1 left / team 2 right) */
-.kitPanel{min-width:340px}
+.kitPanel{min-width:0}
 .kitCols{display:flex;gap:16px}
 .kitCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
 .kitName{width:100%!important;text-align:center;letter-spacing:.06em;--tc:#5a8cff}
@@ -142,13 +142,28 @@ input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radi
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#5a8cff;box-shadow:0 0 10px rgba(90,140,255,.7);cursor:pointer}
 input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:#5a8cff;box-shadow:0 0 10px rgba(90,140,255,.7);cursor:pointer}
 /* ===== league ===== */
-.modeCard.league:hover{border-color:var(--gold);box-shadow:0 0 26px color-mix(in srgb,var(--gold) 40%,transparent)}
+.modeCard.league:hover{border-color:var(--gold);box-shadow:0 0 28px color-mix(in srgb,var(--gold) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--gold) 18%,transparent)}
 #league{justify-content:flex-start;overflow-y:auto;padding:34px 16px}
 .lgTitle{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(26px,4vw,40px);letter-spacing:.12em;background:linear-gradient(180deg,#fff 20%,var(--gold) 80%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 16px rgba(255,207,77,.35))}
 .lgSub{font-size:14px;letter-spacing:.34em;color:#8fa3c8;margin:4px 0 20px;text-transform:uppercase}
-.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1180px}
-.lgSide{display:flex;flex-direction:column;gap:18px;width:330px}
-#lgTable{display:grid;grid-template-columns:20px minmax(130px,1fr) 16px repeat(5,32px);gap:4px 8px;font-size:15px;font-weight:600;align-items:center}
+.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1320px;width:100%;padding:18px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
+/* each column is sized to what it actually needs to show, instead of a
+   forced equal split — standings/fixture stay compact, the squad grid
+   (which needs room for two 160px+ stat columns) gets first claim on
+   extra space, and the scout card sits between the two. */
+.lgWrap>.panel:nth-child(1){flex:1 1 320px;min-width:350px;max-width:400px; min-height:400px}
+.lgSide{display:flex;flex-direction:column;gap:18px;flex:1 1 280px;min-width:260px;max-width:320px; min-height:400px}
+.lgWrap>.panel:nth-child(3){flex:1.7 1 420px;min-width:400px; min-height:400px}
+.lgWrap>.panel.lgScout{flex:1.1 1 300px;min-width:280px;max-width:340px}
+/* hard backstop: whatever a panel's content does, it can never visually
+   spill into the panel next to it again */
+.lgWrap .panel{overflow:hidden;position:relative}
+/* small arcade accent — a glowing gold strip under each panel's title,
+   like a cabinet marquee, without touching the base .panel look used
+   elsewhere (menu, customize, pause, etc.) */
+.lgWrap .panel::before{content:'';position:absolute;top:0;left:18px;right:18px;height:2px;border-radius:0 0 3px 3px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.55;pointer-events:none}
+.lgWrap .panel h3{position:relative}
+#lgTable{display:grid;grid-template-columns:20px minmax(110px,1fr) 16px repeat(5,30px);gap:4px 6px;font-size:15px;font-weight:600;align-items:center;overflow-x:auto;padding-bottom:2px}
 #lgTable .h{font-family:'Orbitron',sans-serif;font-size:9.5px;letter-spacing:.08em;color:#7f93ba;text-align:center}
 #lgTable .h:nth-child(2){text-align:left}
 #lgTable .h:nth-child(3){font-size:8px}
@@ -165,7 +180,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .lgFixSm b{font-family:'Orbitron',sans-serif;font-size:12px;color:#e8ecf5}
 .lgFixSm.me span{color:var(--gold)}
 .lgUPWrap{color:var(--gold)}
-#lgSquad{display:grid;grid-template-columns:repeat(2,190px);gap:12px 16px}
+#lgSquad{display:grid;grid-template-columns:repeat(2,minmax(170px,1fr));gap:12px 20px;overflow-x:auto}
 .lgRoleHead{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:.18em;color:#9fb0d0;margin-bottom:5px}
 .lgStat{display:grid;grid-template-columns:34px 1fr 22px;gap:6px;align-items:center;margin:2px 0}
 .lgStat .sN{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:.06em;color:#7f93ba}
@@ -175,11 +190,12 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .sPlus:hover:not(:disabled){border-color:var(--gold);box-shadow:0 0 10px color-mix(in srgb,var(--gold) 45%,transparent)}
 .sPlus:disabled{opacity:.25;cursor:default}
 /* scout panel */
-.lgScout{min-width:300px;width:330px}
+.lgScout{min-width:0}
 .lgScoutRec{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .lgScoutRec .lgW,.lgScoutRec .lgL{font-family:'Orbitron',sans-serif;font-weight:800;font-size:11px;width:22px;height:22px;line-height:22px;text-align:center;border-radius:5px;border:1px solid var(--edge)}
 .lgScoutRec .lgW{color:#7dff8a;background:rgba(125,255,138,.08);border-color:rgba(125,255,138,.3)}
 .lgScoutRec .lgL{color:#ff4d5a;background:rgba(255,77,90,.08);border-color:rgba(255,77,90,.3)}
+.lgSide>.panel{width:100%}
 .lgRateBar{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px;font-weight:600}
 .lgRateBar span{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:.12em;width:28px;text-align:right}
 .lgRateBar .off{color:var(--c0)} .lgRateBar .def{color:var(--c1)}
@@ -209,3 +225,11 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #dbgPanel label .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
 #dbgPanel input[type=checkbox]{width:14px;height:14px;accent-color:#ffcf4d;cursor:pointer}
 @media(max-width:820px){.czWrap{flex-direction:column}.czPanel{width:100%;flex:1 1 auto;border-left:none;border-top:1px solid var(--edge)}.czStage{flex:0 0 42%}}
+@media(max-width:800px){.panelWrap{flex-wrap:wrap;max-width:100%;padding:10px;margin:0;background:transparent;box-shadow:none;border:none;border-radius:0}.panel{flex:1 1 auto;min-width:260px;min-height:auto}.ctl{grid-template-columns:1fr}}
+@media(max-width:1040px){
+ /* below this width there isn't room for four content-sized columns
+    side by side, so stack them full-width in priority order rather
+    than squeezing everyone back down to the old bleed-prone layout */
+ .lgWrap{max-width:520px}
+ .lgWrap>.panel:nth-child(1),.lgSide,.lgWrap>.panel:nth-child(3),.lgWrap>.panel.lgScout{flex:1 1 100%;max-width:100%;min-width:0}
+}
