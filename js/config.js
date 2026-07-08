@@ -69,7 +69,7 @@ physics:{
   ballRest:0.9,                          // ball-vs-ball restitution (elastic collision)
   behindDamp:0.3, behindZ:1.5,           // in-net damping and z-clamp (× goalHalf)
   bigGoalMult:1.45,                      // goal-mouth widen factor while 'big goal' is active
-  redropY:46,                            // y a ball is re-dropped to if physics goes non-finite
+  redropY:32,                            // y a ball is re-dropped to if physics goes non-finite
    spinTurn:0.4, spinMax:0.3, spinDecay:.74, spinCut:0.02, // Magnus curve: turn rate, per-step clamp, decay, cutoff
   },
 
@@ -324,11 +324,11 @@ physics:{
   deadball:{
    stallVel:1.5, stallT:2.6, // all balls under stallVel for stallT → whistle + re-drop all
    wedgeVel:3,   wedgeT:2.2, // in multi-ball, one ball under wedgeVel for wedgeT → re-drop it
-   redrop:{y:44,z:42,vel:20,  // fresh drop box + launch speed (x removed — now uses zones)
+   redrop:{y:44,z:16,vel:20,  // fresh drop box + launch speed (x removed — now uses zones)
     zones:[                   // 3 face-off zones where both teams contest
-     {x:-30,spread:7},       // def vs att  (between DEF -37.5 & ATT -22.5)
-     {x:0,  spread:7},       // mid vs mid  (between MID -7.5  & MID  7.5)
-     {x:30, spread:7}        // att vs def  (between ATT  22.5 & DEF  37.5)
+     {x:-30,spread:6},       // def vs att  (between DEF -37.5 & ATT -22.5)
+     {x:0,  spread:6},       // mid vs mid  (between MID -7.5  & MID  7.5)
+     {x:30, spread:6}        // att vs def  (between ATT  22.5 & DEF  37.5)
     ]}
   },
 
@@ -336,8 +336,8 @@ physics:{
  camera:{
   // each mode: [x,y,z, lookX,lookY,lookZ]
   modes:[
-   [0,92,86,0,0,2],     // Cam 1
    [0,68,47,0,25,21],   // Close Side
+   [0,92,86,0,0,2],     // Cam 1
    [0,140,2,0,0,0],     // Top-down
    [-85,38,0,0,-4,0],   // Behind Goal 1
    [85,38,0,0,-4,0],    // Behind Goal 2
