@@ -143,17 +143,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:#5a8cff;box-shadow:0 0 10px rgba(90,140,255,.7);cursor:pointer}
 /* ===== league ===== */
 .modeCard.league:hover{border-color:var(--gold);box-shadow:0 0 28px color-mix(in srgb,var(--gold) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--gold) 18%,transparent)}
-#league{justify-content:flex-start;overflow-y:auto;padding:34px 16px}
+#league{justify-content:flex-start;overflow-y:auto;padding:34px 16px;min-width:99vw}
 .lgTitle{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(26px,4vw,40px);letter-spacing:.12em;background:linear-gradient(180deg,#fff 20%,var(--gold) 80%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 16px rgba(255,207,77,.35))}
 .lgSub{font-size:14px;letter-spacing:.34em;color:#8fa3c8;margin:4px 0 20px;text-transform:uppercase}
-.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1320px;width:100%;padding:18px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
+.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1620px;width:100%;padding:18px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
 /* each column is sized to what it actually needs to show, instead of a
    forced equal split — standings/fixture stay compact, the squad grid
    (which needs room for two 160px+ stat columns) gets first claim on
    extra space, and the scout card sits between the two. */
 .lgWrap>.panel:nth-child(1){flex:1 1 320px;min-width:350px;max-width:400px; min-height:400px}
-.lgSide{display:flex;flex-direction:column;gap:18px;flex:1 1 280px;min-width:260px;max-width:320px; min-height:400px}
-.lgWrap>.panel:nth-child(3){flex:1.7 1 420px;min-width:400px; min-height:400px}
+.lgSide{display:flex;flex-direction:column;gap:18px;flex:2 2 280px;min-width:260px;max-width:320px; min-height:600px}
+.lgWrap>.panel:nth-child(3){flex:1.7 1 420px;max-width:420px; min-height:400px}
 .lgWrap>.panel.lgScout{flex:1.1 1 300px;min-width:280px;max-width:340px}
 /* hard backstop: whatever a panel's content does, it can never visually
    spill into the panel next to it again */
