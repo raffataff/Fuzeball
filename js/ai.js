@@ -14,21 +14,28 @@ function focusBall(t){
 // x, recomputed on a commit timer so it can't flicker frame-to-frame. The user's own
 // controlled rod is always forced into their team's pair (that's the hand they're using).
 function pickActiveRods(dt){
- const H=AIC.hands;
- for(let t=0;t<2;t++){
-  S.pairCd[t]-=dt;
-  const tr=teamRods(t),n=Math.min(H,tr.length);
-  const forced=(S.userTeam===t&&S.ctrlRods.length)?S.ctrlRods[S.ctrl]:null;
-  const cur=S.active[t]||[];
-  const valid=cur.length===n&&cur.every(r=>tr.indexOf(r)>=0)&&(!forced||cur.indexOf(forced)>=0);
-  if(S.pairCd[t]>0&&valid)continue;   // committed — leave the pair alone
-  const fb=focusBall(t),bx=fb?fb.m.position.x:(t===0?F.L/2:-F.L/2);
-  const ranked=tr.slice().sort((a,b)=>Math.abs(a.x-bx)-Math.abs(b.x-bx));
-  const pick=[];if(forced)pick.push(forced);
-  for(const r of ranked){if(pick.length>=n)break;if(pick.indexOf(r)<0)pick.push(r);}
-  S.active[t]=pick;S.pairCd[t]=AIC.pairCommit;
+  const H=AIC.hands;
+  for(let t=0;t<2;t++){
+   S.pairCd[t]-=dt;
+   const tr=teamRods(t),n=Math.min(H,tr.length);
+   const forced=(S.userTeam===t&&S.ctrlRods.length)?S.ctrlRods[S.ctrl]:null;
+   const cur=S.active[t]||[];
+   const valid=cur.length===n&&cur.every(r=>tr.indexOf(r)>=0)&&(!forced||cur.indexOf(forced)>=0);
+   if(S.pairCd[t]>0&&valid)continue;
+   const fb=focusBall(t),bx=fb?fb.m.position.x:(t===0?F.L/2:-F.L/2);
+   const dir=t===0?1:-1;
+   const ranked=tr.slice().sort((a,b)=>{
+    const behindA=Math.max(0,(a.x-bx)*dir);
+    const behindB=Math.max(0,(b.x-bx)*dir);
+    const penaltyA=behindA>8?behindA*10:0;
+    const penaltyB=behindB>8?behindB*10:0;
+    return (Math.abs(a.x-bx)+penaltyA)-(Math.abs(b.x-bx)+penaltyB);
+   });
+   const pick=[];if(forced)pick.push(forced);
+   for(const r of ranked){if(pick.length>=n)break;if(pick.indexOf(r)<0)pick.push(r);}
+   S.active[t]=pick;S.pairCd[t]=AIC.pairCommit;
+  }
  }
-}
 function isActiveRod(r){const a=S.active[r.team];return!a||!a.length||a.indexOf(r)>=0;}
  function aiUpdate(dt){
   pickActiveRods(dt);

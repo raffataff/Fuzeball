@@ -65,9 +65,11 @@ initThree();
 initCustomize();
 bindUI();
 loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
-loadPlayerModel(()=>{
- loadRodModels(()=>{                    // rod GLBs must be ready before buildRods clones them
-  buildRods();applyTable();applyTheme();applyColors();
-  requestAnimationFrame(loop);
+loadBallModel(()=>{                     // ball GLB with material slots
+ loadPlayerModel(()=>{
+  loadRodModels(()=>{                    // rod GLBs must be ready before buildRods clones them
+   buildRods();applyTable();applyTheme();applyColors();
+   requestAnimationFrame(loop);
+  });
  });
 });

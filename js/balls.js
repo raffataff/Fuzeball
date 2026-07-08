@@ -1,18 +1,30 @@
 'use strict';
 /* ================= balls ================= */
 function makeBall(key){
- const t=BALL_TYPES[key];
- const m=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,24,16),
-  new THREE.MeshStandardMaterial({color:t.col,emissive:t.em,emissiveIntensity:t.em?0.7:0,
-   roughness:t.metal?.25:.4,metalness:t.metal||.05}));
- m.castShadow=true;scene.add(m);
- // prev/cur = the true sim position one fixed-step ago / now. The renderer draws
- // m.position lerped between them (see loop); physics only ever writes 'cur'.
- const b={m,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,
-  cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
-  prev:new THREE.Vector3(),cur:new THREE.Vector3()};
- if(t.light){b.light=new THREE.PointLight(t.light,1.1,34);scene.add(b.light);}
- S.balls.push(b);return b;
+  const t=BALL_TYPES[key];
+  let m;
+  const useModel=CONFIG.debug?.useBallModel;
+  if(useModel){
+    const glb=makeBallModel(key);
+    if(glb){
+      m=glb;
+      m.scale.setScalar(1);
+      scene.add(m);
+    }
+  }
+  if(!m){
+    m=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,24,16),
+     new THREE.MeshStandardMaterial({color:t.col,emissive:t.em,emissiveIntensity:t.em?0.7:0,
+      roughness:t.metal?.25:.4,metalness:t.metal||.05}));
+    m.castShadow=true;scene.add(m);
+  }
+  // prev/cur = the true sim position one fixed-step ago / now. The renderer draws
+  // m.position lerped between them (see loop); physics only ever writes 'cur'.
+  const b={m,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,
+   cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
+   prev:new THREE.Vector3(),cur:new THREE.Vector3()};
+  if(t.light){b.light=new THREE.PointLight(t.light,1.1,34);scene.add(b.light);}
+  S.balls.push(b);return b;
 }
 // call after ANY hard set of m.position outside physics (serve, redrop, split, NaN redrop):
 // snaps the interp buffers to the mesh so the ball appears at the new spot without streaking there.

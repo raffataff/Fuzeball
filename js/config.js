@@ -97,7 +97,7 @@ physics:{
   gkPad:2,                                   // keeper stays within goalHalf + this
   ttaMax:0.9,                                // only lead the ball's z if it arrives within this (s)
   inFrontMin:0.18, inFrontMax:6.0,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
-  underFootFront:3.9, underFootBack:2.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
+  underFootFront:4.3, underFootBack:2.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
   lowY:2,                                    // only swing when the ball is below this height
   raiseBehind:-7.2,                          // ball must be at least this far behind (real, dir-relative) to consider raising
    overFoot:2.9,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
@@ -141,25 +141,29 @@ physics:{
   // get team-coloured; `scale` = uniform scale in table units.
   models:[
    // ROBOTS
-    {id:'cyborg',name:'Cyborg',ico:'🤖',blurb:'Chrome-plated all-rounder',
-     src:'assets/fuzeball_cyborg.glb',scale:0.8,
-     teamParts:['body','arm_upper_right','arm_upper_left','arm_right','arm_left','legs','headgear'],
-     hairParts:['cyborg_hair']
-    },
-    {id:'deltaborg',name:'Deltaborg',ico:'🤖',blurb:'Ruthless and fast',
-     src:'assets/fuzeball_deltaborg.glb',scale:0.8,
-     teamParts:['kit_deltaborg'],hairParts:[]
-    },
+   {id:'cyborg',name:'Cyborg',ico:'🤖',blurb:'Chrome-plated all-rounder',
+   src:'assets/fuzeball_cyborg.glb',scale:0.8,
+   teamParts:['body','arm_upper_right','arm_upper_left','arm_right','arm_left','legs','headgear'],
+   hairParts:['cyborg_hair']
+   },
+   {id:'deltaborg',name:'Deltaborg',ico:'🤖',blurb:'Ruthless and fast',
+   src:'assets/fuzeball_deltaborg.glb',scale:0.8,
+   teamParts:['kit_deltaborg'],hairParts:[]
+   },
+   {id:'mechaMan',name:'Mecha Man',ico:'🤖',blurb:'Logical and methodical',
+      src:'assets/fuzeball_mechaMan.glb',scale:0.8,
+      teamParts:['kit_mechaman'],hairParts:[]
+   },
+   {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Logical and methodical',
+      src:'assets/fuzeball_irnman.glb',scale:0.8,
+      teamParts:['kit_irnman'],hairParts:[]
+   },
+   // MEN
    /*{id:'manFlash',name:'Zack',ico:'',blurb:'Cocky but skilled',
     src:'assets/fuzeball_manFlash.glb',scale:0.8,
     teamParts:['kit_flash']
    },*/
-    {id:'mechaMan',name:'Mecha Man',ico:'🤖',blurb:'Logical and methodical',
-     src:'assets/fuzeball_mechaMan.glb',scale:0.8,
-     teamParts:['kit_mechaman'],hairParts:[]
-    },
-   // MEN
-    {id:'manStumpy',name:'Stumpy',ico:'�',blurb:'Compact and aggressive',
+   {id:'manStumpy',name:'Stumpy',ico:'�',blurb:'Compact and aggressive',
      src:'assets/fuzeball_manStumpy.glb',scale:0.8,
      teamParts:['body.001'],hairParts:[]
     },
@@ -354,14 +358,19 @@ physics:{
   removeDuration:10 // seconds the nearest player is removed after explosion
  },
 
- /* ---- ball types ----------------------------------------------------- */
- ballTypes:{
-  classic:{name:'⚽ CLASSIC',col:0xf2ede2,em:0x000000,mass:4,maxV:210,w:55,trail:'#ffffff'},
-  fire:   {name:'🔥 FIREBALL',col:0xff6a1f,em:0xff2200,mass:.9,maxV:240,w:14,trail:'#ff8c3a',light:0xff5500},
-   cannon: {name:'💣 CANNONBALL',col:0x000000,em:0x000000,mass:8,maxV:100,w:12,trail:'#000000'},
-  golden: {name:'⭐ GOLDEN BALL · COUNTS ×2',col:0xffc933,em:0x7a5200,mass:3,maxV:150,w:3,value:2,trail:'#ffd75e',metal:.85},
-  split:  {name:'👯 SPLIT BALL',col:0xa46bff,em:0x4a18b8,mass:3,maxV:165,w:5,splits:true,trail:'#c39bff'}
- },
+/* ---- ball types ----------------------------------------------------- */
+  ballTypes:{
+   classic:{name:'⚽ CLASSIC',col:0xf2ede2,em:0x000000,mass:4,maxV:210,w:55,trail:'#ffffff'},
+   fire:   {name:'🔥 FIREBALL',col:0xff6a1f,em:0xff2200,mass:.9,maxV:240,w:14,trail:'#ff8c3a',light:0xff5500},
+    cannon: {name:'💣 CANNONBALL',col:0x000000,em:0x000000,mass:8,maxV:100,w:12,trail:'#000000'},
+   golden: {name:'⭐ GOLDEN BALL · COUNTS ×2',col:0xffc933,em:0x7a5200,mass:3,maxV:150,w:3,value:2,trail:'#ffd75e',metal:.85},
+   split:  {name:'👯 SPLIT BALL',col:0xa46bff,em:0x4a18b8,mass:3,maxV:165,w:5,splits:true,trail:'#c39bff'}
+  },
+
+  /* ---- debug / toggles -------------------------------------------------- */
+  debug:{
+   useBallModel:false  // false = use generated sphere, true = use ball_.glb model
+  },
 
  /* ---- power-up types ------------------------------------------------- */
  puTypes:[
