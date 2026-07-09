@@ -60,7 +60,7 @@ physics:{
    footBoxOff:{x:0.35,y:0.5},        // centre offset from foot-base in rod-local: {x=along leg, y=perpendicular}
    footBoxReach:0.08,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
    footJitter:0.003,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
-  subMin:2, subMax:8, subTravel:1.,   // adaptive substep bounds + target travel per step
+  subMin:3, subMax:5, subTravel:1.1,   // adaptive substep bounds + target travel per step
   floorRest:0.42,                        // vertical restitution off the floor
   floorRestCut:6,                        // below this upward speed the bounce dies to 0
   floorHitSnd:25,                        // |v.y| above this plays a floor tap
@@ -68,7 +68,7 @@ physics:{
   wallRest:0.52,                         // side + end wall restitution
   ballRest:0.9,                          // ball-vs-ball restitution (elastic collision)
   behindDamp:0.3, behindZ:1.5,           // in-net damping and z-clamp (× goalHalf)
-  bigGoalMult:1.45,                      // goal-mouth widen factor while 'big goal' is active
+  bigGoalMult:1.4,                      // goal-mouth widen factor while 'big goal' is active
   redropY:32,                            // y a ball is re-dropped to if physics goes non-finite
    spinTurn:0.4, spinMax:0.3, spinDecay:.74, spinCut:0.02, // Magnus curve: turn rate, per-step clamp, decay, cutoff
   },
@@ -96,8 +96,8 @@ physics:{
  ai:{
   gkPad:2,                                   // keeper stays within goalHalf + this
   ttaMax:0.9,                                // only lead the ball's z if it arrives within this (s)
-  inFrontMin:0.18, inFrontMax:6.0,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
-  underFootFront:4.3, underFootBack:2.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
+  inFrontMin:0.18, inFrontMax:6.2,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
+  underFootFront:4.7, underFootBack:2.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
   lowY:2,                                    // only swing when the ball is below this height
   raiseBehind:-7.2,                          // ball must be at least this far behind (real, dir-relative) to consider raising
    overFoot:2.9,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
@@ -151,12 +151,16 @@ physics:{
    teamParts:['kit_deltaborg'],hairParts:[]
    },
    {id:'mechaMan',name:'Mecha Man',ico:'🤖',blurb:'Logical and methodical',
-      src:'assets/fuzeball_mechaMan.glb',scale:0.8,
+      src:'assets/fuzeball_mechaman.glb',scale:0.8,
       teamParts:['kit_mechaman'],hairParts:[]
    },
-   {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Logical and methodical',
+   {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Strong and relentless',
       src:'assets/fuzeball_irnman.glb',scale:0.8,
       teamParts:['kit_irnman'],hairParts:[]
+   },
+   {id:'stormer',name:'Stormer',ico:'🤖',blurb:'Cold and endless',
+      src:'assets/fuzeball_stormer.glb',scale:0.8,
+      teamParts:['kit_stormer'],hairParts:[]
    },
    // MEN
    /*{id:'manFlash',name:'Zack',ico:'',blurb:'Cocky but skilled',
@@ -168,7 +172,7 @@ physics:{
      teamParts:['body.001'],hairParts:[]
     },
     {id:'manJerry',name:'Jerry',ico:'',blurb:'Ambitios and skilled',
-     src:'assets/fuzeball_manJerry.glb',scale:0.8,
+     src:'assets/fuzeball_ManJerry.glb',scale:0.8,
      teamParts:['kit_jerry'],hairParts:['kit_jerry_hair']
     },
    // WOMEN
@@ -213,7 +217,7 @@ physics:{
  /* ---- rod layout ----------------------------------------------------- */
  rods:{
   spacing:{ two:24, three:18.5, other:11.9 }, // per-man spacing by man-count
-  margin:9,       // total z margin subtracted when deriving slide range
+  margin:7.5,       // total z margin subtracted when deriving slide range
   gkSlide:13,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
   wallClear:2.5,  // stick-out kept past the outer side wall at full inward slide (fixes handle-through-wall)
   handleLen:5,    // handle grip length (sits just outside the wall)
@@ -262,33 +266,34 @@ physics:{
 
  /* ---- league mode ------------------------------------------------------ */
  league:{
-  teams:10,          // league size (keep even — round robin pairs up)
+   teams:12,          // league size (keep even — round robin pairs up)
    goals:5,           // goals to win a league match (live AND simulated)
    upWin:3, upLoss:1, upCleanSheet:1, // upgrade parts awarded (tune: 4/2 feels better with escalating costs)
    playerStart:10,     // parts the player has to spend when a fresh league starts
    cost:[1,1,2,2,3],  // cost of raising a stat from level 5+i (5→6=1, 9→10=3)
-   tape:true, tapeT:2.5, // pre-match splash: OFF/DEF bars + figurines; click to skip
-   graceT:5   ,          // seconds after match-start where quitting does NOT forfeit
-  aiBudget:[10,16],  // random starting stat points each AI team gets (league strength spread)
-  simK:.5,           // sim: stat edge → per-goal probability steepness (logistic)
-  // zone-rating weights for the statistical sim (lgRodScore normalizes, so
-  // weights are relative). offMix/defMix = ATT-vs-MID and GK-vs-DEF shares.
-  rate:{
-   offMix:.6, defMix:.55,
-   att:{str:.3,acc:.3,ctl:.2,spd:.1,rea:.05,sta:.05},
-   mid:{spd:.25,ctl:.25,str:.15,acc:.15,rea:.1,sta:.1},
-   gk: {rea:.35,spd:.25,ctl:.15,sta:.1,acc:.1,str:.05},
-   def:{rea:.25,str:.25,spd:.2,ctl:.15,sta:.15}
-  },
-  // AI upgrade-spend weights per role — gives AI teams position-flavoured builds
-  spend:{
-   GK: {rea:3,spd:2,ctl:1.2,sta:1,str:.4,acc:.3},
-   DEF:{rea:2,spd:2,str:1.5,sta:1.2,ctl:1,acc:.5},
-   MID:{sta:2,spd:2,ctl:2,rea:1.5,str:1,acc:1},
-   ATT:{acc:3,str:2.5,ctl:1.5,spd:1,rea:1,sta:.5}
-  },
-  names:['ROD RAGE','TABLE TITANS','SPIN DOKTORS','GOAL DIGGERZ','BAR DOWN FC','DEAD BALL SC',
-         'THE CRANKS','TILT CITY','KICKBACK UTD','FOOS FIGHTERS','HANDLE HOUSE','GRIP & RIP'],
+   tape:true, tapeT:3, // pre-match splash: OFF/DEF bars + figurines; click to skip
+   graceT:5,          // seconds after match-start where quitting does NOT forfeit
+   aiBudget:[10,16],  // random starting stat points each AI team gets (league strength spread)
+   simK:.5,           // sim: stat edge → per-goal probability steepness (logistic)
+   // zone-rating weights for the statistical sim (lgRodScore normalizes, so
+   // weights are relative). offMix/defMix = ATT-vs-MID and GK-vs-DEF shares.
+   rate:{
+      offMix:.6, defMix:.55,
+      att:{str:.3,acc:.3,ctl:.2,spd:.1,rea:.05,sta:.05},
+      mid:{spd:.25,ctl:.25,str:.15,acc:.15,rea:.1,sta:.1},
+      gk: {rea:.35,spd:.25,ctl:.15,sta:.1,acc:.1,str:.05},
+      def:{rea:.25,str:.25,spd:.2,ctl:.15,sta:.15}
+   },
+   // AI upgrade-spend weights per role — gives AI teams position-flavoured builds
+   spend:{
+      GK: {rea:3,spd:2,ctl:1.2,sta:1,str:.4,acc:.3},
+      DEF:{rea:2,spd:2,str:1.5,sta:1.2,ctl:1,acc:.5},
+      MID:{sta:2,spd:2,ctl:2,rea:1.5,str:1,acc:1},
+      ATT:{acc:3,str:2.5,ctl:1.5,spd:1,rea:1,sta:.5}
+   },
+   names:[
+      'ROD RAGE','TABLE TITANS','SPIN DOKTORS','GOAL DIGGERZ','BAR DOWN FC','DEAD BALL SC', 'THE CRANKS','TILT CITY','KICKBACK UTD','FOOS FIGHTERS','HANDLE HOUSE','GRIP & RIP'
+   ],
    cols:[
       '#ff8c3a',
       '#ffcf4d',
@@ -306,7 +311,7 @@ physics:{
       '#888888',
       '#250d06'
    ],
-   colClash:90      // RGB distance threshold: if AI colour is too close to player's, reassign
+   colClash:80      // RGB distance threshold: if AI colour is too close to player's, reassign
   },
 
  /* ---- player control ------------------------------------------------- */
@@ -315,7 +320,7 @@ physics:{
  /* ---- power-ups ------------------------------------------------------ */
  powerups:{
   firstDelay:[9,14], respawn:[11,17], // seconds until first spawn / after a pickup
-  boost:8, freeze:10, big:10,          // effect durations (s)
+  boost:108, freeze:10, big:10,          // effect durations (s)
   floatY:3, floatAmp:0.8, pickR:6,    // hover height, bob amplitude, pickup radius pad
   area:{x:32,z:22}                    // spawn box (± these)
  },
@@ -326,9 +331,9 @@ physics:{
    wedgeVel:3,   wedgeT:2.2, // in multi-ball, one ball under wedgeVel for wedgeT → re-drop it
    redrop:{y:44,z:16,vel:20,  // fresh drop box + launch speed (x removed — now uses zones)
     zones:[                   // 3 face-off zones where both teams contest
-     {x:-30,spread:6},       // def vs att  (between DEF -37.5 & ATT -22.5)
-     {x:0,  spread:6},       // mid vs mid  (between MID -7.5  & MID  7.5)
-     {x:30, spread:6}        // att vs def  (between ATT  22.5 & DEF  37.5)
+     {x:-30,spread:5},       // def vs att  (between DEF -37.5 & ATT -22.5)
+     {x:0,  spread:5},       // mid vs mid  (between MID -7.5  & MID  7.5)
+     {x:30, spread:5}        // att vs def  (between ATT  22.5 & DEF  37.5)
     ]}
   },
 
