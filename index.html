@@ -32,7 +32,7 @@
 
 <div id="menu" class="screen">
   <h1 class="logo">FUZEBALL</h1>
-  <div class="tagline">3D Table Football · Arcade Physics v0.1.11</div>
+  <div class="tagline">3D Table Football · Arcade Physics v0.1.12</div>
   <div class="modeRow">
     <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
     <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
@@ -127,6 +127,54 @@
         <button class="btn ghost" id="czResetBtn">Reset all</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="lgSlots" class="screen hidden">
+  <h2 class="lgTitle" style="margin-bottom:8px">LEAGUE MODE</h2>
+  <div class="tagline" style="margin-bottom:20px">3 divisions · promotion & relegation · upgrade your squad</div>
+  <div id="lgSlotCards" class="lgSlotCards"></div>
+  <div class="btnRow">
+    <button class="btn ghost" id="lgSlotsBack">◀ Main Menu</button>
+  </div>
+</div>
+
+<div id="lgSetup" class="screen hidden">
+  <h2 class="lgTitle">NEW LEAGUE</h2>
+  <div class="lgSetupWrap">
+    <div class="panel lgSetupPanel">
+      <h3>League details</h3>
+      <div class="row"><label>League name</label><input type="text" id="lgSetupLgName" maxlength="14"></div>
+      <div class="row"><label>Your team</label><input type="text" id="lgSetupName" maxlength="10"></div>
+    </div>
+    <div class="panel lgSetupPanel lgSetupKit">
+      <h3>Kit &amp; Figurine</h3>
+      <div class="lgSetupKitRow">
+        <canvas id="lgSetupFig" width="200" height="260"></canvas>
+        <div class="lgSetupKitSide">
+          <div class="row"><input type="color" id="lgSetupColor"><span class="lgSetupHex" id="lgSetupHex"></span></div>
+          <div class="kitPal" id="lgSetupPal"></div>
+          <div id="lgSetupModels" class="lgSetupModels"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel lgSetupPanel">
+      <h3>Starting division</h3>
+      <select id="lgSetupDiv" class="lgSetupSelect">
+        <option value="0">Sunday League (weakest teams)</option>
+        <option value="1" selected>Pro League</option>
+        <option value="2">Premier League (strongest teams)</option>
+      </select>
+    </div>
+    <div class="panel lgSetupPanel">
+      <h3>Match rules</h3>
+      <div class="row"><label>Special balls</label><input type="checkbox" id="lgSetupSpecial" checked></div>
+      <div class="row"><label>Power-ups</label><input type="checkbox" id="lgSetupPower" checked></div>
+    </div>
+  </div>
+  <div class="btnRow">
+    <button class="btn" id="lgSetupCreate">Create League</button>
+    <button class="btn ghost" id="lgSetupCancel">Cancel</button>
   </div>
 </div>
 
@@ -236,6 +284,7 @@
 <script src="js/league.js"></script>
 <script src="js/customize.js"></script>
 <script src="js/models.js"></script>
+<script src="js/fracture.js"></script>
 <script src="js/debug.js"></script>
 <script src="js/main.js"></script>
 </body>

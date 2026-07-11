@@ -14,6 +14,9 @@ function stReact(r){return Math.max(.2,1-(ST(r,'rea')-STC.base)*STC.rea)/stFat(r
 function stCd(r){return Math.max(.25,1-(ST(r,'rea')-STC.base)*STC.cd);}
 function stErr(r){return Math.max(.15,1-(ST(r,'acc')-STC.base)*STC.accErr);}
 function stAim(r,a){return clamp(a+(ST(r,'acc')-STC.base)*STC.accAim,0,1);}
+// Decision intelligence multiplier on the difficulty's base iq roll (see ai.js). Base 5 = 1
+// (unchanged); higher = more likely to trap/wait for the sweet spot, lower = greedier.
+function stIQ(r){return Math.max(0,1+(ST(r,'iq')-STC.base)*STC.iq);}
 // Kick aim-assist: bend the outgoing shot's heading toward the goal-mouth centre.
 // Pure horizontal rotation (Magnus-style) — adds no energy, so it's stable. Only
 // acts above base accuracy, only on goalward shots already near the target cone,
@@ -22,7 +25,9 @@ function aimAssist(b,r){
  const a=Math.max(0,ST(r,'acc')-STC.base)/(STC.max-STC.base)*STC.assistMax;if(a<=0)return;
  const dir=r.team===0?1:-1,v=b.v,p=b.m.position;
  if(v.x*dir<STC.assistMinVX)return;
- const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(-p.z,(dir*F.L/2-p.x)*dir);
+ // aim at the rod's chosen gap when gap-aiming this frame, else the goal-mouth centre (z=0)
+ const tz=(r.aimEv&&CONFIG.ai.gapAim.gap)?r.aimEv.best.tz:0;
+ const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(tz-p.z,(dir*F.L/2-p.x)*dir);
  let da=want-cur;if(da>Math.PI)da-=2*Math.PI;else if(da<-Math.PI)da+=2*Math.PI;
  if(Math.abs(da)>STC.assistCone)return;
  const th=clamp(da,-a,a)*dir,cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;

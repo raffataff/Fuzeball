@@ -36,15 +36,42 @@ const CONFIG = {
  /* ---- table types ------------------------------------------------------ */
  // Classic uses CONFIG.table (flat walls, 90° creases) untouched. Arena is the
  // curved Rocket-League-style bowl: rounded-rect walls + floor fillet. All
- // radii are in table units; tweak and reload. Blender script mirrors these —
- // keep tools/build_arena_table.py in sync (or run it with --from-config).
+ // radii are in table units; tweak and reload. The Blender pipeline mirrors
+ // these numbers — keep the constants block in tools/build_arena_table.py in
+ // sync if you retune here (GLBs live in assets/tables/arena/).
  tables:{
   arena:{
+   length:120,        // outer bowl length along x (the side-wall span). Default 120 = F.L,
+                      // which puts the end wall exactly on the goal line (x=±60) so the goal
+                      // pockets stay open — see the geometry note below before changing it.
+                      //
+                      // GEOMETRY: each side wall is straight for x ∈ ±(length/2 − cornerR),
+                      // then the corner arc curves from there to the end wall at x = ±length/2.
+                      // The goal mouth is fixed at the real goal line x = ±F.L/2 = ±60 (that's
+                      // where scoring happens in physics.js — it does NOT move with length).
+                      //   • The corner "sticks out in front of the goal" by exactly cornerR
+                      //     units (it starts curving cornerR before the end). To make the bend
+                      //     meet the goal instead of curving in front, shrink cornerR — the flat
+                      //     wall then reaches x=±(60−cornerR) and the corner tucks into the end.
+                      //   • Keep length ≈ F.L (120). length>120 pushes the end wall past the
+                      //     goal line and BURIES the goal pockets (the bowl swallows them);
+                      //     length<120 detaches the pockets from the wall. Retune goals in
+                      //     physics.js if you really want a longer bowl.
+   width:68,          // outer bowl width along z (the end-wall span). Default 68 = F.W, so the
+                      // arena walls line up with the classic table. NOTE: the arena LOOKS a touch
+                      // narrower than classic not because of this, but because the crease fillet
+                      // rises from ~creaseR inside the wall — so the FLAT pitch area is ~creaseR
+                      // narrower per side and the outer pitch lines ride up the slope. To match
+                      // classic's flat width either drop creaseR or bump width by ~2·creaseR.
+                      // (The shared pitch plane stays F.W wide, so widening much past F.W opens a
+                      // gap between the painted lines and the wall — nudge, don't crank.)
    cornerR:12,        // plan-view corner radius of the rounded rectangle
-   creaseR:5,         // floor↔wall fillet radius (how far the ball rides up). Keep ≤5.5:
-                      // above that a ball hugging the wall sits too high for feet at max rod slide
-   postR:3,           // smooth-union radius where the crease/walls blend into the goal mouth
-   mouthIn:4,         // how far the goal cavity punches inward past the goal line (opens the mouth)
+   creaseR:4,         // floor↔wall fillet radius. 0 = a SHARP 90° corner (no fillet, no blend) —
+                      // vertical walls meeting the flat floor, classic-table style. Raise it (keep
+                      // ≤5.5) for a rounded Rocket-League bowl where the ball rides up the wall;
+                      // above ~5.5 the ball hugging the wall sits too high for feet at max rod slide.
+   postR:2,           // smooth-union radius where the crease/walls blend into the goal mouth
+   mouthIn:8,         // how far the goal cavity punches inward past the goal line (opens the mouth)
    bounceCut:6,       // normal-speed below which crease/wall contact rolls instead of bouncing
    fricNy:0.3,        // contact normal.y above this counts as 'grounded' → floor friction applies
    gradEps:0.02,      // central-difference step for the SDF gradient
@@ -60,15 +87,17 @@ physics:{
    footBoxOff:{x:0.35,y:0.5},        // centre offset from foot-base in rod-local: {x=along leg, y=perpendicular}
    footBoxReach:0.08,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
    footJitter:0.003,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
-  subMin:3, subMax:5, subTravel:1.1,   // adaptive substep bounds + target travel per step
+  subMin:3, subMax:6, subTravel:1.65,   // adaptive substep bounds + target travel per step
   floorRest:0.42,                        // vertical restitution off the floor
   floorRestCut:6,                        // below this upward speed the bounce dies to 0
   floorHitSnd:25,                        // |v.y| above this plays a floor tap
   floorFric:0.35, airFric:0.06,           // per-substep friction, applied as exp(-k*h) — keep as coefficients
   wallRest:0.52,                         // side + end wall restitution
+  postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution (metal = bouncy)
   ballRest:0.9,                          // ball-vs-ball restitution (elastic collision)
   behindDamp:0.3, behindZ:1.5,           // in-net damping and z-clamp (× goalHalf)
   bigGoalMult:1.4,                      // goal-mouth widen factor while 'big goal' is active
+  bigGoalBack:0.5,                      // net BACK edge widens only this fraction as much as the mouth — keeps it inside the narrowing wall gap behind the goal
   redropY:32,                            // y a ball is re-dropped to if physics goes non-finite
    spinTurn:0.4, spinMax:0.3, spinDecay:.74, spinCut:0.02, // Magnus curve: turn rate, per-step clamp, decay, cutoff
   },
@@ -84,9 +113,9 @@ physics:{
   userSpeed:80,                  // slide speed of the player-driven rod (u/s)
   aiOwnMult:0.85,                // AI rods on the user's team slide a bit slower
    boostHitMult:1.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse), freeze (speed)
-  rest:0.32, restPower:0.46,     // ball restitution: passive touch vs kick power window
-  powFrom:0.07, powTo:0.30,      // kickT window that counts as the power strike
-  grip:0.06,                     // how much the foot's velocity is imparted to the ball
+  rest:0.05, restPower:0.5,     // ball restitution: passive touch vs kick power window
+  powFrom:0.05, powTo:0.1,      // kickT window that counts as the power strike
+  grip:0.03,                     // how much the foot's velocity is imparted to the ball
   spinGain:0.05, spinClamp:2,    // side-spin from sliding into the ball
   sndFrom:18, hardHit:70, shakeDiv:400, // kick sound threshold / hard-hit sparks / shake scale
   splitVel:62, splitMax:3, splitAng:0.45, splitSep:3.2 // split-ball: trigger speed, max balls, spread angle, z sep
@@ -103,24 +132,78 @@ physics:{
    overFoot:2.9,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
    overFootOffset:2.59,                        // shift the overFoot zone this far forward (dir-relative) so it sits in front of the men, not straddling the rod — prevents latch releasing too early as the ball approaches
    
-   // --- reposition-while-raised: when a man is straddling the ball, lift it and slide
-   //     sideways until there's enough z-clearance (measured by BALL_R+FOOT_R) to drop safely.
-   //     Stops the hover-forever deadlock for medium-speed balls that slip under the foot. ---
+   // --- safe-lower side-step: a rod held forward after a kick (ball still in the
+   //     drop-sweep zone, so updateRods pins it at strike angle) slides sideways until
+   //     every foot is at least clearZ from the ball in z, then lowers on its own.
+   //     clearZ per foot = footBox.z + BALL_R + clearMargin. Stops the hover-forever
+   //     deadlock where the AI kept re-aligning ONTO the ball it was hovering over.
+   //     Debug: 'Drop Sweep' layer in the AI panel shows the per-man danger boxes. ---
    repositionSpeed:20,                        // max ball speed that triggers the side-step (above this, shots pass through raised men)
-   repositionSlide:0.,                      // how many z-units we nudge the slide target per frame while clearing
+   clearMargin:0.6,                           // extra z-clearance beyond footBox.z + BALL_R before lowering is safe
    
     // --- foot-trap break: drop a raised rod when a slow ball is pinned right at a foot.
    //     (NOTE: previously referenced but never defined — made the check dead code.) ---
-   footTrapSlow:5.0,                         // ball speed under this is "pinned"
-   footTrapZ:0.1,                            // ball within this z of any foot counts as "at the foot"
+   footTrapSlow:10.0,                         // ball speed under this is "pinned"
+   footTrapZ:0.01,                            // ball within this z of any foot counts as "at the foot"
+
+   // --- trap action (r.act='trap'): a slow ball arriving from behind is CAUGHT instead
+   //     of full-raised over — the rod eases to a partial back angle (full raiseA just
+   //     pops the ball away on the drop), holds it a beat, then scoops a shot forward.
+   //     Only rods whose iq roll passed (DIFFS.iq) attempt it; everyone else keeps the
+   //     old raise latch. on:false restores pre-trap behaviour exactly.
+   //     Debug: 'Trap Zone' layer in the AI panel (purple; hot while a rod is trapping). ---
+   trap:{
+    on:true,
+    angle:-0.65,        // partial back-raise trap angle (rod-local, ×kickDir like raiseA)
+    lerp:6,             // ease rate toward the trap angle (slower than raiseLerp — a soft catch)
+    back:-6.4,          // dir-relative x window behind the rod where a trap makes sense…
+    front:-0.8,         // …ends just behind the rod line (past this the normal kick path owns it)
+    maxVX:6,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
+    maxSpeed:10,        // total ball speed cap for attempting/keeping a trap
+    alignZ:1.2,         // z-alignment (nearest man) needed to commit to the trap
+    gkReach:6,          // GK-only: also enter the trap when the ball is within this far BEYOND
+                        //   the keeper's z-slide band (early-detect a ball drifting back toward a
+                        //   goal it can't yet slide onto). Outfield rods ignore this, use alignZ.
+    settleT:1.75,       // min seconds in the trap before the scoop shot may fire
+    shootFrom:-3.8,     // scoop fires once the ball is past this (near the trap foot's reach)
+    abortT:5.5,         // give up after this long and fall back to the raise latch
+    // --- pre-trap safe-raise: a slow/sideways ball sitting in the trap x-band but not far
+    //     enough back to trip the raiseBehind latch. If it sits in a z-GAP — i.e. no live
+    //     man's footbox would clip it if the rod raised right now — the rod raises FULLY
+    //     (behindFlag latch) and slides to get a man behind the ball, then the trap/kick
+    //     logic below decides to trap or clear. If a foot IS lined up with the ball in z,
+    //     raising would sweep into it, so we leave it to the normal path. ---
+    safeRaise:true,     // enable the pre-trap safe-raise + reposition
+    raiseBuf:1.6        // z buffer added to FOOT_BOX.z for the "would raising clip the ball?" per-man test
+   },
+   // --- decision thresholds: a smart rod (iq roll) with the ball approaching in the
+   //     inFront window WAITS for it to reach the overFoot sweet spot instead of
+   //     poking at full stretch — meatier, better-aimed strike. ---
+   waitTta:3.55,        // waiting is only allowed if the ball reaches the rod within this (s)
+   waitMinVX:7,         // …and is approaching at least this fast in x (else kick now)
   
   // --- goal targeting: aim strikes at the opponent goal mouth (accuracy = DIFFS.aim) -------
   aimGain:10,                                // converts desired lateral (vz/vx) into a z aim-offset — bigger = stronger steering toward goal
   aimMax:1.2,                                // clamp on that offset (u): the man must still contact the ball or the shot whiffs in z
-  aimGoalZ:0.75,                              // aim within ±this fraction of goalHalf (stay off the posts)
+  aimGoalZ:0.85,                              // aim within ±this fraction of goalHalf (stay off the posts)
   aimSpread:1.3,                             // low-accuracy spray: aimed spot wanders ±(1-aim)*goalHalf*this across the mouth
-  alignSlow:3.0, alignFast:1.8,              // z-alignment tolerance (looser on slow balls)
-  slowSpeed:16,                              // ball speed under this counts as a dead-ball (be eager)
+  // --- gap-aware aiming: smart, accurate rods read the opposing men (keeper + any defender
+  //     between ball and goal) and steer at the WIDEST OPEN lane in the mouth instead of
+  //     blindly at centre; aimAssist bends the strike toward that gap too. A covered shot is
+  //     HELD (possession kept) for a beat in the hope a lane opens (ATT/MID only, iq-gated).
+  //     Debug: 'Shot Lanes' layer draws every sampled lane green(open)/red(blocked) + target. ---
+  gapAim:{
+   gap:true,           // master toggle (false = old centre + accuracy-spray only)
+   samples:15,         // lanes sampled across the mouth to find the widest gap
+   blockR:2.6,         // z half-width an opposing man blocks a lane (≈ prad + ballR)
+   minAhead:2,         // an opposing rod must be at least this far (x) ahead of the ball to block
+   minAcc:0.45,        // only rods with at least this aim accuracy bother gap-aiming
+   sprayMix:0.5,       // fraction of the normal inaccuracy spray still added onto the gap target
+   openMargin:0.8,     // lane clearance ≥ this = a 'good' (open) shot; below = covered
+   holdMax:1.0         // a smart ATT/MID holds a covered shot at most this long, then fires anyway
+  },
+  alignSlow:2.0, alignFast:1.8,              // z-alignment tolerance (looser on slow balls)
+  slowSpeed:5,                              // ball speed under this counts as a dead-ball (be eager)
   cdSlow:[0.45,0.85], cdFast:[0.75,1.3],     // cooldown random range (× DIFFS.cd)
   errEvery:[0.4,0.8],                        // how often a fresh wandering aim-error target is rolled (s)
   
@@ -128,7 +211,7 @@ physics:{
   hands:3,                                   // rods per team that may actively move at once (like 2 human hands)
   pairCommit:0.3,                            // min seconds a rod stays in the active pair before it can be swapped
   manHyst:3,                               // a different man must beat the current one by this many z-units to steal aim
-  retargetDead:0.6,                          // desired slide must differ from current target by this (z) before we re-aim
+  retargetDead:0.3,                          // desired slide must differ from current target by this (z) before we re-aim
   errLerp:2.5,                               // rate the wandering aim error drifts toward its new target (per s)
   slideAccel:780                             // AI rod slide acceleration cap (u/s²) — kills instant direction flips
  },
@@ -154,9 +237,10 @@ physics:{
       src:'assets/fuzeball_mechaman.glb',scale:0.8,
       teamParts:['kit_mechaman'],hairParts:[]
    },
-   {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Strong and relentless',
-      src:'assets/fuzeball_irnman.glb',scale:0.8,
-      teamParts:['kit_irnman'],hairParts:[]
+    {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Strong and relentless',
+       src:'assets/fuzeball_irnman.glb',scale:0.8,
+       teamParts:['kit_irnman'],hairParts:[],
+       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'stormer',name:'Stormer',ico:'🤖',blurb:'Cold and endless',
       src:'assets/fuzeball_stormer.glb',scale:0.8,
@@ -185,17 +269,19 @@ physics:{
      teamParts:['kit_Kimi'],hairParts:[ 'kit_kimi_hair' ]
     },
     {id:'womanAndroid',name:'JennyBot',ico:'',blurb:'Quick and calculating',
-     src:'assets/fuzeball_womanAndroid.glb',scale:0.9,
+     src:'assets/fuzeball_womanAndroid.glb',scale:0.8,
      teamParts:['woman_android'],hairParts:['woman_android_hair']
     },
    // ALIENS
     {id:'alienTamirok',name:'Tamirok',ico:'',blurb:'Intense and thoughtful',
-     src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
-     teamParts:['kit_tamirok'],hairParts:[]
+      src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
+      teamParts:['kit_tamirok'],hairParts:[],
+      explosionSrc:'assets/animations/tamirok_explosion.glb'
     },
     {id:'alienGrimlot',name:'Grimlot',ico:'',blurb:'Wild and unpredictable',
-     src:'assets/fuzeball_alienGrimlot.glb',scale:0.8,
-     teamParts:['kit_Grimlot'],hairParts:[]
+      src:'assets/fuzeball_alienGrimlot.glb',scale:0.8,
+      teamParts:['kit_Grimlot'],hairParts:[],
+      explosionSrc:'assets/animations/grimlot_explosion.glb'
     },
 
   ],
@@ -238,9 +324,13 @@ physics:{
 
  /* ---- difficulty ----------------------------------------------------- */
  diffs:{
-  rookie:{speed:30,react:.30,err:4.0,range:5.0,pred:.35,cd:1.05,aim:.25},
-  pro:   {speed:48,react:.15,err:1.8,range:5.8,pred:.75,cd:.55,aim:.6},
-  legend:{speed:72,react:.02,err:.6, range:6.6,pred:1.0,cd:.20,aim:.9}
+  // iq = decision intelligence 0..1: probability a rod makes the 'smart' choice when one
+  // exists (trap a slow ball instead of full-raising over it; wait for the overFoot sweet
+  // spot instead of a stretchy inFront poke). Rolled per rod on the errEvery cadence, so a
+  // rookie occasionally plays clever and a legend occasionally plays greedy.
+  rookie:{speed:30,react:.30,err:4.0,range:5.0,pred:.35,cd:1.05,aim:.25,iq:.15},
+  pro:   {speed:48,react:.15,err:1.8,range:5.8,pred:.75,cd:.55,aim:.6,iq:.55},
+  legend:{speed:72,react:.02,err:.6, range:6.6,pred:1.0,cd:.20,aim:.9,iq:.9}
  },
 
  /* ---- rod stats (league builds) --------------------------------------- */
@@ -261,58 +351,70 @@ physics:{
   assistMinVX:20,     // only bend shots moving goalward faster than this (u/s)
   rea:.10,            // AI reaction lag −10%/pt above base
   cd:.08,             // kick cooldown −8%/pt above base
+  iq:.15,             // decision intelligence: ×(1±15%/pt) on the difficulty's base iq roll
+                      // (DIFFS.iq). base 5 = ×1 (unchanged); 10 ≈ ×1.75, 0 ≈ ×0.25. In league
+                      // every brain is 'pro' (iq .55), so this stat IS the team's smartness knob.
   fatStart:60, fatEnd:180, fatMax:.25 // stamina: fatigue ramps over matchTime window; max slow-down at sta=0
  },
 
- /* ---- league mode ------------------------------------------------------ */
- league:{
-   teams:12,          // league size (keep even — round robin pairs up)
-   goals:5,           // goals to win a league match (live AND simulated)
-   upWin:3, upLoss:1, upCleanSheet:1, // upgrade parts awarded (tune: 4/2 feels better with escalating costs)
-   playerStart:10,     // parts the player has to spend when a fresh league starts
-   cost:[1,1,2,2,3],  // cost of raising a stat from level 5+i (5→6=1, 9→10=3)
-   tape:true, tapeT:3, // pre-match splash: OFF/DEF bars + figurines; click to skip
-   graceT:5,          // seconds after match-start where quitting does NOT forfeit
-   aiBudget:[10,16],  // random starting stat points each AI team gets (league strength spread)
-   simK:.5,           // sim: stat edge → per-goal probability steepness (logistic)
-   // zone-rating weights for the statistical sim (lgRodScore normalizes, so
-   // weights are relative). offMix/defMix = ATT-vs-MID and GK-vs-DEF shares.
-   rate:{
-      offMix:.6, defMix:.55,
-      att:{str:.3,acc:.3,ctl:.2,spd:.1,rea:.05,sta:.05},
-      mid:{spd:.25,ctl:.25,str:.15,acc:.15,rea:.1,sta:.1},
-      gk: {rea:.35,spd:.25,ctl:.15,sta:.1,acc:.1,str:.05},
-      def:{rea:.25,str:.25,spd:.2,ctl:.15,sta:.15}
+  /* ---- league mode ------------------------------------------------------ */
+  league:{
+    divSize:10,           // teams per division (even; 10 → 9 rounds)
+    goals:5,              // goals to win a league match (live AND simulated)
+    upWin:3, upLoss:1, upCleanSheet:1, // upgrade parts awarded (tune: 4/2 feels better with escalating costs)
+    playerStart:10,       // parts the player has to spend when a fresh league starts
+    cost:[1,1,2,2,3],    // cost of raising a stat from level 5+i (5→6=1, 9→10=3)
+    tape:true, tapeT:3,   // pre-match splash: OFF/DEF bars + figurines; click to skip
+    graceT:5,             // seconds after match-start where quitting does NOT forfeit
+    aiBudget:[10,16],     // random starting stat points each AI team gets (league strength spread)
+    simK:.5,              // sim: stat edge → per-goal probability steepness (logistic)
+    divisions:[            // tier order: 0 bottom .. 2 top
+      {name:'Sunday League', base:3, aiBudget:[4,9]},
+      {name:'Pro League',    base:4, aiBudget:[9,15]},
+      {name:'Premier League',base:5, aiBudget:[15,22]}
+    ],
+    promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
+    upPromote1:3, upPromote2:2, // upgrade parts: 1st-place promotion / 2nd-place promotion
+    upChampTop:3,             // parts for winning the Premier (top) division
+    relegateLose:1,           // stat points removed per role block on relegation
+    relegateFloor:1,          // a stat can't drop below this via relegation
+    slots:3,                  // number of save slots
+    // zone-rating weights for the statistical sim (lgRodScore normalizes, so
+    // weights are relative). offMix/defMix = ATT-vs-MID and GK-vs-DEF shares.
+    // lgRodScore normalizes by total weight, so adding iq just makes smartness part of
+    // the OFF/DEF rating mix (light — decisions sweeten a build, they don't carry it).
+    rate:{
+       offMix:.6, defMix:.55,
+       att:{str:.3,acc:.3,ctl:.2,spd:.1,rea:.05,sta:.05,iq:.12},
+       mid:{spd:.25,ctl:.25,str:.15,acc:.15,rea:.1,sta:.1,iq:.12},
+       gk: {rea:.35,spd:.25,ctl:.15,sta:.1,acc:.1,str:.05,iq:.06},
+       def:{rea:.25,str:.25,spd:.2,ctl:.15,sta:.15,iq:.1}
+    },
+    // AI upgrade-spend weights per role — gives AI teams position-flavoured builds.
+    // iq weighted toward playmaking rods (MID/ATT trap + wait-for-sweet-spot pays off most).
+    spend:{
+       GK: {rea:3,spd:2,ctl:1.2,sta:1,str:.4,acc:.3,iq:.8},
+       DEF:{rea:2,spd:2,str:1.5,sta:1.2,ctl:1,acc:.5,iq:1},
+       MID:{sta:2,spd:2,ctl:2,rea:1.5,str:1,acc:1,iq:1.5},
+       ATT:{acc:3,str:2.5,ctl:1.5,spd:1,rea:1,sta:.5,iq:1.5}
+    },
+    names:[
+       'ROD RAGE','TABLE TITANS','SPIN DOKTORS','GOAL DIGGERZ','BAR DOWN FC','DEAD BALL SC',
+       'THE CRANKS','TILT CITY','KICKBACK UTD','FOOS FIGHTERS','HANDLE HOUSE','GRIP & RIP',
+       'BACKSPIN BOYS','THE TABLERS','NUTMEG NOMADS','CHOP SHOP','RIMSHOT ROVERS',
+       'PIVOT PIRATES','THE SWERVE','CLEAN SHEETS FC','TOE-POKE TOWN','LOB CITY',
+       'WALL PASS WANDERERS','SPINNERS UTD','THE DEADLOCKS','CROSSBAR CREW',
+       'SCREWBALL CITY','THE HANDLERS','BENCHWARMERS FC','WRATH OF ROD','TACTICAL FOULS'
+    ],
+    cols:[
+       '#ff8c3a','#ffcf4d','#7dff8a','#2af5ff','#3d8bff','#74abff',
+       '#a06bff','#ff2bd6','#c45ba9','#f2ede2','#9dff2b','#ff5c2b',
+       '#504240','#888888','#250d06','#00bfa5','#ff6e40','#8d6e63',
+       '#d500f9','#76ff03','#1de9b6','#ff1744','#448aff','#ffab00',
+       '#e040fb','#00e5ff','#b2ff59','#ff3d00','#40c4ff','#eeff41'
+    ],
+    colClash:80      // RGB distance threshold: if AI colour is too close to player's, reassign
    },
-   // AI upgrade-spend weights per role — gives AI teams position-flavoured builds
-   spend:{
-      GK: {rea:3,spd:2,ctl:1.2,sta:1,str:.4,acc:.3},
-      DEF:{rea:2,spd:2,str:1.5,sta:1.2,ctl:1,acc:.5},
-      MID:{sta:2,spd:2,ctl:2,rea:1.5,str:1,acc:1},
-      ATT:{acc:3,str:2.5,ctl:1.5,spd:1,rea:1,sta:.5}
-   },
-   names:[
-      'ROD RAGE','TABLE TITANS','SPIN DOKTORS','GOAL DIGGERZ','BAR DOWN FC','DEAD BALL SC', 'THE CRANKS','TILT CITY','KICKBACK UTD','FOOS FIGHTERS','HANDLE HOUSE','GRIP & RIP'
-   ],
-   cols:[
-      '#ff8c3a',
-      '#ffcf4d',
-      '#7dff8a',
-      '#2af5ff',
-      '#3d8bff',
-      '#74abff',
-      '#a06bff',
-      '#ff2bd6',
-      '#c45ba9',
-      '#f2ede2',
-      '#9dff2b',
-      '#ff5c2b',
-      '#504240',
-      '#888888',
-      '#250d06'
-   ],
-   colClash:80      // RGB distance threshold: if AI colour is too close to player's, reassign
-  },
 
  /* ---- player control ------------------------------------------------- */
  control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2 }, // keyboard slide, mouse range, auto rod-switch delay
@@ -320,7 +422,7 @@ physics:{
  /* ---- power-ups ------------------------------------------------------ */
  powerups:{
   firstDelay:[9,14], respawn:[11,17], // seconds until first spawn / after a pickup
-  boost:108, freeze:10, big:10,          // effect durations (s)
+  boost:10, freeze:10, big:10,          // effect durations (s)
   floatY:3, floatAmp:0.8, pickR:6,    // hover height, bob amplitude, pickup radius pad
   area:{x:32,z:22}                    // spawn box (± these)
  },
@@ -331,9 +433,9 @@ physics:{
    wedgeVel:3,   wedgeT:2.2, // in multi-ball, one ball under wedgeVel for wedgeT → re-drop it
    redrop:{y:44,z:16,vel:20,  // fresh drop box + launch speed (x removed — now uses zones)
     zones:[                   // 3 face-off zones where both teams contest
-     {x:-30,spread:5},       // def vs att  (between DEF -37.5 & ATT -22.5)
-     {x:0,  spread:5},       // mid vs mid  (between MID -7.5  & MID  7.5)
-     {x:30, spread:5}        // att vs def  (between ATT  22.5 & DEF  37.5)
+     {x:-30,spread:3},       // def vs att  (between DEF -37.5 & ATT -22.5)
+     {x:0,  spread:3},       // mid vs mid  (between MID -7.5  & MID  7.5)
+     {x:30, spread:3}        // att vs def  (between ATT  22.5 & DEF  37.5)
     ]}
   },
 
@@ -358,23 +460,34 @@ physics:{
  serve:{ dropY:42, spread:7, zSpread:10, vel:5 }, // ball drop height, x spread, z spread, nudge speed
 
  /* ---- cannonball ------------------------------------------------------ */
- cannonball:{
-  timer:10,         // seconds before the cannonball explodes
-  removeDuration:10 // seconds the nearest player is removed after explosion
- },
+  cannonball:{
+   timer:10,           // seconds before the cannonball explodes
+   removeDuration:10,  // seconds the nearest player is removed after explosion
+   fractureFadeOut:1.0 // seconds the fracture debris fades out just before the player respawns
+  },
 
 /* ---- ball types ----------------------------------------------------- */
   ballTypes:{
-   classic:{name:'⚽ CLASSIC',col:0xf2ede2,em:0x000000,mass:4,maxV:210,w:55,trail:'#ffffff'},
-   fire:   {name:'🔥 FIREBALL',col:0xff6a1f,em:0xff2200,mass:.9,maxV:240,w:14,trail:'#ff8c3a',light:0xff5500},
-    cannon: {name:'💣 CANNONBALL',col:0x000000,em:0x000000,mass:8,maxV:100,w:12,trail:'#000000'},
-   golden: {name:'⭐ GOLDEN BALL · COUNTS ×2',col:0xffc933,em:0x7a5200,mass:3,maxV:150,w:3,value:2,trail:'#ffd75e',metal:.85},
-   split:  {name:'👯 SPLIT BALL',col:0xa46bff,em:0x4a18b8,mass:3,maxV:165,w:5,splits:true,trail:'#c39bff'}
+   classic:{
+      name:'⚽ CLASSIC',col:0xf2ede2,em:0x000000,
+      mass:4,maxV:80,w:70,trail:'#ffffff'},
+   fire:   {name:'🔥 FIREBALL',col:0xff6a1f,em:0xff2200,
+      mass:.9,maxV:100,w:14,trail:'#ff8c3a',light:0xff5500},
+   cannon: {
+      name:'💣 CANNONBALL',col:0x000000,em:0x000000,
+      mass:8,maxV:40,w:8,trail:'#000000'},
+   split:  {
+      name:'👯 SPLIT BALL',col:0xa46bff,em:0x4a18b8,
+      mass:4,maxV:65,w:3,splits:true,trail:'#c39bff'},
+   golden: {
+      name:'⭐ GOLDEN BALL · COUNTS ×2',col:0xffc933,em:0x7a5200,
+      mass:5,maxV:50,w:1,value:2,trail:'#ffd75e',metal:.85},
   },
 
   /* ---- debug / toggles -------------------------------------------------- */
   debug:{
-   useBallModel:false  // false = use generated sphere, true = use ball_.glb model
+   useBallModel:true,  // false = use generated sphere, true = use assets/balls/fuzeball_ball.glb (per-type material slots)
+   fractureFx:true      // false = skip loading/using explosion GLBs, always use the old instant-vanish
   },
 
  /* ---- power-up types ------------------------------------------------- */

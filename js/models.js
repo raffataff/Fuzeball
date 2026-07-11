@@ -9,50 +9,84 @@
    cannonball, golden, split) and map them to ball types. */
 const rodTemplates={};   // men-count -> loaded rod scene (bar+handle+collar+knob)
 let ballModel=null;      // loaded ball GLB scene (with material slots)
+let roomModel=null;      // loaded arena room/environment GLB (arcade room) — shown only with the arena table
 const ballMatMap={};     // ballType -> material name in GLB
+const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc
 
 /* --- static table --------------------------------------------------------- */
 function loadTableModel(){
- const load=(url,group,onDone)=>{
+ const load=(url,group,key)=>{
   const loader=new THREE.GLTFLoader();
   loader.load(url,gltf=>{
    try{
-    const nets=[];
+    let hasFrame=false;
     gltf.scene.traverse(c=>{
      if(!c.isMesh)return;
      c.castShadow=true;c.receiveShadow=true;
      const n=onm(c);
-     if(n.startsWith('field'))c.visible=false;
+     if(n.startsWith('field'))c.visible=false;      // themed pitch plane stays instead
      else if(n.startsWith('led'))ledMat=c.material;
-     else if(n.startsWith('goal_net'))nets.push(c);
+     else if(n.startsWith('goal_net'))c.visible=false;                           // keep the built-in diamond net
+     else if(n.startsWith('goal_frame')||n.startsWith('goal_post'))hasFrame=true; // custom posts: keep visible, hide the primitive front frame
     });
-    scene.add(gltf.scene);
+    tableHasFrame[key]=hasFrame;                    // applyTable hides the primitive posts+bar for this table
+    hideMeshes(group);                              // primitives off BEFORE the GLB joins (goalFrames live in scene, untouched)
+    group.add(gltf.scene);                          // inside the group → applyTable toggles it
     gltf.scene.updateMatrixWorld(true);
-    if(nets.length>=2){
-     nets.sort((a,b)=>wx(a)-wx(b));
-     const ln=nets[0],rn=nets[nets.length-1];
-     ln.material=ln.material.clone();rn.material=rn.material.clone();
-     netMats=[ln.material,rn.material];
-    }
-    if(group===primTable){
-     hideMeshes(primTable);
-     if(fieldMesh)fieldMesh.visible=true;
-     goalFrames.forEach(g=>g.traverse(c=>{if(c.isMesh)c.visible=false;}));
-    }else if(group===arenaTable){
-     hideMeshes(arenaTable);
-     if(fieldMesh)fieldMesh.visible=true;
-    }
-    applyTheme();applyColors();drawField();
+    registerBigGoalMeshes(gltf.scene);              // wire baked frame + end-walls into the big-goal widen (bigGoalUpdate)
+    if(key==='arena')registerArenaMorph(gltf.scene); // curved arena shell opens via SDF re-projection instead
+    applyTable();applyTheme();applyColors();drawField();
     console.log(url.split('/').pop()+' loaded');
    }catch(e){console.warn('table GLB hookup failed, keeping primitives',e);}
-   if(onDone)onDone();
-  },undefined,()=>{if(onDone)onDone();});
+  });
  };
- let pending=2;
- const done=()=>{if(--pending===0){/* both attempted */}};
- load('assets/fuzeball_table.glb',primTable,done);
- if(arenaTable)load('assets/fuzeball_table_arena.glb',arenaTable,done);
- else done();
+ load('assets/fuzeball_table.glb',primTable,'classic');
+ if(arenaTable)load('assets/tables/arena/fuzeball_table_arena.glb',arenaTable,'arena');
+ loadRoomModel();
+}
+
+/* Register a loaded table GLB's goal parts for the big-goal widen. The diamond net already
+   grows (it's a goalFrames sub-group fx.js scales on z), but the GLB frame posts and the little
+   end-walls flanking each mouth are baked at identity with world-space verts, so nothing moved
+   them. Classify each by world-x (which goal) and hand them to bigGoalUpdate: frame meshes are
+   symmetric about z=0 so they just scale; end-walls keep their outer edge pinned to the table
+   side and only their inner edge tracks the mouth, so they open rather than stretch. Meshes are
+   measured AFTER updateMatrixWorld so the world AABB is current. */
+function registerBigGoalMeshes(root){
+ const bb=new THREE.Box3();let nGrow=0,nWall=0;
+ root.traverse(c=>{
+  if(!c.isMesh)return;
+  const n=onm(c),pn=c.parent?onm(c.parent):'';
+  const grow=/^(goal_post|goal_crossbar|goal_frame)/.test(n)||/^(goal_post|goal_crossbar|goal_frame)/.test(pn),
+        wall=n.startsWith('wall_end')||pn.startsWith('wall_end');
+  if(!grow&&!wall)return;
+  bb.setFromObject(c);
+  if(grow){
+   if(bb.min.x<0&&bb.max.x>0){                      // one mesh spanning BOTH goals → split per-vertex by x-sign
+    glbGoalSplit.push({o:c,base:Float32Array.from(c.geometry.attributes.position.array)});nGrow++;return;}
+   const gi=bb.min.x+bb.max.x>0?1:0;glbGoalGrow[gi].push(c);nGrow++;return;   // single-goal frame: plain z-scale
+  }
+  const gi=(bb.min.x+bb.max.x)/2>0?1:0;             // 0 = left goal (-x), 1 = right (+x) — matches goalFrames order
+  const near=Math.abs(bb.min.z)<Math.abs(bb.max.z);
+  glbGoalWall[gi].push({o:c,inner:near?bb.min.z:bb.max.z,outer:near?bb.max.z:bb.min.z,sgn:Math.sign(bb.min.z+bb.max.z)});nWall++;
+ });
+ console.log('registerBigGoalMeshes: '+nGrow+' frame + '+nWall+' wall mesh(es) ('+glbGoalSplit.length+' split)');
+}
+
+/* --- arena room / environment ---------------------------------------------
+   Authored in game/world coords (floor ~y=-44, walls ±190, centred on origin),
+   so it drops straight into the scene with no transform. Tied to the arena
+   table: applyTable toggles its visibility with ARENA_ON. */
+function loadRoomModel(){
+ new THREE.GLTFLoader().load('assets/tables/arena/fuzeball_room_arena.glb',gltf=>{
+  try{
+   roomModel=gltf.scene;
+   roomModel.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // room is the backdrop, not a shadow caster
+   scene.add(roomModel);
+   applyTable();                                  // set initial visibility to match the current table
+   console.log('fuzeball_room_arena.glb loaded');
+  }catch(e){console.warn('room GLB hookup failed',e);}
+ },undefined,()=>console.warn('room GLB missing, no environment'));
 }
 
 /* --- rods ----------------------------------------------------------------- */
@@ -82,8 +116,31 @@ function makeRodModel(men,team){
 
 /* helpers */
 function onm(o){return(o.name||'').toLowerCase();}
+// base name for a ball mesh: GLTFLoader strips the '.' from Blender's '.001'
+// suffix (so 'classic.001' arrives as 'classic001') — drop a trailing dot/underscore
+// + digits so both 'classic.001' and 'classic001' normalise to 'classic'.
+function ballKey(o){return onm(o).replace(/[._]?\d+$/,'');}
 function wx(obj){return obj.getWorldPosition(new THREE.Vector3()).x;}
 function hideMeshes(obj){if(obj)obj.traverse(c=>{if(c.isMesh)c.visible=false;});}
+
+/* --- fracture / explosion models -------------------------------------------
+   Optional per-figurine "explode & collapse" GLB, consumed by js/fracture.js
+   on a cannonball kill. Only figurines with an explosionSrc get the effect;
+   the rest keep the original instant-vanish. Loaded once here, at boot, so a
+   live explosion later is just a clone() + mixer.play() — no disk/network
+   hit and no fresh material during a match. */
+function loadExplosionModels(onReady){
+  const list=CONFIG.debug?.fractureFx===false?[]:CONFIG.playerModel.models.filter(m=>m.explosionSrc);
+  if(!list.length){onReady();return;}
+  let left=list.length;
+  const done=()=>{if(--left<=0)onReady();};
+  list.forEach(m=>{
+   new THREE.GLTFLoader().load(m.explosionSrc,
+    gltf=>{explosionTemplates[m.id]={scene:gltf.scene,clips:gltf.animations};done();},
+    undefined,
+    ()=>{console.warn('explosion GLB missing for '+m.id+' ('+m.explosionSrc+')');done();});
+  });
+}
 
 /* --- ball model ------------------------------------------------------------ */
 
@@ -94,39 +151,43 @@ function loadBallModel(onReady){
     return;
   }
   const loader=new THREE.GLTFLoader();
-  loader.load('assets/ball_.glb',
-    gltf=>{
-      ballModel=gltf.scene;
-      ballModel.traverse(c=>{
-        if(c.isMesh){
-          c.castShadow=true;c.receiveShadow=true;
-          const name=onm(c);
-          if(name){
-            ballMatMap[name]=c.material;
-            console.log('Ball material slot:',name);
-          }
-        }
-      });
-      console.log('ball_.glb loaded with materials:',Object.keys(ballMatMap));
-      if(onReady)onReady();
-    },
-    undefined,
-    ()=>{console.warn('ball_.glb missing, using primitive balls');if(onReady)onReady();}
-  );
+  const hook=(url)=>gltf=>{
+    ballModel=gltf.scene;
+    ballModel.traverse(c=>{
+      if(!c.isMesh)return;
+      c.castShadow=true;c.receiveShadow=true;
+      const m=c.material;
+      if(m){                                       // make sure colour maps render in sRGB and are flagged for upload
+       if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
+       if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;
+       m.needsUpdate=true;
+      }
+      const n=ballKey(c);                          // 'classic.001'/'classic001' -> 'classic'
+      if(n)ballMatMap[n]=m;
+    });
+    // diagnostic: which file actually loaded, and which slots carry an image map
+    const withMap=Object.keys(ballMatMap).filter(k=>ballMatMap[k]&&ballMatMap[k].map);
+    console.log('ball GLB loaded from '+url+' — slots:',Object.keys(ballMatMap),'| slots WITH a texture map:',withMap.length?withMap:'(none)');
+    if(onReady)onReady();
+  };
+  loader.load('assets/balls/fuzeball_ball.glb',hook('assets/balls/fuzeball_ball.glb'),undefined,
+    ()=>loader.load('assets/ball_.glb',hook('assets/ball_.glb'),undefined,
+      ()=>{console.warn('no ball GLB, using primitive balls');if(onReady)onReady();}));
 }
 
+/* the GLB holds one mesh per ball type (classic/fire/cannon/split/golden), all at
+   the origin — show ONLY the matching one; missing types fall back to classic. */
 function makeBallModel(key){
   if(!ballModel)return null;
+  const want=ballMatMap[key.toLowerCase()]?key.toLowerCase():'classic';
+  if(!ballMatMap[want])return null;
   const g=ballModel.clone(true);
-  const t=BALL_TYPES[key];
-  const matName=key.toLowerCase();
-  let mat=ballMatMap[matName];
-  if(!mat && ballMatMap['classic'])mat=ballMatMap['classic'];
+  let any=false;
   g.traverse(c=>{
-    if(c.isMesh){
-      if(mat)c.material=mat;
-      c.castShadow=true;c.receiveShadow=true;
-    }
+    if(!c.isMesh)return;
+    c.visible=ballKey(c)===want;
+    if(c.visible)any=true;
+    c.castShadow=true;c.receiveShadow=true;
   });
-  return g;
+  return any?g:null;
 }

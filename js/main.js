@@ -49,12 +49,13 @@ function loop(t){
    b.m.position.lerpVectors(b.prev,b.cur,alpha);
    if(b.light)b.light.position.copy(b.m.position);
   }
-  for(const r of rods){
-   if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
-   r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
-   r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha);
+   for(const r of rods){
+    if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
+    r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
+    r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha);
+   }
+   fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
   }
- }
  fxUpdate(rdt);
  cameraUpdate(rdt);
  debugUpdate();
@@ -66,10 +67,13 @@ initCustomize();
 bindUI();
 loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
 loadBallModel(()=>{                     // ball GLB with material slots
- loadPlayerModel(()=>{
-  loadRodModels(()=>{                    // rod GLBs must be ready before buildRods clones them
-   buildRods();applyTable();applyTheme();applyColors();
-   requestAnimationFrame(loop);
+  loadPlayerModel(()=>{
+   loadExplosionModels(()=>{             // cannonball-kill fracture GLBs (if any figurine has one)
+    warmFractureShaders();               // precompile their shaders now, off-screen — never during a match
+    loadRodModels(()=>{                  // rod GLBs must be ready before buildRods clones them
+     buildRods();applyTable();applyTheme();applyColors();
+     requestAnimationFrame(loop);
+    });
+   });
   });
- });
 });

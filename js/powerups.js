@@ -37,8 +37,15 @@ function powerupUpdate(dt){
 function redropBall(b){
  const zones=DEAD.redrop.zones;
  const z=zones[Math.floor(Math.random()*zones.length)];
- b.m.position.set(z.x+rand(-z.spread,z.spread),DEAD.redrop.y,rand(-DEAD.redrop.z,DEAD.redrop.z));
- b.v.set(rand(-DEAD.redrop.vel,DEAD.redrop.vel),0,rand(-DEAD.redrop.vel,DEAD.redrop.vel));b.spin=0;b.stuckT=0;
+ // target = where the ball should actually LAND, not where it's released — a falling ball
+ // carries its launch vx/vz the whole way down (air friction is negligible), so releasing it
+ // AT the zone lets that drift carry it well past the zone and into a rod's men. Back-solve the
+ // spawn point from the fall time so the target zone is where it touches down instead.
+ const tx=z.x+rand(-z.spread,z.spread),tz=rand(-DEAD.redrop.z,DEAD.redrop.z);
+ const vx=rand(-DEAD.redrop.vel,DEAD.redrop.vel),vz=rand(-DEAD.redrop.vel,DEAD.redrop.vel);
+ const fallT=Math.sqrt(2*Math.max(DEAD.redrop.y-BALL_R,0)/GRAV);
+ b.m.position.set(tx-vx*fallT,DEAD.redrop.y,tz-vz*fallT);
+ b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
 }

@@ -2,7 +2,12 @@
 /* ================= three.js world ================= */
 let renderer,scene,camera,dirLight;
 const teamMat=[null,null],teamGlow=[null,null];
-let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,primTable=null;
+let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null;
+// big-goal GLB hookup, per goal index [0=left/-x, 1=right/+x] (matches goalFrames order):
+// glbGoalGrow = baked frame meshes uniform-scaled about z=0; glbGoalWall = end-wall meshes {o,inner,outer,sgn} slid open. Filled by registerBigGoalMeshes, driven in bigGoalUpdate.
+let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
+// glbGoalSplit: a single baked frame mesh that spans BOTH goals (e.g. an arena frame exported as one
+// object) can't scale per-side, so it's morphed vertex-wise — each vert widens by its own goal's mult.
 let rods=[],indicator,dropRing;
 let sprites=[],spriteTex,particles,pGeo,pData=[];
 let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={};
@@ -26,8 +31,32 @@ function initThree(){
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
-  buildTable();buildArenaTable();buildCrowd();buildFxPools();
+  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildEnvironment();
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+}
+
+/* Bake a neon-arcade environment map (PMREM) and set it as scene.environment so
+   EVERY MeshStandardMaterial — balls (esp. the metallic golden), the table, and
+   the players — picks up reflections/soft image-based lighting. Without this,
+   fully-metallic materials render black (nothing to reflect). Baked once, static.
+   Colours echo the arena room so reflections read as "the room" on any table. */
+function buildEnvironment(){
+ if(!renderer||!scene)return;
+ const pmrem=new THREE.PMREMGenerator(renderer);
+ pmrem.compileEquirectangularShader();
+ const es=new THREE.Scene();
+ es.add(new THREE.Mesh(new THREE.BoxGeometry(560,320,560),                       // dark room shell
+  new THREE.MeshBasicMaterial({color:0x0b1022,side:THREE.BackSide})));
+ const panel=(col,x,y,z,w,h)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+  new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide}));
+  m.position.set(x,y,z);m.lookAt(0,0,0);es.add(m);};                             // neon strips → coloured reflections
+ panel(0x18e0ff,-250, 30,-110,260,120);   // cyan wall glow
+ panel(0xff2bd6, 250, 30, 110,260,120);   // magenta wall glow
+ panel(0x9b6bff,   0,150,-250,340,90);    // purple back strip
+ panel(0xffffff,   0,155,   0,150,150);   // soft white key from above
+ scene.environment=pmrem.fromScene(es,0.02,1,1200).texture;                      // sigma small (≤20 blur samples); near/far cover the 560-unit shell
+ if(!scene.background)scene.background=new THREE.Color(0x070910);                 // subtle backdrop where nothing else draws
+ pmrem.dispose();
 }
 
 function buildTable(){
@@ -57,24 +86,57 @@ function buildTable(){
  ledMat=new THREE.MeshStandardMaterial({color:0x38e0ff,emissive:0x38e0ff,emissiveIntensity:1.1,roughness:.4});
  const stripG=new THREE.BoxGeometry(F.L+10,.7,.7);
  [-1,1].forEach(s=>{const st=new THREE.Mesh(stripG,ledMat);st.position.set(0,F.wallH+1.15,s*(F.W/2+1.5));primTable.add(st);});
+ // ---- goal cages: round posts + crossbar + back frame + diamond-mesh net, on the goal line x=±L/2 ----
+ const netTex=makeNetTex();
  [-1,1].forEach((sx,i)=>{
-  const g=new THREE.Group();g.position.set(sx*(F.L/2),0,0);
-  const frameM=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:.3,roughness:.3,metalness:.5});
-  const postG=new THREE.BoxGeometry(1.2,F.goalH+1,1.2);
-  [-1,1].forEach(sz=>{const p=new THREE.Mesh(postG,frameM);p.position.set(0,(F.goalH+1)/2,sz*F.goalHalf);g.add(p);});
-  const bar=new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,F.goalHalf*2+1.2),frameM);
-  bar.position.set(0,F.goalH+.5,0);g.add(bar);
-  const netM=new THREE.MeshStandardMaterial({color:i?cfg.blueColor:cfg.redColor,transparent:true,opacity:.16,roughness:.9,side:THREE.DoubleSide});
+  const g=new THREE.Group();g.position.set(sx*(F.L/2),0,0);   // group sits ON the goal line; net extends outward
+  const GH=F.goalH,GHW=F.goalHalf,GD=F.goalDepth,PR=.6;
+  const frameM=new THREE.MeshStandardMaterial({color:0xf2f5ff,emissive:0xcdd8ff,emissiveIntensity:.25,roughness:.35,metalness:.65});
+  // front posts + crossbar live in their own sub-group so a table GLB's custom 'goal_frame' can
+  // replace just this (the net stays) — applyTable hides g.userData.front for tables that supply one.
+  const gf=new THREE.Group();g.add(gf);g.userData.front=gf;
+  const postG=new THREE.CylinderGeometry(PR,PR,GH,16);         // front uprights, on the goal line
+  [-1,1].forEach(sz=>{const p=new THREE.Mesh(postG,frameM);p.position.set(0,GH/2,sz*GHW);p.castShadow=true;gf.add(p);});
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(PR,PR,GHW*2,16),frameM);   // crossbar (along z)
+  bar.rotation.x=Math.PI/2;bar.position.set(0,GH,0);bar.castShadow=true;gf.add(bar);
+  const bx=sx*GD,GT=GH;                                        // net back-plane depth/height (no back posts — the net hangs free inside the wall gap)
+  // net: team-tinted white diamond mesh; ONE material per goal (recoloured in applyColors). The roof is a
+  // SOLID collider in physics (goalFrameCollide) so a shot over the bar lands on top instead of scoring.
+  const netM=new THREE.MeshStandardMaterial({color:i?cfg.blueColor:cfg.redColor,map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
   netMats.push(netM);
-  const net=new THREE.Mesh(new THREE.BoxGeometry(F.goalDepth,F.goalH,F.goalHalf*2),netM);
-  net.position.set(sx*(F.goalDepth/2+1.6),F.goalH/2,0);g.add(net);
-  const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,F.goalH+7,0);g.add(gl);goalLights.push(gl);
+  const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+  const FBL=V(0,0,-GHW),FBR=V(0,0,GHW),FTL=V(0,GH,-GHW),FTR=V(0,GH,GHW),
+        BBL=V(bx,0,-GHW),BBR=V(bx,0,GHW),BTL=V(bx,GT,-GHW),BTR=V(bx,GT,GHW);
+  const nets=[];   // collect panels so bigGoalUpdate can taper the net BACK narrower than its mouth
+  [[BBL,BBR,BTR,BTL],[FTL,FTR,BTR,BTL],[FBL,BBL,BTL,FTL],[FBR,FTR,BTR,BBR],[FBL,FBR,BBR,BBL]] // back, roof, sides, floor
+   .forEach(q=>{const nm=netQuad(q[0],q[1],q[2],q[3],netM);nm.userData.base=Float32Array.from(nm.geometry.attributes.position.array);g.add(nm);nets.push(nm);});
+  g.userData.net=nets;
+  const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
 }
 
+/* procedural goal net: white diamond mesh on a transparent canvas so the net reads from any camera
+   without an image asset. netQuad builds an arbitrary 4-corner panel (so the roof can slope) and
+   tiles the net into square cells via UVs scaled by edge length; the shared CanvasTexture wraps. */
+function makeNetTex(){
+ const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+ x.clearRect(0,0,64,64);x.strokeStyle='rgba(255,255,255,.85)';x.lineWidth=1.5;
+ for(let k=-64;k<=64;k+=10){x.beginPath();x.moveTo(k,0);x.lineTo(k+64,64);x.stroke();
+  x.beginPath();x.moveTo(k,64);x.lineTo(k+64,0);x.stroke();}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
+}
+function netQuad(a,b,c,d,mat){
+ const cell=1.6,ru=Math.max(1,Math.round(a.distanceTo(b)/cell)),rv=Math.max(1,Math.round(a.distanceTo(d)/cell));
+ const geo=new THREE.BufferGeometry();
+ geo.setAttribute('position',new THREE.Float32BufferAttribute([a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,d.x,d.y,d.z],3));
+ geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,ru,0,ru,rv,0,rv],2));
+ geo.setIndex([0,1,2,0,2,3]);geo.computeVertexNormals();
+ return new THREE.Mesh(geo,mat);
+}
+
 function buildCrowd(){
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(900,900),new THREE.MeshStandardMaterial({color:0x0b0e16,roughness:1}));
- ground.rotation.x=-Math.PI/2;ground.position.y=-44;scene.add(ground);
+ groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(900,900),new THREE.MeshStandardMaterial({color:0x0b0e16,roughness:1}));
+ groundMesh.rotation.x=-Math.PI/2;groundMesh.position.y=-44;scene.add(groundMesh); // hidden when the arena room backdrop is shown (applyTable)
  const cv=document.createElement('canvas');cv.width=512;cv.height=128;
  const c=cv.getContext('2d');c.fillStyle='#0a0c14';c.fillRect(0,0,512,128);
  for(let i=0;i<1400;i++){c.fillStyle='hsl('+Math.floor(Math.random()*360)+','+(40+Math.random()*40)+'%,'+(25+Math.random()*45)+'%)';

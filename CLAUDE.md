@@ -22,7 +22,7 @@ all game code is local.
 `core.js` (helpers `$`,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · `audio.js`
 (`Au`) · `state.js` (`S`,`freshStats`,`HYPE`) · `world.js` (three.js init/build/theme) ·
 `balls.js` · `rods.js` · `physics.js` · `ai.js` · `input.js` · `powerups.js` (+ dead-ball) ·
-`flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · `main.js` (loop + init).
+`flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `main.js`.
 
 These are **plain (non-module) scripts** sharing one global scope on purpose — top-level
 `const`/`let` in one file are visible in later files. This is what lets them work from
@@ -288,6 +288,210 @@ positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggl
 visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readout
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
+
+### 2026-07-11
+- **Pre-trap safe-raise** (`js/ai.js` + `CONFIG.ai.trap.safeRaise`/`raiseBuf`). Fills the gap
+  where a slow, sideways ball loiters in the trap x-band (`back..front`) but isn't far enough
+  back to trip the `raiseBehind` latch, so the rod sat DOWN behind it. New block (after the
+  raise-latch decision, before the trap action): if the ball is in that x-band, low, slow
+  (`|v.x|<maxVX`, `speed<maxSpeed`) AND sits in a z-GAP — no live man's footbox
+  (`FOOT_BOX.z + raiseBuf`) lines up with it, so raising can't clip it — it forces a full raise
+  + `behindFlag` latch. Man-selection then slides a man in behind the ball and the normal
+  trap/kick logic decides trap-or-clear. If a foot IS aligned in z (raising would sweep into
+  the ball) it's left to the normal path. Gated by `r.aiIQ` (loosen if you want every rod
+  doing it). Also hoisted `const TR=AIC.trap;` above the block (was declared below → TDZ).
+- **Decision intelligence is now a stat** (`iq`, 7th rod stat). `stIQ(r)` in `js/stats.js`
+  (`CONFIG.stats.iq` coefficient, base-5-neutral ×multiplier like the others); `ai.js` per-rod
+  roll became `r.aiIQ=Math.random()<clamp((D.iq||0)*stIQ(r),0,1)`, so the stat modulates the
+  difficulty's base iq (league forces `'pro'`=.55, so `iq` IS a league team's smartness dial —
+  ~.14 at 0, ~.96 at 10). Wired through the league system: `'iq'` added to `LG_KEYS` (auto-
+  propagates to builds, the squad `+` UI, random/AI spend, relegation); `CONFIG.league.rate`
+  gained light `iq` zone weights (feeds OFF/DEF ratings + the sim) and `CONFIG.league.spend`
+  gained `iq` weights (MID/ATT-heavy). `loadLG` backfills any missing stat key (incl. `iq`) to
+  base so old saves don't render empty pips / read NaN. Files: `js/stats.js`, `js/ai.js`,
+  `js/config.js`, `js/league.js`.
+- **GK trap z-detection extended past the slide band** (`CONFIG.ai.trap.gkReach`). The trap
+  z-gate was `dz<alignZ` measured from the man's live position, so a keeper (maxOff 13, alignZ
+  2.2) only detected to ±15.2 — a ball drifting back toward goal wider than that was ignored.
+  New role-aware gate: `trapZ = r.role==='GK' ? |bp.z - clamp(bp.z, ±maxOff)| < gkReach :
+  dz<alignZ`, i.e. the GK also commits when the ball's z overshoots its slide band by less than
+  `gkReach` (default 6 → detects to ±19). Outfield rods unchanged. The scoop still gates on true
+  `dz<alignZ`, so beyond-reach it just holds the trap posture (early-ready, no swing at air).
+  `js/ai.js`, `js/config.js`.
+- **Gap-aware aiming** (`CONFIG.ai.gapAim` + `shotEval()` in `js/ai.js`, `js/stats.js`,
+  `js/debug.js`). AI aim previously targeted goal CENTRE (+ accuracy spray); it now reads the
+  opposing men and steers at the widest OPEN lane.
+  - `shotEval(team,bx,bz)`: samples `gapAim.samples` target z's across the mouth (off the posts
+    via `aimGoalZ`); for each, clearance = z-distance from the straight ball→(goalX,tz) line to
+    the nearest BLOCKING opposing man (any live man on a rod between ball and goal — keeper is
+    just the last), minus `blockR`. Widest-clearance lane = `best` (ties → centre). Returns
+    `{lanes,best,goalX,ox,oz}`, stashed on `r.aimEv` for the hold logic + debug.
+  - Aim block: gated on `r.aiIQ && acc>=minAcc`, aims at `best.tz` with reduced spray
+    (`sprayMix`) on top; everyone else keeps the old centre+spray verbatim (base behaviour
+    unchanged). `r.aimEv` cleared to `null` at the top of each rod's frame.
+  - `aimAssist` (stats.js) now bends the struck ball toward `r.aimEv.best.tz` when gap-aiming,
+    else centre (z=0) as before — reinforces the gap instead of fighting it. User kicks unaffected.
+  - **Hold for a better shot**: a smart ATT/MID with the ball slow + at its feet (`overFoot`) and
+    no open lane (`best.clr<openMargin`) keeps possession up to `gapAim.holdMax` (1s), then fires
+    anyway (`holdShot` ANDed into the kick gate). Defenders/keepers never hold. Resets when a lane
+    opens / ball speeds up / leaves the feet; `holdMax` < dead-ball redrop so it can't deadlock.
+  - Debug: **Shot Lanes** panel layer (`#2bff88`). Per gap-aiming rod, a pooled floor line per
+    sampled lane (green open / red blocked, `LineBasicMaterial`, `frustumCulled=false`) + a disc
+    at the chosen target (yellow good / red covered). Reuses the analytic `r.aimEv` lanes — no
+    recompute. `dbgShotLanes` pool built in `buildDebug`, updated in `updateAIVis`.
+  - Note: man shift is clamped to `aimMax` (1.2u) so gap-aim BIASES toward the gap; `aimAssist`
+    does the finer on-contact bend. Master off-switch `gapAim.gap:false`.
+
+### 2026-07-10
+- **AI man-selection skips removed players** (`js/ai.js`). Cannonball kills already set
+  `r.removedUntil[mi]` and physics/rods/balls all skip removed men, but `aiUpdate` didn't —
+  it could align and swing with a destroyed player (a phantom touch that never connects).
+  Added `manLive(r,i)` helper (mirrors the `removedUntil>S.time` test); man-selection loop,
+  man-index hysteresis (`r.aiMan`), the `mz` alignment scan, the held-forward side-step
+  candidates, and the foot-trap distance loop all skip removed men now. A per-rod `liveN`
+  guard early-outs a rod whose men are ALL removed (it can't touch the ball anyway).
+  Verified by re-read (sandbox down). Files: `js/ai.js`.
+- **Trap action + decision IQ** (`r.act` state — the first named action; more can share it).
+  - `CONFIG.diffs` gained `iq` (rookie .15 / pro .55 / legend .9): probability a rod makes
+    the 'smart' choice. Rolled per rod on the existing `errEvery` cadence (`r.aiIQ`), so a
+    rookie occasionally plays clever and a legend occasionally plays greedy.
+  - **Trap** (`CONFIG.ai.trap`, `on:false` restores old behaviour exactly): a raised rod
+    (latch engaged) with a ball behind it in `back..front` (−6.5..−0.8 dir-relative), low,
+    |v.x| < `maxVX`, speed < `maxSpeed`, aligned within `alignZ`, and `r.aiIQ` set → enters
+    `r.act='trap'`: `updateRods` eases the angle to `trap.angle` (−0.55, partial back-raise;
+    full raiseA just pops the ball on the drop) at `trap.lerp`; man selection keeps the trap
+    foot on the ball; after `settleT` with the ball past `shootFrom`, `kickRod` fires a
+    scoop shot. Exits (ball left window / sped up / high / `abortT`) fall back to the raise
+    latch. `kickRod` + `resetRodRotation` clear `r.act`. The existing footTrap/drop/kick
+    paths are raise- or front-gated so they no-op during a trap — no other logic touched.
+  - **Sweet-spot wait** (`CONFIG.ai.waitTta`/`waitMinVX`): a smart rod (same `r.aiIQ`) with
+    the ball inbound through the inFront window (tta < `waitTta`, |aiBVX| > `waitMinVX`)
+    skips the stretchy inFront poke and waits for the overFoot arrival.
+  - `debug.js`: **Trap Zone** panel layer (`#c77dff`) — static per-rod box spanning
+    `trap.back..trap.front` × the slide range, hot purple while that rod's `r.act==='trap'`.
+  Verified by re-read (sandbox still down). Files: `js/config.js`, `js/rods.js`, `js/ai.js`,
+  `js/debug.js`.
+- **Safe-lower side-step** (fixes the kicked-and-missed hover-forever deadlock). Root cause
+  was two-part: (1) `updateRods`' hold check (`uf`) kept a swung rod at strike angle for ANY
+  ball in the underFoot x-window with **no z check** — a ball two men away pinned the rod;
+  (2) `aiUpdate`'s man-selection kept re-aligning the raised rod ONTO the ball, so it never
+  left the window. The `repositionSlide` config knob described this fix but was `0` and
+  never read anywhere (dead). Changes:
+  - `rods.js` `updateRods`: `uf` now also requires the ball within `clearZ` of some foot's
+    z (`clearZ = footBox.z + BALL_R + AIC.clearMargin`); sets `r.heldFwd` while the hold
+    clamp is engaged (cleared in the non-kick branches + `resetRodRotation`).
+  - `ai.js` `aiUpdate`: new block right after the user-rod skip (deliberately BEFORE the
+    active-pair check so a rod benched mid-hold still escapes): while `r.heldFwd` and the
+    holding ball is slower than `repositionSpeed`, slide to the nearest offset where EVERY
+    foot is ≥ `clearZ` from the ball in z (candidates = each man's ±clearZ edge + ±maxOff,
+    validated against all men), then `continue` — no aiming/kicking while escaping. Once
+    clear, `uf` releases and the normal drop finishes the swing.
+  - `config.js`: `repositionSlide` (dead) replaced by `clearMargin:0.6`.
+  - `debug.js`: new **Drop Sweep** panel layer (`#ff5c8a`) — per-man boxes,
+    x = underFootBack..underFootFront (dir-relative), z = ±clearZ around each foot,
+    repositioned per-frame with the slide; hot pink while that rod's `heldFwd` is set.
+  Verified by re-read (sandbox wouldn't boot). Next planned: trap action (`r.act`,
+  partial back-raise `trapA`, `CONFIG.ai.trap`), then decision thresholds.
+- **Cannonball fracture-model swap** (`js/fracture.js` + steps in `config.js`, `state.js`,
+  `models.js`, `balls.js`, `flow.js`, `main.js`, `index.html`). When a cannonball explodes
+  and removes a player, figurines with an `explosionSrc` GLB (irnman, alienTamirok,
+  alienGrimlot — three pre-baked "explode & collapse" models in `assets/animations/`)
+  now visually fracture and fade out instead of just vanishing. Three imperative
+  anti-hitch measures: (1) all three GLBs load once at boot via `loadExplosionModels()` in
+  `models.js`, never at explosion time; (2) `warmFractureShaders()` in `fracture.js` clones
+  each template off-screen, sets `transparent=true`, and calls `renderer.compile()` before the
+  game loop starts so shaders never compile mid-match; (3) `cloneFractureInstance()` sets
+  `transparent` before warm-up so the runtime opacity fade is a plain uniform update that can't
+  trigger a recompile. Runtime cost per explosion: one `clone(true)`, one `AnimationMixer`,
+  one `mixer.update(dt)` per frame — noise next to the existing physics substeps. Figurines
+  without an `explosionSrc` keep the original instant-vanish; adding a new figurine is a
+  one-line `explosionSrc` addition to its `CONFIG.playerModel.models` entry. Files:
+  `js/fracture.js` (new), `js/config.js` (three `explosionSrc` lines + `fractureFadeOut` +
+  `fractureFx` debug toggle), `js/state.js` (`S.frac[]`), `js/models.js` (`explosionTemplates`
+  map + `loadExplosionModels()`), `js/balls.js` (`cannonballUpdate` → `spawnFracture()`),
+  `js/flow.js` (add `clearFractures()` to `startMatch`/`gotoMenu`), `js/main.js` (wires
+  `loadExplosionModels`/`warmFractureShaders` into boot chain + `fractureUpdate(rdt)` into
+  loop), `index.html` (adds `<script src="js/fracture.js">`).
+- **Fracture bugfix**: two issues after first playtest. (1) `CONFIG.debug.fractureFx` had
+  been left `false`, which skips loading the explosion GLBs entirely (`loadExplosionModels`
+  short-circuits to an empty list) — every kill silently fell back to instant-vanish. Fixed
+  to `true`. (2) `spawnFracture()` was orienting the spawned instance with
+  `manObj.getWorldQuaternion()`. `manObj`'s parent is the rod's `pivot`, and
+  `pivot.rotation.z` carries the *live* kick/raise swing angle (`r.angle`) at the instant of
+  impact — copying that world quaternion tilted the whole baked "fall to floor" animation by
+  whatever swing angle the rod was at, so debris fell sideways relative to true gravity
+  instead of straight down. Fixed to use a fixed team-facing yaw (0 or `Math.PI`, matching
+  `p.rotation.y` on the intact figure) instead of the live world rotation — position is still
+  taken from `getWorldPosition` (translation only), just not the rotation. `js/fracture.js`,
+  `js/config.js`.
+- **Fracture bugfix #2 — only one shard animated.** `spawnFracture()` only ever created a
+  `mixer.clipAction()` for `tpl.clips[0]`. Baking a per-shard rigid body sim in Blender gives
+  each shard object its own Action, so the glTF exporter writes one animation clip PER SHARD
+  (`gltf.animations` is an array of ~dozens of clips, not one) — playing only index 0 left
+  every other shard frozen in its assembled start pose, i.e. looked like the intact model
+  with a single piece breaking off. Fixed to loop `tpl.clips` and `play()` every clip on the
+  same mixer. `js/fracture.js`.
+- **Fracture team-colour tint**: `spawnFracture()` now recolours the same kit-part meshes
+  the intact figure recolours (`activeModel(team).teamParts`, matched by material name,
+  `.001`-suffix stripped) to `cfg.redColor`/`cfg.blueColor` on the cloned instance, so the
+  debris still reads as the right team instead of falling in its exported base colour.
+  Everything outside `teamParts` (skin, visor, etc.) is left as-authored, same as the live
+  model. `js/fracture.js`.
+- **Fracture bugfix #3 — spawned at the resting "feet" position instead of the rod when
+  raised.** `spawnFracture()` read `manObj.getWorldPosition()`, but it's called mid-fixed-step
+  from `cannonballUpdate`, BEFORE that step's `updateRods()` runs — so `pivot.rotation.z`
+  (and therefore `manObj`'s matrixWorld) could still reflect the previous step, most visible
+  when a rod was raised (a ~90° pivot swing) rather than at rest. Replaced with an analytic
+  computation straight from `r.angle`/`r.offset`/`r.baseZ[mi]`, mirroring the same
+  `fx=r.x+sin(angle)*ARM, fy=ROD_H-cos(angle)*ARM` pattern `collideRod`/`cannonballUpdate`
+  already use for the foot position — always exactly current, no scene-graph dependency.
+  Scale is likewise computed directly from `activeModel(team).scale*cfg.modelScale` instead
+  of `getWorldScale()`. `js/fracture.js`.
+
+### 2026-07-09
+- **Arena table rebuilt** (`js/arena.js` rewritten whole + new Blender pipeline). The
+  first attempt shipped a broken SDF and a perimeter walker sampling the wrong outline,
+  so the swept mesh self-tangled at the goals. Fixed:
+  - `arenaSD`: goal-cavity boxes now span `x ∈ [±(L/2−mouthIn), ±(L/2+goalDepth)]`
+    (were centred on the goal line with double depth — back wall landed at ±73).
+  - Perimeter outline corrected (cavities walk OUTWARD to ±(L/2+goalDepth); the old one
+    walked them inward to ±47 and closed the loop with a diagonal). Shared helpers
+    `arenaOutline/arenaSamples/arenaProject/arenaProfile/arenaGridGeo` generate the
+    visual bowl AND the debug wireframe, and are mirrored in the Blender script.
+  - `arenaContact`: wall reflection was divided by ball mass — heavy balls never left the
+    wall. Static-geometry reflection is mass-free now.
+  - Grid normals were garbage (ny=−1 on the floor rows); now analytic from fillet angle.
+  - `arenaClampSpawn` had its inside-test inverted; breaks when safely inside and steps
+    by the actual deficit.
+  - Bowl owns its materials (`arenaMats` crease/wall/body, geometry groups for the two
+    slots) — no longer borrows the classic `wallMat`; themes leave it alone.
+  - `applyTable` reparents the shared `fieldMesh` into the visible table group (arena
+    used to lose the themed pitch entirely) and repoints `netMats` from `tableNets` per
+    table so team colours land on the visible nets.
+- **models.js rewired**: table GLBs now `group.add`ed into `primTable`/`arenaTable` (were
+  `scene.add`ed — both tables' GLBs rendered at once, never toggled); primitives hidden
+  BEFORE the GLB joins. Arena loads from `assets/tables/arena/fuzeball_table_arena.glb`.
+  `loadBallModel` tries `assets/tables/arena/fuzeball_ball.glb`, falls back to
+  `assets/ball_.glb`; `makeBallModel` shows ONLY the mesh matching the ball type (the
+  GLB holds all five, overlapped at origin).
+- **Blender pipeline** (each table owns a folder — `assets/tables/arena/`):
+  - `tools/build_arena_table.py` (rebuilt from scratch, conventions of
+    `build_fuzeball_models.py`: game coords + Y-up→Z-up conversion, bmesh only,
+    version-safe emission sockets). Builds `arena_bowl` (swept grid vertex-identical to
+    the game mesh; perimeter-U / profile-V UVs; separate `arena_crease`/`arena_wall`
+    slots), `field` (fan fill of the fillet-base contour, hidden in-game), `led_ring`,
+    `goal_net_left/right`, `goal_frame_l/r`, `table_base`+legs, five ball spheres named
+    `classic/fire/cannon/split/golden` (ball-loader name contract), `ref_*`
+    player-position markers (rod bars + peg men + translucent slide-range strips —
+    never exported), and a `room_*` neon-arcade environment (walls, LED edge strips,
+    posters with per-poster materials, arcade cabinets, sign, rug, stools, render
+    lights). Saves `fuzeball_arena.blend` (never clobbers an existing one — falls back
+    to `*_rebuilt.blend`) and exports first-pass GLBs so the game shows the arena
+    immediately.
+  - `tools/export_arena_table.py` — baked-copy exporter (same robustness tricks as
+    `export_fuzeball_models.py`) → `fuzeball_table_arena.glb`, `fuzeball_ball.glb`
+    (each ball recentred to origin), `fuzeball_room_arena.glb`. Skips `ref_*`.
+  - Room GLB is NOT yet loaded by the game — wire in later if wanted.
 
 ### 2026-07-07
 - **League mode v1** (`js/league.js` + `CONFIG.league` + `#league` screen in `index.html`

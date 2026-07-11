@@ -7,19 +7,19 @@ function startMatch(mode,rodLockRole){
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
- clearBalls();clearPU();
- S.active=[[],[]];S.pairCd=[0,0];
- rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
-  r.kickT=-1;r.raise=false;r.cd=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
-  r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
-  r.removedUntil=[];r.men.forEach(m=>{m.visible=true;});
-  r.pivot.rotation.z=0;r.pivot.position.z=0;
-  const mine=S.userTeam<0?r.team===0:r.team===S.userTeam;
-  if(r.rodModel){r.rodModel.rotation.y=mine?0:Math.PI;}   // flip the whole GLB rod so the handle is on the near side
-  else{const hs=mine?1:-1,C=rodCollar(r.maxOff);
-   r.handle.position.z=hs*(C+CONFIG.rods.handleLen/2);
-   r.collar.position.z=-hs*(C+CONFIG.rods.collarLen/2);}});
- S.ctrlRods=S.userTeam<0?[]:rods.filter(r=>r.team===S.userTeam).sort((a,b)=>a.x-b.x);
+  clearBalls();clearPU();clearFractures();
+  S.active=[[],[]];S.pairCd=[0,0];
+  rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
+   r.kickT=-1;r.raise=false;r.cd=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
+   r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
+   r.removedUntil=[];r.men.forEach(m=>{m.visible=true;});
+   r.pivot.rotation.z=0;r.pivot.position.z=0;
+   const mine=S.userTeam<0?r.team===0:r.team===S.userTeam;
+   if(r.rodModel){r.rodModel.rotation.y=mine?0:Math.PI;}   // flip the whole GLB rod so the handle is on the near side
+   else{const hs=mine?1:-1,C=rodCollar(r.maxOff);
+    r.handle.position.z=hs*(C+CONFIG.rods.handleLen/2);
+    r.collar.position.z=-hs*(C+CONFIG.rods.collarLen/2);}});
+  S.ctrlRods=S.userTeam<0?[]:rods.filter(r=>r.team===S.userTeam).sort((a,b)=>a.x-b.x);
  if(rodLockRole&&S.ctrlRods.length>1){
   const lr=S.ctrlRods.find(r=>r.role===rodLockRole)||S.ctrlRods[0];
   S.ctrlRods=[lr];
@@ -81,11 +81,13 @@ function togglePause(){
  else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');Au.ui();}
 }
 function gotoMenu(){
- if(S.lg&&S.lg.prevKit){
-  cfg.blueColor=S.lg.prevKit.blueColor;cfg.modelBlue=S.lg.prevKit.modelBlue;
-  loadPlayerModel(()=>{rebuildRodMen();applyColors();});
- }
- S.phase='menu';clearBalls();clearPU();
+  if(S.lg&&S.lg.prevKit){
+   cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
+   cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;
+   cfg.special=S.lg.prevKit.special;cfg.power=S.lg.prevKit.power;
+   loadPlayerModel(()=>{rebuildRodMen();applyColors();});
+  }
+  S.phase='menu';clearBalls();clearPU();clearFractures();
  S.lg=null;S.teamStats=null; // drop any league-match bridge (abandoned matches aren't recorded)
  $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');$('league').classList.add('hidden');
  $('menu').classList.remove('hidden');

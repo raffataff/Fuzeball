@@ -16,9 +16,10 @@ let dbgArenaWalls=null,dbgContourRings=[];
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:true,raiseBehind:true,overFoot:true,underFoot:true,inFront:true,lowY:true,manHyst:true,footReach:true,aligned:true};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[];
-let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,trapZone:false,shotLanes:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[];
+let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
+let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 
 function dbgMat(col,op){return new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false});}
 
@@ -36,7 +37,12 @@ function buildAIPanel(){
    {key:'lowY',label:'Low Y',col:'#2af5ff'},
    {key:'manHyst',label:'Man Hyst',col:'#ffcf4d'},
    {key:'footReach',label:'Foot Reach',col:'#ff8c3a'},
-   {key:'aligned',label:'Aligned',col:'#7dff8a'}
+   {key:'aligned',label:'Aligned',col:'#7dff8a'},
+   {key:'serveZone',label:'Serve Zone',col:'#c299ff'},
+   {key:'redropZones',label:'Redrop Zones',col:'#ff5c5c'},
+   {key:'dropSweep',label:'Drop Sweep',col:'#ff5c8a'},
+   {key:'trapZone',label:'Trap Zone',col:'#c77dff'},
+   {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'}
  ];
  for(const it of items){
   const lbl=document.createElement('label');
@@ -152,6 +158,46 @@ function buildDebug(){
   ig.visible=false;dbgAIInFront.push(ig);
  }
 
+ // dropSweep: per-man danger boxes — a ball inside one gets swiped if the rod lowers
+ // from a held-forward angle. x = sweep window (underFootBack..underFootFront, dir-
+ // relative), z = ±(footBox.z + BALL_R + clearMargin) around each foot. Positioned
+ // per-frame (follows slide); hot pink while the rod is actually held (r.heldFwd).
+ const dsW=AIC.underFootBack+AIC.underFootFront;
+ const dsZ=(FOOT_BOX.z+BALL_R+AIC.clearMargin)*2;
+ const dsGeo=new THREE.BoxGeometry(dsW,0.05,dsZ);
+ const dsDim=dbgMat(0xff5c8a,.15),dsHot=dbgMat(0xff5c8a,.5);
+ for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
+  const m=new THREE.Mesh(dsGeo,dsDim);m.visible=false;dbgAIGroup.add(m);
+  dbgDropSweep.push({mesh:m,rod:r,manIdx:i,matDim:dsDim,matHot:dsHot});
+ }
+
+ // trapZone: per-rod box behind the rod (x = trap.back..trap.front dir-relative, z = full
+ // slide range) where a slow-in-x ball can be trapped instead of raised over. Static
+ // position; material goes hot purple while that rod's r.act==='trap'.
+ const tzDim=dbgMat(0xc77dff,.15),tzHot=dbgMat(0xc77dff,.5);
+ const tzW=AIC.trap.front-AIC.trap.back;
+ for(const r of rods){
+  const dir=r.team===0?1:-1;
+  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(tzW,0.05,zMax-zMin||0.1),tzDim);
+  m.position.set(r.x+(AIC.trap.back+AIC.trap.front)/2*dir,0.04,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgTrapZone.push({mesh:m,rod:r,matDim:tzDim,matHot:tzHot});
+ }
+
+ // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
+ const serveM=dbgMat(0xc299ff,.22);
+ const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
+ svg.visible=false;dbgAIServe.push(svg);
+
+ // redropZones: dead-ball face-off zones (DEAD.redrop.zones) — each ±spread wide in x,
+ // full ±DEAD.redrop.z deep in z (same z range for every zone).
+ const redropM=dbgMat(0xff5c5c,.22);
+ for(const z of DEAD.redrop.zones){
+  const rzg=abox(z.spread*2,DEAD.redrop.z*2,z.x,0,redropM);
+  rzg.visible=false;dbgAIRedrop.push(rzg);
+ }
+
  // lowY: translucent horizontal plane at y = lowY (AI only kicks below this)
  const lowYM=dbgMat(0x2af5ff,.10);
  dbgAILowY=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),lowYM);
@@ -184,6 +230,23 @@ function buildDebug(){
    }
   }
 
+ // shotLanes: gap-aim visualisation. Per rod, a pool of gapAim.samples floor lines
+ // (ball → goal-mouth target) recoloured green(open)/red(blocked) each frame, plus a disc
+ // at the chosen target. Only drawn for rods actually gap-aiming this frame (r.aimEv set).
+ // Shares the analytic lanes from ai.js shotEval (stashed on r.aimEv) — no recompute here.
+ dbgShotOpen=new THREE.LineBasicMaterial({color:0x2bff88,transparent:true,opacity:.9});   // line: open lane
+ dbgShotBlock=new THREE.LineBasicMaterial({color:0xff3b3b,transparent:true,opacity:.75});  // line: blocked lane
+ dbgMarkOpen=dbgMat(0xffe14d,.95);dbgMarkBlock=dbgMat(0xff3b3b,.9);                         // disc: chosen target good/bad
+ for(const r of rods){
+  const set={rod:r,lines:[],marker:null};
+  for(let s=0;s<AIC.gapAim.samples;s++){
+   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+   const ln=new THREE.Line(geo,dbgShotBlock);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);set.lines.push(ln);
+  }
+  const mk=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.09,16),dbgMarkOpen);mk.visible=false;dbgAIGroup.add(mk);set.marker=mk;
+  dbgShotLanes.push(set);
+ }
+
  dbgAIGroup.visible=false;
 }
 
@@ -197,6 +260,24 @@ function updateAIVis(){
   for(const g of dbgAIInFront)g.visible=on&&dbgAIOpts.inFront;
   if(dbgAILowY)dbgAILowY.visible=on&&dbgAIOpts.lowY;
   for(const s of dbgFootReach)s.mesh.visible=on&&dbgAIOpts.footReach;
+  for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
+  for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
+
+  // trapZone: static boxes; hot purple while that rod is actively trapping
+  for(const tz of dbgTrapZone){
+   const vis=on&&dbgAIOpts.trapZone;
+   tz.mesh.visible=vis;if(!vis)continue;
+   tz.mesh.material=tz.rod.act==='trap'?tz.matHot:tz.matDim;
+  }
+
+  // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward
+  for(const ds of dbgDropSweep){
+   const vis=on&&dbgAIOpts.dropSweep;
+   ds.mesh.visible=vis;if(!vis)continue;
+   const r=ds.rod,dir=r.team===0?1:-1;
+   ds.mesh.position.set(r.x+(AIC.underFootFront-AIC.underFootBack)/2*dir,0.05,r.baseZ[ds.manIdx]+r.offset);
+   ds.mesh.material=r.heldFwd?ds.matHot:ds.matDim;
+  }
 
   // aligned: per-man floor bars showing ±align zone along z
   if(on&&dbgAIOpts.aligned&&S.balls.length){
@@ -240,6 +321,25 @@ function updateAIVis(){
    }
    td.dot.position.set(r.x,0.06,r.target+r.baseZ[r.aiMan]);
    td.dot.visible=true;
+  }
+
+  // shotLanes: per gap-aiming rod, draw its sampled lanes (green open / red blocked) + target disc
+  for(const sl of dbgShotLanes){
+   const ev=sl.rod.aimEv,vis=on&&dbgAIOpts.shotLanes&&!!ev;
+   if(!vis){for(const ln of sl.lines)ln.visible=false;sl.marker.visible=false;continue;}
+   const y=0.16;
+   for(let s=0;s<sl.lines.length;s++){
+    const ln=sl.lines[s],lane=ev.lanes[s];
+    if(!lane){ln.visible=false;continue;}
+    const pa=ln.geometry.attributes.position.array;
+    pa[0]=ev.ox;pa[1]=y;pa[2]=ev.oz;pa[3]=ev.goalX;pa[4]=y;pa[5]=lane.tz;
+    ln.geometry.attributes.position.needsUpdate=true;
+    ln.material=lane.clr>=AIC.gapAim.openMargin?dbgShotOpen:dbgShotBlock;
+    ln.visible=true;
+   }
+   sl.marker.position.set(ev.goalX,y,ev.best.tz);
+   sl.marker.material=ev.best.clr>=AIC.gapAim.openMargin?dbgMarkOpen:dbgMarkBlock;
+   sl.marker.visible=true;
   }
 }
 

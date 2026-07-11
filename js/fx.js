@@ -143,8 +143,44 @@ function fxUpdate(rdt){
   indicator.material.color.set(S.userTeam===0?cfg.redColor:cfg.blueColor);
   indicator.rotation.y+=rdt*2;
  }else indicator.visible=false;
+ bigGoalUpdate(rdt);
+}
+/* Big-goal widen. goalFrames[i].scale.z is the already-lerped mouth multiplier (1..bigGoalMult)
+   per goal: index 1 = right (+x, S.eff[0]), 0 = left (-x, S.eff[1]); the procedural diamond net
+   rides it for free (it lives in the goalFrames group). A table GLB's baked frame + end-walls are
+   separate identity meshes with world-space verts, so we drive them off the same multiplier:
+   frame parts scale about the goal line (z=0); end-walls keep their outer edge pinned and slide the
+   inner edge to goalHalf*mult so they open in step with the mouth. Arrays are empty when a table
+   ships no such meshes (e.g. the arena's one-piece bowl) — then only the net widens, as before. */
+function bigGoalUpdate(rdt){
  goalFrames[1].scale.z=lerp(goalFrames[1].scale.z,S.eff[0].big>S.time?PHY.bigGoalMult:1,Math.min(1,rdt*6));
  goalFrames[0].scale.z=lerp(goalFrames[0].scale.z,S.eff[1].big>S.time?PHY.bigGoalMult:1,Math.min(1,rdt*6));
+ for(let gi=0;gi<2;gi++){
+  const g=goalFrames[gi],m=g.scale.z;                          // shared lerped multiplier for this goal
+  const grow=glbGoalGrow[gi];for(let k=0;k<grow.length;k++)grow[k].scale.z=m;
+  const wall=glbGoalWall[gi];
+  for(let k=0;k<wall.length;k++){const w=wall[k],ni=w.sgn*F.goalHalf*m,a=(w.outer-ni)/(w.outer-w.inner);
+   w.o.scale.z=a;w.o.position.z=w.outer-a*w.outer;}                 // inner edge -> goalHalf*mult, outer edge pinned
+  // net taper: the group scales z uniformly by m, so counter-scale each panel's LOCAL z toward the
+  // back (local x → goalDepth) so its WORLD width eases from m at the mouth to backM at the rear —
+  // keeps the net inside the wall gap behind the goal. Runs only while open, +1 restore frame on settle.
+  const nets=g.userData.net;if(nets){
+   const active=Math.abs(m-1)>1e-4;
+   if(active||g.userData.netDirty){const backM=1+(m-1)*PHY.bigGoalBack,GD=F.goalDepth;
+    for(let n=0;n<nets.length;n++){const nm=nets[n],b=nm.userData.base,ar=nm.geometry.attributes.position.array;
+     for(let v=0;v<b.length;v+=3){const fr=Math.min(1,Math.abs(b[v])/GD);ar[v+2]=b[v+2]*(lerp(m,backM,fr)/m);}
+     nm.geometry.attributes.position.needsUpdate=true;}
+    g.userData.netDirty=active;}
+  }
+ }
+ if(glbGoalSplit.length){const mR=goalFrames[1].scale.z,mL=goalFrames[0].scale.z,active=Math.abs(mR-1)>1e-4||Math.abs(mL-1)>1e-4;
+  for(let s=0;s<glbGoalSplit.length;s++){const q=glbGoalSplit[s];
+   if(!active&&!q.dirty)continue;                                   // a both-goals frame mesh: each half widens by its own goal's mult
+   const b=q.base,ar=q.o.geometry.attributes.position.array;
+   for(let v=0;v<b.length;v+=3)ar[v+2]=b[v+2]*(b[v]>0?mR:mL);       // baked at identity → local z == world z
+   q.o.geometry.attributes.position.needsUpdate=true;q.dirty=active;}
+ }
+ if(typeof arenaMorphUpdate==='function')arenaMorphUpdate();        // curved arena shell (baked GLB) opens via SDF re-projection
 }
 function cameraUpdate(rdt){
  if(S.freeRoam){

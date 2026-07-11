@@ -50,11 +50,11 @@ function stepBall(b,h){
    const xl=F.L/2-BALL_R;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh&&p.y<F.goalH){if(p.x>F.L/2+1.2){onGoal(0,b);return;}}
+    if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // goal ONLY under the bar & whole ball over the line
     else if(p.y<F.wallH+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x));}
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh&&p.y<F.goalH){if(p.x<-F.L/2-1.2){onGoal(1,b);return;}}
+    if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
     else if(p.y<F.wallH+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x));}
    }
   }else{
@@ -77,17 +77,11 @@ function stepBall(b,h){
    if(p.z>zn&&v.z>0){p.z=zn;v.z*=-PHY.behindDamp;}
    if(p.z<-zn&&v.z<0){p.z=-zn;v.z*=-PHY.behindDamp;}
   }else{
-   const sd=(p.y<F.goalH)?arenaSD(p.x,p.z,gh0,gh1):sdRRect(p.x,p.z,F.L/2,F.W/2,ARENA.cornerR);
-   const d=-sd;
+   const sd=arenaSD(p.x,p.z,gh0,gh1); // pocket is open at all heights → lob over the bar can drop in
+   const d=-sd,CR=ARENA.creaseR;
    let contacted=false;
-   if(d>=ARENA.creaseR){
-    if(p.y<BALL_R){
-     p.y=BALL_R;if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
-     const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
-    }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
-    contacted=true;
-   }else{
-    const CR=ARENA.creaseR;
+   if(CR>0&&d<CR){
+    // ---- curved crease (fillet) zone: quarter-torus wall→floor blend ----
     const g=arenaGrad(p.x,p.z,gh0,gh1);
     if(p.y<CR){
      const u=CR-d,w=CR-p.y,r=Math.hypot(u,w);
@@ -103,16 +97,27 @@ function stepBall(b,h){
      contacted=true;
     }
     if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
+   }else{
+    // ---- flat interior; CR=0 adds a SHARP 90° vertical wall (no fillet) ----
+    if(CR<=0&&p.y<F.wallH+BALL_R&&d<BALL_R){
+     const g=arenaGrad(p.x,p.z,gh0,gh1),nx=-g.x,ny=0,nz=-g.z,pen=BALL_R-d;
+     arenaContact(b,pen,nx,ny,nz);contacted=true;
+    }
+    if(p.y<BALL_R){
+     p.y=BALL_R;if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+     const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
+    }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
    // goal detection unchanged from classic
    const xl=F.L/2-BALL_R;
    if(p.x>xl){
-    if(Math.abs(p.z)<gh0&&p.y<F.goalH){if(p.x>F.L/2+1.2){onGoal(0,b);return;}}
+    if(Math.abs(p.z)<gh0&&p.y<F.goalH){if(p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // whole ball over the line
    }else if(p.x<-xl){
-    if(Math.abs(p.z)<gh1&&p.y<F.goalH){if(p.x<-F.L/2-1.2){onGoal(1,b);return;}}
+    if(Math.abs(p.z)<gh1&&p.y<F.goalH){if(p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
    }
   }
  }
+ if(!b.scored)goalFrameCollide(b,h);
  for(const r of rods){
   if(Math.abs(p.x-r.x)>ARM+BALL_R+2)continue;
   collideRod(b,r);
@@ -120,6 +125,36 @@ function stepBall(b,h){
  if(!b.scored&&(p.y<-8||Math.abs(p.x)>F.L/2+F.goalDepth+8||Math.abs(p.z)>F.W/2+10)){outOfBounds(b);return;}
  const mv=b.t.maxV,sp2=v.x*v.x+v.y*v.y+v.z*v.z;
  if(sp2>mv*mv){const k=mv/Math.sqrt(sp2);v.multiplyScalar(k);}
+}
+/* solid round goal posts (vertical) + crossbar (horizontal) + a SOLID net roof, both goals,
+   both tables. Posts/bar sit at the effective goal-mouth edge (scales with the 'big goal'
+   power-up) and deflect with a metallic clang. A ball lobbed over the bar lands on the net
+   roof instead of dropping in — so it can never score over the top; it settles and re-drops. */
+function goalFrameCollide(b,h){
+ const p=b.m.position,v=b.v,pr=PHY.postRad+BALL_R,e=1+PHY.postRest,GH=F.goalH,GD=F.goalDepth;
+ for(let sx=-1;sx<=1;sx+=2){
+  const gh=F.goalHalf*(S.eff[sx>0?0:1].big>S.time?PHY.bigGoalMult:1),gx=sx*F.L/2;
+  // uprights: vertical cylinders at (gx, ±gh), y∈[0,goalH]
+  if(p.y<GH+pr)for(let sz=-1;sz<=1;sz+=2){
+   const dx=p.x-gx,dz=p.z-sz*gh,dd=Math.hypot(dx,dz);
+   if(dd<pr&&dd>1e-4){const nx=dx/dd,nz=dz/dd;p.x+=nx*(pr-dd);p.z+=nz*(pr-dd);
+    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn);}}
+  }
+  // crossbar: horizontal cylinder along z at (gx, goalH), z∈[-gh,gh]
+  if(Math.abs(p.z)<gh+pr){
+   const dx=p.x-gx,dy=p.y-GH,dd=Math.hypot(dx,dy);
+   if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
+    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn);}}
+  }
+  // net roof: solid top over the goal box (behind the line). Only catches balls in the band
+  // above the mouth (below it is a clean shot under the bar), so over-the-bar lobs rest on top.
+  const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
+  if(xin&&Math.abs(p.z)<gh&&p.y>GH-BALL_R&&p.y<GH+BALL_R&&v.y<0){
+   p.y=GH+BALL_R;if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.4);
+   v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
+   const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
+  }
+ }
 }
 function collideRod(b,r){
  const p=b.m.position;

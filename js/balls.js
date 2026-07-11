@@ -53,32 +53,34 @@ function serve(){
 }
 
 function cannonballUpdate(dt){
- for(const b of S.balls){
-  if(b.cannonTimer<0)continue;
-  b.cannonTimer-=dt;
-  if(b.cannonTimer<=0){
-   removeBall(b);Au.power();
-   let nearestRod=-1,nearestMan=-1,nearestDist=Infinity;
-   const bp=b.m.position;
-   for(let ri=0;ri<rods.length;ri++){
-    const r=rods[ri];
-    const sa=Math.sin(r.angle),ca=Math.cos(r.angle);
-    const ax=r.x,ay=ROD_H;
-    const fx=ax+sa*ARM,fy=ay-ca*ARM;
-    for(let mi=0;mi<r.baseZ.length;mi++){
-     if(r.removedUntil[mi]&&r.removedUntil[mi]>S.time)continue;
-     const fz=r.baseZ[mi]+r.offset;
-     const dx=bp.x-fx,dy=bp.y-fy,dz=bp.z-fz;
-     const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
-     if(dist<nearestDist){nearestDist=dist;nearestRod=ri;nearestMan=mi;}
+  for(const b of S.balls){
+   if(b.cannonTimer<0)continue;
+   b.cannonTimer-=dt;
+   if(b.cannonTimer<=0){
+    removeBall(b);Au.power();
+    let nearestRod=-1,nearestMan=-1,nearestDist=Infinity;
+    const bp=b.m.position;
+    for(let ri=0;ri<rods.length;ri++){
+     const r=rods[ri];
+     const sa=Math.sin(r.angle),ca=Math.cos(r.angle);
+     const ax=r.x,ay=ROD_H;
+     const fx=ax+sa*ARM,fy=ay-ca*ARM;
+     for(let mi=0;mi<r.baseZ.length;mi++){
+      if(r.removedUntil[mi]&&r.removedUntil[mi]>S.time)continue;
+      const fz=r.baseZ[mi]+r.offset;
+      const dx=bp.x-fx,dy=bp.y-fy,dz=bp.z-fz;
+      const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
+      if(dist<nearestDist){nearestDist=dist;nearestRod=ri;nearestMan=mi;}
+     }
     }
+    if(nearestRod>=0){
+     const r=rods[nearestRod];
+     r.removedUntil[nearestMan]=S.time+CONFIG.cannonball.removeDuration;
+     spawnFracture(r,nearestMan);
+     banner('💣 REMOVED!','ONE PLAYER TAKEN OUT',1.5);
+    }
+    if(!S.balls.length&&S.phase==='play'){resetRodRotation();banner('💣 EXPLOSION!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
+    break;
    }
-   if(nearestRod>=0){
-    rods[nearestRod].removedUntil[nearestMan]=S.time+CONFIG.cannonball.removeDuration;
-    banner('💣 REMOVED!','ONE PLAYER TAKEN OUT',1.5);
-   }
-   if(!S.balls.length&&S.phase==='play'){resetRodRotation();banner('💣 EXPLOSION!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
-   break;
   }
  }
-}

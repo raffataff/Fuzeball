@@ -26,6 +26,12 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   s.connect(f);f.connect(g);g.connect(this.mg);s.start();},
  kick(p){this.noise(.06,900+p*8,Math.min(.4,.1+p*.003));this.beep(95,.09,'sine',Math.min(.45,.08+p*.003),-45);},
  wall(p){this.noise(.045,2300,Math.min(.28,.04+p*.002));},
+ post(p){if(!this.ctx)return;const c=this.ctx,v=Math.min(.5,.14+p*.004);      // metallic 'DOINK' off the woodwork
+  [523,832,1290,1900].forEach((fr,i)=>{const o=c.createOscillator(),g=c.createGain();
+   o.type=i?'triangle':'sine';o.frequency.setValueAtTime(fr,c.currentTime);
+   o.frequency.exponentialRampToValueAtTime(fr*.94,c.currentTime+.28);          // slight inharmonic droop = struck-bar ring
+   this.env(g,c.currentTime,.003,.28-i*.045,v*(1-i*.18));o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+.42);});
+  this.noise(.03,3200,v*.5);this.exc=Math.min(1,this.exc+.25);},                // click transient + a crowd 'ooh'
  goal(){if(!this.ctx)return;const c=this.ctx;
   [220,277,330].forEach(fr=>{const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';
    o.frequency.setValueAtTime(fr,c.currentTime);o.frequency.linearRampToValueAtTime(fr*.8,c.currentTime+.95);
