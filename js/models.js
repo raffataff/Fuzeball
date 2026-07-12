@@ -103,25 +103,43 @@ function loadRodModels(onReady){
 /* Clone the loaded rod for one rod, tinting the team-coloured parts. Returns
    null when that size has no GLB (buildRods then draws the primitive). */
 function makeRodModel(men,team){
- const tpl=rodTemplates[men];if(!tpl)return null;
- const g=tpl.clone(true);
- g.traverse(c=>{
-  if(!c.isMesh)return;c.castShadow=true;
-  const n=onm(c);                              // handle -> team colour; collar/knob -> team glow
-  if(n.includes('handle'))c.material=teamMat[team];
-  else if(n.includes('collar')||n.includes('knob'))c.material=teamGlow[team];
- });
- return g;
-}
+  const tpl=rodTemplates[men];if(!tpl)return null;
+  const g=tpl.clone(true);
+  const clones=[];                              // {mat, isHandle} for applyColors / applyFinish
+  g.traverse(c=>{
+   if(!c.isMesh)return;c.castShadow=true;
+   const n=onm(c),src=c.material;
+   if(n.includes('handle')){
+    c.material=cloneWithMaps(teamMat[team],src);
+    if(c.material!==teamMat[team])clones.push({mat:c.material,isGlow:false});
+   }else if(n.includes('collar')||n.includes('knob')){
+    c.material=cloneWithMaps(teamGlow[team],src);
+    if(c.material!==teamGlow[team])clones.push({mat:c.material,isGlow:true});
+   }
+  });
+  if(clones.length){g.userData.teamClones=clones;g.userData.team=team;}
+  return g;
+ }
 
 /* helpers */
 function onm(o){return(o.name||'').toLowerCase();}
-// base name for a ball mesh: GLTFLoader strips the '.' from Blender's '.001'
-// suffix (so 'classic.001' arrives as 'classic001') — drop a trailing dot/underscore
-// + digits so both 'classic.001' and 'classic001' normalise to 'classic'.
 function ballKey(o){return onm(o).replace(/[._]?\d+$/,'');}
 function wx(obj){return obj.getWorldPosition(new THREE.Vector3()).x;}
 function hideMeshes(obj){if(obj)obj.traverse(c=>{if(c.isMesh)c.visible=false;});}
+
+/* Clone dest material and carry over any PBR texture maps (normal, roughness, metalness,
+   ao, bump) from src so that GLB-baked detail survives team-colour swaps in rods/players. */
+function cloneWithMaps(dest,src){
+ if(!src||!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap)return dest;
+ const m=dest.clone();
+ if(src.normalMap){m.normalMap=src.normalMap;m.normalScale=src.normalScale;}
+ if(src.bumpMap){m.bumpMap=src.bumpMap;m.bumpScale=src.bumpScale;}
+ if(src.roughnessMap)m.roughnessMap=src.roughnessMap;
+ if(src.metalnessMap)m.metalnessMap=src.metalnessMap;
+ if(src.aoMap)m.aoMap=src.aoMap;
+ m.needsUpdate=true;
+ return m;
+}
 
 /* --- fracture / explosion models -------------------------------------------
    Optional per-figurine "explode & collapse" GLB, consumed by js/fracture.js
@@ -157,9 +175,14 @@ function loadBallModel(onReady){
       if(!c.isMesh)return;
       c.castShadow=true;c.receiveShadow=true;
       const m=c.material;
-      if(m){                                       // make sure colour maps render in sRGB and are flagged for upload
+      if(m){                                       // ensure texture encoding (GLTFLoader sets this, but be explicit)
        if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
        if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;
+       if(m.normalMap){m.normalMap.encoding=THREE.LinearEncoding;m.normalMap.needsUpdate=true;}
+       if(m.roughnessMap){m.roughnessMap.encoding=THREE.LinearEncoding;m.roughnessMap.needsUpdate=true;}
+       if(m.metalnessMap){m.metalnessMap.encoding=THREE.LinearEncoding;m.metalnessMap.needsUpdate=true;}
+       if(m.aoMap){m.aoMap.encoding=THREE.LinearEncoding;m.aoMap.needsUpdate=true;}
+       if(m.bumpMap){m.bumpMap.encoding=THREE.LinearEncoding;m.bumpMap.needsUpdate=true;}
        m.needsUpdate=true;
       }
       const n=ballKey(c);                          // 'classic.001'/'classic001' -> 'classic'

@@ -14,6 +14,9 @@ function stReact(r){return Math.max(.2,1-(ST(r,'rea')-STC.base)*STC.rea)/stFat(r
 function stCd(r){return Math.max(.25,1-(ST(r,'rea')-STC.base)*STC.cd);}
 function stErr(r){return Math.max(.15,1-(ST(r,'acc')-STC.base)*STC.accErr);}
 function stAim(r,a){return clamp(a+(ST(r,'acc')-STC.base)*STC.accAim,0,1);}
+// 0..1 fraction of a rod's acc stat ABOVE base — how far toward max accuracy it is.
+// Used to scale the sweet-spot power bonus (see collideRod): base 5 → 0, max 10 → 1.
+function stAccFrac(r){return clamp((ST(r,'acc')-STC.base)/(STC.max-STC.base),0,1);}
 // Decision intelligence multiplier on the difficulty's base iq roll (see ai.js). Base 5 = 1
 // (unchanged); higher = more likely to trap/wait for the sweet spot, lower = greedier.
 function stIQ(r){return Math.max(0,1+(ST(r,'iq')-STC.base)*STC.iq);}

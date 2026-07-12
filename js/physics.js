@@ -161,6 +161,7 @@ function collideRod(b,r){
 /* ---- foot box (priority) ---- */
     const bx=FOOT_BOX.x,by=FOOT_BOX.y,bz=FOOT_BOX.z,offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*r.kickDir;
     const reach=BALL_R*FOOT_BOX_REACH;
+    const SW=KICK.sweetSpot;
    const footHit=new Set();
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
@@ -186,11 +187,18 @@ function collideRod(b,r){
    const cvx=-(cwy-ROD_H)*r.angVel,cvy=(cwx-r.x)*r.angVel,cvz=r.vz;
    const vn=(b.v.x-cvx)*nx+(b.v.y-cvy)*ny+(b.v.z-cvz)*nz;
    if(vn<0){
-    const pow=r.kickT>=KICK.powFrom&&r.kickT<KICK.powTo;
-    const rest=pow?KICK.restPower:KICK.rest;
+     const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
+     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
+     const rest=pow?ks.restPower:ks.rest;
+    // sweet spot: ball struck in the narrow z-centre of the foot AND a tight forward x band
+    //   (dir-relative off the rod, same reference the AI's overFoot zone uses). lz is the ball's
+    //   z offset from the foot; relR is how far ahead of the rod it contacts.
+    const relR=(p.x-r.x)*r.kickDir;
+    const sweet=SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
+    if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
@@ -199,7 +207,9 @@ function collideRod(b,r){
     // tiny imperfection prevents pixel-perfect side-to-side oscillations
     const jit=Math.abs(jm)*FOOT_JITTER;
     b.v.x+=(Math.random()-.5)*jit;b.v.y+=(Math.random()-.5)*jit*.3;b.v.z+=(Math.random()-.5)*jit;
-    if(pow)aimAssist(b,r);
+    // aim-assist bends a clean shot goalward: in the timed power window as before, OR on a sweet hit
+    if(pow||(sweet&&SW.forceAssist))aimAssist(b,r);
+    if(sweet)S.shake=Math.min(1,S.shake+SW.shake);   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;S.still=0;
@@ -236,17 +246,18 @@ function collideRod(b,r){
   const vn=rvx*nx+rvy*ny+rvz*nz;
   p.x+=nx*(R-d);p.y+=ny*(R-d);p.z+=nz*(R-d);
   if(vn<0){
-   const pow=r.kickT>=KICK.powFrom&&r.kickT<KICK.powTo;
-   const rest=pow?KICK.restPower:KICK.rest;
-   let jm=-(1+rest)*vn/b.t.mass;
-   if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
-   jm*=stHit(r);
-   b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-   const g=stGrip(r);
-   b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
-   const tang=cvx*(-nz)+cvz*nx;
-   b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
-   if(pow)aimAssist(b,r);
+    const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
+    const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
+    const rest=pow?ks.restPower:ks.rest;
+    let jm=-(1+rest)*vn/b.t.mass;
+    if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
+    jm*=stHit(r);
+    b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
+    const g=stGrip(r);
+    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
+    const tang=cvx*(-nz)+cvz*nx;
+    b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
+    if(pow)aimAssist(b,r);
    if(-vn>KICK.sndFrom){Au.kick(-vn);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;S.still=0;

@@ -9,6 +9,7 @@ let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
 // glbGoalSplit: a single baked frame mesh that spans BOTH goals (e.g. an arena frame exported as one
 // object) can't scale per-side, so it's morphed vertex-wise — each vert widens by its own goal's mult.
 let rods=[],indicator,dropRing;
+let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
 let sprites=[],spriteTex,particles,pGeo,pData=[];
 let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={};
 
@@ -104,9 +105,9 @@ function buildTable(){
   // SOLID collider in physics (goalFrameCollide) so a shot over the bar lands on top instead of scoring.
   const netM=new THREE.MeshStandardMaterial({color:i?cfg.blueColor:cfg.redColor,map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
   netMats.push(netM);
-  const V=(x,y,z)=>new THREE.Vector3(x,y,z);
-  const FBL=V(0,0,-GHW),FBR=V(0,0,GHW),FTL=V(0,GH,-GHW),FTR=V(0,GH,GHW),
-        BBL=V(bx,0,-GHW),BBR=V(bx,0,GHW),BTL=V(bx,GT,-GHW),BTR=V(bx,GT,GHW);
+   const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+  const backW=GHW*.98,BX=bx*.98,FBL=V(0,0,-GHW),FBR=V(0,0,GHW),FTL=V(0,GH,-GHW),FTR=V(0,GH,GHW),
+        BBL=V(BX,0,-backW),BBR=V(BX,0,backW),BTL=V(BX,GT,-backW),BTR=V(BX,GT,backW);
   const nets=[];   // collect panels so bigGoalUpdate can taper the net BACK narrower than its mouth
   [[BBL,BBR,BTR,BTL],[FTL,FTR,BTR,BTL],[FBL,BBL,BTL,FTL],[FBR,FTR,BTR,BBR],[FBL,FBR,BBR,BBL]] // back, roof, sides, floor
    .forEach(q=>{const nm=netQuad(q[0],q[1],q[2],q[3],netM);nm.userData.base=Float32Array.from(nm.geometry.attributes.position.array);g.add(nm);nets.push(nm);});
@@ -235,14 +236,17 @@ function buildRods(){
   const baseZ=[],men=[];
   for(let i=0;i<d.men;i++){const bz=(i-(d.men-1)/2)*sp;baseZ.push(bz);
     const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
-   rods.push({idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:hg,collar:cm,rodModel,
-    offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
-    kickT:-1,kickDir:d.team===0?1:-1,raise:false,cd:0,aiMan:-1,
-    behindFlag:false,                          // sticky raise latch: set when ball crosses raiseBehind, cleared only on overFoot
+    rods.push({idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:hg,collar:cm,rodModel,
+     offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
+     kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,cd:0,aiMan:-1,
+    behindFlag:false,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
      removedUntil:[]});
- });
-}
+  });
+  rodCustomMats=[];
+  rods.forEach(r=>{if(r.rodModel&&r.rodModel.userData.teamClones)
+   r.rodModel.userData.teamClones.forEach(c=>rodCustomMats.push({mat:c.mat,team:r.rodModel.userData.team,isGlow:c.isGlow}));});
+ }
 
 function buildFxPools(){
  const cv=document.createElement('canvas');cv.width=64;cv.height=64;
@@ -288,6 +292,8 @@ function applyColors(){
  }
  teamGlow[0].color.set(cfg.redColor);teamGlow[0].emissive.set(cfg.redColor);
  teamGlow[1].color.set(cfg.blueColor);teamGlow[1].emissive.set(cfg.blueColor);
+ for(const c of rodCustomMats){const col=c.team===0?cfg.redColor:cfg.blueColor;
+  c.mat.color.set(col);if(c.isGlow)c.mat.emissive.set(col);c.mat.needsUpdate=true;}
  netMats[0].color.set(cfg.redColor);netMats[1].color.set(cfg.blueColor);
  document.documentElement.style.setProperty('--c0',cfg.redColor);
  document.documentElement.style.setProperty('--c1',cfg.blueColor);
@@ -308,6 +314,10 @@ function applyFinish(){
    mat.needsUpdate=true;
   }
  }
+ for(const c of rodCustomMats){const col=c.team===0?cfg.redColor:cfg.blueColor;
+  c.mat.metalness=mv;c.mat.roughness=c.isGlow?Math.max(.12,rv):rv;
+  if(c.mat.emissive){c.mat.emissive.set(col);c.mat.emissiveIntensity=c.isGlow?Math.max(.55,gv):gv;}
+  c.mat.needsUpdate=true;}
 }
 
 /* Swap the men meshes on already-built rods for the current model (used when

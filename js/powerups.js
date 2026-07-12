@@ -16,7 +16,7 @@ function spawnPU(){
 function collectPU(){
  const t=S.pu.type;
  const team=S.lastTouch>=0?S.lastTouch:(Math.random()<.5?0:1);
- const nm=team===0?cfg.redName:cfg.blueName;
+  const nm=teamName(team);
  if(t.key==='boost')S.eff[team].boost=S.time+PWR.boost;
  if(t.key==='freeze')S.eff[1-team].frozen=S.time+PWR.freeze;
  if(t.key==='big')S.eff[team].big=S.time+PWR.big;
@@ -45,25 +45,35 @@ function redropBall(b){
  const vx=rand(-DEAD.redrop.vel,DEAD.redrop.vel),vz=rand(-DEAD.redrop.vel,DEAD.redrop.vel);
  const fallT=Math.sqrt(2*Math.max(DEAD.redrop.y-BALL_R,0)/GRAV);
  b.m.position.set(tx-vx*fallT,DEAD.redrop.y,tz-vz*fallT);
- b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;
+ b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null; // clear the stall tracker
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
 }
 function deadBallUpdate(dt){
  if(S.phase!=='play'||!S.balls.length)return;
- // global stall: every ball has gone quiet -> whistle + re-drop them all to a new spot.
- let mx=0;for(const b of S.balls)mx=Math.max(mx,b.v.length());
- if(mx<DEAD.stallVel)S.still+=dt;else S.still=0;
- if(S.still>DEAD.stallT){
+ // A ball is DEAD when its true position (b.cur) stays inside a small box long enough — NOT when
+ // its speed is low. A ball a player holds or spins against a wall keeps a high b.v.length() while
+ // never actually travelling, so a speed test never fires; tracking real displacement catches it,
+ // and (unlike the old S.still) a per-touch collision can't reset it. Per ball we grow the
+ // horizontal bounding box of where it's been; the box only resets when the ball roams past
+ // moveEps, so a ball pinned in one spot keeps accruing time.
+ const eps=DEAD.moveEps;
+ let allStuck=true;
+ for(const b of S.balls){
+  const p=b.cur;
+  if(!b.bbMin){b.bbMin=p.clone();b.bbMax=p.clone();b.stuckT=0;}
+  else{
+   b.bbMin.min(p);b.bbMax.max(p);
+   if(Math.max(b.bbMax.x-b.bbMin.x,b.bbMax.z-b.bbMin.z)>eps){b.bbMin.copy(p);b.bbMax.copy(p);b.stuckT=0;}
+   else b.stuckT+=dt;
+  }
+  if(b.stuckT<=DEAD.stallT)allStuck=false;
+ }
+ if(allStuck){ // every live ball wedged (also the single-ball case) -> whistle + re-drop all
   S.still=0;Au.whistle();resetRodRotation();banner('DEAD BALL','RE-DROP',1.1);
   for(const b of S.balls)redropBall(b);
   return;
  }
- // per-ball wedge: one ball pinned in a gap while others move -> re-drop just that one.
- if(S.balls.length>1){
-  for(const b of S.balls){
-   if(b.v.length()<DEAD.wedgeVel){b.stuckT+=dt;if(b.stuckT>DEAD.wedgeT)redropBall(b);}
-   else b.stuckT=0;
-  }
- }
+ // multi-ball: one ball pinned while others play -> re-drop just that one.
+ if(S.balls.length>1)for(const b of S.balls)if(b.stuckT>DEAD.wedgeT)redropBall(b);
 }

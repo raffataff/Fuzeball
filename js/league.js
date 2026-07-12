@@ -219,10 +219,24 @@ function lgOrder(){const a=LG.teams.map((t,i)=>({i,t}));a.sort((x,y)=>y.t.p-x.t.
 function lgOrderDiv(tier){const a=LG.teams.map((t,i)=>({i,t})).filter(e=>e.t.div===tier);a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round];return R?R.find(f=>f[0]===LG.playerId||f[1]===LG.playerId):null;}
 /* ---- figurine render image map ---- */
-const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,womanAndroid:1,alienTamirok:1,alienGrimlot:1};
+const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanAndroid:1,manStumpy:1,alienTamirok:1,alienGrimlot:1};
 function modelRender(id){
  if(!RENDER_MAP[id])return null;
-  const base=id==='mechaMan'?'mechaman':id==='irnman'?'irnman':id==='manJerry'?'jerry':id==='womanAndroid'?'jennyBot':id==='alienTamirok'?'tamirok':id==='alienGrimlot'?'grimlot':id;
+  const base=id
+  ==='cyborg'?'cyborg':id
+  ==='deltaborg'?'deltaborg':id 
+  ==='alienGrimlot'?'grimlot':id
+  ==='irnman'?'irnman':id
+  ==='womanAndroid'?'jennyBot':id
+  ==='manJerry'?'jerry':id
+  ==='womanKimi'?'kimi':id
+  ==='womanMaria'?'maria':id
+  ==='mechaMan'?'mechaman':id
+  ==='manrichie'?'richie':id
+  ==='stormer'?'stormer':id
+  ==='alienTamirok'?'tamirok':id
+  ==='manStumpy'?'stumpy':id
+  ;
  return 'assets/renders/render_'+base+'_cycles.png';
 }
 /* ---- live-match bridge (flow.js/rods.js/ai.js read these) ---- */
@@ -340,8 +354,7 @@ function renderLgHist(){
 }
 /* ---- lobby UI ---- */
 function openLeague(reveal){
- const slot=loadLastSlot();loadLG(slot);
- if(!LG){LG={slot,name:'LEAGUE '+(slot+1)};lgNewSeason(false,null,slot);}
+ if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
  $('menu').classList.add('hidden');$('lgSlots').classList.add('hidden');$('league').classList.remove('hidden');
  const pd=playerDiv(),dv=LG.divs[pd];
  if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal();S.lgChampDone=true;}
@@ -560,6 +573,7 @@ function openSetup(slot){
  $('lgSetup').classList.remove('hidden');
  $('lgSetupLgName').value='LEAGUE '+(slot+1);
  $('lgSetupName').value=cfg.redName||'RED';
+ $('lgSetupLgName').maxLength=$('lgSetupName').maxLength=CONFIG.control.nameMaxLength;
  $('lgSetupColor').value=cfg.redColor;
  $('lgSetupHex').textContent=cfg.redColor;
  $('lgSetupSpecial').checked=cfg.special;

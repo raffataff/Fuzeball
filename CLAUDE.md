@@ -290,6 +290,54 @@ below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
 ### 2026-07-11
+- **Dead-ball detection now displacement-based, not speed-based** (`js/powerups.js`,
+  `js/config.js`). Two symptoms, one root cause: a ball a player is holding at its feet, or one
+  wedged/spinning against a wall between two raised rods forming a platform, keeps a high
+  `b.v.length()` while its true position never actually travels — so the old `stallVel`/`wedgeVel`
+  speed tests never fired. It was made worse by `collideRod` setting `S.still=0` on every touch,
+  which reset the global stall timer each frame a resting ball re-contacted a foot. `deadBallUpdate`
+  now grows a per-ball HORIZONTAL bounding box of where `b.cur` has been; the box only resets when
+  the ball roams past `CONFIG.deadball.moveEps` (4u), so a ball pinned in one spot accrues time
+  regardless of its internal velocity or per-touch collisions. `allStuck` (every live ball boxed-in
+  for `stallT`) → whistle + re-drop all (covers single-ball); one ball boxed-in for `wedgeT` in
+  multi-ball → re-drop just it. `redropBall` clears the tracker (`b.bbMin=b.bbMax=null`). Removed
+  `stallVel`/`wedgeVel`; added `moveEps`. `S.still` is now vestigial (still written, unread).
+  Verified by re-read (sandbox wouldn't boot).
+- **Evade action (`r.act='evade'`) + `clearOffset` helper** (`js/ai.js`, `js/config.js`,
+  `js/debug.js`). Fixes the rod shadowing a ball stuck directly behind its men in z — it used to
+  keep aligning a man onto the ball, walling it in place.
+  - `clearOffset(r,bz,cz,prefer)` (`ai.js`): nearest slide offset where NO live foot is within
+    `cz` of the ball z, optionally restricted to one side (`prefer` −1/0/+1). The post-kick
+    safe-lower side-step (`heldFwd`) was refactored onto it (identical behaviour, now shared).
+  - New `r.act='evade'` action + `CONFIG.ai.evade` (`on/vz/maxSpeed/abortT`): when a slow ball is
+    stuck behind a man (`inFootRange`) and the rod isn't trapping/lifting it (not past the raise
+    latch, no gap for safe-raise), it slides the men AWAY via `clearOffset` until the ball is no
+    longer `inFootRange`. Direction = opposite the ball's z-drift when `|v.z|>vz`, else opposite
+    the side the ball sits on (commits, no dither). Gated to non-strikeable balls (`!overFoot &&
+    !inFront`) below `maxSpeed`; forces men down (`r.raise=false`) and skips man-selection + kick
+    while active (`continue`), so the rod just slides clear. Exits the instant the ball clears /
+    speeds up / comes to the front / goes deep-behind (raise latch takes over). Priority order for
+    a ball behind: trap → safe-raise → evade (all `!r.act`-guarded, so higher ones win).
+  - Debug: **Evade** AI panel layer (teal `#00d9a3`) — per-rod box over the behind-the-rod band,
+    hot while `r.act==='evade'`. Verified by re-read (sandbox wouldn't boot).
+- **`inFootRange` helper + safe-raise decoupled into its own action** (`js/ai.js`, `js/rods.js`,
+  `js/config.js`, `js/debug.js`).
+  - `inFootRange(r,b)` (`ai.js`): ONE reusable "would lowering/raising the rod clip this ball?"
+    test — a dir-relative rectangle around each live foot: `underFootFront` forward,
+    `CONFIG.ai.footRangeBack` (6.0) behind (a raising swing sweeps back), `footBox.z + BALL_R +
+    clearMargin` half-width in z (a foot's z footprint, shared with the drop-sweep lowering
+    check). Replaces the old inline `FOOT_BOX.z + raiseBuf` z-only clip test.
+  - The pre-trap safe-raise (was nested in `CONFIG.ai.trap.safeRaise`/`raiseBuf`) is now a
+    first-class action `r.act='safeRaise'` with its OWN config block `CONFIG.ai.safeRaise`
+    (`on/angle/lerp/back/front/maxVX/maxSpeed/abortT`), fully decoupled from trap. It eases the
+    rod to a **defined** lift `angle` (−1.35, driven in `updateRods` like the trap angle) instead
+    of a full `raiseA` latch. Trigger gate = the SR x-band + `|v.x|<maxVX` + `!inFootRange`
+    (raising won't clip). While held it forces `r.raise=false`/`behindFlag=false` (the action owns
+    the angle); exits on band-leave / speed-up / high ball / `abortT`, then the normal drop+kick
+    clears it with the man already repositioned. Trap enter is unaffected (still gated on
+    `r.raise`, which safe-raise keeps false, so no clobber).
+  - Debug: new **Safe Raise** AI panel layer (lime `#c2ff4d`) — per-rod box over the SR band,
+    hot while `r.act==='safeRaise'`. Verified by re-read (sandbox wouldn't boot).
 - **Pre-trap safe-raise** (`js/ai.js` + `CONFIG.ai.trap.safeRaise`/`raiseBuf`). Fills the gap
   where a slow, sideways ball loiters in the trap x-band (`back..front`) but isn't far enough
   back to trip the `raiseBehind` latch, so the rod sat DOWN behind it. New block (after the

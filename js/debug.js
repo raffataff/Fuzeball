@@ -16,8 +16,8 @@ let dbgArenaWalls=null,dbgContourRings=[];
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,trapZone:false,shotLanes:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 
@@ -42,6 +42,8 @@ function buildAIPanel(){
    {key:'redropZones',label:'Redrop Zones',col:'#ff5c5c'},
    {key:'dropSweep',label:'Drop Sweep',col:'#ff5c8a'},
    {key:'trapZone',label:'Trap Zone',col:'#c77dff'},
+   {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
+   {key:'evade',label:'Evade',col:'#00d9a3'},
    {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'}
  ];
  for(const it of items){
@@ -185,6 +187,34 @@ function buildDebug(){
   dbgTrapZone.push({mesh:m,rod:r,matDim:tzDim,matHot:tzHot});
  }
 
+ // safeRaise: per-rod box behind the rod (x = safeRaise.back..front dir-relative, z = full
+ // slide range) where a slow, sideways ball is lifted to SR.angle instead of left on the floor.
+ // Static position; material goes hot lime while that rod's r.act==='safeRaise'.
+ const srDim=dbgMat(0xc2ff4d,.15),srHot=dbgMat(0xc2ff4d,.5);
+ const srW=AIC.safeRaise.front-AIC.safeRaise.back;
+ for(const r of rods){
+  const dir=r.team===0?1:-1;
+  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(srW,0.05,zMax-zMin||0.1),srDim);
+  m.position.set(r.x+(AIC.safeRaise.back+AIC.safeRaise.front)/2*dir,0.045,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgSafeRaise.push({mesh:m,rod:r,matDim:srDim,matHot:srHot});
+ }
+
+ // evade: per-rod box directly behind the rod (x = -footRangeBack..0 dir-relative, z = full
+ // slide range) — where a slow ball stuck against the men gets side-stepped instead of walled.
+ // Static position; material goes hot teal while that rod's r.act==='evade'.
+ const evDim=dbgMat(0x00d9a3,.15),evHot=dbgMat(0x00d9a3,.5);
+ const evW=AIC.footRangeBack;
+ for(const r of rods){
+  const dir=r.team===0?1:-1;
+  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(evW,0.05,zMax-zMin||0.1),evDim);
+  m.position.set(r.x-evW/2*dir,0.05,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgEvade.push({mesh:m,rod:r,matDim:evDim,matHot:evHot});
+ }
+
  // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
  const serveM=dbgMat(0xc299ff,.22);
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
@@ -268,6 +298,20 @@ function updateAIVis(){
    const vis=on&&dbgAIOpts.trapZone;
    tz.mesh.visible=vis;if(!vis)continue;
    tz.mesh.material=tz.rod.act==='trap'?tz.matHot:tz.matDim;
+  }
+
+  // safeRaise: static boxes; hot lime while that rod is actively safe-raising
+  for(const sr of dbgSafeRaise){
+   const vis=on&&dbgAIOpts.safeRaise;
+   sr.mesh.visible=vis;if(!vis)continue;
+   sr.mesh.material=sr.rod.act==='safeRaise'?sr.matHot:sr.matDim;
+  }
+
+  // evade: static boxes; hot teal while that rod is actively evading
+  for(const ev of dbgEvade){
+   const vis=on&&dbgAIOpts.evade;
+   ev.mesh.visible=vis;if(!vis)continue;
+   ev.mesh.material=ev.rod.act==='evade'?ev.matHot:ev.matDim;
   }
 
   // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward

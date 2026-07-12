@@ -4,6 +4,36 @@ function teamRods(t){const a=[];for(const r of rods)if(r.team===t)a.push(r);retu
 // A man is "live" (usable for aiming/kicking) unless a cannonball removed it and the
 // removal window hasn't elapsed — mirrors the removedUntil test in physics/rods/balls.
 function manLive(r,i){return!(r.removedUntil[i]&&r.removedUntil[i]>S.time);}
+// Rectangular "a live foot could touch this ball" test — ONE source of truth for the
+// safe-raise / safe-lower reach questions. The box is dir-relative around each live foot on
+// the rod: it reaches underFootFront ahead (a dropping/kicking swing) and footRangeBack behind
+// (a raising swing sweeps back), and footBox.z + BALL_R + clearMargin either side in z (a
+// foot's z footprint). True ⇒ lowering/raising the rod right now would clip ball b.
+function inFootRange(r,b){
+ const dir=r.team===0?1:-1,rel=(b.m.position.x-r.x)*dir;
+ if(rel>AIC.underFootFront||rel<-AIC.footRangeBack)return false;
+ const hz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=b.m.position.z;
+ for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;if(Math.abs(bz-(r.baseZ[i]+r.offset))<hz)return true;}
+ return false;
+}
+// Nearest slide offset where NO live foot is within cz of the ball z bz — i.e. the rod is z-clear
+// of the ball. `prefer` (−1/0/+1) restricts the search to one side of the current offset (used by
+// evade to step AWAY from the ball rather than through it). Candidates are each foot's ±cz edge
+// plus the two slide limits; returns null if none clears on the requested side. Shared by the
+// post-kick side-step and the evade action.
+function clearOffset(r,bz,cz,prefer){
+ let best=null,bd=1e9;
+ const cand=[r.maxOff,-r.maxOff];
+ for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;cand.push(bz-r.baseZ[i]+cz,bz-r.baseZ[i]-cz);}
+ for(const o of cand){
+  if(o<-r.maxOff||o>r.maxOff)continue;
+  if(prefer&&(o-r.offset)*prefer<=0)continue;                 // wrong side of the ball
+  let ok=true;
+  for(let j=0;j<r.baseZ.length;j++){if(!manLive(r,j))continue;if(Math.abs(bz-(r.baseZ[j]+o))<cz-.01){ok=false;break;}}
+  if(ok){const d=Math.abs(o-r.offset);if(d<bd){bd=d;best=o;}}
+ }
+ return best;
+}
 // The live threat for a team = the ball nearest that team's OWN goal. As it travels
 // up-pitch the nearest rods shift from keeper/def to mid/att on their own, so the pair
 // picked below reads like a defence unit when pinned and an attack unit when pushing.
@@ -91,15 +121,8 @@ function shotEval(team,bx,bz){
      if(rel<-AIC.underFootBack||rel>AIC.underFootFront)continue;
      const ad=Math.abs(rel);if(ad<hd){hd=ad;hb=b;}}
     if(hb&&hb.v.length()<AIC.repositionSpeed){
-     const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=hb.m.position.z;
-     let bo=null,bod=1e9;
-     const cand=[r.maxOff,-r.maxOff];
-     for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;cand.push(bz-r.baseZ[i]+cz,bz-r.baseZ[i]-cz);}
-     for(const o of cand){
-      if(o<-r.maxOff||o>r.maxOff)continue;
-      let ok=true;for(let j=0;j<r.baseZ.length;j++){if(!manLive(r,j))continue;if(Math.abs(bz-(r.baseZ[j]+o))<cz-.01){ok=false;break;}}
-      if(ok){const d=Math.abs(o-r.offset);if(d<bod){bod=d;bo=o;}}
-     }
+     const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin;
+     const bo=clearOffset(r,hb.m.position.z,cz,0);              // nearest z-clear offset, either side
      if(bo!=null)r.target=bo;
     }
     continue;
@@ -133,7 +156,20 @@ function shotEval(team,bx,bz){
   // needed to reach it, and shift the man to that side of the ball. Offset is clamped small
   // so the foot still makes contact.
   const bp0=best.m.position;
-  if(bp0.y<AIC.lowY){
+  const relFront=(bp0.x-r.x)*dir;               // ball ahead(+)/behind(−) this rod, dir-relative
+  const DEF=AIC.defend;
+  if(DEF.on && (r.role==='GK'||r.role==='DEF') && bp0.y<AIC.lowY && relFront>DEF.engage){
+   // ---- defending an INCOMING ball: sit on the ball→own-goal-centre line so GK+DEF funnel the
+   //      shot at two depths (a triangle) instead of both chasing the ball's z. Each rod's x gives
+   //      a different intercept, so the DEF ends up out near the ball and the keeper back at centre. ----
+   const ogx=dir>0?-F.L/2:F.L/2;                 // this rod's OWN goal x
+   const lead=(tta>0&&tta<AIC.ttaMax)?r.aiBVZ*tta*D.pred:0;
+   const bzp=r.aiBZ+lead;                        // predicted ball z (smoothed)
+   const t=clamp((r.x-r.aiBX)/((ogx-r.aiBX)||1e-3),0,1); // fraction ball→goal at this rod's x
+   const iz=bzp*(1-t);                           // z where the ball→goal-centre line crosses this rod
+   pz=lerp(pz,iz,DEF.lineBias*(r.aiIQ?1:DEF.dumbBias)); // smart rods commit; dumb rods only lean in
+  }else if(bp0.y<AIC.lowY){
+   // ---- attacking / clearing: shift the man to angle the strike toward the OPPONENT goal (gap-aware) ----
    const goalX=dir>0?F.L/2:-F.L/2, dx=Math.max(8,Math.abs(goalX-bp0.x)), acc=stAim(r,D.aim!=null?D.aim:0.6);
    const spray=(r.aiGoalZ||0)*(1-acc)*F.goalHalf*AIC.aimSpread;
    let gz;
@@ -173,18 +209,21 @@ function shotEval(team,bx,bz){
   }else{
    r.raise=relReal<AIC.raiseBehind;
   }
-  const TR=AIC.trap;
-  // ---- pre-trap safe-raise: the ball is loitering in the trap x-band (moving sideways —
-  //      low |v.x|, slow) but not far enough back to have tripped the raiseBehind latch, so
-  //      the rod is sitting DOWN behind it. If the ball is in a z-GAP — no live man's footbox
-  //      (z half-extent + raiseBuf) is lined up with it — then raising can't clip it: raise
-  //      FULLY and latch (behindFlag) so man-selection below slides a man in behind the ball;
-  //      the trap/kick logic then decides to trap or clear. If a foot IS aligned in z, raising
-  //      would sweep into the ball, so leave it to the normal path. ----
-  if(TR.on&&TR.safeRaise&&r.aiIQ&&r.act!=='trap'&&bp.y<AIC.lowY&&relReal>TR.back&&relReal<TR.front&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed){
-   let clip=false;const rz=FOOT_BOX.z+TR.raiseBuf;
-   for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;if(Math.abs(bp.z-(r.baseZ[i]+r.offset))<rz){clip=true;break;}}
-   if(!clip){r.raise=true;r.behindFlag=true;}   // raise & latch; reposition happens via man-selection below
+  const TR=AIC.trap, SR=AIC.safeRaise;
+  // ---- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
+  //      thresholds. A slow, sideways ball loiters in the safe-raise x-band behind the rod but
+  //      isn't far enough back to trip the raiseBehind latch, so the rod would otherwise sit
+  //      DOWN behind it. If raising won't clip the ball (NOT inFootRange — it sits in a z-gap
+  //      between feet) the rod eases to SR.angle (a defined lift, driven in updateRods) while
+  //      man-selection slides a man in behind it; when the ball rolls forward to the rod line,
+  //      speeds up, or lifts, the action exits and the normal drop+kick clears it with the man
+  //      already positioned. Safety gate = inFootRange + the SR band + |v.x|. ----
+  if(r.act==='safeRaise'){
+   r.actT+=dt;
+   if(relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT)r.act=null;
+   else{r.raise=false;r.behindFlag=false;}         // the action owns the angle while it holds
+  }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<SR.front&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!inFootRange(r,best)){
+   r.act='safeRaise';r.actT=0;r.raise=false;r.behindFlag=false;
   }
   // ---- trap action (r.act='trap'): a smart rod (iq roll) catches a slow ball arriving
   //      from behind on a partial back angle instead of full-raising over it, holds it a
@@ -205,10 +244,34 @@ function shotEval(team,bx,bz){
   }
   if(r.act==='trap'){
    r.raise=false;r.behindFlag=false;       // trap owns the angle (updateRods) — latch released
-   if(r.actT>TR.settleT&&relReal>TR.shootFrom&&dz<TR.alignZ&&r.kickT<0&&r.cd<=0){
-    kickRod(r);                            // scoop shot: the swing from trapA carries the ball forward
-    r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
-   }
+    if(r.actT>TR.settleT&&relReal>TR.shootFrom&&dz<TR.alignZ&&r.kickT<0&&r.cd<=0){
+     kickRod(r,'trapShot');                 // scoop shot with dedicated trap power window
+     r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
+    }
+  }
+  // ---- evade action (r.act='evade'): a slow ball is stuck directly BEHIND a man (inFootRange)
+  //      and we're neither trapping nor lifting it (no gap for safe-raise, not past the raise
+  //      latch). Instead of shadowing it in z — which just walls it in place — slide the men
+  //      AWAY until it's no longer inFootRange, un-sticking it. Direction: opposite the ball's
+  //      z-drift when it has momentum, else opposite the side it sits on (commits, no dither).
+  //      Skips man-selection + kick while active (the rod just slides clear); exits the instant
+  //      the ball clears / speeds up / comes to the front / goes deep-behind (latch takes it). ----
+  const EV=AIC.evade;
+  if(r.act==='evade'){
+   r.actT+=dt;
+   if(overFoot||inFront||r.behindFlag||speed>=EV.maxSpeed||bp.y>AIC.lowY||!inFootRange(r,best)||r.actT>EV.abortT)r.act=null;
+  }else if(EV.on&&!r.act&&!r.behindFlag&&!overFoot&&!inFront&&bp.y<AIC.lowY&&speed<EV.maxSpeed&&inFootRange(r,best)){
+   r.act='evade';r.actT=0;
+  }
+  if(r.act==='evade'){
+   r.raise=false;r.behindFlag=false;
+   const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=bp.z;
+   const prefer=Math.abs(best.v.z)>EV.vz?(best.v.z>0?-1:1):((bz-r.offset)>0?-1:1);
+   let o=clearOffset(r,bz,cz,prefer);
+   if(o==null)o=clearOffset(r,bz,cz,0);       // no room on the chosen side — take the nearest clear either way
+   if(o!=null)r.target=o;
+   r.aiMan=-1;                                 // free the man-index hysteresis for the next re-pick
+   continue;                                   // don't re-align onto the ball or kick this frame
   }
   // ---- man selection: always run so the rod is already positioned at the strike z
   //      when it drops into the kick (no last-second snap). Removed men are skipped so

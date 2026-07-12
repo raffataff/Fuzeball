@@ -50,8 +50,21 @@ input[type=text]{width:110px;text-transform:uppercase}
 #chips{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
 .chip{pointer-events:auto;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:800;letter-spacing:.12em;padding:7px 15px;border-radius:10px;background:var(--glass);border:1px solid var(--edge);color:#8fa3c8;transition:all .15s}
 .chip.on{color:#fff;border-color:var(--tc,#fff);box-shadow:0 0 18px color-mix(in srgb,var(--tc,#fff) 55%,transparent);transform:translateY(-3px)}
-#fxchips{position:absolute;top:14px;right:16px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-.fxchip{font-size:14px;font-weight:700;padding:5px 12px;border-radius:9px;background:var(--glass);border:1px solid var(--edge);letter-spacing:.05em}
+#fxchips{position:absolute;top:14px;right:16px;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.pwr{--pc:#fff;position:relative;display:flex;align-items:center;gap:10px;min-width:186px;padding:8px 13px 11px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,rgba(18,22,38,.94),rgba(9,12,22,.94));border:1px solid color-mix(in srgb,var(--pc) 55%,transparent);border-left:3px solid var(--pc);box-shadow:0 0 20px color-mix(in srgb,var(--pc) 32%,transparent),inset 0 0 16px color-mix(in srgb,var(--pc) 10%,transparent);animation:pwrIn .34s cubic-bezier(.2,1.7,.4,1) both}
+.pwr::before{content:'';position:absolute;inset:0;background:radial-gradient(130px 46px at 100% 0,color-mix(in srgb,var(--pc) 24%,transparent),transparent 70%);pointer-events:none}
+@keyframes pwrIn{from{opacity:0;transform:translateX(46px) scale(.82)}}
+.pwrico{font-size:22px;line-height:1;filter:drop-shadow(0 0 7px color-mix(in srgb,var(--pc) 80%,transparent));animation:pwrBob 1.6s ease-in-out infinite;z-index:1}
+@keyframes pwrBob{50%{transform:translateY(-2px) scale(1.09)}}
+.pwrbody{display:flex;flex-direction:column;line-height:1.18;z-index:1}
+.pwrlabel{font-family:'Orbitron',sans-serif;font-weight:800;font-size:13px;letter-spacing:.05em;color:#fff;text-shadow:0 0 11px color-mix(in srgb,var(--pc) 70%,transparent)}
+.pwrarrow{color:var(--pc);font-weight:900;margin-left:4px;text-shadow:0 0 10px var(--pc);animation:pwrArrow 1s ease-in-out infinite}
+@keyframes pwrArrow{50%{opacity:.35;transform:translateX(2px)}}
+.pwrsub{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:.07em;color:color-mix(in srgb,var(--pc) 65%,#cfe0ff);text-transform:uppercase;margin-top:2px}
+.pwrsec{color:#fff}
+.pwrbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.09)}
+.pwrbar i{display:block;height:100%;width:100%;transform-origin:left;background:linear-gradient(90deg,var(--pc),#fff);box-shadow:0 0 9px var(--pc);animation:pwrDrain linear forwards}
+@keyframes pwrDrain{to{transform:scaleX(0)}}
 #ballTag{position:absolute;bottom:16px;left:16px;font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;letter-spacing:.1em;padding:8px 14px;border-radius:10px;background:var(--glass);border:1px solid var(--edge);color:#cfe0ff}
 #hint{position:absolute;bottom:16px;right:16px;font-size:13.5px;color:#5d6f92;letter-spacing:.05em;text-align:right;line-height:1.5}
 #banner{position:absolute;top:34%;left:50%;transform:translate(-50%,-50%) scale(.6);font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(34px,6vw,74px);letter-spacing:.1em;color:#fff;text-shadow:0 0 30px rgba(120,180,255,.9),0 4px 0 rgba(0,0,0,.4);opacity:0;pointer-events:none;text-align:center;white-space:nowrap}
@@ -146,15 +159,16 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #league{justify-content:flex-start;overflow-y:auto;padding:34px 16px;min-width:99vw}
 .lgTitle{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(26px,4vw,40px);letter-spacing:.12em;background:linear-gradient(180deg,#fff 20%,var(--gold) 80%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 16px rgba(255,207,77,.35))}
 .lgSub{font-size:14px;letter-spacing:.34em;color:#8fa3c8;margin:4px 0 20px;text-transform:uppercase}
-.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1620px;width:100%;min-height:820px;padding:18px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
+.lgWrap{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:1820px;width:100%;min-height:800px;padding:18px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
 /* each column is sized to what it actually needs to show, instead of a
    forced equal split — standings/fixture stay compact, the squad grid
    (which needs room for two 160px+ stat columns) gets first claim on
    extra space, and the scout card sits between the two. */
-.lgWrap>.panel:nth-child(1){flex:1 1 320px;min-width:350px;max-width:400px; min-height:400px;line-height:1.4}
-.lgSide{display:flex;flex-direction:column;gap:18px;flex:2 1 300px;min-width:300px;max-width:360px;min-height:500px;height:800px; max-height:800px}
+.lgWrap>.panel:nth-child(1){flex:1 1 380px;min-width:450px;max-width:400px; min-height:400px;line-height:1.4}
+.lgSide{display:flex;flex-direction:column;gap:18px;flex:2 1 300px;min-width:300px;max-width:360px;min-height:500px;height:750px; max-height:780px}
 .lgWrap>.panel:nth-child(3){flex:1.7 1 430px;max-width:440px; min-height:400px}
 .lgWrap>.panel.lgScout{flex:1.1 1 200px;min-width:200px;max-width:340px;letter-spacing:0.1em}
+.lgWrap>.panel.lgHist{flex:2.1 1 200px;min-width:200px;max-width:340px;letter-spacing:0.1em}
 /* hard backstop: whatever a panel's content does, it can never visually
    spill into the panel next to it again */
 .lgWrap .panel{overflow:hidden;position:relative}
@@ -228,7 +242,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .lgTapeTeam .lgRateBar .lgRate{height:14px}
 .lgTapeRound{font-family:'Orbitron',sans-serif;font-size:16px;letter-spacing:.22em;color:#8fa3c8;margin-top:26px;text-align:center}
 .lgTapeHint{font-size:12px;letter-spacing:.2em;color:#5d6f92;margin-top:16px;text-align:center;text-transform:uppercase}
- .lgHist{margin:0 auto;max-width:680px}#lgHist .row{display:grid;grid-template-columns:42px 1fr 42px;gap:4px 10px;font-size:13px;padding:2px 0;align-items:center}
+ .lgHist{margin:0 auto;width:350px;max-width:680px;height:200px}#lgHist .row{display:grid;grid-template-columns:42px 1fr 42px;gap:4px 10px;font-size:13px;padding:2px 0;align-items:center}
  #lgHist .row span:first-child{color:var(--gold)}#lgHist .row span:last-child{font-family:'Orbitron',sans-serif;font-size:11px;text-align:right;color:#7f93ba}
  /* ===== league setup ===== */
  #lgSlots,#lgSetup{justify-content:flex-start;overflow-y:auto;padding:34px 16px}

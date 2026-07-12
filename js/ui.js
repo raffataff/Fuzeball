@@ -6,6 +6,7 @@ function bindUI(){
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
  $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
+ $('nameRed').maxLength=$('nameBlue').maxLength=CONFIG.control.nameMaxLength;
  $('mcRed').textContent='PLAY '+cfg.redName;$('mcBlue').textContent='PLAY '+cfg.blueName;
  $('setDiffRed').onchange=e=>{cfg.diffRed=e.target.value;cfg.diff=cfg.diffRed;saveCfg();};
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};

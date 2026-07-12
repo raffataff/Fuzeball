@@ -56,12 +56,12 @@
       <h3>Teams &amp; Kits</h3>
       <div class="kitCols">
         <div class="kitCol">
-          <input type="text" id="nameRed" class="kitName" maxlength="10" value="RED">
+          <input type="text" id="nameRed" class="kitName" maxlength="20" value="RED">
           <div class="kitFig" id="kitFig0" title="Click to customize"><span class="kitCap" id="kitCap0">Cyborg</span></div>
           <div class="kitPal" id="kitPal0"></div>
         </div>
         <div class="kitCol">
-          <input type="text" id="nameBlue" class="kitName" maxlength="10" value="BLUE">
+          <input type="text" id="nameBlue" class="kitName" maxlength="20" value="BLUE">
           <div class="kitFig" id="kitFig1" title="Click to customize"><span class="kitCap" id="kitCap1">Cyborg</span></div>
           <div class="kitPal" id="kitPal1"></div>
         </div>
@@ -144,8 +144,8 @@
   <div class="lgSetupWrap">
     <div class="panel lgSetupPanel">
       <h3>League details</h3>
-      <div class="row"><label>League name</label><input type="text" id="lgSetupLgName" maxlength="14"></div>
-      <div class="row"><label>Your team</label><input type="text" id="lgSetupName" maxlength="10"></div>
+      <div class="row"><label>League name</label><input type="text" id="lgSetupLgName" maxlength="20"></div>
+      <div class="row"><label>Your team</label><input type="text" id="lgSetupName" maxlength="20"></div>
     </div>
     <div class="panel lgSetupPanel lgSetupKit">
       <h3>Kit &amp; Figurine</h3>
@@ -211,14 +211,14 @@
       <div class="lgScoutRec" id="lgScoutRec"></div>
       <div class="lgScoutRate" id="lgScoutBody"></div>
     </div>
+    <div class="panel hidden lgHist" id="lgHistPanel">
+      <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
+      <div id="lgHist"></div>
+    </div>
   </div>
   <div class="btnRow">
     <button class="btn ghost" id="lgNew">Reset League</button>
     <button class="btn ghost" id="lgBack">◀ Main Menu</button>
-  </div>
-  <div class="panel hidden lgHist" id="lgHistPanel">
-    <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
-    <div id="lgHist"></div>
   </div>
 </div>
 
