@@ -6,6 +6,9 @@
 <title>FUZEBALL — 3D Foosball</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- Self-hosted fonts for offline/Steam builds. 404s harmlessly until tools/fetch-vendor.ps1
+     is run; once present it overrides the Google link above (same family names). -->
+<link rel="stylesheet" href="vendor/fonts.css">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -31,6 +34,7 @@
 </div>
 
 <div id="menu" class="screen">
+  <button id="btnOptions" class="optGear" title="Options">⚙</button>
   <h1 class="logo">FUZEBALL</h1>
   <div class="tagline">3D Table Football · Arcade Physics v0.1.12</div>
   <div class="modeRow">
@@ -222,11 +226,51 @@
   </div>
 </div>
 
+<div id="options" class="screen hidden">
+  <h2 class="lgTitle">OPTIONS</h2>
+  <div class="tagline" style="margin-bottom:18px">Controller · Mouse · Keyboard</div>
+  <div class="optWrap">
+    <div class="panel optPanel">
+      <h3>Controller</h3>
+      <div class="row"><label>Left stick — slide</label><select id="optSlideAxis"><option value="ly">Up / Down</option><option value="lx">Left / Right</option></select></div>
+      <div class="czSlide"><label>Slide sens</label><input type="range" id="optSlideSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optSlideSensV"></span></div>
+      <div class="row"><label>Invert slide</label><input type="checkbox" id="optSlideInv"></div>
+      <div class="optDiv"></div>
+      <div class="row"><label>Right stick — angle</label><select id="optAngleAxis"><option value="ry">Up / Down</option><option value="rx">Left / Right</option></select></div>
+      <div class="czSlide"><label>Angle sens</label><input type="range" id="optAngleSens" min="0.2" max="3.5" step="0.05"><span class="czVal" id="optAngleSensV"></span></div>
+      <div class="row"><label>Invert angle</label><input type="checkbox" id="optAngleInv"></div>
+      <div class="optDiv"></div>
+      <div class="czSlide"><label>Deadzone</label><input type="range" id="optDead" min="0" max="0.6" step="0.01"><span class="czVal" id="optDeadV"></span></div>
+    </div>
+    <div class="panel optPanel">
+      <h3>Mouse &amp; Keyboard</h3>
+      <div class="czSlide"><label>Mouse sens</label><input type="range" id="optMouseSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optMouseSensV"></span></div>
+      <div class="czSlide"><label>Key slide</label><input type="range" id="optKbdSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optKbdSensV"></span></div>
+      <div class="optHint">Slide with ▲ ▼ / W S or the mouse · kick with SPACE / click · raise with SHIFT / R-click. These sliders scale how fast each responds.</div>
+    </div>
+    <div class="panel optPanel">
+      <h3>Live Tester</h3>
+      <div class="optPadStatus" id="optPadStatus">No controller detected</div>
+      <div class="optSticks">
+        <div class="optStick"><div class="optWell" id="optLWell"><span class="optAxisLine" id="optLAxis"></span><span class="optDot" id="optLDot"></span></div><span class="optStickLbl" id="optLLbl">L · slide</span></div>
+        <div class="optStick"><div class="optWell" id="optRWell"><span class="optAxisLine" id="optRAxis"></span><span class="optDot" id="optRDot"></span></div><span class="optStickLbl" id="optRLbl">R · angle</span></div>
+      </div>
+      <div class="optBtns" id="optBtns"></div>
+      <div class="optHint">Move the sticks and press buttons — the highlighted axis is the one bound above.</div>
+    </div>
+  </div>
+  <div class="btnRow">
+    <button class="btn" id="optDone">◀ Done</button>
+    <button class="btn ghost" id="optReset">Reset defaults</button>
+  </div>
+</div>
+
 <div id="pause" class="screen hidden">
   <h2>PAUSED</h2>
   <div class="btnRow">
     <button class="btn" id="btnResume">Resume</button>
     <button class="btn ghost" id="btnRestart">Restart</button>
+    <button class="btn ghost" id="btnPauseOptions">Options</button>
     <button class="btn ghost" id="btnPauseMenu">Main Menu</button>
   </div>
 </div>
@@ -257,35 +301,39 @@
   </div>
 </div>
 
-<!-- Three.js r128 from CDN (unchanged) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-
-<!-- Game modules. Load order matters: helpers → config → systems → main.
-     These are plain (non-module) scripts so they share one global scope and
-     work from file://, http(s), and an Electron/Steam wrapper alike. -->
-<script src="js/core.js"></script>
-<script src="js/config.js"></script>
-<script src="js/arena.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/state.js"></script>
-<script src="js/stats.js"></script>
-<script src="js/world.js"></script>
-<script src="js/balls.js"></script>
-<script src="js/rods.js"></script>
-<script src="js/physics.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/input.js"></script>
-<script src="js/powerups.js"></script>
-<script src="js/flow.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/hud.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/league.js"></script>
-<script src="js/customize.js"></script>
-<script src="js/models.js"></script>
-<script src="js/fracture.js"></script>
-<script src="js/debug.js"></script>
-<script src="js/main.js"></script>
+<!-- Ordered loader. Three.js r128 + GLTFLoader each try their LOCAL vendored copy first
+     (offline/Steam), then fall back to the CDN so the game still runs before vendor/ is
+     populated — run tools/fetch-vendor.ps1 once to fill it. Game modules are plain
+     (non-module) scripts sharing one global scope and work from file://, http(s), and an
+     Electron/Steam wrapper alike; strict sequential loading preserves their order. -->
+<script>
+(function(){
+ var boot=[
+  {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
+  {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
+  'js/core.js','js/config.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
+  'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/hud.js','js/ui.js','js/options.js','js/league.js',
+  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/main.js'
+ ];
+ function loadOne(item,done){
+  var srcs=(typeof item==='string')?[item]:item.srcs,i=0;
+  // Only the two vendor libs (multi-source, UMD) get a stall timeout — they're safe to re-run if a
+  // slow load lands late. Game modules are single-source and MUST NOT double-execute (duplicate
+  // top-level const throws), so they rely on onload/onerror alone, which local files fire reliably.
+  var guard=srcs.length>1;
+  (function attempt(){
+   if(i>=srcs.length){console.error('Fuzeball: failed to load',srcs);done();return;}
+   var s=document.createElement('script'),fired=false;s.src=srcs[i++];s.async=false;
+   function ok(){if(fired)return;fired=true;done();}
+   function fail(){if(fired)return;fired=true;attempt();}   // local missing → try the CDN fallback
+   s.onload=ok;s.onerror=fail;
+   if(guard)setTimeout(function(){if(!fired)fail();},7000); // some file:// loads fire neither event
+   document.body.appendChild(s);
+  })();
+ }
+ (function next(k){if(k>=boot.length)return;loadOne(boot[k],function(){next(k+1);});})(0);
+})();
+</script>
 </body>
 </html>

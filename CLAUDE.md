@@ -289,6 +289,33 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-12
+- **Cannonball now shatters itself on detonation** (`js/config.js`, `js/models.js`,
+  `js/fracture.js`, `js/fx.js`, `js/audio.js`, `js/balls.js`). Previously the ball just
+  `removeBall`'d (instant vanish) while only the nearest player fractured. Reuses the entire
+  player-fracture machinery (`S.frac` list + `fractureUpdate` fade/dispose), which the ball
+  case is a strict subset of: no team tint, no rod-pose reconstruction, no respawn coupling.
+  - `CONFIG.cannonball` gained `explosionSrc` (`assets/animations/cannonball_explosion.glb`,
+    one Action/clip PER shard like the player GLBs), `fractureLife` (2.2s self-contained
+    lifetime — no respawn to sync to; keep ≥ baked clip length) and `fractureScale` (1; the
+    ball GLB is baked in-scene at game scale).
+  - `models.js`: new `ballExplosionTemplate` global; `loadExplosionModels` loads it alongside
+    the figurine explosions on the same boot step + `done` counter (still gated by the
+    `CONFIG.debug.fractureFx` master switch). `warmFractureShaders` refactored to a shared
+    `warm(tpl)` and now pre-compiles the ball shader too.
+  - `fracture.js`: `spawnBallFracture(pos)` clones the template at the detonation pos, plays
+    ALL clips, and pushes `{obj,mixer,mats,light,until:S.time+fractureLife}`. Ball entries
+    carry a short orange `PointLight`; `fractureUpdate` decays its intensity and
+    `disposeFracture` removes it (both `if(f.light)`-guarded, so player entries are untouched).
+  - `fx.js`: `cannonExplodeFx(pos)` — layered `burst`/`burstRing`/`burstUp` (fire+spark+smoke)
+    + `flash()` + `S.shake=1.9` + `Au.boom()`, then `spawnBallFracture`. Particles fire even
+    if the GLB never loaded, so there's always a visible bang.
+  - `audio.js`: `Au.boom()` — sub-bass sine drop (170→36Hz) + low rumble noise + high crack.
+  - `balls.js`: `cannonballUpdate` captures `bp=b.m.position.clone()` BEFORE `removeBall`
+    (mesh is freed after), then calls `cannonExplodeFx(bp)` in place of the old `Au.power()`.
+  Verified by re-read (sandbox wouldn't boot). Tuning notes: if debris looks wrong-sized set
+  `fractureScale`; if it vanishes mid-animation raise `fractureLife`.
+
 ### 2026-07-11
 - **Dead-ball detection now displacement-based, not speed-based** (`js/powerups.js`,
   `js/config.js`). Two symptoms, one root cause: a ball a player is holding at its feet, or one

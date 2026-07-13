@@ -212,7 +212,7 @@ function collideRod(b,r){
     if(sweet)S.shake=Math.min(1,S.shake+SW.shake);   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
-    S.lastTouch=r.team;S.still=0;
+    S.lastTouch=r.team;
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
      b.didSplit=true;
      const nb=makeBall('split');nb.didSplit=true;
@@ -260,7 +260,7 @@ function collideRod(b,r){
     if(pow)aimAssist(b,r);
    if(-vn>KICK.sndFrom){Au.kick(-vn);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
-   S.lastTouch=r.team;S.still=0;
+   S.lastTouch=r.team;
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;

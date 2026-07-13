@@ -12,6 +12,7 @@ let ballModel=null;      // loaded ball GLB scene (with material slots)
 let roomModel=null;      // loaded arena room/environment GLB (arcade room) — shown only with the arena table
 const ballMatMap={};     // ballType -> material name in GLB
 const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc
+let ballExplosionTemplate=null; // {scene, clips} — the cannonball's own shatter GLB (CONFIG.cannonball.explosionSrc), consumed by fracture.js spawnBallFracture
 
 /* --- static table --------------------------------------------------------- */
 function loadTableModel(){
@@ -148,9 +149,11 @@ function cloneWithMaps(dest,src){
    live explosion later is just a clone() + mixer.play() — no disk/network
    hit and no fresh material during a match. */
 function loadExplosionModels(onReady){
-  const list=CONFIG.debug?.fractureFx===false?[]:CONFIG.playerModel.models.filter(m=>m.explosionSrc);
-  if(!list.length){onReady();return;}
-  let left=list.length;
+  const off=CONFIG.debug?.fractureFx===false;                       // master kill-switch: no fracture GLBs loaded at all
+  const list=off?[]:CONFIG.playerModel.models.filter(m=>m.explosionSrc);
+  const ballSrc=off?null:CONFIG.cannonball.explosionSrc;            // the ball's own shatter GLB rides the same boot step + warm pass
+  let left=list.length+(ballSrc?1:0);
+  if(!left){onReady();return;}
   const done=()=>{if(--left<=0)onReady();};
   list.forEach(m=>{
    new THREE.GLTFLoader().load(m.explosionSrc,
@@ -158,6 +161,12 @@ function loadExplosionModels(onReady){
     undefined,
     ()=>{console.warn('explosion GLB missing for '+m.id+' ('+m.explosionSrc+')');done();});
   });
+  if(ballSrc){
+   new THREE.GLTFLoader().load(ballSrc,
+    gltf=>{ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    undefined,
+    ()=>{console.warn('cannonball explosion GLB missing ('+ballSrc+')');done();});
+  }
 }
 
 /* --- ball model ------------------------------------------------------------ */

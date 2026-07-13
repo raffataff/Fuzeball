@@ -39,4 +39,9 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   this.noise(.5,700,.3);this.exc=1;},
  whistle(n=1){for(let i=0;i<n;i++)setTimeout(()=>this.beep(2150,.22,'square',.11,320),i*270);},
  power(){[660,880,1320].forEach((f,i)=>setTimeout(()=>this.beep(f,.09,'triangle',.18),i*70));},
+ boom(){if(!this.ctx)return;const c=this.ctx;                                  // cannonball detonation: sub-bass drop + body rumble + crack
+  const o=c.createOscillator(),g=c.createGain();o.type='sine';
+  o.frequency.setValueAtTime(170,c.currentTime);o.frequency.exponentialRampToValueAtTime(36,c.currentTime+.55);
+  this.env(g,c.currentTime,.005,.6,.6);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+.8);
+  this.noise(.45,300,.5);this.noise(.16,1700,.34);this.exc=1;},                // low rumble body + high crack transient + crowd 'ooh'
  ui(){this.beep(720,.05,'triangle',.1);}};

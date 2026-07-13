@@ -32,8 +32,8 @@ function cloneFractureInstance(tpl){
    actually use during the fade-out, and ask the renderer to compile that
    shader program now. Removes the first-explosion compile stall entirely. */
 function warmFractureShaders(){
-  for(const id in explosionTemplates){
-   const inst=cloneFractureInstance(explosionTemplates[id]);
+  const warm=tpl=>{
+   const inst=cloneFractureInstance(tpl);
    inst.traverse(c=>{
     if(!c.isMesh)return;
     const mats=Array.isArray(c.material)?c.material:[c.material];
@@ -43,7 +43,9 @@ function warmFractureShaders(){
    scene.add(inst);
    renderer.compile(scene,camera);
    scene.remove(inst);
-  }
+  };
+  for(const id in explosionTemplates)warm(explosionTemplates[id]);
+  if(ballExplosionTemplate)warm(ballExplosionTemplate); // the cannonball's own shatter shares the pre-warm
 }
 
 /* Trigger the effect for rod r's man mi. Call from balls.js cannonballUpdate
@@ -108,17 +110,46 @@ function spawnFracture(r,mi){
   S.frac.push({obj:inst,mixer,mats,until:r.removedUntil[mi]});
 }
 
+/* Trigger the cannonball's OWN shatter at world position `pos` (its location at
+   the instant of detonation). Simpler than the player version: the ball isn't
+   team-tinted, has no rod pose to reconstruct, and no respawn to sync against —
+   so its lifetime is self-contained (`until = now + fractureLife`) and it shares
+   the exact same S.frac list + fractureUpdate fade/dispose path as the player
+   debris. A short-lived orange point light rides along for a real explosion
+   pop; fractureUpdate fades it and disposeFracture removes it. Call from
+   balls.js cannonballUpdate (via cannonExplodeFx) BEFORE removeBall frees the
+   ball mesh. No-op if the GLB never loaded (missing file / fractureFx off) —
+   the 2D particles in cannonExplodeFx still play. */
+function spawnBallFracture(pos){
+  const tpl=ballExplosionTemplate;
+  if(!tpl)return;
+  const inst=cloneFractureInstance(tpl);
+  const s=CONFIG.cannonball.fractureScale||1;
+  inst.position.copy(pos);inst.scale.set(s,s,s);
+  scene.add(inst);
+  const mats=[];
+  inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=1;mats.push(c.material);});
+  const mixer=new THREE.AnimationMixer(inst);
+  // one clip PER shard (see spawnFracture) — play them all or only shard 0 moves.
+  for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopOnce);a.clampWhenFinished=true;a.play();}
+  const light=new THREE.PointLight(0xff7a1a,4,64);light.position.copy(pos);light.position.y+=2;scene.add(light);
+  S.frac.push({obj:inst,mixer,mats,light,until:S.time+CONFIG.cannonball.fractureLife});
+}
+
 /* Per-frame, real dt (like fxUpdate — call from main.js's loop). Advances
    playing mixers, fades debris out over the last
-   CONFIG.cannonball.fractureFadeOut seconds before the player respawns, then
-   disposes the instance. rods.js flips the real figurine back to visible on
-   its own the instant S.time passes r.removedUntil — this just needs to get
-   the debris out of the way around the same moment. */
+   CONFIG.cannonball.fractureFadeOut seconds before disposal, then disposes the
+   instance. For PLAYER debris `until` is the respawn timestamp (rods.js flips
+   the real figurine back to visible on its own the instant S.time passes
+   r.removedUntil — this just clears the debris around the same moment); for
+   BALL debris `until` is a self-contained now+fractureLife. Ball entries also
+   carry a point light that decays over the fade. */
 function fractureUpdate(dt){
   for(let i=S.frac.length-1;i>=0;i--){
    const f=S.frac[i];
    f.mixer.update(dt);
    const left=f.until-S.time;
+   if(f.light)f.light.intensity=Math.max(0,f.light.intensity-dt*6); // punchy flash that dies fast
    if(left<=CONFIG.cannonball.fractureFadeOut){
     const k=clamp(left/CONFIG.cannonball.fractureFadeOut,0,1);
     for(const m of f.mats)m.opacity=k;
@@ -130,6 +161,7 @@ function fractureUpdate(dt){
 function disposeFracture(i){
   const f=S.frac[i];
   scene.remove(f.obj);
+  if(f.light)scene.remove(f.light);  // ball debris only; player entries have no light
   for(const m of f.mats)m.dispose(); // geometry/textures are shared with the template — never dispose those
   S.frac.splice(i,1);
 }

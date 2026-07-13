@@ -36,6 +36,7 @@ function bindUI(){
  $('btnRematch').onclick=()=>startMatch(S.mode,S.rodLockRole);
  $('btnWinMenu').onclick=()=>gotoMenu();
  refreshKitUI();
+ bindOptions();
 }
 function wireRodCard(cardId,rowId,mode){
  var card=$(cardId),row=$(rowId),opts=row.querySelectorAll('.rodOpt');

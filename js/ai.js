@@ -259,8 +259,8 @@ function shotEval(team,bx,bz){
   const EV=AIC.evade;
   if(r.act==='evade'){
    r.actT+=dt;
-   if(overFoot||inFront||r.behindFlag||speed>=EV.maxSpeed||bp.y>AIC.lowY||!inFootRange(r,best)||r.actT>EV.abortT)r.act=null;
-  }else if(EV.on&&!r.act&&!r.behindFlag&&!overFoot&&!inFront&&bp.y<AIC.lowY&&speed<EV.maxSpeed&&inFootRange(r,best)){
+   if(overFoot||inFront||r.behindFlag||speed>=EV.maxSpeed||bp.y>AIC.lowY||!inFootRange(r,best)||r.actT>EV.abortT||relReal>-(EV.behindDead-0.5))r.act=null;
+  }else if(EV.on&&!r.act&&!r.behindFlag&&!overFoot&&!inFront&&bp.y<AIC.lowY&&speed<EV.maxSpeed&&inFootRange(r,best)&&relReal<-EV.behindDead){
    r.act='evade';r.actT=0;
   }
   if(r.act==='evade'){

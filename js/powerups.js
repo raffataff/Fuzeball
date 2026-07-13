@@ -1,6 +1,11 @@
 'use strict';
 /* ================= power-ups ================= */
-function clearPU(){if(S.pu.obj){scene.remove(S.pu.obj);S.pu.obj=null;}S.pu.timer=rand(PWR.firstDelay[0],PWR.firstDelay[1]);}
+// tear a power-up mesh out of the scene AND free its GPU resources — spawnPU builds fresh
+// geometry+materials every spawn, so without this they leak for the whole session.
+function disposePU(){const o=S.pu.obj;if(!o)return;scene.remove(o);
+ o.traverse(c=>{if(c.isMesh){c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();}});
+ S.pu.obj=null;}
+function clearPU(){disposePU();S.pu.timer=rand(PWR.firstDelay[0],PWR.firstDelay[1]);}
 function spawnPU(){
  const t=PU_TYPES[Math.floor(Math.random()*PU_TYPES.length)];
  const g=new THREE.Group();
@@ -23,7 +28,7 @@ function collectPU(){
  banner(t.ico+' '+t.label,t.key==='freeze'?nm+' FROZE THE RIVALS':nm+' ACTIVATED',1.6);
  Au.power();
  burst(S.pu.obj.position,new THREE.Color(t.col),new THREE.Color(0xffffff),60,40);
- scene.remove(S.pu.obj);S.pu.obj=null;S.pu.timer=rand(PWR.respawn[0],PWR.respawn[1]);
+ disposePU();S.pu.timer=rand(PWR.respawn[0],PWR.respawn[1]);
 }
 function powerupUpdate(dt){
  if(!cfg.power)return;
@@ -70,7 +75,7 @@ function deadBallUpdate(dt){
   if(b.stuckT<=DEAD.stallT)allStuck=false;
  }
  if(allStuck){ // every live ball wedged (also the single-ball case) -> whistle + re-drop all
-  S.still=0;Au.whistle();resetRodRotation();banner('DEAD BALL','RE-DROP',1.1);
+  Au.whistle();resetRodRotation();banner('DEAD BALL','RE-DROP',1.1);
   for(const b of S.balls)redropBall(b);
   return;
  }

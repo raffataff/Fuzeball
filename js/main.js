@@ -11,6 +11,7 @@ function loop(t){
  requestAnimationFrame(loop);
  const rdt=Math.min(.05,(t-lastT)/1000);lastT=t;
  Au.tick(rdt);
+ gamepadUpdate(rdt);   // poll controller once per rendered frame (in-match play + pause)
  const active=S.phase==='play'||S.phase==='goal'||S.phase==='count';
  if(active){
   const FIXED=1/SIM.hz;
@@ -65,15 +66,27 @@ function loop(t){
 initThree();
 initCustomize();
 bindUI();
+// boot() is idempotent: whichever fires first — the asset chain below or the failsafe
+// timeout — builds the world and starts the loop; the other becomes a no-op. Every
+// build step falls back to primitives when its GLB is absent, so a force-start can't
+// leave a broken scene (worst case: primitive rods/players until a late GLB is picked up).
+let booted=false;
+function boot(){
+ if(booted)return;booted=true;
+ buildRods();applyTable();applyTheme();applyColors();
+ requestAnimationFrame(loop);
+}
 loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
 loadBallModel(()=>{                     // ball GLB with material slots
   loadPlayerModel(()=>{
    loadExplosionModels(()=>{             // cannonball-kill fracture GLBs (if any figurine has one)
     warmFractureShaders();               // precompile their shaders now, off-screen — never during a match
     loadRodModels(()=>{                  // rod GLBs must be ready before buildRods clones them
-     buildRods();applyTable();applyTheme();applyColors();
-     requestAnimationFrame(loop);
+     boot();
     });
    });
   });
 });
+// Failsafe: if any loader stalls with no load/error event (e.g. an offline CDN or a hung
+// network fetch), start anyway after 8s so the game never hangs on a black screen.
+setTimeout(boot,8000);

@@ -17,7 +17,7 @@ let dbgArenaWalls=null,dbgContourRings=[];
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
 let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[];
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 
@@ -215,6 +215,20 @@ function buildDebug(){
   dbgEvade.push({mesh:m,rod:r,matDim:evDim,matHot:evHot});
  }
 
+ // evadeDead: per-rod box behind the rod (x = -behindDead..0 dir-relative, z = full slide range)
+ // — where evade is suppressed because the ball is too close and would get hit backwards.
+ // Tied to the evade toggle; drawn in orange to distinguish from the teal evade zone.
+ const edDim=dbgMat(0xff6b4a,.18),edHot=dbgMat(0xff6b4a,.55);
+ const edW=AIC.evade.behindDead;
+ for(const r of rods){
+  const dir=r.team===0?1:-1;
+  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(edW,0.04,zMax-zMin||0.1),edDim);
+  m.position.set(r.x-edW/2*dir,0.04,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgEvadeDead.push({mesh:m,rod:r,matDim:edDim,matHot:edHot});
+ }
+
  // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
  const serveM=dbgMat(0xc299ff,.22);
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
@@ -312,6 +326,13 @@ function updateAIVis(){
    const vis=on&&dbgAIOpts.evade;
    ev.mesh.visible=vis;if(!vis)continue;
    ev.mesh.material=ev.rod.act==='evade'?ev.matHot:ev.matDim;
+  }
+
+  // evadeDead: behind-the-rod dead zone where evade is suppressed (tied to evade toggle)
+  for(const ed of dbgEvadeDead){
+   const vis=on&&dbgAIOpts.evade;
+   ed.mesh.visible=vis;if(!vis)continue;
+   ed.mesh.material=ed.matDim;
   }
 
   // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward

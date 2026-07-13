@@ -83,6 +83,22 @@ function goalFx(team,b){
  goalLights[gi].color.copy(col);goalLights[gi].intensity=4;
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
 }
+/* Cannonball detonation FX at world `pos` (the ball's spot at the instant it
+   blows). Layered particle blast + white flash + screen shake + boom, then the
+   3D shard debris (spawnBallFracture, fracture.js). The particles fire even if
+   the fracture GLB never loaded, so there's always a visible bang. Call from
+   balls.js cannonballUpdate BEFORE removeBall clears the ball mesh. */
+function cannonExplodeFx(pos){
+ const p=pos.clone();p.y=Math.max(p.y,1.5);                 // keep the puff off the floor for the ground-level rings
+ const fire=new THREE.Color(0xff6a1a),spark=new THREE.Color(0xffd24d),
+       white=new THREE.Color(0xffffff),smoke=new THREE.Color(0x4a4a4a);
+ burst(p,fire,spark,240,92);      // fireball core
+ burstRing(p,fire,smoke,150,72);   // ground shockwave + smoke ring
+ burstUp(p,spark,white,100,84);    // spark fountain
+ burst(p,smoke,smoke,70,40);       // lingering smoke puff
+ flash();S.shake=1.9;Au.boom();
+ spawnBallFracture(pos);           // 3D debris at the TRUE pos (keeps its real height)
+}
 /* LED strips: strobe the scorer's colour on a goal, else the configured idle
    look (rainbow hue-cycle or theme colour) with a brightness pulse. */
 function ledUpdate(rdt){

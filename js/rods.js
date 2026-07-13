@@ -44,7 +44,9 @@ function updateRods(dt){
      r.angle=a*r.kickDir;
   }else if(r.act==='safeRaise'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.safeRaise.angle*r.kickDir,Math.min(1,AIC.safeRaise.lerp*dt));}
   else if(r.act==='trap'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.trap.angle*r.kickDir,Math.min(1,AIC.trap.lerp*dt));}
-  else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
+  else if(r.padAngleOn){                              // right-stick absolute angle: ease toward the stick-mapped target
+   r.heldFwd=false;r.angle=lerp(r.angle,r.padAngleTarget,Math.min(1,KICK.padAngleLerp*dt));
+  }else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
   const ms=(isUserRod(r)?KICK.userSpeed:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
   r.target=clamp(r.target,-r.maxOff,r.maxOff);

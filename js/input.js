@@ -11,6 +11,7 @@ addEventListener('keydown',e=>{
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
  if(e.code==='Escape'){
+  if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
   if(!$('league').classList.contains('hidden')&&S.phase==='menu'){$('league').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();return;}
   togglePause();return;
@@ -34,7 +35,7 @@ const cvs=$('game');
 cvs.addEventListener('mousemove',e=>{
  if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||S.userTeam<0)return;
  const r=S.ctrlRods[S.ctrl];
- r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens;
+ r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens;
 });
 cvs.addEventListener('mousedown',e=>{
  if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||S.userTeam<0)return;
@@ -50,13 +51,66 @@ function userControlUpdate(dt){
  let dz=0;
  if(keys.ArrowUp||keys.KeyW)dz-=1;
  if(keys.ArrowDown||keys.KeyS)dz+=1;
- if(dz)r.target=clamp(r.target+dz*CTRL.slideSpeed*dt,-r.maxOff,r.maxOff);
+ if(dz)r.target=clamp(r.target+dz*CTRL.slideSpeed*cfg.kbdSens*dt,-r.maxOff,r.maxOff);
  if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
   const bp=S.balls[0].m.position;
   let bi=S.ctrl,bd=1e9;
   S.ctrlRods.forEach((rr,i)=>{const d=Math.abs(bp.x-rr.x);if(d<bd){bd=d;bi=i;}});
   if(bi!==S.ctrl){S.ctrl=bi;updateChips();}
  }
+}
+/* ---- gamepad (Steam controller) ----------------------------------------
+   Standard-layout pad mapped onto the SAME rod controls as mouse+keyboard,
+   polled once per rendered frame from the main loop. Buttons are edge-detected
+   via gpPrev so a held button fires once. Menus still use the mouse; this
+   drives in-match play + pause/resume, which is the controller baseline a
+   Steam build needs. Layout: left-stick Y / d-pad ↕ = slide · A(0) or RT(7) =
+   kick · X(2) or LT(6) = raise (hold) · LB(4)/RB(5) or d-pad ↔ = switch rod ·
+   Y(3) = camera · Start(9) = pause. */
+const gpPrev={};let gpRaiseHeld=false;
+function gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);}
+addEventListener('gamepadconnected',e=>{console.log('gamepad connected:',e.gamepad.id);});
+function gamepadUpdate(dt){
+ if(!$('options').classList.contains('hidden'))return; // options screen owns the pad (live tester)
+ const pads=navigator.getGamepads?navigator.getGamepads():[];
+ let gp=null;for(const p of pads){if(p){gp=p;break;}}
+ if(!gp)return;
+ // snapshot the rising edge (down now, up last poll) of every button we use, in one pass
+ const just={};
+ for(const i of [0,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
+ if(just[9]&&(S.phase==='play'||S.phase==='count'||S.phase==='pause'))togglePause();
+ if(!(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&S.userTeam>=0&&S.ctrlRods.length)){
+  if(gpRaiseHeld)gpRaiseHeld=false;return;
+ }
+ const r=S.ctrlRods[S.ctrl],DZ=cfg.padDeadzone;
+ // SLIDE: which analog axis drives the men is configurable — 'ly' = left-stick up/down (axis 1),
+ // 'lx' = left-stick left/right (axis 0). Deadzoned, optionally inverted, scaled by cfg.padSlideSens.
+ let ay=(cfg.padSlideAxis==='lx'?gp.axes[0]:gp.axes[1])||0;
+ if(Math.abs(ay)<DZ)ay=0;else if(cfg.padSlideInvert)ay=-ay;
+ if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
+ if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*dt,-r.maxOff,r.maxOff);
+ if(just[0]||just[7])kickRod(r);                     // A / RT
+ if(just[3])S.camMode=(S.camMode+1)%CAM.modes.length;// Y
+ if(just[4]||just[14])setCtrl(S.ctrl-1);             // LB / d-pad ←
+ if(just[5]||just[15])setCtrl(S.ctrl+1);             // RB / d-pad →
+ // ANGLE: ABSOLUTE rod tilt — the stick's *position* maps straight to a target angle, so a partial
+ // push holds a partial angle (rate control snapped to the extremes). Axis is configurable — 'ry' =
+ // right-stick up/down (axis 3), 'rx' = right-stick left/right (axis 2). Deflection past the deadzone
+ // is rescaled to 0..1 (no jump off centre), inverted + sens-scaled, then split about rest: one side
+ // eases toward the forward strike angle, the other toward the raised-back angle. Centre = feet down.
+ let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0;
+ if(Math.abs(rs)>DZ){
+  if(cfg.padAngleInvert)rs=-rs;
+  let d=(Math.abs(rs)-DZ)/(1-DZ)*Math.sign(rs);      // 0 at deadzone edge → ±1 at full deflection
+  d=clamp(-d*cfg.padAngleSens,-1,1);                 // sens scales reach; sign keeps the old push direction
+  r.padAngleTarget=(d>=0?d*KICK.strikeA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
+  r.padAngleOn=true;
+ }else{r.padAngleTarget=0;r.padAngleOn=false;}
+ // raise is a HOLD; only write r.raise from the pad while its button is down or we just released
+ // it, so a connected-but-idle pad never clobbers keyboard/mouse raise. If the right stick is
+ // actively driving the angle, skip the binary raise so it doesn't fight.
+ const raise=gpDown(gp,2)||gpDown(gp,6);             // X / LT
+ if(!r.padAngleOn){if(raise){r.raise=true;gpRaiseHeld=true;}else if(gpRaiseHeld){r.raise=false;gpRaiseHeld=false;}}
 }
 function toggleFreeRoam(){
  S.freeRoam=!S.freeRoam;
