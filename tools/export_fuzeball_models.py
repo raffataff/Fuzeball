@@ -1,4 +1,4 @@
-"""
+﻿"""
 export_fuzeball_models.py  --  export your edited Fuzeball arena to game GLBs.
 
 Run inside Blender with your table.blend open:
@@ -72,7 +72,10 @@ def export_objects(sources, filename, translate=None):
         o.select_set(False)
     for c in copies:
         c.select_set(True)
-    bpy.context.view_layer.objects.active = copies[0]
+    try:
+        bpy.context.view_layer.objects.active = copies[0]
+    except Exception:
+        pass  # restricted context (Blender 4.x headless)
     path = os.path.join(ASSETS_DIR, filename)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB",
                               use_selection=True, export_yup=True, export_apply=False)
@@ -111,4 +114,4 @@ def main():
     print("Done ->", ASSETS_DIR)
 
 if __name__ == "__main__":
-    main()
+    bpy.app.timers.register(main, first_interval=0.01)

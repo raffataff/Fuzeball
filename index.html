@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="shortcut icon" href="/favicon.ico" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
 <title>FUZEBALL — 3D Foosball</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -35,8 +40,8 @@
 
 <div id="menu" class="screen">
   <button id="btnOptions" class="optGear" title="Options">⚙</button>
-  <h1 class="logo">FUZEBALL</h1>
-  <div class="tagline">3D Table Football · Arcade Physics v0.1.12</div>
+  <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
+  <div class="tagline">v0.1.15</div>
   <div class="modeRow">
     <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
     <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
@@ -51,6 +56,7 @@
       <div class="row"><label>Goals to win</label><select id="setGoals"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
        <div class="row"><label>Table theme</label><select id="setTheme"><option value="classic">Classic Club</option><option value="neon">Neon Nights</option><option value="royal">Royal Arena</option><option value="verdant">Verdant Field</option></select></div>
        <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
+       <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
       <div class="row"><label>Special balls</label><input type="checkbox" id="setSpecial" checked></div>
       <div class="row"><label>Power-ups</label><input type="checkbox" id="setPower" checked></div>
       <div class="row"><label>Auto rod switch</label><input type="checkbox" id="setAuto" checked></div>
@@ -221,6 +227,7 @@
     </div>
   </div>
   <div class="btnRow">
+    <button class="btn gold hidden" id="lgCup">🏆 Champions Cup</button>
     <button class="btn ghost" id="lgNew">Reset League</button>
     <button class="btn ghost" id="lgBack">◀ Main Menu</button>
   </div>
@@ -298,6 +305,30 @@
     <button class="btn hidden" id="btnWinContinue">Continue ▶</button>
     <button class="btn" id="btnRematch">Rematch</button>
     <button class="btn ghost" id="btnWinMenu">Main Menu</button>
+  </div>
+</div>
+
+<div id="lgSeasonEnd" class="screen hidden">
+  <div class="lgSEWrap" id="lgSEBody"></div>
+  <div class="btnRow"><button class="btn" id="lgSEContinue">Continue ▶</button></div>
+</div>
+
+<div id="championsCup" class="screen hidden">
+  <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
+  <div class="tagline" id="cupSub"></div>
+  <div id="cupBracket"></div>
+  <div class="btnRow">
+    <button class="btn gold" id="cupPlay">▶ Play Tie</button>
+    <button class="btn hidden" id="cupDone">🏆 View Trophy</button>
+    <button class="btn ghost" id="cupBack">◀ League</button>
+  </div>
+  <div class="cupControlWrap">
+    <label>Control</label>
+    <select id="cupControl">
+      <option value="">All rods</option><option value="GK">GK only</option>
+      <option value="DEF">DEF only</option><option value="MID">MID only</option>
+      <option value="ATT">ATT only</option><option value="watch">Spectate</option>
+    </select>
   </div>
 </div>
 

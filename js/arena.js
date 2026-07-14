@@ -33,7 +33,7 @@ function arenaContact(b,pen,nx,ny,nz){
  const vn=v.x*nx+v.y*ny+v.z*nz;
  if(vn<0){
   // static geometry: mass-free reflection. Slow contact goes inelastic → ball ROLLS up/down
-  if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;Au.wall(-vn);}
+  if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;Au.wall(-vn,b.t.audio?.wall);}
   else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;}
   if(ny>ARENA.fricNy){const f=Math.exp(-PHY.floorFric*hStep);v.x*=f;v.z*=f;}
  }
@@ -159,13 +159,13 @@ function applyTable(){
  if(typeof groundMesh!=='undefined'&&groundMesh)groundMesh.visible=!ARENA_ON;
  if(typeof crowdMesh!=='undefined'&&crowdMesh)crowdMesh.visible=!ARENA_ON;
  // the themed pitch plane is shared — carry it into the visible group
- if(fieldMesh&&primTable&&arenaTable){(ARENA_ON?arenaTable:primTable).add(fieldMesh);fieldMesh.visible=true;}
- // each table GLB brings its own nets; repoint netMats so team colours land on the visible pair
- const nets=tableNets[ARENA_ON?'arena':'classic'];
- if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
- // if the active table supplies its own goal-frame posts, hide the primitive front frame (keep the net)
- const custom=tableHasFrame[ARENA_ON?'arena':'classic'];
- goalFrames.forEach(g=>{if(g.userData&&g.userData.front)g.userData.front.visible=!custom;});
+  if(fieldMesh&&primTable&&arenaTable){(ARENA_ON?arenaTable:primTable).add(fieldMesh);fieldMesh.visible=true;}
+  if(pitchGroup&&primTable&&arenaTable){(ARENA_ON?arenaTable:primTable).add(pitchGroup);}
+  const nets=tableNets[ARENA_ON?'arena':'classic'];
+  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
+  const custom=tableHasFrame[ARENA_ON?'arena':'classic'];
+  goalFrames.forEach(g=>{if(g.userData&&g.userData.front)g.userData.front.visible=!custom;});
+  if(typeof drawField==='function')drawField();
 }
 
 /* ===== arena debug wireframe ===== */
@@ -175,31 +175,36 @@ function buildArenaDebugMesh(){
 }
 
 /* ===== big-goal morph of the baked (GLB) arena shell =====
-   The curved bowl can't just scale like the flat table's end-walls — its mouth width is baked
-   into a swept curve. Instead we re-project each shell vertex onto the SDF at the *widened* mouth,
-   holding its rest signed-distance (its depth into the wall) and its height Y fixed. arenaSD is
-   already parameterised per-goal (gh0=right/+x, gh1=left/−x), so this is the same math the physics
-   and mesh generator use. Only vertices near a widened mouth actually move (the SDF gradient is ~0
-   elsewhere), so it's local, order-independent (survives glTF splitting the mesh by material) and
-   leaves UVs — hence textures — untouched. */
-function arenaProjectG(x,z,target,gh0,gh1,iters){
- for(let i=0;i<iters;i++){const sd=arenaSD(x,z,gh0,gh1),g=arenaGrad(x,z,gh0,gh1),e=sd-target;x-=g.x*e;z-=g.z*e;}
- return {x,z};
-}
-// Called once per arena GLB mesh (arena_bowl / led ring). Precomputes, per vertex, the horizontal
-// delta to a fully-open RIGHT mouth (dR) and LEFT mouth (dL) so the per-frame path is a cheap blend.
+   Standard "slide the goal walls out" widen — NOT an SDF re-projection (that reshaped the postR
+   fillet as the mouth grew and pinched/bulged the rounded bends). We instead scale each shell
+   vertex's z about the goal centreline (z=0) by a per-vertex factor that is `bigGoalMult` at the
+   mouth inner edge (|z|≤goalHalf) and eases to 1 at the outer bowl wall (|z|→width/2), gated to the
+   goal region in x (full behind the goal line, faded out `bigGoalReach` into the field). This slides
+   the two little side walls outward, stretches the back wall to match, and the corner bends ride
+   along for free because their verts share the same continuous field. Pure z, so it never touches
+   x or Y and leaves UVs — hence textures — untouched. Local & order-independent (survives glTF
+   splitting the mesh by material). */
+// Called once per arena GLB mesh (arena_bowl / led ring). Precomputes, per vertex, the z delta to a
+// fully-open RIGHT mouth (dR) and LEFT mouth (dL) so the per-frame path is a cheap blend (x delta=0).
 function registerArenaMorph(root){
+ const gh=F.goalHalf,M=PHY.bigGoalMult,gl=F.L/2,hw=ARENA.width/2,reach=ARENA.bigGoalReach;
+ // widen weight 0..1 for a vertex at (x≥0, az=|z|): zPin pins the outer wall, xNear gates to the goal.
+ const gate=(x,az)=>{
+  const zPin=clamp((hw-az)/(hw-gh),0,1);                 // 1 at/inside the mouth edge, 0 at the outer wall
+  const xNear=x>=gl?1:clamp((x-(gl-reach))/reach,0,1);   // 1 behind the line, 0 a `reach` into the field
+  return zPin*(xNear*xNear*(3-2*xNear));                 // smoothstep the x fade so the corner eases in
+ };
  root.traverse(c=>{
   if(!c.isMesh||!c.geometry||!c.geometry.attributes.position)return;
   const n=onm(c),pn=c.parent?onm(c.parent):'';
   if(!(n.startsWith('arena_bowl')||pn.startsWith('arena_bowl')||n.startsWith('led')))return;
-  const pos=c.geometry.attributes.position,N=pos.count,gh=F.goalHalf,M=PHY.bigGoalMult;
+  const pos=c.geometry.attributes.position,N=pos.count;
   const base=new Float32Array(N*3),dR=new Float32Array(N*3),dL=new Float32Array(N*3);
-  for(let i=0;i<N;i++){const j=i*3,x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+  for(let i=0;i<N;i++){const j=i*3,x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),az=Math.abs(z);
    base[j]=x;base[j+1]=y;base[j+2]=z;
-   const d0=arenaSD(x,z,gh,gh);                                  // rest signed distance = this vertex's wall depth
-   const wr=arenaProjectG(x,z,d0,gh*M,gh,5);dR[j]=wr.x-x;dR[j+2]=wr.z-z;   // widen right mouth only
-   const wl=arenaProjectG(x,z,d0,gh,gh*M,5);dL[j]=wl.x-x;dL[j+2]=wl.z-z;}  // widen left mouth only
+   dR[j+2]=x>0?z*(M-1)*gate( x,az):0;   // widen right mouth (+x half only) — z-only, x delta stays 0
+   dL[j+2]=x<0?z*(M-1)*gate(-x,az):0;   // widen left  mouth (−x half only)
+  }
   arenaMorph.push({o:c,pos,base,dR,dL,N});
  });
  console.log('arena shell morph: '+arenaMorph.length+' mesh(es)');

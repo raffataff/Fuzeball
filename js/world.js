@@ -2,7 +2,7 @@
 /* ================= three.js world ================= */
 let renderer,scene,camera,dirLight;
 const teamMat=[null,null],teamGlow=[null,null];
-let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null;
+let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
 // big-goal GLB hookup, per goal index [0=left/-x, 1=right/+x] (matches goalFrames order):
 // glbGoalGrow = baked frame meshes uniform-scaled about z=0; glbGoalWall = end-wall meshes {o,inner,outer,sgn} slid open. Filled by registerBigGoalMeshes, driven in bigGoalUpdate.
 let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
@@ -67,12 +67,12 @@ function buildTable(){
  const fieldMat=new THREE.MeshStandardMaterial({roughness:.85});
  fieldMesh=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),fieldMat);
  fieldMesh.rotation.x=-Math.PI/2;fieldMesh.receiveShadow=true;primTable.add(fieldMesh);
- for(const [key,th] of Object.entries(THEMES)){
-   loader.load('assets/'+th.pitch,tex=>{
-    tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[key]=tex;
-   if(key===cfg.theme){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}
-  });
- }
+  for(const [pid,pdef] of Object.entries(CONFIG.pitches)){
+    loader.load('assets/'+pdef.tex,tex=>{
+     tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[pid]=tex;
+    if(pid===cfg.pitch){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}
+   });
+  }
  wallMat=new THREE.MeshStandardMaterial({color:0x7a4b22,roughness:.6,metalness:.1});
  const body=new THREE.Mesh(new THREE.BoxGeometry(F.L+10,10,F.W+10),wallMat);
  body.position.y=-5.2;body.receiveShadow=true;primTable.add(body);
@@ -271,9 +271,55 @@ function buildFxPools(){
  indicator.rotation.x=Math.PI;indicator.visible=false;scene.add(indicator);
 }
 
+function applyPitchModel(){
+  if(!pitchModel)return;
+  if(pitchGroup)return;  // idempotent — already built
+  pitchGroup=pitchModel;
+  pitchModel=null;       // ownership transferred; the model is now in the scene
+  (fieldMesh?fieldMesh.parent:primTable).add(pitchGroup);
+  drawField();
+}
+
+// One-time map of the loaded pitch GLB's meshes → variant key, remembering each mesh's
+// parent so it can be detached/re-attached. Built from the GLB as loaded (before any
+// removal), so every variant's parent link is captured intact.
+function indexPitchVariants(){
+  pitchVariants={};
+  if(!pitchGroup)return;
+  pitchGroup.traverse(c=>{if(!c.isMesh)return;const k=ballKey(c);if(!k)return;
+   (pitchVariants[k]||(pitchVariants[k]=[])).push({mesh:c,parent:c.parent});});
+}
+// Release a detached variant's GPU buffers + textures. CPU-side geometry attributes and
+// texture.image survive, so three.js re-uploads automatically if the pitch is re-selected.
+function freePitchMeshGPU(c){
+  if(c.geometry&&c.geometry.dispose)c.geometry.dispose();
+  const mats=Array.isArray(c.material)?c.material:[c.material];
+  for(const m of mats){if(!m)continue;
+   for(const k of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap']){
+    const t=m[k];if(t&&t.dispose)t.dispose();}}
+}
 function drawField(){
- const tex=fieldTexCache[cfg.theme];
- if(tex){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}
+  const pdef=CONFIG.pitches[cfg.pitch];
+  if(!pdef)return;
+  const glbKey=pdef.glb;
+  if(pitchGroup){
+    if(!pitchVariants)indexPitchVariants();
+    // Only the selected variant stays in the scene graph. The rest are DETACHED (not merely
+    // hidden) so renderer.compile()/the render loop never touch them — otherwise compile
+    // uploads every variant's textures to VRAM regardless of .visible. Re-attaching on switch
+    // re-uploads from the retained CPU data (a one-frame cost, only when changing pitch).
+    let shown=false;
+    for(const key in pitchVariants){
+      const active=key===glbKey;
+      for(const v of pitchVariants[key]){
+        if(active){if(!v.mesh.parent)v.parent.add(v.mesh);v.mesh.visible=true;shown=true;}
+        else if(v.mesh.parent){freePitchMeshGPU(v.mesh);v.parent.remove(v.mesh);}
+      }
+    }
+    if(shown){if(fieldMesh)fieldMesh.visible=false;return;}
+  }
+  if(fieldMesh){fieldMesh.visible=true;const tex=fieldTexCache[cfg.pitch];
+   if(tex){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}}
 }
 
 function applyTheme(){

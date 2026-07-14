@@ -195,7 +195,14 @@ function shotEval(team,bx,bz){
   const dz=Math.abs(bp.z-mz);
   const overFoot=relReal>(AIC.overFootOffset-AIC.overFoot) && relReal<(AIC.overFootOffset+AIC.overFoot); // ball in the forward-offset feet zone (mostly in front of the men, not behind)
   const inFront=relReal>AIC.inFrontMin&&relReal<AIC.inFrontMax;// ball ahead within a forward swing
-  const aligned=dz<(slow?AIC.alignSlow:AIC.alignFast);
+  // wall-hug rescue: a ball pinned against a side wall sits beyond the outermost man's
+  // centrable range (that man is jammed at ±maxOff), so dz never falls under alignSlow —
+  // yet the capsule still reaches it. When the nearest man is slid to its limit TOWARD such
+  // a ball and it's within capsule reach in z, treat it as aligned so the rod swings and
+  // knocks it loose instead of dead-balling beside it. Guarded to genuine wall-hugs.
+  const wallHug=Math.abs(bp.z)>F.W/2-AIC.wallReach && Math.abs(r.offset)>r.maxOff-AIC.wallSlack
+                && (bp.z-mz)*r.offset>0 && dz<AIC.wallReach;
+  const aligned=dz<(slow?AIC.alignSlow:AIC.alignFast)||wallHug;
   // ---- raise decision with a sticky latch: once the ball crosses raiseBehind
   //      (going behind the rod) the rod raises and STAYS raised until the ball
   //      reaches the overFoot zone.  This stops the rod from dropping mid-approach

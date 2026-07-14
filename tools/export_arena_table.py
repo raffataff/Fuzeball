@@ -74,7 +74,10 @@ def export_objects(sources, filename, translate_map=None):
         o.select_set(False)
     for c in copies:
         c.select_set(True)
-    bpy.context.view_layer.objects.active = copies[0]
+    try:
+        bpy.context.view_layer.objects.active = copies[0]
+    except Exception:
+        pass  # restricted context (Blender 4.x headless)
     path = os.path.join(ASSETS_DIR, filename)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB",
                               use_selection=True, export_yup=True, export_apply=False)
@@ -110,4 +113,14 @@ def main():
     print("Done ->", ASSETS_DIR)
 
 if __name__ == "__main__":
-    main()
+    # Two ways this script gets run, each needs a different launch:
+    #   * From the Text Editor's "Run Script" button, Blender is mid-draw, so
+    #     calling bpy.ops.export_scene.gltf right now throws "can't modify blend
+    #     data in this state (drawing/rendering)". Defer it one tick via a timer
+    #     so it fires AFTER the draw finishes -- this is the fix for the crash.
+    #   * Headless (blender -b file.blend -P this.py) there's no draw context and
+    #     no event loop to service timers, so we just call main() straight away.
+    if bpy.app.background:
+        main()
+    else:
+        bpy.app.timers.register(main, first_interval=0.01)

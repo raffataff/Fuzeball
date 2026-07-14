@@ -33,8 +33,9 @@ function startMatch(mode,rodLockRole){
  $('hud').classList.remove('hidden');
  $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
  $('ballTag').textContent=BALL_TYPES.classic.name;
- updateScoreUI();updateChips();
- banner('FIRST TO '+goalTarget(),S.lg?'LEAGUE · ROUND '+(LG.round+1):S.userTeam<0?'AI SHOWDOWN':'GOOD LUCK',1.7);
+  updateScoreUI();updateChips();
+  const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'GOOD LUCK');
+  banner('FIRST TO '+goalTarget(),sub,1.7);
  startCount(MATCH.countIn);
 }
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;$('count').style.display='block';$('count').textContent='';}
@@ -59,8 +60,8 @@ function endMatch(w){
  Au.goal();Au.whistle(3);
  flash();S.shake=1;
  clearBalls();clearPU();
- const wasLg=!!S.lg;
- if(wasLg)lgRecord(w); // record + sim the rest of the round while the bridge is live
+  const wasLg=!!S.lg;
+  if(wasLg){(S.lg.cup?cupRecord:lgRecord)(w);} // record + sim the rest while the bridge is live
  $('winTitle').textContent=teamName(w)+' WINS!';
  $('winTitle').style.color=teamCol(w);
  $('winScore').textContent=S.score[0]+' — '+S.score[1];
@@ -69,8 +70,10 @@ function endMatch(w){
   '<span class="l">'+Math.round(st.poss[0]/tp*100)+'%</span><span class="m">Possession</span><span class="r">'+Math.round(st.poss[1]/tp*100)+'%</span>'+
   '<span class="l">'+st.kicks[0]+'</span><span class="m">Kicks</span><span class="r">'+st.kicks[1]+'</span>'+
   '<span class="m" style="grid-column:1/4;text-align:center">Top ball speed: '+Math.round(st.topSpeed*.35)+' km/h</span>'+
-   (wasLg?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">⚙ +'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
-    (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">🛡 Clean sheet bonus +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':''):'');
+    (wasLg?(S.lg.cup
+      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">⚔ CHAMPIONS CUP · '+CUP.rounds[(LG.cup?LG.cup.round:0)]+'</span>'
+      :'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">⚙ +'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
+       (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">🛡 Clean sheet bonus +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':'')):'');
  $('btnWinContinue').classList.toggle('hidden',!wasLg); // league: Continue → lobby
  $('btnRematch').classList.toggle('hidden',wasLg);      // league: no rematches
  $('win').classList.remove('hidden');
@@ -85,6 +88,8 @@ function gotoMenu(){
    cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
    cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;
    cfg.special=S.lg.prevKit.special;cfg.power=S.lg.prevKit.power;
+   cfg.table=S.lg.prevKit.table;cfg.theme=S.lg.prevKit.theme;cfg.pitch=S.lg.prevKit.pitch;
+   applyTable();applyTheme();
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
   S.phase='menu';clearBalls();clearPU();clearFractures();

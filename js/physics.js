@@ -38,24 +38,24 @@ function stepBall(b,h){
  if(!ARENA_ON){
   if(p.y<BALL_R){
    p.y=BALL_R;
-   if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+   if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
   if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R){
-   if(p.z>zl&&v.z>0){p.z=zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z));}
-   else if(p.z<-zl&&v.z<0){p.z=-zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z));}
+   if(p.z>zl&&v.z>0){p.z=zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
+   else if(p.z<-zl&&v.z<0){p.z=-zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
   }
   if(!b.scored){
    const xl=F.L/2-BALL_R;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
     if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // goal ONLY under the bar & whole ball over the line
-    else if(p.y<F.wallH+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x));}
+    else if(p.y<F.wallH+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
     if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<F.wallH+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x));}
+    else if(p.y<F.wallH+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }
   }else{
    const bx=F.L/2+F.goalDepth-BALL_R;
@@ -104,7 +104,7 @@ function stepBall(b,h){
      arenaContact(b,pen,nx,ny,nz);contacted=true;
     }
     if(p.y<BALL_R){
-     p.y=BALL_R;if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+     p.y=BALL_R;if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
@@ -138,19 +138,19 @@ function goalFrameCollide(b,h){
   if(p.y<GH+pr)for(let sz=-1;sz<=1;sz+=2){
    const dx=p.x-gx,dz=p.z-sz*gh,dd=Math.hypot(dx,dz);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,nz=dz/dd;p.x+=nx*(pr-dd);p.z+=nz*(pr-dd);
-    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn);}}
+    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn,b.t.audio?.post);}}
   }
   // crossbar: horizontal cylinder along z at (gx, goalH), z∈[-gh,gh]
   if(Math.abs(p.z)<gh+pr){
    const dx=p.x-gx,dy=p.y-GH,dd=Math.hypot(dx,dy);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
-    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn);}}
+    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post);}}
   }
   // net roof: solid top over the goal box (behind the line). Only catches balls in the band
   // above the mouth (below it is a clean shot under the bar), so over-the-bar lobs rest on top.
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
-  if(xin&&Math.abs(p.z)<gh&&p.y>GH-BALL_R&&p.y<GH+BALL_R&&v.y<0){
-   p.y=GH+BALL_R;if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.4);
+   if(xin&&Math.abs(p.z)<gh&&p.y>=GH&&p.y<GH+BALL_R&&v.y<0){
+   p.y=GH+BALL_R;if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }
@@ -210,7 +210,7 @@ function collideRod(b,r){
     // aim-assist bends a clean shot goalward: in the timed power window as before, OR on a sweet hit
     if(pow||(sweet&&SW.forceAssist))aimAssist(b,r);
     if(sweet)S.shake=Math.min(1,S.shake+SW.shake);   // juice: a clean strike thumps
-    if(-vn>KICK.sndFrom){Au.kick(-vn);
+    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
@@ -258,7 +258,7 @@ function collideRod(b,r){
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     if(pow)aimAssist(b,r);
-   if(-vn>KICK.sndFrom){Au.kick(-vn);
+   if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
@@ -289,5 +289,5 @@ function ballBall(a,b){
  const vbn2=((mb-e*ma)*vbn+(1+e)*ma*van)/(ma+mb);
  a.v.x+=(van2-van)*dx;a.v.y+=(van2-van)*dy;a.v.z+=(van2-van)*dz;
  b.v.x+=(vbn2-vbn)*dx;b.v.y+=(vbn2-vbn)*dy;b.v.z+=(vbn2-vbn)*dz;
- Au.wall((van-vbn)*2);
+ Au.wall((van-vbn)*2,(ma>=mb?a:b).t.audio?.wall);
 }

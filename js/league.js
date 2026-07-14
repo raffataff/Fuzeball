@@ -50,6 +50,15 @@ function loadLG(slot){
   if(LG.name==null)LG.name='LEAGUE '+(LG.slot+1);
   if(LG.special==null)LG.special=cfg.special;
   if(LG.power==null)LG.power=cfg.power;
+  // fix invalid pitch values from old saves (e.g. 'royal' was a GLB name, not a pitch ID)
+  if(LG.divs){
+    const validPitches=Object.keys(CONFIG.pitches);
+    for(let d of LG.divs){
+      if(!d.pitch||!validPitches.includes(d.pitch)){
+        d.pitch=(LGC.divisions[d.tier]&&LGC.divisions[d.tier].pitch)||'';// triggers LGC fallback in lgPlayMatch
+      }
+    }
+  }
   const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
   let migrated=false;
   LG.teams.forEach((t,i)=>{
@@ -99,6 +108,7 @@ function lgNewSeason(keep,opts,forceSlot){
   for(let t=1;t<3;t++){
    const relegated=orders[t].slice(-LGC.relegateN);
    for(const e of relegated){
+    if(e.i===LG.playerId)continue; // player's penalty already applied at season-end (so the lobby shows it)
     for(const role of LG_ROLES){
      const st=e.t.bld[role];
      const k=LG_KEYS[Math.floor(Math.random()*LG_KEYS.length)];
@@ -117,7 +127,7 @@ function lgNewSeason(keep,opts,forceSlot){
   const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
   // 5. Record history (OLD division in the history entry)
   const porder=orders[oldPd];
-  LG.hist.push({season,
+   LG.hist.push({season:LG.season,
    divChamps:[orders[0][0]?orders[0][0].t.name:'',orders[1][0]?orders[1][0].t.name:'',orders[2][0]?orders[2][0].t.name:''],
    playerDiv:LGC.divisions[oldPd].name,
    playerPos:porder?porder.findIndex(e=>e.i===LG.playerId)+1:0,
@@ -129,12 +139,12 @@ function lgNewSeason(keep,opts,forceSlot){
    const names=LGC.names.slice();
    for(let i=names.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=names[i];names[i]=names[j];names[j]=t;}
    const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
-   const startDiv=opts&&opts.startDiv!=null?opts.startDiv:1;
-   const slot=forceSlot!=null?forceSlot:(LG?LG.slot:0);
-   teams=[{id:0,name:(opts&&opts.teamName?opts.teamName:(cfg.redName||'YOU')).toUpperCase(),
-    col:opts&&opts.teamCol?opts.teamCol:cfg.redColor,
-    bld:lgBld(LGC.divisions[startDiv].base),up:LGC.playerStart,
-    model:opts&&opts.model?opts.model:cfg.modelRed,div:startDiv}];
+    const startDiv=opts&&opts.startDiv!=null?opts.startDiv:(LG?LG.teams[LG.playerId].div:1);
+    const slot=forceSlot!=null?forceSlot:(LG?LG.slot:0);
+    teams=[{id:0,name:(opts&&opts.teamName?opts.teamName:(LG&&LG.teams[LG.playerId]?LG.teams[LG.playerId].name:cfg.redName||'YOU')).toUpperCase(),
+     col:opts&&opts.teamCol?opts.teamCol:(LG&&LG.teams[LG.playerId]?LG.teams[LG.playerId].col:cfg.redColor),
+     bld:lgBld(LGC.divisions[startDiv].base),up:LGC.playerStart,
+     model:opts&&opts.model?opts.model:(LG&&LG.teams[LG.playerId]?LG.teams[LG.playerId].model:cfg.modelRed),div:startDiv}];
    const pcol=teams[0].col;
    const need=[LGC.divSize,LGC.divSize,LGC.divSize];need[startDiv]--; // player occupies one slot
    let nextId=1;for(let t=0;t<3;t++){
@@ -151,20 +161,22 @@ function lgNewSeason(keep,opts,forceSlot){
      lgAiSpend(team);teams.push(team);nextId++;
     }
    }
-  LG={slot,name:opts&&opts.name?opts.name:('LEAGUE '+(slot+1)),
-   season:1,round:0,playerId:0,
-   special:opts&&opts.special!=null?opts.special:cfg.special,
-   power:opts&&opts.power!=null?opts.power:cfg.power,
-   teams:[],divs:[],hist:[]};
+   LG={slot,name:opts&&opts.name?opts.name:(LG?LG.name:'LEAGUE '+(slot+1)),
+    season:1,round:0,playerId:0,
+    special:opts&&opts.special!=null?opts.special:(LG?LG.special:cfg.special),
+    power:opts&&opts.power!=null?opts.power:(LG?LG.power:cfg.power),
+    teams:[],divs:[],hist:[]};
  }
  for(const t of teams){t.w=0;t.l=0;t.gf=0;t.ga=0;t.p=0;}
  LG.teams=teams;LG.season=season;LG.round=0;
  const divs=[];for(let t=0;t<3;t++){
   const tids=teams.filter(te=>te.div===t).map(te=>te.id);
-  divs.push({name:LGC.divisions[t].name,tier:t,teamIds:tids,fixtures:lgFixtures(tids),results:[],champ:null});
+   divs.push({name:LGC.divisions[t].name,tier:t,teamIds:tids,fixtures:lgFixtures(tids),results:[],champ:null,
+    table:LGC.divisions[t].table||'classic',theme:LGC.divisions[t].theme||'classic',pitch:LGC.divisions[t].pitch||'grass1'});
  }
- LG.divs=divs;
- S.lgChampDone=false;saveLG();
+  LG.divs=divs;
+  LG.seasonEnd=null; // season-end summary already shown/applied — don't re-trigger
+  S.lgChampDone=false;saveLG();
 }
 /* ---- ratings + statistical sim (same stat weights spirit as live play) ---- */
 function lgRodScore(st,w){let s=0,tw=0;for(const k in w){s+=(st[k]==null?STC.base:st[k])*w[k];tw+=w[k];}return s/tw;}
@@ -186,11 +198,14 @@ function lgTeamForm(ti){
  return out;
 }
 function lgSim(a,b){ // race to LGC.goals — like the live rules, so no draws
- const A=LG.teams[a].bld,B=LG.teams[b].bld;
- const p=1/(1+Math.exp(-((lgOff(A)-lgDef(B))-(lgOff(B)-lgDef(A)))*LGC.simK));
- let ga=0,gb=0;
- while(ga<LGC.goals&&gb<LGC.goals){if(Math.random()<p)ga++;else gb++;}
- return[ga,gb];
+  const A=LG.teams[a].bld,B=LG.teams[b].bld;
+  return lgSimBlds(A,B);
+}
+function lgSimBlds(A,B){ // same race, but takes two builds directly (cup entrants aren't LG.teams)
+  const p=1/(1+Math.exp(-((lgOff(A)-lgDef(B))-(lgOff(B)-lgDef(A)))*LGC.simK));
+  let ga=0,gb=0;
+  while(ga<LGC.goals&&gb<LGC.goals){if(Math.random()<p)ga++;else gb++;}
+  return[ga,gb];
 }
 /* ---- upgrade economy ---- */
 function lgCost(lvl){if(lvl>=STC.max)return Infinity;const i=lvl-STC.base;return i<0?1:LGC.cost[i]||1;}
@@ -242,7 +257,7 @@ function modelRender(id){
 /* ---- live-match bridge (flow.js/rods.js/ai.js read these) ---- */
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
 function teamCol(t){return S.lg?S.lg.cols[t]:(t===0?cfg.redColor:cfg.blueColor);}
-function goalTarget(){return S.lg?LGC.goals:cfg.goals;}
+function goalTarget(){return S.lg?(S.lg.cup?CUP.goals:LGC.goals):cfg.goals;}
 function teamDiff(t){return S.lg?'pro':(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds ARE the difficulty
 function renderLgTape(op){
  const T=LG.teams,me=T[LG.playerId],them=T[op];
@@ -257,7 +272,7 @@ function renderLgTape(op){
    '<div class="lgFigCap">'+(icon||'')+' '+name+'</div>'+
   '</div>';
  const teamCard=(col,name,off,def,figHtml)=>
-  '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('OFF',off,'off')+bar('DEF',def,'def')+'</div>';
+  '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
  $('lgTapeBody').innerHTML=
   teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?',mo?mo.ico:''))+
   '<div class="lgTapeVs"><span>VS</span></div>'+
@@ -269,13 +284,19 @@ function lgPlayMatch(){
  const pid=LG.playerId,op=fx[0]===pid?fx[1]:fx[0],T=LG.teams;
  S.teamStats=[T[pid].bld,T[op].bld];
  S.lg={op,names:[T[pid].name,T[op].name],cols:[T[pid].col,T[op].col],rec:false,
-        prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,special:cfg.special,power:cfg.power}};
+        prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,special:cfg.special,power:cfg.power,
+                 table:cfg.table,theme:cfg.theme,pitch:cfg.pitch}};
  const sel=$('lgControl').value;
  $('league').classList.add('hidden');
  cfg.redColor=T[pid].col;cfg.modelRed=T[pid].model;cfg.blueColor=T[op].col;cfg.modelBlue=T[op].model;cfg.special=LG.special;cfg.power=LG.power;
-  document.documentElement.style.setProperty('--c0',cfg.redColor);
-  document.documentElement.style.setProperty('--c1',cfg.blueColor);
- const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
+   document.documentElement.style.setProperty('--c0',cfg.redColor);
+   document.documentElement.style.setProperty('--c1',cfg.blueColor);
+  const pdiv=LG.divs[playerDiv()];
+  cfg.table=pdiv.table||LGC.divisions[playerDiv()].table||'classic';
+  cfg.theme=pdiv.theme||LGC.divisions[playerDiv()].theme||'classic';
+  cfg.pitch=pdiv.pitch||LGC.divisions[playerDiv()].pitch||'grass1';
+  applyTable();applyTheme();
+  const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
  if(LGC.tape){
   renderLgTape(op);
   $('lgTape').classList.remove('hidden');
@@ -309,9 +330,10 @@ function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisio
  }
  for(let i=0;i<LG.teams.length;i++){if(i!==LG.playerId)lgAiSpend(LG.teams[i]);}
  LG.round++;
- if(LG.round>=pdiv.fixtures.length){
-  for(let t=0;t<3;t++){const order=lgOrderDiv(t);LG.divs[t].champ=order[0].t.name;}
- }
+  if(LG.round>=pdiv.fixtures.length){
+   for(let t=0;t<3;t++){const order=lgOrderDiv(t);LG.divs[t].champ=order[0].t.name;}
+   if(!LG.seasonEnd)lgFinalize(); // freeze promotion/relegation + apply player's relegation penalty now
+  }
  for(let t=0;t<3;t++){
   const newRank=lgOrderDiv(t).map(e=>e.i);
   for(let i=0;i<newRank.length;i++){const ti=newRank[i];LG.teams[ti].rankD=prevRanks[t].indexOf(ti)-i;}
@@ -319,6 +341,163 @@ function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisio
  saveLG();
 }
 function lgReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg/S.teamStats)
+/* ---- end-of-season summary (plays after the final match, before the lobby) ---- */
+function lgFinalize(){ // freeze final standings + promotion/relegation + apply player's relegation penalty
+  const orders=[lgOrderDiv(0),lgOrderDiv(1),lgOrderDiv(2)];
+  const promotedIds=[[],[]],relegatedIds=[[],[]];
+  for(let t=0;t<2;t++)promotedIds[t]=orders[t].slice(0,LGC.promoteN).map(e=>e.i);
+  for(let t=0;t<2;t++)relegatedIds[t]=orders[t+1].slice(-LGC.relegateN).map(e=>e.i);
+  const divs=[];
+  for(let t=0;t<3;t++){
+   const promotedSet=new Set(t<2?promotedIds[t]:[]);   // top of this div → up
+   const dropSet=new Set(t>0?relegatedIds[t-1]:[]);     // bottom of this div → down
+   const champ=orders[t][0];
+   divs.push({name:LGC.divisions[t].name,tier:t,champ:champ.t.name,champId:champ.i,
+    order:orders[t].map((e,pi)=>({i:e.i,name:e.t.name,col:e.t.col,w:e.t.w,l:e.t.l,gf:e.t.gf,ga:e.t.ga,p:e.t.p,
+     promoted:promotedSet.has(e.i),relegated:dropSet.has(e.i)}))});
+  }
+  const oldPd=playerDiv();
+  const pOrder=orders[oldPd];
+  const pPos=pOrder.findIndex(e=>e.i===LG.playerId)+1;
+  const pPromoted=oldPd<2&&promotedIds[oldPd].includes(LG.playerId);
+  const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
+  const pChamp=oldPd===2&&orders[2][0].i===LG.playerId;
+  const fate=pChamp?'champion':pPromoted?'promoted':pRelegated?'relegated':'stayed';
+  let playerLosses=[];
+  if(pRelegated){ // apply the penalty NOW so the lobby squad already reflects the drop
+   const bld=LG.teams[LG.playerId].bld;
+   for(const role of LG_ROLES){
+    const st=bld[role];
+    const k=LG_KEYS[Math.floor(Math.random()*LG_KEYS.length)];
+    const from=st[k],to=Math.max(LGC.relegateFloor,from-LGC.relegateLose);
+    if(to<from){st[k]=to;playerLosses.push({role,key:k,from,to});}
+   }
+  }
+  LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,divs,playerLosses,shown:false};
+  saveLG();
+}
+function lgSeasonEarn(){
+  const pd=playerDiv(),dv=LG.divs[pd],pid=LG.playerId;
+  let w=0,l=0,gf=0,ga=0,cs=0;
+  for(let r=0;r<dv.results.length;r++){
+   const fix=dv.fixtures[r],res=dv.results[r];
+   for(let i=0;i<fix.length;i++){
+    if(fix[i][0]===pid||fix[i][1]===pid){
+     const home=fix[i][0]===pid,sc=res[i];
+     const my=home?sc[0]:sc[1],opp=home?sc[1]:sc[0];
+     gf+=my;ga+=opp;
+     if(my>opp){w++;if(opp===0)cs++;}else l++;
+    }
+   }
+  }
+  const se=LG.seasonEnd;
+  const promoteBonus=se.playerFate==='promoted'?(se.playerPos===1?LGC.upPromote1:LGC.upPromote2):0;
+  const champBonus=se.playerFate==='champion'?LGC.upChampTop:0;
+  const earned=w*LGC.upWin+l*LGC.upLoss+cs*LGC.upCleanSheet+promoteBonus+champBonus;
+  const pid2=LG.playerId;
+  return {w,l,gf,ga,cs,earned,promoteBonus,champBonus,avail:LG.teams[pid2].up,
+   titles:LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===LG.teams[pid2].name).length};
+}
+function lgSEDivCard(d){
+  let rows='';
+  d.order.forEach((e,pi)=>{
+   let cls='lgSERow';
+   if(e.i===LG.playerId)cls+=' me';
+   if(e.promoted)cls+=' pro';
+   if(e.relegated)cls+=' rel';
+   const mark=e.promoted?'<span class="lgSEUp">▲</span>':e.relegated?'<span class="lgSEDn">▼</span>':'<span class="lgSEBlank"></span>';
+   rows+='<div class="'+cls+'">'+mark+
+    '<span class="pos">'+(pi+1)+'</span>'+
+    '<span class="nm"><i class="dot" style="background:'+e.col+'"></i>'+e.name+'</span>'+
+    '<span class="num">'+e.w+'</span><span class="num">'+e.l+'</span>'+
+    '<span class="num">'+e.gf+'</span><span class="num">'+e.ga+'</span>'+
+    '<span class="num pts">'+e.p+'</span></div>';
+  });
+  return '<div class="lgSEDiv">'+
+   '<div class="lgSEDivHead">'+d.name+'</div>'+
+   '<div class="lgSEChamp">🏆 '+d.champ+'</div>'+
+   '<div class="lgSEHead"><span></span><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GF</span><span>GA</span><span>PTS</span></div>'+
+   rows+'</div>';
+}
+function lgSEFate(se){
+  const map={
+   champion:['champ','🏆 CHAMPIONS','#ffcf4d'],
+   promoted:['pro','▲ PROMOTED','#7dff8a'],
+   relegated:['rel','▼ RELEGATED','#ff4d5a'],
+   stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
+  };
+  const m=map[se.playerFate];
+  const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
+  return '<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'">'+m[1]+'<span class="lgSEPos">'+posTxt+'</span></div>';
+}
+function lgSERewards(r,se){
+  let h='<div class="lgSEPanelHead">SEASON REWARDS</div>'+
+   '<div class="lgSERewGrid">'+
+    '<div class="lgSERew"><span class="k">RECORD</span><span class="v">'+r.w+'–'+r.l+'</span><span class="sub">'+r.gf+' GF · '+r.ga+' GA</span></div>'+
+    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v gold">+'+r.earned+' ⚙</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
+    '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' ⚙</span><span class="sub">spend in squad</span></div>'+
+    '<div class="lgSERew"><span class="k">TITLES</span><span class="v">'+r.titles+'×</span><span class="sub">Premier wins</span></div>'+
+   '</div>';
+  if(se.playerFate==='champion')
+    h+='<div class="lgSECup">🏆 CHAMPIONS CUP QUALIFIED — you enter the post-season knockout!</div>'+
+       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">⚔ ENTER CHAMPIONS CUP</button>';
+  return '<div class="lgSEPanel">'+h+'</div>';
+}
+function lgSELoss(se){
+  if(se.playerFate!=='relegated'||!se.playerLosses.length)return '';
+  const bld=LG.teams[LG.playerId].bld;
+  let h='<div class="lgSEPanel"><div class="lgSEPanelHead rel">▼ RELEGATION — STATS LOST</div>';
+  for(const role of LG_ROLES){
+   h+='<div class="lgSERole"><span class="lgSERoleH">'+role+'</span>';
+   for(const k of LG_KEYS){
+    const v=bld[role][k];
+    const lost=se.playerLosses.find(x=>x.role===role&&x.key===k);
+    const before=lost?lost.from:v,after=v;
+    let pips='';
+    for(let i=0;i<STC.max;i++){
+     if(i<after)pips+='<b class="on">▮</b>';
+     else if(i<before)pips+='<b class="lost">▯</b>'; // the removed pip
+     else pips+='<b>▯</b>';
+    }
+    h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
+     (lost?'<span class="lgSEMinus">–1</span>':'')+'</div>';
+   }
+   h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
+function renderLgSeasonEnd(){
+  const se=LG.seasonEnd;if(!se)return;
+  const r=lgSeasonEarn();
+  let divs='';for(const d of se.divs)divs+=lgSEDivCard(d);
+  $('lgSEBody').innerHTML=
+   '<div class="lgSETitle">'+LG.name+'</div>'+
+   '<div class="lgSESub">SEASON '+se.season+' · COMPLETE</div>'+
+   lgSEFate(se)+
+   '<div class="lgSEDivs">'+divs+'</div>'+
+   lgSERewards(r,se)+
+   lgSELoss(se);
+  if(se.playerFate==='champion'){ // wire the Enter Cup button (created in lgSERewards)
+    const b=$('lgSEEnterCup');
+    if(b)b.onclick=()=>{if(!LG.cup)cupCreate();openCup();};
+  }
+}
+function showSeasonEnd(){
+  $('win').classList.add('hidden');
+  $('league').classList.add('hidden');
+  $('lgSeasonEnd').classList.remove('hidden');
+  renderLgSeasonEnd();
+  confetti(0);
+  S.lgChampDone=true; // don't also fire lobby confetti
+}
+function lgWinContinue(){
+  if(S.lg&&S.lg.cup){openCup();return;} // finished a cup tie → show the updated bracket
+  if(LG&&LG.seasonEnd&&!LG.seasonEnd.shown){
+    LG.seasonEnd.shown=true;saveLG();
+    showSeasonEnd();
+  }else lgReturn();
+}
 /* ---- scout panel ---- */
 function renderLgScout(ti){
  const t=LG.teams[ti];
@@ -332,31 +511,31 @@ function renderLgScout(ti){
  const m=CONFIG.playerModel.models.find(x=>x.id===t.model);
  $('lgScoutBody').innerHTML=
   (m?'<div class="figName">'+m.ico+' '+m.name+'</div><div style="height:4px"></div>':'')+
-  '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
   '<div class="lgRateBar"><span class="def">DEF</span><div class="lgRate"><div class="def" style="width:'+(def/10*100|0)+'%"></div></div><span class="num">'+(def*10|0)/10+'</span></div>'+
+   '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
   lgBuildHTML(t.bld,false);
  $('lgScout').classList.remove('hidden');
 }
 function renderLgHist(){
  if(!LG.hist||!LG.hist.length){$('lgHistPanel').classList.add('hidden');return;}
  $('lgHistPanel').classList.remove('hidden');
- const playerName=LG.teams[LG.playerId].name;
- const titles=LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===playerName).length;
- $('lgTitles').textContent=titles?'· '+titles+'x Premier Champion':'';
- let h='';
- for(let i=LG.hist.length-1;i>=0;i--){
-  const e=LG.hist[i],isPlayer=e.champ===playerName||(e.divChamps&&e.divChamps[2]===playerName);
-  const divName=e.playerDiv||'';
-  const status=e.promoted?' ▲ '+divName:e.relegated?' ▼ '+divName:' · '+divName;
-  h+='<div class="row"><span>S'+e.season+'</span><span style="color:'+(isPlayer?LG.teams[LG.playerId].col:'#93a5c6')+'">'+(e.divChamps?e.divChamps[2]:e.champ||'')+'</span><span>'+(e.playerPos?e.playerPos+({1:'st',2:'nd',3:'rd'}[e.playerPos]||'th')+status:'')+'</span></div>';
- }
+  const playerName=LG.teams[LG.playerId].name;
+  const titles=LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===playerName).length;
+   $('lgTitles').textContent=titles?'· '+titles+'x Premier Champion':'';
+   let h='<div class="row head"><span>Season</span><span>Division</span><span>Pos</span></div>';
+   for(let i=LG.hist.length-1;i>=0;i--){
+    const e=LG.hist[i];
+    const pos=e.playerPos?e.playerPos+({1:'st',2:'nd',3:'rd'}[e.playerPos]||'th'):'—';
+    h+='<div class="row"><span>S'+e.season+(e.cup===playerName?' 🏆':'')+'</span><span>'+(e.playerDiv||'')+'</span><span>'+pos+'</span></div>';
+   }
  $('lgHist').innerHTML=h;
 }
 /* ---- lobby UI ---- */
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
- $('menu').classList.add('hidden');$('lgSlots').classList.add('hidden');$('league').classList.remove('hidden');
- const pd=playerDiv(),dv=LG.divs[pd];
+  $('menu').classList.add('hidden');$('lgSlots').classList.add('hidden');$('league').classList.remove('hidden');
+  if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
+  const pd=playerDiv(),dv=LG.divs[pd];
  if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal();S.lgChampDone=true;}
  renderLeague(reveal);
  const fx=lgPlayerFixture();
@@ -373,7 +552,8 @@ function renderLeague(reveal){
   else if(LG.season>1)ban='<div class="lgProRelBanner stay">STAYED IN '+LGC.divisions[pd].name.toUpperCase()+'</div>';
  }
  $('lgSeasonTag').innerHTML=(ban||'')+'<span>'+dv.name+' · SEASON '+LG.season+(dv.champ?' · COMPLETE':' · ROUND '+(LG.round+1)+' / '+dv.fixtures.length)+'</span>';
- $('lgNew').textContent=dv.champ?'Next Season ▶':'Reset League';
+  $('lgNew').textContent=dv.champ?'Next Season ▶':'Reset League';
+  $('lgCup').classList.toggle('hidden',!(LG.cup&&!LG.cup.done)); // resume an in-progress cup
  renderLgTable();renderLgFix();renderLgLast(reveal);renderLgSquad();renderLgHist();
 }
 function renderLgTable(){
@@ -620,13 +800,205 @@ function openSetup(slot){
   openLeague();
  };
 }
+/* =========================================================================
+   CHAMPIONS CUP — post-season KO for the reigning Premier League champion.
+   The player is one of 8 seeds; the other 7 are drawn from a PERSISTED pool of
+   ~12 elite "special teams" (top-tier builds), leaving spares for variety. All
+   ties single-leg on the cup's own Arena + Neon Nights table (CONFIG.league.cup).
+   The player's ties are played live; every other tie is simmed with lgSimBlds.
+   State lives on LG.cup (roundsTies = full bracket history, round = current).
+   ========================================================================= */
+function cupEnt(id){
+  if(id==='player'){const t=LG.teams[LG.playerId];return{name:t.name,col:t.col,model:t.model,bld:t.bld};}
+  return LG.cup.pool.find(e=>e.id===id);
+}
+function cupMakePool(){ // generate the elite pool ONCE; persists on LG across seasons
+  if(LG.cup.pool&&LG.cup.pool.length)return;
+  const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
+  const pcol=LG.teams[LG.playerId].col;
+  const names=CUP.names.slice(),cols=CUP.cols.slice();
+  for(let i=names.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=names[i];names[i]=names[j];names[j]=t;}
+  for(let i=cols.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=cols[i];cols[i]=cols[j];cols[j]=t;}
+  const pool=[];
+  for(let n=0;n<CUP.poolSize;n++){
+    let col=cols[n%cols.length];
+    if(lgColDist(col,pcol)<LGC.colClash){const safe=cols.filter(c=>lgColDist(c,pcol)>=LGC.colClash);col=safe.length?safe[Math.floor(Math.random()*safe.length)]:col;}
+    const team={id:'cup'+n,name:names[n]||('CUP TEAM '+(n+1)),col,
+      model:mids[Math.floor(Math.random()*mids.length)],
+      bld:lgBld(CUP.base),up:Math.round(rand(CUP.budget[0],CUP.budget[1]))};
+    lgAiSpend(team); // weighted-random spend → position-flavoured elite builds
+    pool.push(team);
+  }
+  LG.cup.pool=pool;
+}
+function cupCreate(){ // build a fresh cup for the current Premier champion
+  if(!LG)return;
+  const pid=LG.playerId;
+  const existingPool=(LG.cup&&LG.cup.pool)||null; // persist pool across championships
+  LG.cup={season:LG.season,round:0,playerOut:false,done:false,champion:null,pool:existingPool,roundsTies:[]};
+  cupMakePool();
+  const ids=LG.cup.pool.map(e=>e.id);
+  for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=ids[i];ids[i]=ids[j];ids[j]=t;}
+  const drawn=['player'].concat(ids.slice(0,CUP.drawSize)); // player + 7 of 12 (5 spares)
+  for(let i=drawn.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=drawn[i];drawn[i]=drawn[j];drawn[j]=t;}
+  const ties=[];for(let i=0;i<drawn.length;i+=2)ties.push({a:drawn[i],b:drawn[i+1],res:null,played:false});
+  LG.cup.roundsTies=[ties];
+  LG.teams[pid].up+=CUP.enterParts; // participation bonus
+  if(LG.seasonEnd)LG.seasonEnd.shown=true; // don't re-pop the season summary on return
+  saveLG();
+}
+function cupPlayerTie(){ // the player's current unplayed tie, or null
+  if(!LG||!LG.cup||LG.cup.done)return null;
+  const ties=LG.cup.roundsTies[LG.cup.round];
+  return ties.find(t=>(t.a==='player'||t.b==='player')&&!t.played)||null;
+}
+function cupPlayTie(){
+  const tie=cupPlayerTie();if(!tie)return;
+  const oppId=tie.a==='player'?tie.b:tie.a;
+  const pa=cupEnt('player'),pb=cupEnt(oppId);
+  S.teamStats=[pa.bld,pb.bld];
+  S.lg={cup:true,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
+        banner:'CHAMPIONS CUP · '+CUP.rounds[LG.cup.round],rec:false,
+        prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
+                 special:cfg.special,power:cfg.power,table:cfg.table,theme:cfg.theme,pitch:cfg.pitch}};
+  const sel=$('cupControl').value;
+  $('league').classList.add('hidden');$('championsCup').classList.add('hidden');
+  cfg.redColor=pa.col;cfg.modelRed=pa.model;cfg.blueColor=pb.col;cfg.modelBlue=pb.model;
+  cfg.special=CUP.special;cfg.power=CUP.power;
+  document.documentElement.style.setProperty('--c0',cfg.redColor);
+  document.documentElement.style.setProperty('--c1',cfg.blueColor);
+  cfg.table=CUP.table;cfg.theme=CUP.theme;
+  cfg.pitch=CUP.pitches[Math.floor(Math.random()*CUP.pitches.length)];
+  applyTable();applyTheme();
+  const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
+  if(LGC.tape){
+    renderCupTape(oppId);
+    $('lgTape').classList.remove('hidden');
+    let tapeDone=false,modelDone=false;
+    const check=()=>{if(tapeDone&&modelDone){$('lgTape').classList.add('hidden');start();}};
+    loadPlayerModel(()=>{modelDone=true;check();});
+    const go=()=>{tapeDone=true;check();};
+    $('lgTape').onclick=()=>{clearTimeout(tid);go();};
+    const tid=setTimeout(go,LGC.tapeT*1000);
+  }else loadPlayerModel(start);
+}
+function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not LG.teams)
+  const me=cupEnt('player'),them=cupEnt(oppId);
+  const mo=CONFIG.playerModel.models.find(x=>x.id===me.model);
+  const to=CONFIG.playerModel.models.find(x=>x.id===them.model);
+  const offA=lgOff(me.bld),defA=lgDef(me.bld),offB=lgOff(them.bld),defB=lgDef(them.bld);
+  const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
+  const rA=modelRender(me.model),rB=modelRender(them.model);
+  const fig=(col,src,flip,name,icon)=>
+   '<div class="lgTapeFig" style="--tc:'+col+'">'+
+    (src?'<div class="lgFigBox"><img src="'+src+'" class="lgFigImg'+(flip?' flip':'')+'" alt="'+name+'"></div>':'<div class="lgFigBox lgFigEmpty">?</div>')+
+    '<div class="lgFigCap">'+(icon||'')+' '+name+'</div></div>';
+  const teamCard=(col,name,off,def,figHtml)=>
+   '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
+  $('lgTapeBody').innerHTML=
+   teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?',mo?mo.ico:''))+
+   '<div class="lgTapeVs"><span>VS</span></div>'+
+   teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?',to?to.ico:''));
+  $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
+}
+function cupAdvance(winners){ // sim the rest of the bracket from `winners` to a single champion (stores ties)
+  let w=winners.slice();
+  while(w.length>1){
+    for(let i=w.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=w[i];w[i]=w[j];w[j]=t;}
+    const nt=[],nw=[];
+    for(let i=0;i<w.length;i+=2){
+      const ea=cupEnt(w[i]),eb=cupEnt(w[i+1]);
+      const r=lgSimBlds(ea.bld,eb.bld);
+      nt.push({a:w[i],b:w[i+1],res:r,played:true});
+      nw.push(r[0]>r[1]?w[i]:w[i+1]);
+    }
+    LG.cup.roundsTies.push(nt);w=nw;
+  }
+  return w[0];
+}
+function awardCupWin(){
+  const pid=LG.playerId;
+  LG.teams[pid].up+=CUP.winParts;
+  LG.cupTitles=(LG.cupTitles||0)+1;
+}
+function cupRecord(w){ // called by endMatch while S.lg.cup is live (player just finished their tie)
+  if(!LG||!LG.cup||!S.lg||!S.lg.cup||S.lg.rec)return;S.lg.rec=true;
+  const cup=LG.cup,round=cup.round,ties=cup.roundsTies[round],tie=S.lg.res;
+  tie.res=[w,1-w];tie.played=true; // names[0]=player→team0; res[0]=player goals
+  for(const t of ties){if(t===tie)continue;const ea=cupEnt(t.a),eb=cupEnt(t.b);t.res=lgSimBlds(ea.bld,eb.bld);t.played=true;}
+  const winners=ties.map(t=>t.res[0]>t.res[1]?t.a:t.b);
+  if(!winners.includes('player')){ // player eliminated → sim the rest to crown a champion
+    cup.playerOut=true;
+    cup.champion=cupAdvance(winners);
+    cup.round=cup.roundsTies.length-1;
+    cup.done=true;
+  }else if(round>=CUP.rounds.length-1){ // player won the Final
+    cup.champion='player';cup.done=true;awardCupWin();
+  }else{ // advance to the next round
+    const w=winners.slice();
+    for(let i=w.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=w[i];w[i]=w[j];w[j]=t;}
+    const nt=[];for(let i=0;i<w.length;i+=2)nt.push({a:w[i],b:w[i+1],res:null,played:false});
+    cup.roundsTies.push(nt);cup.round++;
+  }
+  if(LG.hist&&LG.hist.length){const last=LG.hist[LG.hist.length-1];
+    if(last)last.cup=(cup.champion==='player')?LG.teams[LG.playerId].name:cupEnt(cup.champion).name;}
+  saveLG();
+}
+function renderCup(){
+  if(!LG||!LG.cup)return;
+  const cup=LG.cup;
+  $('cupTitle').textContent=CUP.name;
+  $('cupSub').textContent='SEASON '+cup.season+' · '+(cup.done?'COMPLETE':CUP.rounds[cup.round]);
+  let h='<div class="cupBracket">';
+  for(let r=0;r<cup.roundsTies.length;r++){
+    const ties=cup.roundsTies[r];
+    h+='<div class="cupRound"><div class="cupRoundHead">'+CUP.rounds[r]+'</div>';
+    for(const t of ties){
+      const ea=cupEnt(t.a),eb=cupEnt(t.b);
+      const aWon=t.res&&t.res[0]>t.res[1],bWon=t.res&&t.res[1]>t.res[0];
+      const playerHere=(t.a==='player'||t.b==='player');
+      const row=(ent,goals,won,isPlayer)=>
+        '<div class="cupTeam'+(won?' win':'')+(isPlayer?' me':'')+'">'+
+        '<i class="dot" style="background:'+ent.col+'"></i>'+
+        '<span class="nm">'+ent.name+'</span>'+
+        (t.res?'<span class="sc">'+goals+'</span>':'<span class="sc"></span>')+'</div>';
+      h+='<div class="cupTie'+(playerHere?' me':'')+'">'+
+        row(ea,t.res?t.res[0]:0,aWon,t.a==='player')+
+        row(eb,t.res?t.res[1]:0,bWon,t.b==='player')+'</div>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';
+  if(cup.done){
+    const won=cup.champion==='player',ch=cupEnt(cup.champion);
+    h+='<div class="cupResult '+(won?'win':'')+'">🏆 '+(won?'YOU ARE CHAMPION!':ch.name+' WIN THE CUP')+'</div>';
+  }else{
+    const tie=cupPlayerTie();
+    if(tie){const opp=cupEnt(tie.a==='player'?tie.b:tie.a);
+      h+='<div class="cupNext">NEXT TIE: <span style="color:'+opp.col+'">'+opp.name+'</span></div>';}
+  }
+  $('cupBracket').innerHTML=h;
+  $('cupPlay').classList.toggle('hidden',!cupPlayerTie());
+  $('cupDone').classList.toggle('hidden',!cup.done);
+}
+function openCup(){
+  $('menu').classList.add('hidden');$('league').classList.add('hidden');$('lgSeasonEnd').classList.add('hidden');
+  $('lgForfeit').classList.add('hidden');$('pause').classList.add('hidden');
+  $('championsCup').classList.remove('hidden');
+  renderCup();
+}
+function cupReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg)
 /* ---- bind ---- */
 function bindLeague(){
- $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
- $('lgBack').onclick=()=>{$('league').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
- $('lgNew').onclick=()=>{lgNewSeason(!!LG&&!!LG.divs[playerDiv()].champ);renderLeague();const fx=lgPlayerFixture();if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}Au.ui();};
- $('lgPlay').onclick=lgPlayMatch;
- $('btnWinContinue').onclick=lgReturn;
- $('lgSlotsBack').onclick=()=>{$('lgSlots').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
+  $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
+  $('lgBack').onclick=()=>{$('league').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
+  $('lgNew').onclick=()=>{lgNewSeason(!!LG&&!!LG.divs[playerDiv()].champ);renderLeague();const fx=lgPlayerFixture();if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}Au.ui();};
+   $('lgPlay').onclick=lgPlayMatch;
+   $('lgCup').onclick=openCup;
+   $('btnWinContinue').onclick=lgWinContinue;
+   $('lgSEContinue').onclick=lgReturn;
+   $('cupPlay').onclick=cupPlayTie;
+   $('cupBack').onclick=cupReturn;
+   $('lgSlotsBack').onclick=()=>{$('lgSlots').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
 }
 bindLeague();

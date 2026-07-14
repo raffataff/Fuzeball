@@ -10,7 +10,9 @@
 const rodTemplates={};   // men-count -> loaded rod scene (bar+handle+collar+knob)
 let ballModel=null;      // loaded ball GLB scene (with material slots)
 let roomModel=null;      // loaded arena room/environment GLB (arcade room) — shown only with the arena table
+let pitchModel=null;     // loaded pitch GLB scene (one mesh per theme variant)
 const ballMatMap={};     // ballType -> material name in GLB
+const pitchMatMap={};    // pitch variant -> material (unused for now; mirrors ball loader)
 const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc
 let ballExplosionTemplate=null; // {scene, clips} — the cannonball's own shatter GLB (CONFIG.cannonball.explosionSrc), consumed by fracture.js spawnBallFracture
 
@@ -222,4 +224,36 @@ function makeBallModel(key){
     c.castShadow=true;c.receiveShadow=true;
   });
   return any?g:null;
+}
+
+/* --- pitch model ------------------------------------------------------------ */
+function loadPitchModel(onReady){
+  const loader=new THREE.GLTFLoader();
+  let fired=false;
+  const done=()=>{if(!fired){fired=true;if(onReady)onReady();}};
+  loader.load('assets/pitches/fuzeball_pitch.glb',gltf=>{
+    pitchModel=gltf.scene;
+    pitchModel.traverse(c=>{
+      if(!c.isMesh)return;
+      c.castShadow=false;c.receiveShadow=true;
+      const m=c.material;
+      if(m){
+        if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
+        if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;
+        if(m.normalMap){m.normalMap.encoding=THREE.LinearEncoding;m.normalMap.needsUpdate=true;}
+        if(m.roughnessMap){m.roughnessMap.encoding=THREE.LinearEncoding;m.roughnessMap.needsUpdate=true;}
+        if(m.metalnessMap){m.metalnessMap.encoding=THREE.LinearEncoding;m.metalnessMap.needsUpdate=true;}
+        if(m.aoMap){m.aoMap.encoding=THREE.LinearEncoding;m.aoMap.needsUpdate=true;}
+        if(m.bumpMap){m.bumpMap.encoding=THREE.LinearEncoding;m.bumpMap.needsUpdate=true;}
+        m.needsUpdate=true;
+      }
+      const n=ballKey(c);
+      if(n)pitchMatMap[n]=m;
+    });
+    console.log('pitch GLB loaded — variants:',Object.keys(pitchMatMap));
+    done();
+  },undefined,()=>{
+    console.warn('no pitch GLB, using image pitches');
+    done();
+  });
 }

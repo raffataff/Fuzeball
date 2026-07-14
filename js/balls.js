@@ -47,7 +47,8 @@ function serve(){
  const key=pickType();
  const b=makeBall(key);
  b.m.position.set(rand(-SRV.spread,SRV.spread),SRV.dropY,rand(-SRV.zSpread,SRV.zSpread));
- b.v.set(rand(-SRV.vel,SRV.vel),0,rand(-SRV.vel,SRV.vel));
+  b.v.set(rand(-SRV.vel,SRV.vel),0,rand(-SRV.vel,SRV.vel));
+  b.spin=rand(-SRV.spin,SRV.spin);
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
  if(key!=='classic')banner(BALL_TYPES[key].name,'SPECIAL BALL DROPPING',1.6);

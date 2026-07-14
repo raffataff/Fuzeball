@@ -71,12 +71,24 @@ bindUI();
 // build step falls back to primitives when its GLB is absent, so a force-start can't
 // leave a broken scene (worst case: primitive rods/players until a late GLB is picked up).
 let booted=false;
+function applyLogo(){
+ var el=document.querySelector('.logo');if(!el)return;
+ var L=CONFIG.logo;
+ if(L.src)el.src=L.src;
+ el.style.setProperty('max-width',L.width+'px');
+ el.style.setProperty('--logo-glow',L.glow);
+ el.style.setProperty('--logo-glow-size',L.glowSize+'px');
+ el.style.setProperty('--logo-pulse-size',L.pulseSize+'px');
+ el.style.setProperty('--logo-pulse-speed',L.pulseSpeed+'s');
+}
 function boot(){
  if(booted)return;booted=true;
+ applyLogo();
  buildRods();applyTable();applyTheme();applyColors();
  requestAnimationFrame(loop);
 }
 loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
+loadPitchModel(()=>{applyPitchModel();}); // pitch GLB (one mesh per theme variant); falls back to jpg
 loadBallModel(()=>{                     // ball GLB with material slots
   loadPlayerModel(()=>{
    loadExplosionModels(()=>{             // cannonball-kill fracture GLBs (if any figurine has one)
