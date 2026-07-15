@@ -45,7 +45,7 @@ input[type=text]{width:110px;text-transform:uppercase}
 #sb .colon{font-size:26px;color:#5d6f92;font-weight:700}
 .pop{animation:scorePop .5s cubic-bezier(.2,2.4,.4,1)}
 @keyframes scorePop{40%{transform:scale(1.7)}}
-#matchTime{position:absolute;top:74px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.25em;color:#7f93ba}
+#matchTime{position:absolute;top:74px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.25em;color:#7f93ba;background:var(--glass);border:1px solid var(--edge);border-radius:14px;padding:8px 22px;box-shadow:0 6px 30px rgba(0,0,0,.45)}
 #chips{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
 .chip{pointer-events:auto;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:800;letter-spacing:.12em;padding:7px 15px;border-radius:10px;background:var(--glass);border:1px solid var(--edge);color:#8fa3c8;transition:all .15s}
 .chip.on{color:#fff;border-color:var(--tc,#fff);box-shadow:0 0 18px color-mix(in srgb,var(--tc,#fff) 55%,transparent);transform:translateY(-3px)}

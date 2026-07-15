@@ -99,7 +99,7 @@ physics:{
    footBox:{x:0.9,y:1.3,z:1.35},     // foot box half-extents: {x=along leg, y=perpendicular, z=along rod}
    footBoxOff:{x:0.35,y:0.5},        // centre offset from foot-base in rod-local: {x=along leg, y=perpendicular}
    footBoxReach:0.5,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
-   footJitter:0.01,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
+   footJitter:0.1,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
   subMin:3, subMax:6, subTravel:1.65,   // adaptive substep bounds + target travel per step
   floorRest:0.42,                        // vertical restitution off the floor
   floorRestCut:6,                        // below this upward speed the bounce dies to 0
@@ -160,7 +160,7 @@ physics:{
   gkPad:2,                                   // keeper stays within goalHalf + this
   ttaMax:1.9,                                // only lead the ball's z if it arrives within this (s)
   inFrontMin:-0.45, inFrontMax:6.9,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
-  underFootFront:3.0, underFootBack:2.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
+  underFootFront:3.0, underFootBack:-1.5,    // behind/ahead of rod where swung rod stays forward (prevents own-goal swipe on return)
   lowY:2,                                    // only swing when the ball is below this height
   raiseBehind:-7.2,                          // ball must be at least this far behind (real, dir-relative) to consider raising
    overFoot:2.9,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
