@@ -28,6 +28,7 @@ function loop(t){
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);
   /* --- fixed-rate simulation (slow-mo just consumes sim-time slower) --- */
   physAcc+=rdt*S.timeScale;
+  for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
   while(physAcc>=FIXED&&steps<SIM.maxSteps){
    if(!stepped)for(const b of S.balls)b.m.position.copy(b.cur); // undo last frame's interp → true sim state
@@ -46,12 +47,13 @@ function loop(t){
   }
   /* --- render interpolation --- */
   const alpha=clamp(physAcc/FIXED,0,1);
-  for(const b of S.balls){
-   b.m.position.lerpVectors(b.prev,b.cur,alpha);
-   if(b.light)b.light.position.copy(b.m.position);
-  }
-   for(const r of rods){
-    if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
+   for(const b of S.balls){
+    b.m.position.lerpVectors(b.prev,b.cur,alpha);
+    if(b.light)b.light.position.copy(b.m.position);
+    cannonballWarn(b);
+   }
+    for(const r of rods){
+     if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
     r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
     r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha);
    }

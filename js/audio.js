@@ -56,5 +56,6 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   const o=c.createOscillator(),g=c.createGain();o.type='sine';
   o.frequency.setValueAtTime(170,c.currentTime);o.frequency.exponentialRampToValueAtTime(36,c.currentTime+.55);
   this.env(g,c.currentTime,.005,.6,.6);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+.8);
-  this.noise(.45,300,.5);this.noise(.16,1700,.34);this.exc=1;},                // low rumble body + high crack transient + crowd 'ooh'
- ui(){this.beep(720,.05,'triangle',.1);}};
+   this.noise(.45,300,.5);this.noise(.16,1700,.34);this.exc=1;},                // low rumble body + high crack transient + crowd 'ooh'
+  ui(){this.beep(720,.05,'triangle',.1);},
+   warnBeep(k=0){this.beep(900+600*k,.09,'square',.22);}}; // countdown tick for the cannonball warning (higher pitch as it nears detonation)

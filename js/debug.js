@@ -16,10 +16,11 @@ let dbgArenaWalls=null,dbgContourRings=[];
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false,sweetSpot:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
+let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
 
 function dbgMat(col,op){return new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false});}
 
@@ -41,11 +42,13 @@ function buildAIPanel(){
    {key:'serveZone',label:'Serve Zone',col:'#c299ff'},
    {key:'redropZones',label:'Redrop Zones',col:'#ff5c5c'},
    {key:'dropSweep',label:'Drop Sweep',col:'#ff5c8a'},
+   {key:'footRange',label:'Foot Range',col:'#eaeaea'},
    {key:'trapZone',label:'Trap Zone',col:'#c77dff'},
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
-   {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'}
- ];
+    {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
+    {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'}
+  ];
  for(const it of items){
   const lbl=document.createElement('label');
   const cb=document.createElement('input');
@@ -173,6 +176,19 @@ function buildDebug(){
   dbgDropSweep.push({mesh:m,rod:r,manIdx:i,matDim:dsDim,matHot:dsHot});
  }
 
+ // footRange: the inFootRange(r,b) reach rectangle per man — the "would lowering OR raising
+ // clip this ball" test that gates safeRaise + evade. x = -footRangeBack..underFootFront
+ // (dir-relative, reaches deep behind for a raising swing), z = ±(footBox.z + BALL_R +
+ // clearMargin) around each foot. Follows the slide; hot white while any live ball is inside.
+ const frW=AIC.footRangeBack+AIC.underFootFront;
+ const frZ=(FOOT_BOX.z+BALL_R+AIC.clearMargin)*2;
+ const frGeo=new THREE.BoxGeometry(frW,0.05,frZ);
+ const frDim=dbgMat(0xeaeaea,.12),frHot=dbgMat(0xeaeaea,.45);
+ for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
+  const m=new THREE.Mesh(frGeo,frDim);m.visible=false;dbgAIGroup.add(m);
+  dbgFootRange.push({mesh:m,rod:r,manIdx:i,matDim:frDim,matHot:frHot});
+ }
+
  // trapZone: per-rod box behind the rod (x = trap.back..trap.front dir-relative, z = full
  // slide range) where a slow-in-x ball can be trapped instead of raised over. Static
  // position; material goes hot purple while that rod's r.act==='trap'.
@@ -291,7 +307,31 @@ function buildDebug(){
   dbgShotLanes.push(set);
  }
 
- dbgAIGroup.visible=false;
+  dbgAIGroup.visible=false;
+
+  // sweetSpot: per-man area in front of the foot (dir-relative x band off the rod × narrow
+  // z-centre of the foot) where a clean strike earns the power/juice bonus. Static floor box
+  // matching the analytic test in physics.js collideRod (SW.zFrac, SW.xMin/xMax).
+  const sweetM=dbgMat(0xffe14d,.20),sweetHot=dbgMat(0xffe14d,.85);
+  const SW=KICK.sweetSpot;
+  szW=SW.xMax-SW.xMin; szCxOff=(SW.xMin+SW.xMax)/2; szZ=FOOT_BOX.z*SW.zFrac*2;
+  for(const r of rods){
+   for(let i=0;i<r.baseZ.length;i++){
+    const g=new THREE.Group();
+    box(szW,0.04,szZ,0,0.035,0,sweetM,g);   // box at group origin; updateAIVis moves the GROUP to the live foot (no double-offset)
+    g.visible=false;dbgAIGroup.add(g);
+    dbgSweet.push({group:g,rod:r,manIdx:i,matDim:sweetM,matHot:sweetHot});
+   }
+  }
+
+  // sweetSpot flash: a rising, fading disc placed at the contact point whenever a sweet kick
+  // lands (r.aimSweet set by physics each frame). Pooled, one per foot.
+  dbgSweetFlashMat=dbgMat(0xffe14d,.9);
+  for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
+   const d=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.1,16),dbgSweetFlashMat);
+   d.visible=false;dbgAIGroup.add(d);
+   dbgSweetFlash.push({mesh:d,rod:r,manIdx:i,t:-1});
+  }
 }
 
 function updateAIVis(){
@@ -304,8 +344,18 @@ function updateAIVis(){
   for(const g of dbgAIInFront)g.visible=on&&dbgAIOpts.inFront;
   if(dbgAILowY)dbgAILowY.visible=on&&dbgAIOpts.lowY;
   for(const s of dbgFootReach)s.mesh.visible=on&&dbgAIOpts.footReach;
-  for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
-  for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
+   for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
+   for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
+
+   // sweetSpot: per-man area follows the live foot (slide offset + dir); hot yellow while
+   // that man's aimSweet fired this frame. Matches physics.js collideRod's fz / relR test.
+   for(const s of dbgSweet){
+    const vis=on&&dbgAIOpts.sweetSpot;
+    s.group.visible=vis;if(!vis)continue;
+    const r=s.rod,dir=r.kickDir,fz=r.baseZ[s.manIdx]+r.offset;
+    s.group.position.set(r.x+szCxOff*dir,0,fz);
+    s.group.children[0].material=r.aimSweet===s.manIdx?s.matHot:s.matDim;
+   }
 
   // trapZone: static boxes; hot purple while that rod is actively trapping
   for(const tz of dbgTrapZone){
@@ -343,6 +393,22 @@ function updateAIVis(){
    ds.mesh.position.set(r.x+(AIC.underFootFront-AIC.underFootBack)/2*dir,0.05,r.baseZ[ds.manIdx]+r.offset);
    ds.mesh.material=r.heldFwd?ds.matHot:ds.matDim;
   }
+
+  // footRange: inFootRange reach box per man, follows the slide; hot white while any live ball
+  // clips THIS man (mirrors inFootRange's per-man x-band + z-footprint test in ai.js).
+  {const hz=FOOT_BOX.z+BALL_R+AIC.clearMargin;
+  for(const fr of dbgFootRange){
+   const vis=on&&dbgAIOpts.footRange;
+   fr.mesh.visible=vis;if(!vis)continue;
+   const r=fr.rod,dir=r.team===0?1:-1,fz=r.baseZ[fr.manIdx]+r.offset;
+   fr.mesh.position.set(r.x+(AIC.underFootFront-AIC.footRangeBack)/2*dir,0.045,fz);
+   let hot=false;
+   if(manLive(r,fr.manIdx))for(const b of S.balls){
+    const rel=(b.m.position.x-r.x)*dir;
+    if(rel<=AIC.underFootFront&&rel>=-AIC.footRangeBack&&Math.abs(b.m.position.z-fz)<hz){hot=true;break;}
+   }
+   fr.mesh.material=hot?fr.matHot:fr.matDim;
+  }}
 
   // aligned: per-man floor bars showing ±align zone along z
   if(on&&dbgAIOpts.aligned&&S.balls.length){
@@ -402,9 +468,24 @@ function updateAIVis(){
     ln.material=lane.clr>=AIC.gapAim.openMargin?dbgShotOpen:dbgShotBlock;
     ln.visible=true;
    }
-   sl.marker.position.set(ev.goalX,y,ev.best.tz);
-   sl.marker.material=ev.best.clr>=AIC.gapAim.openMargin?dbgMarkOpen:dbgMarkBlock;
-   sl.marker.visible=true;
+    sl.marker.position.set(ev.goalX,y,ev.best.tz);
+    sl.marker.material=ev.best.clr>=AIC.gapAim.openMargin?dbgMarkOpen:dbgMarkBlock;
+    sl.marker.visible=true;
+  }
+
+  // sweetSpot flash: a disc blooms at the foot whenever a sweet kick landed there this frame
+  for(const f of dbgSweetFlash){
+   const r=f.rod;
+   const fired=r.aimSweet===f.manIdx;
+   if(fired)f.t=S.time;
+   const age=S.time-f.t;
+   const vis=on&&dbgAIOpts.sweetSpot&&age>=0&&age<0.4;
+   f.mesh.visible=vis;if(!vis)continue;
+   const k=1-age/0.4;                 // 1→0 over the flash lifetime
+   const fz=r.baseZ[f.manIdx]+r.offset;
+   f.mesh.position.set(r.x+szCxOff*r.kickDir,0.12,fz);   // sweet-band centre, small height above the floor
+   f.mesh.scale.setScalar(0.6+k*1.4);
+   f.mesh.material.opacity=0.9*k;
   }
 }
 
@@ -425,17 +506,21 @@ function toggleDebug(){
 function debugUpdate(){
  if(!dbgOn){
   const show=S.freeRoam;
-  $('camInfo').style.display=show?'block':'none';
-  $('ballSpeed').style.display=show?'block':'none';
-  if(!show)return;
+   $('camInfo').style.display=show?'block':'none';
+   $('ballSpeed').style.display=show?'block':'none';
+   $('ballVel').style.display=show?'block':'none';
+   if(!show)return;
+   updateCamInfo();
+   updateBallSpeed();
+   updateBallVel();
+   return;
+  }
+  $('camInfo').style.display='block';
+  $('ballSpeed').style.display='block';
+  $('ballVel').style.display='block';
   updateCamInfo();
   updateBallSpeed();
-  return;
- }
- $('camInfo').style.display='block';
- $('ballSpeed').style.display='block';
- updateCamInfo();
- updateBallSpeed();
+  updateBallVel();
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];
@@ -493,7 +578,12 @@ function updateCamInfo(){
  $('camInfo').innerHTML='<span>POS</span>'+p.x.toFixed(1)+'&nbsp;'+p.y.toFixed(1)+'&nbsp;'+p.z.toFixed(1)+'<span>LOOK</span>'+l.x.toFixed(1)+'&nbsp;'+l.y.toFixed(1)+'&nbsp;'+l.z.toFixed(1);
 }
 function updateBallSpeed(){
- if(!S.balls.length){$('ballSpeed').innerHTML='<span>SPEED</span>no ball';return;}
- const speed=S.balls[0].v.length();
- $('ballSpeed').innerHTML='<span>SPEED</span><b class="val">'+speed.toFixed(0)+'</b> u/s';
+  if(!S.balls.length){$('ballSpeed').innerHTML='<span>SPEED</span>no ball';return;}
+  const speed=S.balls[0].v.length();
+  $('ballSpeed').innerHTML='<span>SPEED</span><b class="val">'+speed.toFixed(0)+'</b> u/s';
+}
+function updateBallVel(){
+  if(!S.balls.length){$('ballVel').innerHTML='<span>VEL</span>no ball';return;}
+  const v=S.balls[0].v;
+  $('ballVel').innerHTML='<span>VEL X</span><b class="val">'+v.x.toFixed(1)+'</b><span>Z</span><b class="val">'+v.z.toFixed(1)+'</b>';
 }

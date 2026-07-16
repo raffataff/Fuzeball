@@ -176,19 +176,21 @@ function buildArenaDebugMesh(){
 
 /* ===== big-goal morph of the baked (GLB) arena shell =====
    Standard "slide the goal walls out" widen — NOT an SDF re-projection (that reshaped the postR
-   fillet as the mouth grew and pinched/bulged the rounded bends). We instead scale each shell
-   vertex's z about the goal centreline (z=0) by a per-vertex factor that is `bigGoalMult` at the
-   mouth inner edge (|z|≤goalHalf) and eases to 1 at the outer bowl wall (|z|→width/2), gated to the
-   goal region in x (full behind the goal line, faded out `bigGoalReach` into the field). This slides
-   the two little side walls outward, stretches the back wall to match, and the corner bends ride
-   along for free because their verts share the same continuous field. Pure z, so it never touches
-   x or Y and leaves UVs — hence textures — untouched. Local & order-independent (survives glTF
-   splitting the mesh by material). */
+   fillet as the mouth grew and pinched/bulged the rounded bends). Each shell vertex slides in z
+   toward the widened mouth by an amount taken from its own crease→wall COLUMN's wall-lip (sd=0)
+   reference, not its own inset position: the widen is `bigGoalMult` at the mouth inner edge
+   (|z|≤goalHalf) and eases to 1 at the outer bowl wall (|z|→width/2), gated to the goal region in x
+   (full behind the goal line, faded out `bigGoalReach` into the field). Referencing the lip means
+   every vert in a column (fillet base up to wall top) shifts by the SAME z-delta, so the crease
+   fillet slides rigidly with the wall instead of shearing/warping. This slides the two little side
+   walls outward, stretches the back wall to match, and the corner bends ride along for free because
+   their verts share the same continuous field. Pure z, so it never touches x or Y and leaves UVs —
+   hence textures — untouched. Local & order-independent (survives glTF splitting by material). */
 // Called once per arena GLB mesh (arena_bowl / led ring). Precomputes, per vertex, the z delta to a
 // fully-open RIGHT mouth (dR) and LEFT mouth (dL) so the per-frame path is a cheap blend (x delta=0).
 function registerArenaMorph(root){
  const gh=F.goalHalf,M=PHY.bigGoalMult,gl=F.L/2,hw=ARENA.width/2,reach=ARENA.bigGoalReach;
- // widen weight 0..1 for a vertex at (x≥0, az=|z|): zPin pins the outer wall, xNear gates to the goal.
+ // widen weight 0..1 for a column at (x≥0, az=|z| of its wall lip): zPin pins the outer wall, xNear gates to the goal.
  const gate=(x,az)=>{
   const zPin=clamp((hw-az)/(hw-gh),0,1);                 // 1 at/inside the mouth edge, 0 at the outer wall
   const xNear=x>=gl?1:clamp((x-(gl-reach))/reach,0,1);   // 1 behind the line, 0 a `reach` into the field
@@ -200,10 +202,14 @@ function registerArenaMorph(root){
   if(!(n.startsWith('arena_bowl')||pn.startsWith('arena_bowl')||n.startsWith('led')))return;
   const pos=c.geometry.attributes.position,N=pos.count;
   const base=new Float32Array(N*3),dR=new Float32Array(N*3),dL=new Float32Array(N*3);
-  for(let i=0;i<N;i++){const j=i*3,x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),az=Math.abs(z);
+  for(let i=0;i<N;i++){const j=i*3,x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
    base[j]=x;base[j+1]=y;base[j+2]=z;
-   dR[j+2]=x>0?z*(M-1)*gate( x,az):0;   // widen right mouth (+x half only) — z-only, x delta stays 0
-   dL[j+2]=x<0?z*(M-1)*gate(-x,az):0;   // widen left  mouth (−x half only)
+   // Project this vert out to its column's wall lip (sd=0) so the whole fillet column shares one
+   // reference z. A vertical-wall vert projects to itself (flare unchanged); a fillet vert (inset
+   // inward) recovers the same lip as the wall above it → they slide together, no shear.
+   const lip=arenaProject(x,z,0,3),azR=Math.abs(lip.z);
+   dR[j+2]=lip.x>0?lip.z*(M-1)*gate( lip.x,azR):0;   // widen right mouth (+x half only) — uniform per column, x delta stays 0
+   dL[j+2]=lip.x<0?lip.z*(M-1)*gate(-lip.x,azR):0;   // widen left  mouth (−x half only)
   }
   arenaMorph.push({o:c,pos,base,dR,dL,N});
  });

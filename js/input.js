@@ -84,9 +84,16 @@ function gamepadUpdate(dt){
  }
  const r=S.ctrlRods[S.ctrl],DZ=cfg.padDeadzone;
  // SLIDE: which analog axis drives the men is configurable — 'ly' = left-stick up/down (axis 1),
- // 'lx' = left-stick left/right (axis 0). Deadzoned, optionally inverted, scaled by cfg.padSlideSens.
- let ay=(cfg.padSlideAxis==='lx'?gp.axes[0]:gp.axes[1])||0;
- if(Math.abs(ay)<DZ)ay=0;else if(cfg.padSlideInvert)ay=-ay;
+ // 'lx' = left-stick left/right (axis 0). Deflection PAST the deadzone is rescaled to 0..1 (so speed
+ // eases up from zero instead of snapping to DZ-worth of speed at the edge — that hard step is what
+ // made a small touch lurch the rod) then shaped by an exponent curve (padSlideCurve>1 = finer control
+ // near centre, full speed still reached at full push). Optionally inverted, scaled by cfg.padSlideSens.
+ let ax=(cfg.padSlideAxis==='lx'?gp.axes[0]:gp.axes[1])||0,ay=0;
+ if(Math.abs(ax)>DZ){
+  const n=(Math.abs(ax)-DZ)/(1-DZ);                  // 0 at deadzone edge → 1 at full deflection
+  ay=Math.pow(n,cfg.padSlideCurve)*Math.sign(ax);
+  if(cfg.padSlideInvert)ay=-ay;
+ }
  if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
  if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*dt,-r.maxOff,r.maxOff);
  if(just[0]||just[7])kickRod(r);                     // A / RT

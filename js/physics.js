@@ -209,7 +209,7 @@ function collideRod(b,r){
     b.v.x+=(Math.random()-.5)*jit;b.v.y+=(Math.random()-.5)*jit*.3;b.v.z+=(Math.random()-.5)*jit;
     // aim-assist bends a clean shot goalward: in the timed power window as before, OR on a sweet hit
     if(pow||(sweet&&SW.forceAssist))aimAssist(b,r);
-    if(sweet)S.shake=Math.min(1,S.shake+SW.shake);   // juice: a clean strike thumps
+     if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;

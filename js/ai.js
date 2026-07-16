@@ -227,7 +227,12 @@ function shotEval(team,bx,bz){
   //      already positioned. Safety gate = inFootRange + the SR band + |v.x|. ----
   if(r.act==='safeRaise'){
    r.actT+=dt;
-   if(relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT)r.act=null;
+   // Good-hit override: if the ball has arrived at a strikeable, aligned, low position and we're
+   // off cooldown, bail out of the lift THIS frame so the normal kick gate below fires instead of
+   // holding the raise and letting the drop-nudge it. (safeRaise otherwise exits only on the ball
+   // leaving the band / speeding up / lifting / timing out — none of which is "it's a good hit".)
+   const srKick=(overFoot||inFront)&&aligned&&r.kickT<0&&r.cd<=0;
+   if(srKick||relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT){r.act=null;r.raise=false;r.behindFlag=false;}
    else{r.raise=false;r.behindFlag=false;}         // the action owns the angle while it holds
   }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<SR.front&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!inFootRange(r,best)){
    r.act='safeRaise';r.actT=0;r.raise=false;r.behindFlag=false;

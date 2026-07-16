@@ -6,7 +6,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File tools\fetch-vendor.ps1
 #
-# Fetches: three.min.js (r128), GLTFLoader.js (0.128), and self-hosted Orbitron/Rajdhani
+# Fetches: three.min.js (r128), GLTFLoader.js (0.128), and self-hosted Russo One/Rajdhani
 # woff2 + a generated vendor/fonts.css pointing at the local copies.
 
 $ErrorActionPreference = 'Stop'
@@ -30,7 +30,7 @@ Get-File 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoa
 
 # --- fonts: request the Google CSS as a modern browser (so it serves woff2), download each
 #     font file, and rewrite the CSS to reference the local copies. ---
-$cssUrl = 'https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap'
+$cssUrl = 'https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&display=swap'
 $ua     = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
 $css    = (Invoke-WebRequest -Uri $cssUrl -UseBasicParsing -Headers @{ 'User-Agent' = $ua }).Content
 
