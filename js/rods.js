@@ -9,6 +9,7 @@ function rodSpeedMult(r){
 function kickRod(r, style){
  if(r.kickT>=0)return;
  r.raise=false;r.kickT=0;r.act=null;r.kickStyle=style||null;
+ r.kickHit=false;                       // debug tracer: set true by collideRod on real contact this swing
  if(S.stats)S.stats.kicks[r.team]++;
 }
 function resetRodRotation(){
@@ -40,7 +41,7 @@ function updateRods(dt){
      else if(T<KS.strike)a=KS.windupA+(KS.strikeA-KS.windupA)*((T-KS.windup)/(KS.strike-KS.windup));
      else if(T<KS.hold)a=KS.strikeA;
      else if(T<KS.drop)a=KS.strikeA*(1-(T-KS.hold)/(KS.drop-KS.hold));
-     else{a=0;r.kickT=-1;r.kickStyle=null;}
+     else{a=0;r.kickT=-1;r.kickStyle=null;if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
      r.angle=a*r.kickDir;
   }else if(r.act==='safeRaise'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.safeRaise.angle*r.kickDir,Math.min(1,AIC.safeRaise.lerp*dt));}
   else if(r.act==='trap'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.trap.angle*r.kickDir,Math.min(1,AIC.trap.lerp*dt));}
@@ -59,7 +60,7 @@ function updateRods(dt){
    r.offset+=clamp(r.target-r.offset,-ms*dt,ms*dt);
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
    const want=clamp((r.target-r.offset)/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped
-   const acc=AIC.slideAccel*dt;
+   const acc=AIC.slideAccel*stAgil(r)*dt;             // spd stat scales direction-change agility (+ stamina fade)
    r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
    r.offset+=r.slideV*dt;
   }

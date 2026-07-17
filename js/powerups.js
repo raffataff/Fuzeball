@@ -54,6 +54,16 @@ function redropBall(b){
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
 }
+// How fast the dead-ball stuck-timer should tick at world position p. Returns >1 inside one of
+// the active table's deadzones (corner pockets etc. — where a pinned ball can't be reached, so
+// waiting the full stallT is pure dead air), 1 everywhere else. Zones are corners: BOTH
+// |x|>xMin AND |z|>zMin (all four corners at once). Per-zone `mult` overrides DEAD.zoneMult.
+function deadzoneMult(p){
+ const zs=activeTable&&activeTable.deadzones;if(!zs)return 1;
+ const ax=Math.abs(p.x),az=Math.abs(p.z);
+ for(const z of zs)if(ax>z.xMin&&az>z.zMin)return z.mult||DEAD.zoneMult;
+ return 1;
+}
 function deadBallUpdate(dt){
  if(S.phase!=='play'||!S.balls.length)return;
  // A ball is DEAD when its true position (b.cur) stays inside a small box long enough — NOT when
@@ -70,7 +80,7 @@ function deadBallUpdate(dt){
   else{
    b.bbMin.min(p);b.bbMax.max(p);
    if(Math.max(b.bbMax.x-b.bbMin.x,b.bbMax.z-b.bbMin.z)>eps){b.bbMin.copy(p);b.bbMax.copy(p);b.stuckT=0;}
-   else b.stuckT+=dt;
+   else b.stuckT+=dt*deadzoneMult(p); // faster in an unreachable deadzone → shorter re-drop wait
   }
   if(b.stuckT<=DEAD.stallT)allStuck=false;
  }

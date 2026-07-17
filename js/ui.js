@@ -1,8 +1,28 @@
 'use strict';
 /* ================= UI wiring ================= */
+// Fill the Skin dropdown from the current table's skins (CONFIG.tables[cfg.table].skins).
+// The row hides itself when a table has only one skin (nothing to choose).
+function refreshSkinSelect(){
+ const sel=$('setSkin');if(!sel)return;
+ const T=CONFIG.tables[cfg.table]||CONFIG.tables.classic;
+ const skins=T.skins||{};
+ sel.innerHTML='';
+ for(const [sid,sdef] of Object.entries(skins)){
+  const o=document.createElement('option');o.value=sid;o.textContent=(sdef.name||sid);sel.appendChild(o);
+ }
+ sel.value=(typeof curSkin==='function')?curSkin(cfg.table):(T.defSkin||Object.keys(skins)[0]||'');
+ if(sel.parentElement)sel.parentElement.style.display=Object.keys(skins).length>1?'':'none';
+}
 function bindUI(){
+ // populate the table + theme (livery) dropdowns from the CONFIG registries (like the pitch select below),
+ // so adding an entry to CONFIG.tables / CONFIG.themes auto-adds its option — no HTML edit needed.
+ const tableSel=$('setTable');tableSel.innerHTML='';
+ for(const [tid,tdef] of Object.entries(CONFIG.tables)){const o=document.createElement('option');o.value=tid;o.textContent=(tdef.name||tid).toUpperCase();tableSel.appendChild(o);}
+ const themeSel=$('setTheme');themeSel.innerHTML='';
+ for(const [thid,thdef] of Object.entries(CONFIG.themes)){const o=document.createElement('option');o.value=thid;o.textContent=thdef.name||thid;themeSel.appendChild(o);}
  $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setTheme').value=cfg.theme;
  $('setTable').value=cfg.table||'classic';
+ refreshSkinSelect();
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
  $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
@@ -12,7 +32,8 @@ function bindUI(){
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
  $('setTheme').onchange=e=>{cfg.theme=e.target.value;applyTheme();saveCfg();};
-  $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();saveCfg();};
+  $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();refreshSkinSelect();saveCfg();};
+  $('setSkin').onchange=e=>{if(typeof selectSkin==='function')selectSkin(cfg.table,e.target.value);};
   // populate pitch select from the CONFIG.pitches registry
   const pitchSel=$('setPitch');
   pitchSel.innerHTML='';

@@ -50,11 +50,19 @@ function arenaClampSpawn(pp){
 }
 
 /* ===== arena mesh generator (shared: visuals, debug, mirrored in tools/build_arena_table.py) ===== */
-let arenaTable=null,arenaLedLine=null,hStep=0,arenaMats=null,tableNets={classic:null,arena:null};
+let arenaTable=null,arenaLedLine=null,hStep=0,arenaMats=null,tableNets={};
+const tableGroups={};                  // table id -> THREE.Group (holds the procedural fallback + skin sub-groups). Set by buildTable / buildArenaTable / models.js.
+const tableRooms={};                   // table id -> optional environment GLB scene. Populated by models.js loadRoomModel.
+let activeTable=CONFIG.tables.classic; // the currently-selected table def; applyTable() sets it. physics reads its collision via ARENA_ON.
+// --- skins (swappable paint jobs on a table's shape; see CONFIG.tables[*].skins) ---
+const skinGroups={};                   // table id -> { skinId -> THREE.Group holding that skin's loaded GLB }. Filled by models.js loadSkin.
+const skinHasFrame={};                 // table id -> { skinId -> true if that skin's GLB supplies its own goal_frame posts }
+const skinLed={};                      // table id -> { skinId -> that skin's LED material } (applySkin repoints ledMat at the active skin)
+const tablePrimObjs={};                // table id -> [procedural fallback meshes]; shown only when the active skin has no GLB. Set by buildTable / buildArenaTable.
 // big-goal morph of the baked arena shell (arena_bowl + led ring). Registered from the arena GLB
 // load; driven by arenaMorphUpdate. Each entry precomputes per-vertex deltas to the widened mouth.
 let arenaMorph=[],arenaMorphDirty=false;
-let tableHasFrame={classic:false,arena:false};   // set by models.js when a table GLB supplies its own 'goal_frame' posts
+let tableHasFrame={};   // deprecated — per-skin goal-frame flags now live in skinHasFrame[id][skinId] (see applySkin); kept to avoid a dangling ref
 
 // outline polyline matching arenaSD: rounded rect + OUTWARD goal cavities (back walls
 // at ±(L/2+goalDepth)). Rough corners are fine — every sample gets Newton-projected.
@@ -123,7 +131,7 @@ function arenaGridGeo(perim,profile){
 
 /* ===== arena table build ===== */
 function buildArenaTable(){
- arenaTable=new THREE.Group();scene.add(arenaTable);
+ arenaTable=new THREE.Group();scene.add(arenaTable);tableGroups.arena=arenaTable;
  // the arena owns its materials — deliberately NOT the classic wallMat, so themes
  // leave it alone and the GLB from tools/build_arena_table.py can replace the look
  arenaMats={
@@ -143,29 +151,65 @@ function buildArenaTable(){
  const legGeo=new THREE.BoxGeometry(4,34,4);
  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{const l=new THREE.Mesh(legGeo,arenaMats.body);
   l.position.set(s[0]*(F.L/2-2),-27,s[1]*(F.W/2-2));arenaTable.add(l);});
+ tablePrimObjs.arena=arenaTable.children.filter(c=>c.isMesh);  // procedural fallback (hidden when a skin GLB is shown)
  arenaTable.visible=false;
  return arenaTable;
 }
 
 /* ===== active flag ===== */
 let ARENA_ON=false;
+// Registry-driven: select the table by id from CONFIG.tables, show its group, hide the rest,
+// swap its environment, set the collision flag, then show the active SKIN. Adding a table or a
+// skin needs no change here.
 function applyTable(){
- ARENA_ON=cfg.table==='arena';
- if(primTable)primTable.visible=!ARENA_ON;
- if(arenaTable)arenaTable.visible=ARENA_ON;
- // arena ships its own arcade-room backdrop (floor/walls/crowd) — show it with the
- // arena table and hide the classic ground plane + crowd cylinder so they don't z-fight
- if(typeof roomModel!=='undefined'&&roomModel)roomModel.visible=ARENA_ON;
- if(typeof groundMesh!=='undefined'&&groundMesh)groundMesh.visible=!ARENA_ON;
- if(typeof crowdMesh!=='undefined'&&crowdMesh)crowdMesh.visible=!ARENA_ON;
- // the themed pitch plane is shared — carry it into the visible group
-  if(fieldMesh&&primTable&&arenaTable){(ARENA_ON?arenaTable:primTable).add(fieldMesh);fieldMesh.visible=true;}
-  if(pitchGroup&&primTable&&arenaTable){(ARENA_ON?arenaTable:primTable).add(pitchGroup);}
-  const nets=tableNets[ARENA_ON?'arena':'classic'];
-  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
-  const custom=tableHasFrame[ARENA_ON?'arena':'classic'];
-  goalFrames.forEach(g=>{if(g.userData&&g.userData.front)g.userData.front.visible=!custom;});
-  if(typeof drawField==='function')drawField();
+ const id=CONFIG.tables[cfg.table]?cfg.table:'classic';   // fall back to classic for unknown/old saves
+ activeTable=CONFIG.tables[id];
+ ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
+ // show only the selected table's group (its skin sub-groups + primitives ride along)
+ for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
+ // environment: a table with its own room GLB (e.g. arena's arcade backdrop) shows it and hides
+ // the shared ground plane + crowd cylinder; tables without a room keep the shared backdrop.
+ const hasRoom=!!activeTable.room;
+ for(const tid in tableRooms){if(tableRooms[tid])tableRooms[tid].visible=(tid===id&&hasRoom);}
+ if(typeof groundMesh!=='undefined'&&groundMesh)groundMesh.visible=!hasRoom;
+ if(typeof crowdMesh!=='undefined'&&crowdMesh)crowdMesh.visible=!hasRoom;
+ // the shared themed pitch plane rides inside whichever table group is active
+ const grp=tableGroups[id]||primTable;
+ if(fieldMesh&&grp){grp.add(fieldMesh);fieldMesh.visible=true;}
+ if(pitchGroup&&grp)grp.add(pitchGroup);
+ const nets=tableNets[id];
+ if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
+ // load (if needed) + show the active skin; applySkin owns primitives/goal-frame/LED
+ if(typeof loadSkin==='function')loadSkin(id,curSkin(id),()=>{applySkin(id);if(typeof drawField==='function')drawField();});
+ applySkin(id);
+ if(typeof drawField==='function')drawField();
+}
+
+// The skin (livery) currently selected for a table: cfg.skins[id], else the table's defSkin.
+function curSkin(id){
+ const T=CONFIG.tables[id];if(!T||!T.skins)return null;
+ const s=(cfg.skins||{})[id];
+ return T.skins[s]?s:(T.defSkin&&T.skins[T.defSkin]?T.defSkin:Object.keys(T.skins)[0]);
+}
+// Show the active skin's GLB, hide the other skins, fall back to the procedural primitives when
+// the active skin has no GLB, repoint the LED-fx material, and hide the primitive goal frame when
+// the skin brings its own posts. Cheap: sub-group .visible toggles (a hidden group hides its subtree).
+function applySkin(id){
+ const T=CONFIG.tables[id];if(!T)return;
+ const sk=curSkin(id),groups=skinGroups[id]||{},active=groups[sk];
+ for(const s in groups)groups[s].visible=(s===sk);         // show active skin, hide siblings
+ const prims=tablePrimObjs[id];
+ if(prims)prims.forEach(m=>{m.visible=!active;});          // primitives fill in only when the skin has no GLB
+ if(skinLed[id]&&skinLed[id][sk])ledMat=skinLed[id][sk];   // LED fx follow the visible skin
+ const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
+ goalFrames.forEach(g=>{if(g.userData&&g.userData.front)g.userData.front.visible=!custom;});
+}
+// Pick a skin for a table (from the Skin dropdown): remember it, lazy-load its GLB, show it.
+function selectSkin(id,skinId){
+ cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
+ if(typeof loadSkin==='function')loadSkin(id,skinId,()=>{applySkin(id);if(typeof drawField==='function')drawField();});
+ applySkin(id);
+ if(typeof saveCfg==='function')saveCfg();
 }
 
 /* ===== arena debug wireframe ===== */

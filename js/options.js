@@ -6,7 +6,7 @@
    input.js reads those keys each frame, so changes take effect instantly — no reload.
    Sensitivities are MULTIPLIERS on the CONFIG bases (1 = the tuned default). */
 
-const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,
+const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1};
 
 // Standard-layout button map for the live tester (index → label).

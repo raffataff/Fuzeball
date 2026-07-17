@@ -6,20 +6,36 @@
 //   S.teamStats=[{ALL:{spd:9,str:9,acc:9,ctl:9,rea:9,sta:9}},null]
 const STC=CONFIG.stats;
 function ST(r,k){const t=S.teamStats&&S.teamStats[r.team],s=r.stats||(t&&(t[r.role]||t.ALL)),v=s&&s[k];return v==null?STC.base:v;}
+// Stamina fade: a ≤1 multiplier that ramps in over the matchTime window (0 until fatStart, full at
+// fatEnd), scaled by how far sta is below max — sta=10 never fades, low sta fades hardest. Feeds
+// EVERY tiring channel: slide speed (stSpeed), agility (stAgil), reaction (stReact), AI aim
+// (stErr/stAim) and AI decisions (stIQ/stPred). Left OUT of shared execution (stHit/stGrip/stAccFrac/
+// aimAssist) so a tired team plays sluggish + sloppy + dozy, but the HUMAN's kick feel never fades.
 function stFat(r){const ramp=clamp((S.matchTime-STC.fatStart)/(STC.fatEnd-STC.fatStart),0,1);return 1-STC.fatMax*(1-ST(r,'sta')/STC.max)*ramp;}
 function stSpeed(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.spd)*stFat(r));}
+// AI slide AGILITY: scales the accel cap on an AI rod's direction changes (see updateRods). Keyed
+// on spd too — a 'fast' rod both tops out higher AND reverses quicker — with its own coefficient so
+// snappiness tunes apart from top speed. Fatigue folds in (tired = sluggish to change direction).
+// AI-only: the user rod stays instant. Base 5 = ×1.
+function stAgil(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.agil)*stFat(r));}
 function stHit(r){return Math.max(.2,1+(ST(r,'str')-STC.base)*STC.str);}
 function stGrip(r){return clamp(KICK.grip*(1+(ST(r,'ctl')-STC.base)*STC.ctl),0,.6);}
 function stReact(r){return Math.max(.2,1-(ST(r,'rea')-STC.base)*STC.rea)/stFat(r);}
 function stCd(r){return Math.max(.25,1-(ST(r,'rea')-STC.base)*STC.cd);}
-function stErr(r){return Math.max(.15,1-(ST(r,'acc')-STC.base)*STC.accErr);}
-function stAim(r,a){return clamp(a+(ST(r,'acc')-STC.base)*STC.accAim,0,1);}
+function stErr(r){return Math.max(.15,(1-(ST(r,'acc')-STC.base)*STC.accErr)/stFat(r));}   // wander error GROWS when tired (÷stFat, like stReact)
+function stAim(r,a){return clamp((a+(ST(r,'acc')-STC.base)*STC.accAim)*stFat(r),0,1);}    // goal-aim precision fades when tired
 // 0..1 fraction of a rod's acc stat ABOVE base — how far toward max accuracy it is.
 // Used to scale the sweet-spot power bonus (see collideRod): base 5 → 0, max 10 → 1.
 function stAccFrac(r){return clamp((ST(r,'acc')-STC.base)/(STC.max-STC.base),0,1);}
 // Decision intelligence multiplier on the difficulty's base iq roll (see ai.js). Base 5 = 1
-// (unchanged); higher = more likely to trap/wait for the sweet spot, lower = greedier.
-function stIQ(r){return Math.max(0,1+(ST(r,'iq')-STC.base)*STC.iq);}
+// (unchanged); higher = more likely to trap/wait for the sweet spot, lower = greedier. Fatigue
+// folds in — a tired team makes fewer clever plays.
+function stIQ(r){return Math.max(0,(1+(ST(r,'iq')-STC.base)*STC.iq)*stFat(r));}
+// Ball-trajectory anticipation: scales the AI's prediction LEAD (D.pred) — how far ahead of a
+// moving ball a rod positions. Homed on iq (reading the play is cognition, not execution), kept
+// gentle and FLOORED so a low-iq team predicts a bit worse, not helplessly. Fatigue fades it too
+// (tired = reads the play late), but never below predFloor. Base 5 = ×1.
+function stPred(r){return Math.max(STC.predFloor,(1+(ST(r,'iq')-STC.base)*STC.predIq)*stFat(r));}
 // Kick aim-assist: bend the outgoing shot's heading toward the goal-mouth centre.
 // Pure horizontal rotation (Magnus-style) — adds no energy, so it's stable. Only
 // acts above base accuracy, only on goalward shots already near the target cone,

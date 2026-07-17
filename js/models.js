@@ -9,43 +9,68 @@
    cannonball, golden, split) and map them to ball types. */
 const rodTemplates={};   // men-count -> loaded rod scene (bar+handle+collar+knob)
 let ballModel=null;      // loaded ball GLB scene (with material slots)
-let roomModel=null;      // loaded arena room/environment GLB (arcade room) — shown only with the arena table
+let roomModel=null;      // deprecated — per-table environment GLBs now live in tableRooms[id] (arena.js); kept to avoid a dangling ref
 let pitchModel=null;     // loaded pitch GLB scene (one mesh per theme variant)
 const ballMatMap={};     // ballType -> material name in GLB
 const pitchMatMap={};    // pitch variant -> material (unused for now; mirrors ball loader)
-const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc
+const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc. Lazy: only the figurines actually on the table are loaded (ensureExplosionModel), not all ~17.
+const explosionLoading={};    // figurine id -> true while its GLB fetch is in flight (guards double-loads / avoids a bad partial entry in explosionTemplates)
 let ballExplosionTemplate=null; // {scene, clips} — the cannonball's own shatter GLB (CONFIG.cannonball.explosionSrc), consumed by fracture.js spawnBallFracture
+let respawnSwirlTemplate=null;  // {scene, clips} — the shared swirly respawn-particle GLB (CONFIG.cannonball.respawnSwirlSrc), consumed by fracture.js spawnRespawnSwirl
 
 /* --- static table --------------------------------------------------------- */
+/* Load the ACTIVE skin of every table at boot (a table = a shape; skins are its swappable
+   paint jobs). Non-active skins lazy-load when first picked in the Skin dropdown.
+   buildTable/buildArenaTable pre-create each table's group (procedural fallback inside);
+   a GLB-only table gets a fresh empty group here. */
 function loadTableModel(){
- const load=(url,group,key)=>{
-  const loader=new THREE.GLTFLoader();
-  loader.load(url,gltf=>{
-   try{
-    let hasFrame=false;
-    gltf.scene.traverse(c=>{
-     if(!c.isMesh)return;
-     c.castShadow=true;c.receiveShadow=true;
-     const n=onm(c);
-     if(n.startsWith('field'))c.visible=false;      // themed pitch plane stays instead
-     else if(n.startsWith('led'))ledMat=c.material;
-     else if(n.startsWith('goal_net'))c.visible=false;                           // keep the built-in diamond net
-     else if(n.startsWith('goal_frame')||n.startsWith('goal_post'))hasFrame=true; // custom posts: keep visible, hide the primitive front frame
-    });
-    tableHasFrame[key]=hasFrame;                    // applyTable hides the primitive posts+bar for this table
-    hideMeshes(group);                              // primitives off BEFORE the GLB joins (goalFrames live in scene, untouched)
-    group.add(gltf.scene);                          // inside the group → applyTable toggles it
-    gltf.scene.updateMatrixWorld(true);
-    registerBigGoalMeshes(gltf.scene);              // wire baked frame + end-walls into the big-goal widen (bigGoalUpdate)
-    if(key==='arena')registerArenaMorph(gltf.scene); // curved arena shell opens via SDF re-projection instead
-    applyTable();applyTheme();applyColors();drawField();
-    console.log(url.split('/').pop()+' loaded');
-   }catch(e){console.warn('table GLB hookup failed, keeping primitives',e);}
-  });
- };
- load('assets/fuzeball_table.glb',primTable,'classic');
- if(arenaTable)load('assets/tables/arena/fuzeball_table_arena.glb',arenaTable,'arena');
+ for(const id in CONFIG.tables){
+  if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
+  const sk=(typeof curSkin==='function')?curSkin(id):null;
+  if(sk)loadSkin(id,sk,()=>{applyTable();applyTheme();applyColors();drawField();});
+ }
  loadRoomModel();
+}
+
+/* Load one skin (a textured GLB of a table's shape) into its own sub-group under the table
+   group, cached by id/skin. Missing GLB -> drop the empty group so applySkin falls back to the
+   procedural primitives. cb runs on success OR failure. */
+function loadSkin(id,skinId,cb){
+ skinGroups[id]=skinGroups[id]||{};
+ if(skinGroups[id][skinId]){if(cb)cb();return;}     // already loaded (cache)
+ const T=CONFIG.tables[id],S=T&&T.skins&&T.skins[skinId];
+ if(!S){if(cb)cb();return;}
+ if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
+ const grp=new THREE.Group();grp.visible=false;
+ tableGroups[id].add(grp);skinGroups[id][skinId]=grp;
+ const loader=new THREE.GLTFLoader();
+ const hook=gltf=>{
+  try{
+   let hasFrame=false;
+   gltf.scene.traverse(c=>{
+    if(!c.isMesh)return;
+    c.castShadow=true;c.receiveShadow=true;
+    const n=onm(c);
+    if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
+    else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
+    else if(n.startsWith('goal_net'))c.visible=false;                            // keep the built-in diamond net
+    else if(n.startsWith('goal_frame')||n.startsWith('goal_post'))hasFrame=true; // custom posts: hide the primitive front frame
+   });
+   (skinHasFrame[id]=skinHasFrame[id]||{})[skinId]=hasFrame;
+   grp.add(gltf.scene);gltf.scene.updateMatrixWorld(true);
+   registerBigGoalMeshes(gltf.scene);               // wire baked frame + end-walls into the big-goal widen
+   if(T.collision==='bowl')registerArenaMorph(gltf.scene); // bowl shells open via SDF re-projection
+   console.log(S.glb+' loaded ('+id+'/'+skinId+')');
+  }catch(e){console.warn('skin GLB hookup failed',e);}
+  if(cb)cb();
+ };
+ const fail=()=>{
+  tableGroups[id].remove(grp);delete skinGroups[id][skinId];    // no GLB -> fall back to primitives
+  console.warn('skin GLB missing for '+id+'/'+skinId+' ('+(T.folder||'')+S.glb+')');
+  if(cb)cb();
+ };
+ const primary=(T.folder||'')+S.glb;
+ loader.load(primary,hook,undefined,()=>{S.glbFallback?loader.load(S.glbFallback,hook,undefined,fail):fail();});
 }
 
 /* Register a loaded table GLB's goal parts for the big-goal widen. The diamond net already
@@ -81,15 +106,21 @@ function registerBigGoalMeshes(root){
    so it drops straight into the scene with no transform. Tied to the arena
    table: applyTable toggles its visibility with ARENA_ON. */
 function loadRoomModel(){
- new THREE.GLTFLoader().load('assets/tables/arena/fuzeball_room_arena.glb',gltf=>{
-  try{
-   roomModel=gltf.scene;
-   roomModel.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // room is the backdrop, not a shadow caster
-   scene.add(roomModel);
-   applyTable();                                  // set initial visibility to match the current table
-   console.log('fuzeball_room_arena.glb loaded');
-  }catch(e){console.warn('room GLB hookup failed',e);}
- },undefined,()=>console.warn('room GLB missing, no environment'));
+ // Load each table's optional environment GLB into tableRooms[id]; applyTable toggles which is shown.
+ for(const id in CONFIG.tables){
+  const T=CONFIG.tables[id];if(!T.room)continue;
+  const url=(T.folder||'')+T.room;
+  new THREE.GLTFLoader().load(url,gltf=>{
+   try{
+    const room=gltf.scene;
+    room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // backdrop, not a shadow caster
+    room.visible=false;scene.add(room);
+    tableRooms[id]=room;
+    applyTable();                                 // set initial visibility to match the current table
+    console.log(T.room+' loaded');
+   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
+  },undefined,()=>console.warn('room GLB missing for '+id+' ('+url+'), no environment'));
+ }
 }
 
 /* --- rods ----------------------------------------------------------------- */
@@ -97,10 +128,18 @@ function loadRodModels(onReady){
  const loader=new THREE.GLTFLoader();
  const sizes=[1,2,3,5];let left=sizes.length;
  const done=()=>{if(--left===0)onReady();};
- sizes.forEach(n=>loader.load('assets/fuzeball_rod_'+n+'man.glb',
-  gltf=>{rodTemplates[n]=gltf.scene;done();},
-  undefined,
-  ()=>{console.warn('rod_'+n+'man.glb missing, using primitive');done();}));
+ // Rods are a shared asset (used by every table). Prefer the tidy assets/rods/ folder,
+ // fall back to the old assets/ root location, then to the primitive rod.
+ sizes.forEach(n=>{
+  const file='fuzeball_rod_'+n+'man.glb';
+  loader.load('assets/rods/'+file,
+   gltf=>{rodTemplates[n]=gltf.scene;done();},
+   undefined,
+   ()=>loader.load('assets/'+file,
+    gltf=>{rodTemplates[n]=gltf.scene;done();},
+    undefined,
+    ()=>{console.warn('rod_'+n+'man.glb missing, using primitive');done();}));
+ });
 }
 
 /* Clone the loaded rod for one rod, tinting the team-coloured parts. Returns
@@ -145,30 +184,77 @@ function cloneWithMaps(dest,src){
 }
 
 /* --- fracture / explosion models -------------------------------------------
-   Optional per-figurine "explode & collapse" GLB, consumed by js/fracture.js
-   on a cannonball kill. Only figurines with an explosionSrc get the effect;
-   the rest keep the original instant-vanish. Loaded once here, at boot, so a
-   live explosion later is just a clone() + mixer.play() — no disk/network
-   hit and no fresh material during a match. */
+   Optional per-figurine "explode & collapse" GLB, consumed by js/fracture.js on a
+   cannonball kill. Only figurines with an explosionSrc get the effect; the rest keep the
+   original instant-vanish. A live explosion is just a clone() + mixer.play() — no disk hit
+   and no fresh material mid-match, because the two on-table figurines' shatters are primed
+   and shader-warmed ahead of time (ensureExplosionModel). */
+/* Boot: load ONLY the two shared, always-needed shatter GLBs — the cannonball's own
+   explosion and the respawn swirl. The per-figurine player-explosion GLBs are NO LONGER
+   bulk-loaded here (that was ~17 heavy fractured meshes resident for the 2 ever on the
+   table); ensureExplosionModel pulls each figurine's shatter in on demand — main.js primes
+   the active red/blue at boot, reloadPlayerModel primes a freshly-picked one. */
 function loadExplosionModels(onReady){
   const off=CONFIG.debug?.fractureFx===false;                       // master kill-switch: no fracture GLBs loaded at all
-  const list=off?[]:CONFIG.playerModel.models.filter(m=>m.explosionSrc);
-  const ballSrc=off?null:CONFIG.cannonball.explosionSrc;            // the ball's own shatter GLB rides the same boot step + warm pass
-  let left=list.length+(ballSrc?1:0);
+  const ballSrc=off?null:CONFIG.cannonball.explosionSrc;            // the ball's own shatter GLB (shared, always needed)
+  const swirlSrc=off?null:CONFIG.cannonball.respawnSwirlSrc;        // the respawn swirl GLB (one shared asset for every figurine)
+  let left=(ballSrc?1:0)+(swirlSrc?1:0);
   if(!left){onReady();return;}
   const done=()=>{if(--left<=0)onReady();};
-  list.forEach(m=>{
-   new THREE.GLTFLoader().load(m.explosionSrc,
-    gltf=>{explosionTemplates[m.id]={scene:gltf.scene,clips:gltf.animations};done();},
-    undefined,
-    ()=>{console.warn('explosion GLB missing for '+m.id+' ('+m.explosionSrc+')');done();});
-  });
   if(ballSrc){
    new THREE.GLTFLoader().load(ballSrc,
     gltf=>{ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('cannonball explosion GLB missing ('+ballSrc+')');done();});
   }
+  if(swirlSrc){
+   new THREE.GLTFLoader().load(swirlSrc,
+    gltf=>{respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    undefined,
+    ()=>{console.warn('respawn swirl GLB missing ('+swirlSrc+')');done();});
+  }
+}
+
+/* Lazy-load ONE figurine's explosion GLB (by model id) and shader-warm it off-screen so a
+   later cannonball kill is still just clone()+play() — no mid-match disk read or compile
+   stall. No-op if fracture fx is off, the id has no explosionSrc, it's already loaded, or a
+   load is already in flight. Safe to call on every model change; cb (optional) runs on
+   success OR skip. spawnFracture falls back to instant-vanish while a template isn't ready. */
+function ensureExplosionModel(id,cb){
+  if(CONFIG.debug?.fractureFx===false||!id||explosionTemplates[id]||explosionLoading[id]){if(cb)cb();return;}
+  const m=CONFIG.playerModel.models.find(x=>x.id===id);
+  if(!m||!m.explosionSrc){if(cb)cb();return;}                       // figurine has no shatter GLB — keeps original instant-vanish
+  explosionLoading[id]=true;
+  new THREE.GLTFLoader().load(m.explosionSrc,
+   gltf=>{delete explosionLoading[id];
+    explosionTemplates[id]={scene:gltf.scene,clips:gltf.animations};
+    if(typeof warmFractureTemplate==='function')warmFractureTemplate(explosionTemplates[id]); // precompile now, off the game loop
+    if(cb)cb();},
+   undefined,
+   ()=>{delete explosionLoading[id];console.warn('explosion GLB missing for '+id+' ('+m.explosionSrc+')');if(cb)cb();});
+}
+
+/* Free a per-figurine explosion template's GPU buffers/textures and drop it from the cache.
+   Live fracture instances clone-share this template's geometry+textures, so the caller MUST
+   have cleared them first (clearFractures) — startMatch/gotoMenu both do before pruning. The
+   template re-loads on demand via ensureExplosionModel. */
+function disposeExplosionModel(id){
+  const t=explosionTemplates[id];if(!t)return;
+  t.scene.traverse(c=>{if(!c.isMesh)return;
+   if(c.geometry&&c.geometry.dispose)c.geometry.dispose();
+   const mats=Array.isArray(c.material)?c.material:[c.material];
+   for(const m of mats){if(!m)continue;
+    for(const k of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap'])
+     {const tx=m[k];if(tx&&tx.dispose)tx.dispose();}
+    if(m.dispose)m.dispose();}});
+  delete explosionTemplates[id];
+}
+/* Dispose every per-figurine explosion template EXCEPT the ids in keep[] — bounds resident
+   shatter GLBs to the (usually two) figurines actually about to play. The shared cannonball +
+   respawn-swirl templates live in their own vars, so they're never touched here. */
+function pruneExplosionModels(keep){
+  const k=new Set(keep||[]);
+  for(const id in explosionTemplates)if(!k.has(id))disposeExplosionModel(id);
 }
 
 /* --- ball model ------------------------------------------------------------ */

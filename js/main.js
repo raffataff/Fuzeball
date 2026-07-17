@@ -58,6 +58,7 @@ function loop(t){
     r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha);
    }
    fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
+   respawnSwirlUpdate(rdt); // spawn/advance/fade the pre-respawn swirl for removed players
   }
  fxUpdate(rdt);
  cameraUpdate(rdt);
@@ -87,20 +88,36 @@ function boot(){
  if(booted)return;booted=true;
  applyLogo();
  buildRods();applyTable();applyTheme();applyColors();
+ if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
  requestAnimationFrame(loop);
 }
-loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
-loadPitchModel(()=>{applyPitchModel();}); // pitch GLB (one mesh per theme variant); falls back to jpg
-loadBallModel(()=>{                     // ball GLB with material slots
+// requestIdleCallback w/ a setTimeout fallback (Safari has no native rIC) — used to nudge
+// remaining heavy one-off work (shader precompile) off the browser's busiest ticks.
+const ric=window.requestIdleCallback||function(fn,o){return setTimeout(fn,(o&&o.timeout)||50);};
+function startLoading(){
+ loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
+ loadPitchModel(()=>{applyPitchModel();}); // pitch GLB (one mesh per theme variant); falls back to jpg
+ loadBallModel(()=>{                     // ball GLB with material slots
   loadPlayerModel(()=>{
-   loadExplosionModels(()=>{             // cannonball-kill fracture GLBs (if any figurine has one)
-    warmFractureShaders();               // precompile their shaders now, off-screen — never during a match
+   loadExplosionModels(()=>{             // shared cannonball + swirl GLBs only (per-figurine shatters lazy-load)
+    ric(warmFractureShaders,{timeout:1000}); // precompile shaders off-screen, still nudged off the main tick
+    ensureExplosionModel(activeModel(0).id); // prime the two figurines actually on the table (each warms itself on load)
+    ensureExplosionModel(activeModel(1).id);
     loadRodModels(()=>{                  // rod GLBs must be ready before buildRods clones them
      boot();
     });
    });
   });
-});
+ });
+}
+// The fuse-flight (bezier bend + trail + sparks every frame) is the intro's busiest visual
+// stretch — GLTF parse callbacks landing mid-flight is what causes the stutter on the bend.
+// Nothing needs these assets before boot() fires anyway, so just hold the whole chain off
+// until detonation + the logo slam have settled. Skipped entirely if the intro itself is
+// skipped (reduced-motion or CONFIG.intro.on=false), so nothing is delayed needlessly.
+const introPlaying=CONFIG.intro.on&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const loadDelay=introPlaying?(CONFIG.intro.igniteT+CONFIG.intro.fuseT+CONFIG.intro.slamDelay+0.35)*1000:0;
+setTimeout(startLoading,loadDelay);
 // Failsafe: if any loader stalls with no load/error event (e.g. an offline CDN or a hung
 // network fetch), start anyway after 8s so the game never hangs on a black screen.
 setTimeout(boot,8000);

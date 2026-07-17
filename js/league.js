@@ -12,6 +12,15 @@ const LGC=CONFIG.league,LG_ROLES=['GK','DEF','MID','ATT'],LG_KEYS=['spd','str','
 let LG=null;
 function lgBlk(base){const b=base!=null?base:STC.base;const blk={};for(const k of LG_KEYS)blk[k]=b;return blk;}
 function lgBld(base){return{GK:lgBlk(base),DEF:lgBlk(base),MID:lgBlk(base),ATT:lgBlk(base)};}
+// promotion floor-raise: bump every stat still sitting at the OLD division base up toward the
+// new tier (pos 0=winner +boost1, else +boost2). Already-upgraded stats are left alone.
+function lgPromoteBoost(team,pos){const amt=pos===0?LGC.promoteBoost1:LGC.promoteBoost2,oldBase=LGC.divisions[team.div].base,g=[];
+ for(const role of LG_ROLES){const st=team.bld[role];for(const k of LG_KEYS){if(st[k]<=oldBase){const from=st[k],to=Math.min(STC.max,from+amt);if(to>from){st[k]=to;g.push({role,key:k,from,to});}}}}
+ return g;}
+// relegation penalty: knock relegateLose off EVERY stat in every role block (floored).
+function lgRelegatePenalty(team){const l=[];
+ for(const role of LG_ROLES){const st=team.bld[role];for(const k of LG_KEYS){const from=st[k],to=Math.max(LGC.relegateFloor,from-LGC.relegateLose);if(to<from){st[k]=to;l.push({role,key:k,from,to});}}}
+ return l;}
 function lgBuildHTML(bld,plus){
  let h='';
  for(const role of LG_ROLES){
@@ -98,22 +107,21 @@ function lgNewSeason(keep,opts,forceSlot){
   const oldPd=playerDiv();
   // 1. Finalise standings per division
   const orders=[];for(let t=0;t<3;t++)orders[t]=lgOrderDiv(t);
-  // 2. Award upgrade parts
+  // 2. Promotion: award upgrade parts + raise the still-at-base stat floor toward the new tier.
+  //    (player's boost is applied in lgFinalize so the lobby squad already reflects it → skip here)
   for(let t=0;t<2;t++){
-   if(orders[t][0])orders[t][0].t.up+=LGC.upPromote1;
-   if(orders[t][1])orders[t][1].t.up+=LGC.upPromote2;
+   orders[t].slice(0,LGC.promoteN).forEach((e,pi)=>{
+    e.t.up+=pi===0?LGC.upPromote1:LGC.upPromote2;
+    if(e.i!==LG.playerId)lgPromoteBoost(e.t,pi);
+   });
   }
   if(orders[2][0])orders[2][0].t.up+=LGC.upChampTop;
-  // 3. Relegation penalty: each relegated team loses 1 random stat per role block
+  // 3. Relegation penalty: each relegated team loses relegateLose off EVERY stat per role block
+  //    (player's penalty already applied at season-end so the lobby shows it → skip here)
   for(let t=1;t<3;t++){
-   const relegated=orders[t].slice(-LGC.relegateN);
-   for(const e of relegated){
-    if(e.i===LG.playerId)continue; // player's penalty already applied at season-end (so the lobby shows it)
-    for(const role of LG_ROLES){
-     const st=e.t.bld[role];
-     const k=LG_KEYS[Math.floor(Math.random()*LG_KEYS.length)];
-     st[k]=Math.max(LGC.relegateFloor,st[k]-LGC.relegateLose);
-    }
+   for(const e of orders[t].slice(-LGC.relegateN)){
+    if(e.i===LG.playerId)continue;
+    lgRelegatePenalty(e.t);
    }
   }
   // 4. Swap divisions
@@ -251,6 +259,10 @@ function modelRender(id){
   ==='stormer'?'stormer':id
   ==='alienTamirok'?'tamirok':id
   ==='manStumpy'?'stumpy':id
+  ==='rocko'?'rocko':null
+  ==='womanSasha'?'sasha':null
+  ==='alienKatum'?'katum':null
+  
   ;
  return 'assets/renders/render_'+base+'_cycles.png';
 }
@@ -258,7 +270,7 @@ function modelRender(id){
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
 function teamCol(t){return S.lg?S.lg.cols[t]:(t===0?cfg.redColor:cfg.blueColor);}
 function goalTarget(){return S.lg?(S.lg.cup?CUP.goals:LGC.goals):cfg.goals;}
-function teamDiff(t){return S.lg?'pro':(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds ARE the difficulty
+function teamDiff(t){return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds are layered on baseDiff (per-division override via S.lg.diff)
 function renderLgTape(op){
  const T=LG.teams,me=T[LG.playerId],them=T[op];
  const mo=CONFIG.playerModel.models.find(x=>x.id===me.model);
@@ -283,7 +295,8 @@ function lgPlayMatch(){
  const fx=lgPlayerFixture();if(!fx)return;
  const pid=LG.playerId,op=fx[0]===pid?fx[1]:fx[0],T=LG.teams;
  S.teamStats=[T[pid].bld,T[op].bld];
- S.lg={op,names:[T[pid].name,T[op].name],cols:[T[pid].col,T[op].col],rec:false,
+ const pdConf=LGC.divisions[playerDiv()];              // this division's brain difficulty (falls back to baseDiff)
+ S.lg={op,diff:(pdConf&&pdConf.diff)||LGC.baseDiff,names:[T[pid].name,T[op].name],cols:[T[pid].col,T[op].col],rec:false,
         prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,special:cfg.special,power:cfg.power,
                  table:cfg.table,theme:cfg.theme,pitch:cfg.pitch}};
  const sel=$('lgControl').value;
@@ -340,7 +353,7 @@ function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisio
  }
  saveLG();
 }
-function lgReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg/S.teamStats)
+function lgReturn(){$('lgSeasonEnd').classList.add('hidden');if(LG&&LG.seasonEnd){LG.seasonEnd.shown=true;saveLG();}gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg/S.teamStats; hide the season-end overlay + mark shown so openLeague doesn't re-pop it)
 /* ---- end-of-season summary (plays after the final match, before the lobby) ---- */
 function lgFinalize(){ // freeze final standings + promotion/relegation + apply player's relegation penalty
   const orders=[lgOrderDiv(0),lgOrderDiv(1),lgOrderDiv(2)];
@@ -363,17 +376,12 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
   const pChamp=oldPd===2&&orders[2][0].i===LG.playerId;
   const fate=pChamp?'champion':pPromoted?'promoted':pRelegated?'relegated':'stayed';
-  let playerLosses=[];
-  if(pRelegated){ // apply the penalty NOW so the lobby squad already reflects the drop
-   const bld=LG.teams[LG.playerId].bld;
-   for(const role of LG_ROLES){
-    const st=bld[role];
-    const k=LG_KEYS[Math.floor(Math.random()*LG_KEYS.length)];
-    const from=st[k],to=Math.max(LGC.relegateFloor,from-LGC.relegateLose);
-    if(to<from){st[k]=to;playerLosses.push({role,key:k,from,to});}
-   }
-  }
-  LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,divs,playerLosses,shown:false};
+  // Apply the player's stat change NOW (before lgNewSeason swaps divisions) so the lobby squad
+  // already reflects it; lgNewSeason skips the player for the same reason.
+  let playerLosses=[],playerGains=[];
+  if(pRelegated)playerLosses=lgRelegatePenalty(LG.teams[LG.playerId]);
+  else if(pPromoted)playerGains=lgPromoteBoost(LG.teams[LG.playerId],pPos-1);
+  LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,divs,playerLosses,playerGains,shown:false};
   saveLG();
 }
 function lgSeasonEarn(){
@@ -467,6 +475,30 @@ function lgSELoss(se){
   h+='</div>';
   return h;
 }
+function lgSEGain(se){
+  if(se.playerFate!=='promoted'||!se.playerGains||!se.playerGains.length)return '';
+  const bld=LG.teams[LG.playerId].bld;
+  let h='<div class="lgSEPanel"><div class="lgSEPanelHead pro">▲ PROMOTION — STAT FLOOR RAISED</div>';
+  for(const role of LG_ROLES){
+   h+='<div class="lgSERole"><span class="lgSERoleH">'+role+'</span>';
+   for(const k of LG_KEYS){
+    const v=bld[role][k];
+    const gain=se.playerGains.find(x=>x.role===role&&x.key===k);
+    const before=gain?gain.from:v,after=v;
+    let pips='';
+    for(let i=0;i<STC.max;i++){
+     if(i<before)pips+='<b class="on">▮</b>';
+     else if(i<after)pips+='<b class="gain">▮</b>'; // the added pip(s)
+     else pips+='<b>▯</b>';
+    }
+    h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
+     (gain?'<span class="lgSEPlus">+'+(gain.to-gain.from)+'</span>':'')+'</div>';
+   }
+   h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
 function renderLgSeasonEnd(){
   const se=LG.seasonEnd;if(!se)return;
   const r=lgSeasonEarn();
@@ -477,7 +509,8 @@ function renderLgSeasonEnd(){
    lgSEFate(se)+
    '<div class="lgSEDivs">'+divs+'</div>'+
    lgSERewards(r,se)+
-   lgSELoss(se);
+   lgSELoss(se)+
+   lgSEGain(se);
   if(se.playerFate==='champion'){ // wire the Enter Cup button (created in lgSERewards)
     const b=$('lgSEEnterCup');
     if(b)b.onclick=()=>{if(!LG.cup)cupCreate();openCup();};
@@ -692,6 +725,8 @@ function openSlots(){
 let LSP={r:null,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null,plat:null,lid:null,bs:1,
  init(){
   if(this.r)return;const cv=$('lgSetupFig');
+  // preserveDrawingBuffer stays: this renders ONCE per interaction to a VISIBLE canvas with no
+  // rAF loop, so without it the preview would blank after the browser's next composite.
   this.r=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true,preserveDrawingBuffer:true});
   this.r.setPixelRatio(Math.min(devicePixelRatio,2));
   this.r.setSize(200,260,false);this.r.outputEncoding=THREE.sRGBEncoding;
@@ -726,13 +761,15 @@ let LSP={r:null,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null
     this.paint(col);
    };
    const cached=typeof PV!=='undefined'&&PV.cache&&PV.cache[am.id];
-   if(cached){place(cached);return;}
+   if(cached){if(typeof touchModelCache==='function')touchModelCache(PV.cacheOrder,am.id);place(cached);return;}
    new THREE.GLTFLoader().load(am.src,gltf=>{
-    if(typeof PV!=='undefined'&&PV.cache)PV.cache[am.id]=gltf.scene;
+    if(typeof pvCachePut==='function')pvCachePut(am.id,gltf.scene);
+    else if(typeof PV!=='undefined'&&PV.cache)PV.cache[am.id]=gltf.scene;
     place(gltf.scene);
    },undefined,()=>{
     const fb=typeof pvFallback==='function'?pvFallback():new THREE.Group();
-    if(typeof PV!=='undefined'&&PV.cache)PV.cache[am.id]=fb;
+    if(typeof pvCachePut==='function')pvCachePut(am.id,fb);
+    else if(typeof PV!=='undefined'&&PV.cache)PV.cache[am.id]=fb;
     place(fb);
    });
   }else{this.paint(col);}
@@ -857,10 +894,12 @@ function cupPlayTie(){
   const oppId=tie.a==='player'?tie.b:tie.a;
   const pa=cupEnt('player'),pb=cupEnt(oppId);
   S.teamStats=[pa.bld,pb.bld];
-  S.lg={cup:true,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
-        banner:'CHAMPIONS CUP · '+CUP.rounds[LG.cup.round],rec:false,
-        prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
-                 special:cfg.special,power:cfg.power,table:cfg.table,theme:cfg.theme,pitch:cfg.pitch}};
+  // prevKit: carry the EXISTING snapshot through consecutive ties (after tie 1 the live cfg
+  // already holds the cup kit/table — re-snapshotting it would lose the user's real setup).
+  const pk=(S.lg&&S.lg.prevKit)||{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
+            special:cfg.special,power:cfg.power,table:cfg.table,theme:cfg.theme,pitch:cfg.pitch};
+  S.lg={cup:true,diff:CUP.diff||LGC.baseDiff,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
+        banner:'CHAMPIONS CUP · '+CUP.rounds[LG.cup.round],rec:false,prevKit:pk};
   const sel=$('cupControl').value;
   $('league').classList.add('hidden');$('championsCup').classList.add('hidden');
   cfg.redColor=pa.col;cfg.modelRed=pa.model;cfg.blueColor=pb.col;cfg.modelBlue=pb.model;
@@ -984,6 +1023,7 @@ function renderCup(){
 function openCup(){
   $('menu').classList.add('hidden');$('league').classList.add('hidden');$('lgSeasonEnd').classList.add('hidden');
   $('lgForfeit').classList.add('hidden');$('pause').classList.add('hidden');
+  $('win').classList.add('hidden');$('hud').classList.add('hidden'); // arriving from a finished tie's win screen
   $('championsCup').classList.remove('hidden');
   renderCup();
 }

@@ -7,7 +7,21 @@
 const PV={on:false,ready:false,loadedId:null,team:0,spin:true,
  yaw:.5,pitch:0,dist:8,dragging:false,px:0,py:0,
  renderer:null,scene:null,camera:null,root:null,model:null,mats:[],
- rim:null,platform:null,ringMesh:null,cache:{},baseScale:1};
+ rim:null,platform:null,ringMesh:null,cache:{},cacheOrder:[],baseScale:1};
+
+/* Record a figurine template into the shared preview cache (PV.cache — used by the studio,
+   menu thumbnails and league setup) and evict LRU entries past CONFIG.playerModel.cacheMax.
+   dispose=false (ref-drop only): the studio/thumb/league may still hold a clone of an evicted
+   template, so we never free its GPU here — dropping the JS ref still lets V8 reclaim the bulk
+   (decoded images + geometry arrays) once every clone of it is gone. Protects the ids currently
+   shown so an on-screen preview is never yanked. */
+function pvCachePut(id,scene){
+ if(typeof cacheModelTemplate!=='function'){PV.cache[id]=scene;return;} // helpers live in world.js; degrade gracefully
+ cacheModelTemplate(PV.cache,PV.cacheOrder,id,scene);
+ const protect=new Set([PV.loadedId,THB.loadedId&&THB.loadedId[0],THB.loadedId&&THB.loadedId[1],
+  (typeof LSP!=='undefined'&&LSP)?LSP.lid:null,cfg.modelRed,cfg.modelBlue].filter(Boolean));
+ capModelCache(PV.cache,PV.cacheOrder,protect,false);
+}
 
 /* ---- build controls + wire buttons (called once at boot) ---- */
 function initCustomize(){
@@ -176,7 +190,9 @@ function czSyncUI(){czSyncModels();czSyncColor();czSyncFinish();czSyncYaw();}
 function pvInit(){
  if(PV.ready)return;
  const cv=$('pvCanvas');
- PV.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true,preserveDrawingBuffer:true});
+ // No preserveDrawingBuffer: pvTick renders every frame (display stays painted) and pvSnapshot
+ // renders synchronously right before toDataURL — so the drawing buffer needn't be retained.
+ PV.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
  PV.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
  PV.renderer.outputEncoding=THREE.sRGBEncoding;
  PV.scene=new THREE.Scene();
@@ -229,11 +245,11 @@ function pvLoadModel(){
    const cm=ch.material.clone();ch.material=cm;if(teamParts.has(nm))PV.mats.push(cm);});
   PV.model=g;PV.loadedId=am.id;PV.root.add(g);pvApply();
  };
- if(PV.cache[am.id]){show(PV.cache[am.id]);return;}
+ if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);show(PV.cache[am.id]);return;}
  new THREE.GLTFLoader().load(am.src,
-  gltf=>{PV.cache[am.id]=gltf.scene;show(gltf.scene);},
+  gltf=>{pvCachePut(am.id,gltf.scene);show(gltf.scene);},
   undefined,
-  ()=>{console.warn('preview model load failed, using primitive');PV.cache[am.id]=pvFallback();show(PV.cache[am.id]);});
+  ()=>{console.warn('preview model load failed, using primitive');pvCachePut(am.id,pvFallback());show(PV.cache[am.id]);});
 }
 
 function pvApply(){
@@ -282,7 +298,9 @@ const THB={ready:false,r:null,scene:null,cam:null,root:null,rim:null,
  model:[null,null],mats:[[],[]],loadedId:[null,null],baseScale:[1,1]};
 function thumbInit(){
  if(THB.ready)return;
- THB.r=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+ // No preserveDrawingBuffer: thumbRender reads toDataURL synchronously right after render (same
+ // tick, before the browser composites/clears), and the canvas itself is offscreen (never shown).
+ THB.r=new THREE.WebGLRenderer({antialias:true,alpha:true});
  THB.r.setPixelRatio(2);THB.r.setSize(240,320,false);THB.r.outputEncoding=THREE.sRGBEncoding;
  THB.scene=new THREE.Scene();
  THB.cam=new THREE.PerspectiveCamera(36,240/320,.1,200);
@@ -310,11 +328,11 @@ function thumbLoad(cb){
    THB.model[team]=g;THB.mats[team]=mats;THB.loadedId[team]=am.id;
    done();
   };
-  if(PV.cache[am.id]){place(PV.cache[am.id]);return;}
+  if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);place(PV.cache[am.id]);return;}
   new THREE.GLTFLoader().load(am.src,
-   gltf=>{PV.cache[am.id]=gltf.scene;place(gltf.scene);},
+   gltf=>{pvCachePut(am.id,gltf.scene);place(gltf.scene);},
    undefined,
-   ()=>{PV.cache[am.id]=pvFallback();place(PV.cache[am.id]);});
+   ()=>{pvCachePut(am.id,pvFallback());place(PV.cache[am.id]);});
  });
 }
 function thumbRender(team){

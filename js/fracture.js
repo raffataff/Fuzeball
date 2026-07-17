@@ -26,26 +26,30 @@ function cloneFractureInstance(tpl){
   return g;
 }
 
-/* Boot-time only (called once from main.js, right after loadExplosionModels
-   resolves, before the game loop starts): instantiate each explosion
-   template off-screen, force it into the transparent material state it'll
-   actually use during the fade-out, and ask the renderer to compile that
-   shader program now. Removes the first-explosion compile stall entirely. */
+/* Warm ONE template: instantiate it off-screen in its transparent fade state and compile
+   that shader now. Reused by warmFractureShaders (boot) AND models.js ensureExplosionModel
+   (each figurine shatter warms itself the moment it lazy-loads). No-op until the renderer
+   exists (guards a warm that races ahead of initThree). */
+function warmFractureTemplate(tpl){
+  if(!tpl||!renderer||!scene||!camera)return;
+  const inst=cloneFractureInstance(tpl);
+  inst.traverse(c=>{
+   if(!c.isMesh)return;
+   const mats=Array.isArray(c.material)?c.material:[c.material];
+   mats.forEach(m=>{m.transparent=true;m.opacity=1;});
+  });
+  inst.position.set(0,-500,0);
+  scene.add(inst);
+  renderer.compile(scene,camera);
+  scene.remove(inst);
+}
+/* Boot: warm every shatter template already resident — that's the two shared ones
+   (ball + swirl) plus any figurine explosions primed so far. Per-figurine templates that
+   lazy-load later warm themselves via ensureExplosionModel. */
 function warmFractureShaders(){
-  const warm=tpl=>{
-   const inst=cloneFractureInstance(tpl);
-   inst.traverse(c=>{
-    if(!c.isMesh)return;
-    const mats=Array.isArray(c.material)?c.material:[c.material];
-    mats.forEach(m=>{m.transparent=true;m.opacity=1;});
-   });
-   inst.position.set(0,-500,0);
-   scene.add(inst);
-   renderer.compile(scene,camera);
-   scene.remove(inst);
-  };
-  for(const id in explosionTemplates)warm(explosionTemplates[id]);
-  if(ballExplosionTemplate)warm(ballExplosionTemplate); // the cannonball's own shatter shares the pre-warm
+  for(const id in explosionTemplates)warmFractureTemplate(explosionTemplates[id]);
+  warmFractureTemplate(ballExplosionTemplate); // the cannonball's own shatter shares the pre-warm
+  warmFractureTemplate(respawnSwirlTemplate);  // the respawn swirl shares the pre-warm so its first play never stalls
 }
 
 /* Trigger the effect for rod r's man mi. Call from balls.js cannonballUpdate
@@ -166,8 +170,93 @@ function disposeFracture(i){
   S.frac.splice(i,1);
 }
 
-/* Instantly clears every live fracture instance — call on match (re)start
-   and when returning to the menu so nothing lingers into the next match. */
+/* ================= respawn swirl (cannonball-kill recovery) =================
+   Swirly particles that rise from the floor up to the rod in the last
+   CONFIG.cannonball.respawnLead seconds before a removed player reforms, so the
+   comeback is telegraphed instead of the figure just popping back in. ONE shared
+   GLB (respawnSwirlTemplate, CONFIG.cannonball.respawnSwirlSrc) for every
+   figurine — unlike the per-figurine explosion templates — since it's a generic
+   particle column, not a tinted shatter of a specific model.
+
+   Lifecycle mirrors the fracture path (clone + mixer + fade + dispose, on the
+   separate S.swirl list) but is DRIVEN OFF r.removedUntil[mi] rather than spawned
+   at the kill: respawnSwirlUpdate scans the removed men each frame and lazily
+   spawns a swirl once its respawn is within respawnLead. Clips LOOP (the effect
+   is a continuous rising column), so a short bake just repeats. The instance
+   tracks the rod's z-slide every frame so the particles land exactly where the
+   man reappears; rods.js still owns flipping the real figure visible the instant
+   S.time passes r.removedUntil — this just clears the swirl at the same moment. */
+
+/* Spawn the swirl for rod r's man mi, keyed to reform at `until`
+   (=r.removedUntil[mi]). No-op if the GLB never loaded (missing file / fractureFx
+   off) — the man still respawns on schedule, just without the flourish. */
+function spawnRespawnSwirl(r,mi,until){
+  const tpl=respawnSwirlTemplate;if(!tpl)return;
+  const C=CONFIG.cannonball;
+  const inst=cloneFractureInstance(tpl);
+  const s=C.respawnSwirlScale||1, z=r.offset+r.baseZ[mi];
+  // Seated on the floor (respawnSwirlY) under the man's CURRENT slide position; z
+  // is re-tracked per-frame in respawnSwirlUpdate. Upright — deliberately no rod
+  // swing/raise tilt, so the column always rises straight up in world space.
+  inst.position.set(r.x,C.respawnSwirlY||0,z);inst.scale.set(s,s,s);
+  scene.add(inst);
+  const mats=[];
+  inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=1;mats.push(c.material);});
+  const mixer=new THREE.AnimationMixer(inst);
+  // LOOP every clip (contrast spawnFracture's one-shot LoopOnce): a short baked
+  // swirl then repeats to fill however long respawnLead is set to.
+  for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopRepeat);a.play();}
+  let light=null;
+  if((C.respawnSwirlLight||0)>0){                       // optional soft team-tinted glow riding the column
+   const col=r.team===0?cfg.redColor:cfg.blueColor;
+   light=new THREE.PointLight(col,0,48);light.position.set(r.x,(C.respawnSwirlY||0)+5,z);scene.add(light);
+  }
+  S.swirl.push({obj:inst,mixer,mats,light,rod:r,mi,until});
+}
+
+/* Per-frame, real dt (call from main.js's loop alongside fractureUpdate). Two
+   passes: (1) spawn a swirl for any removed man whose respawn is now within
+   respawnLead and doesn't already have one; (2) advance/track/fade the live ones,
+   disposing at the reform moment. */
+function respawnSwirlUpdate(dt){
+  const C=CONFIG.cannonball;
+  if(respawnSwirlTemplate){
+   const lead=C.respawnLead||3;
+   for(const r of rods){
+    if(!r.removedUntil)continue;
+    for(let mi=0;mi<r.baseZ.length;mi++){
+     const ru=r.removedUntil[mi];
+     if(!ru||ru<=S.time||ru-S.time>lead)continue;         // not removed / already back / too early
+     if(S.swirl.some(f=>f.rod===r&&f.mi===mi))continue;    // one per man per removal window
+     spawnRespawnSwirl(r,mi,ru);
+    }
+   }
+  }
+  const fade=C.respawnSwirlFadeOut||.001, lit=C.respawnSwirlLight||0;
+  for(let i=S.swirl.length-1;i>=0;i--){
+   const f=S.swirl[i];
+   f.mixer.update(dt);
+   const z=f.rod.offset+f.rod.baseZ[f.mi];                 // follow the slide so the swirl lands where the man reforms
+   f.obj.position.z=z;
+   const left=f.until-S.time;
+   const k=left<=fade?clamp(left/fade,0,1):1;              // opacity: full, then fade over the last `fade` seconds
+   for(const m of f.mats)m.opacity=k;
+   if(f.light){f.light.position.z=z;f.light.intensity=lit*k;}
+   if(left<=0)disposeSwirl(i);
+  }
+}
+
+function disposeSwirl(i){
+  const f=S.swirl[i];
+  scene.remove(f.obj);
+  if(f.light)scene.remove(f.light);
+  for(const m of f.mats)m.dispose();  // geometry/textures shared with the template — never dispose those
+  S.swirl.splice(i,1);
+}
+
+/* Instantly clears every live fracture instance AND respawn swirl — call on match
+   (re)start and when returning to the menu so nothing lingers into the next match. */
 function clearFractures(){
   while(S.frac.length)disposeFracture(S.frac.length-1);
+  while(S.swirl.length)disposeSwirl(S.swirl.length-1);
 }

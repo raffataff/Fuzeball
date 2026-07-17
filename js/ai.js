@@ -1,5 +1,39 @@
 'use strict';
 /* ================= AI ================= */
+// --- reaction latency ------------------------------------------------------
+// The AI perceives the ball with a genuine reaction DELAY: each sim step every live ball's
+// {x,y,z,vx,vy,vz} is pushed into a per-ball ring buffer, and a rod reads the sample from
+// round(reactDelay*hz) steps back instead of the live value. So the rod responds to where the
+// ball WAS a beat ago — fast balls can slip past before it swings, which reads as human rather
+// than frame-perfect. The existing 'react' low-pass smoothing still rides on top as hand wobble.
+// Buffer length covers CONFIG.ai.reactMax seconds; back-index is clamped to what's recorded.
+const REACT_LEN=Math.max(1,Math.ceil(AIC.reactMax*SIM.hz)+1);
+function ensureHist(b){
+ let h=b.hist;
+ if(!h){h=b.hist=new Array(REACT_LEN);for(let i=0;i<REACT_LEN;i++)h[i]={x:0,y:0,z:0,vx:0,vy:0,vz:0};b.histW=0;}
+ return h;
+}
+// Push the ball's current authoritative sim state (called once per sim step, top of aiUpdate).
+function ballRecord(b){const h=ensureHist(b),p=b.m.position,v=b.v,s=h[b.histW%REACT_LEN];
+ s.x=p.x;s.y=p.y;s.z=p.z;s.vx=v.x;s.vy=v.y;s.vz=v.z;b.histW++;}
+function recordBalls(){for(const b of S.balls)ballRecord(b);}
+// Fill the whole ring with the current state — call after any teleport (serve/redrop/split/NaN)
+// so the delayed view snaps to the new spot instead of streaking from the old one. syncBall does.
+function primeBallHist(b){const h=ensureHist(b),p=b.m.position,v=b.v;
+ for(let i=0;i<REACT_LEN;i++){const s=h[i];s.x=p.x;s.y=p.y;s.z=p.z;s.vx=v.x;s.vy=v.y;s.vz=v.z;}b.histW=REACT_LEN;}
+// A reusable per-rod proxy that mimics {m:{position}, v} but holds the ball's DELAYED state, so
+// all the reach/kick/aim reads below (bp, best.v, speed…) run off perception without touching the
+// real ball. delay ≤0 or no history → passes the live state through. .real keeps the true ball.
+function aiView(r,b,delay){
+ const pv=r.pv||(r.pv={m:{position:new THREE.Vector3()},v:new THREE.Vector3(),real:null,scored:false});
+ pv.real=b;pv.scored=b.scored;
+ const h=b.hist,avail=Math.min(b.histW|0,REACT_LEN);
+ if(delay>0&&h&&avail>0){
+  const back=clamp(Math.round(delay*SIM.hz),0,avail-1),s=h[(b.histW-1-back)%REACT_LEN];
+  pv.m.position.set(s.x,s.y,s.z);pv.v.set(s.vx,s.vy,s.vz);
+ }else{pv.m.position.copy(b.m.position);pv.v.copy(b.v);}
+ return pv;
+}
 function teamRods(t){const a=[];for(const r of rods)if(r.team===t)a.push(r);return a;}
 // A man is "live" (usable for aiming/kicking) unless a cannonball removed it and the
 // removal window hasn't elapsed — mirrors the removedUntil test in physics/rods/balls.
@@ -97,6 +131,7 @@ function shotEval(team,bx,bz){
  return {lanes,best,goalX,ox:bx,oz:bz};
 }
  function aiUpdate(dt){
+  recordBalls();               // snapshot every ball's true state this step so rods can read it delayed
   pickActiveRods(dt);
   const Dred=DIFFS[teamDiff(0)];
   const Dblue=DIFFS[teamDiff(1)];
@@ -111,23 +146,36 @@ function shotEval(team,bx,bz){
    // ---- safe-lower side-step: this rod kicked, missed, and is HELD forward by a ball
    //      still in its drop-sweep zone (updateRods pins kickT at KICK.hold and sets
    //      heldFwd). Do NOT keep aligning onto the ball — that was the hover-forever
-   //      deadlock. Instead slide to the NEAREST offset where every foot is at least
-   //      clearZ from the ball in z; the hold then releases and the swing drops itself.
-   //      Runs before the active-pair check on purpose: a rod benched mid-hold must
-   //      still escape or it hangs forward for the rest of the point. ----
+   //      deadlock. Instead COMMIT a slide away from it (evade-style: opposite its z-drift
+   //      / the side it sits on) until every foot is clearZ-clear of the ball in z; the hold
+   //      then releases and the swing drops itself. A committed direction (vs the old
+   //      nearest-clear offset, which tracked a rolling ball and made the rod creep forward
+   //      ALONG with it) leaves the ball behind decisively. Runs before the active-pair
+   //      check on purpose: a rod benched mid-hold must still escape or it hangs forward. ----
    if(r.heldFwd){
     let hb=null,hd=1e9;const hdir=r.team===0?1:-1;
     for(const b of S.balls){if(b.scored)continue;const rel=(b.m.position.x-r.x)*hdir;
      if(rel<-AIC.underFootBack||rel>AIC.underFootFront)continue;
      const ad=Math.abs(rel);if(ad<hd){hd=ad;hb=b;}}
     if(hb&&hb.v.length()<AIC.repositionSpeed){
-     const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin;
-     const bo=clearOffset(r,hb.m.position.z,cz,0);              // nearest z-clear offset, either side
-     if(bo!=null)r.target=bo;
+     // Commit AWAY from the ball (evade-style) rather than drifting to the NEAREST clear offset:
+     // a nearest-clear point sits just beside the ball and tracks its z as it rolls, so the rod
+     // crept forward-held ALONG with the ball. Pick a decisive direction — opposite the ball's
+     // z-drift, else opposite the side it sits on — and slide until every foot is clear of the
+     // drop-sweep z-band. The rod stays held forward the whole slide; the hold only releases once
+     // the ball is z-clear, so the drop can't sweep it backward (no own-goal on the return).
+     const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=hb.m.position.z;
+     const prefer=Math.abs(hb.v.z)>AIC.evade.vz?(hb.v.z>0?-1:1):((bz-r.offset)>0?-1:1);
+     let o=clearOffset(r,bz,cz,prefer);
+     if(o==null)o=clearOffset(r,bz,cz,0);                       // no room that way — take the nearest clear either side
+     if(o!=null)r.target=o;
+     r.aiMan=-1;                                                // free man-index hysteresis for the post-release re-pick
     }
+    if(dbgLogRod===r)dbgRod(r,'HELD-ESC',hb?('rel='+((hb.m.position.x-r.x)*(r.team===0?1:-1)).toFixed(1)+' tgt='+r.target.toFixed(1)):'');
     continue;
    }
    if(!isActiveRod(r)){
+    if(dbgLogRod===r)dbgRod(r,'BENCH');
     if(r.behindFlag)continue;
     r.raise=false;continue;
   }   // a resting hand: hold its lane, block passively
@@ -136,7 +184,11 @@ function shotEval(team,bx,bz){
    for(const b of S.balls){if(b.scored)continue;
     const d=Math.abs(b.m.position.x-r.x);if(d<bd){bd=d;best=b;}}
    if(!best){r.target=0;r.raise=false;r.behindFlag=false;continue;}
+   // Perceive the ball with a reaction LATENCY: from here down, 'best' is a delayed proxy (real
+   // ball at .real). Nearest-ball selection above stays live — only the reach/aim/kick reads lag.
+   best=aiView(r,best,(D.reactDelay||0)*stReact(r));
    const k=1-Math.exp(-dt/Math.max(.02,D.react*stReact(r)));   // rea stat + stamina fade
+   const predL=D.pred*stPred(r);                               // iq stat scales trajectory anticipation
   r.aiBX=lerp(r.aiBX,best.m.position.x,k);
   r.aiBZ=lerp(r.aiBZ,best.m.position.z,k);
   r.aiBVX=lerp(r.aiBVX,best.v.x,k);
@@ -148,7 +200,7 @@ function shotEval(team,bx,bz){
   const dir=r.team===0?1:-1;
   let pz=r.aiBZ;
   const tta=r.aiBVX!==0?(r.x-r.aiBX)/r.aiBVX:-1;
-  if(tta>0&&tta<AIC.ttaMax)pz+=r.aiBVZ*tta*D.pred;
+  if(tta>0&&tta<AIC.ttaMax)pz+=r.aiBVZ*tta*predL;
   pz+=r.aiErr;
   // Goal targeting: bias the aim so an off-centre strike sends the ball toward the opponent
   // goal mouth. We pick a spot in the mouth (tight to centre when accurate, sprayed across/past
@@ -163,7 +215,7 @@ function shotEval(team,bx,bz){
    //      shot at two depths (a triangle) instead of both chasing the ball's z. Each rod's x gives
    //      a different intercept, so the DEF ends up out near the ball and the keeper back at centre. ----
    const ogx=dir>0?-F.L/2:F.L/2;                 // this rod's OWN goal x
-   const lead=(tta>0&&tta<AIC.ttaMax)?r.aiBVZ*tta*D.pred:0;
+   const lead=(tta>0&&tta<AIC.ttaMax)?r.aiBVZ*tta*predL:0;
    const bzp=r.aiBZ+lead;                        // predicted ball z (smoothed)
    const t=clamp((r.x-r.aiBX)/((ogx-r.aiBX)||1e-3),0,1); // fraction ball→goal at this rod's x
    const iz=bzp*(1-t);                           // z where the ball→goal-centre line crosses this rod
@@ -208,13 +260,22 @@ function shotEval(team,bx,bz){
   //      reaches the overFoot zone.  This stops the rod from dropping mid-approach
   //      and kicking the ball backward into its own goal — which is what happens
   //      when raiseBehind is tuned tight.  Released only by the ball arriving at
-  //      the feet, so the normal drop + kick path takes over from there. ----
-  if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
-  if(r.behindFlag){
-   r.raise=true;
-   if(overFoot) r.behindFlag=false;        // ball reached the feet — release the latch
+  //      the feet, so the normal drop + kick path takes over from there.
+  //      EXCEPTION (footStuck): a nearly-stopped ball sitting directly in a foot's
+  //      reach must NOT raise — the raising swing sweeps the foot backward THROUGH
+  //      the ball and knocks it into our own goal (esp. the GK). Suppress the latch
+  //      and drop the men; the evade action below slides the rod clear instead. ----
+  const footStuck=speed<AIC.footTrapSlow && inFootRange(r,best);
+  if(footStuck){
+   r.raise=false;r.behindFlag=false;       // pinned at the feet — never swing back through it
   }else{
-   r.raise=relReal<AIC.raiseBehind;
+   if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
+   if(r.behindFlag){
+    r.raise=true;
+    if(overFoot) r.behindFlag=false;       // ball reached the feet — release the latch
+   }else{
+    r.raise=relReal<AIC.raiseBehind;
+   }
   }
   const TR=AIC.trap, SR=AIC.safeRaise;
   // ---- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
@@ -257,6 +318,7 @@ function shotEval(team,bx,bz){
   if(r.act==='trap'){
    r.raise=false;r.behindFlag=false;       // trap owns the angle (updateRods) — latch released
     if(r.actT>TR.settleT&&relReal>TR.shootFrom&&dz<TR.alignZ&&r.kickT<0&&r.cd<=0){
+     if(dbgLogRod===r)dbgRod(r,'TRAPSHOT','rel='+relReal.toFixed(1)+' dz='+dz.toFixed(2));
      kickRod(r,'trapShot');                 // scoop shot with dedicated trap power window
      r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
     }
@@ -331,7 +393,9 @@ function shotEval(team,bx,bz){
    r.shotHoldT=(r.shotHoldT||0)+dt;holdShot=r.shotHoldT<GA.holdMax;
   }else r.shotHoldT=0;
   // Swing at anything we can actually hit — this is what makes the AI clear balls at its feet.
-  if(r.kickT<0 && r.cd<=0 &&  (overFoot||inFront) && aligned && bp.y<AIC.lowY && !wait && !holdShot){
+  const canKick=r.kickT<0 && r.cd<=0 && (overFoot||inFront) && aligned && bp.y<AIC.lowY && !wait && !holdShot;
+  if(dbgLogRod===r)dbgKickGate(r,{fired:canKick,overFoot,inFront,aligned,low:bp.y<AIC.lowY,wait,holdShot,rel:relReal,dz,speed,act:r.act});
+  if(canKick){
    kickRod(r);
    r.cd=D.cd*stCd(r)*(slow?rand(AIC.cdSlow[0],AIC.cdSlow[1]):rand(AIC.cdFast[0],AIC.cdFast[1])); // rea stat trims recovery
   }

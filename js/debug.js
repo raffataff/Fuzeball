@@ -16,11 +16,99 @@ let dbgArenaWalls=null,dbgContourRings=[];
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false,sweetSpot:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false,sweetSpot:false,deadzones:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
+
+/* ===== per-rod kick decision tracer ======================================
+   Press L (while debug is on) to cycle which rod is traced (RED/BLU · role · x).
+   The tracer emits a compact line ONLY on a state change or an actual kick —
+   NOT every frame — so it can run live without flooding the console or tanking
+   perf. Each ★KICK line carries gap= (seconds since THIS rod's previous kick):
+   a shrinking gap is the "vibrating re-kick" made visible. Blocked frames log
+   the FIRST failing gate (deduped, so a steady block prints once). Zero cost
+   when off: every call site in ai.js is guarded by `dbgLogRod===r`, and
+   dbgLogRod stays null until you press L. Toggle the console mirror with the
+   'Kick→Console' checkbox in the AI panel. */
+let dbgLogRod=null,dbgLogLines=[],dbgLogPanel=null,dbgLogBody=null,dbgLogHdr=null;
+let dbgLogPrevKick=-1,dbgLogLastKind='',dbgLogConsole=false;
+function dbgRodName(r){return (r.team===0?'RED':'BLU')+' '+r.role+' x'+r.x;}
+function dbgFmtT(t){return 't'+t.toFixed(2);}
+function buildKickLogPanel(){
+ if(dbgLogPanel)return;
+ const p=document.createElement('div');p.id='dbgKickLog';
+ p.style.cssText='position:fixed;left:10px;bottom:10px;z-index:60;width:440px;max-height:46vh;overflow:hidden;'
+  +'font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#ffe6a3;background:rgba(8,10,16,.82);'
+  +'border:1px solid #ffcf4d;border-radius:8px;padding:8px 10px;pointer-events:none;white-space:pre;';
+ const h=document.createElement('div');h.id='dbgKickLogHdr';
+ h.style.cssText='color:#ffcf4d;font-weight:700;margin-bottom:4px;letter-spacing:.5px;';
+ h.textContent='KICK LOG · off  (press L to pick a rod)';
+ const b=document.createElement('div');b.id='dbgKickLogBody';
+ p.appendChild(h);p.appendChild(b);document.body.appendChild(p);
+ dbgLogPanel=p;dbgLogHdr=h;dbgLogBody=b;
+}
+function renderKickLog(){if(dbgLogBody)dbgLogBody.innerHTML=dbgLogLines.join('<br>');}
+function dbgLogPush(s){
+ dbgLogLines.push(s);
+ if(dbgLogLines.length>28)dbgLogLines.shift();
+ if(dbgLogConsole)console.log('[kick] '+s);
+ renderKickLog();
+}
+// L cycles: null → rod0 → … → rodN → null. Resets the trace state each time.
+function cycleKickLog(){
+ buildKickLogPanel();
+ const i=dbgLogRod?rods.indexOf(dbgLogRod):-1,ni=i+1;
+ dbgLogRod=ni>=rods.length?null:rods[ni];
+ dbgLogLines.length=0;dbgLogPrevKick=-1;dbgLogLastKind='';
+ dbgLogHdr.textContent=dbgLogRod?('KICK LOG · '+dbgRodName(dbgLogRod)+'   (L = next rod)'):'KICK LOG · off  (press L to pick a rod)';
+ renderKickLog();
+ dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
+ banner('KICK LOG',dbgLogRod?dbgRodName(dbgLogRod):'OFF',1.0);Au.ui();
+}
+// state-change / action trace (benched, held-forward escape, trap-shot). Deduped
+// on `kind` so a steady state prints once; alternating states each print with a
+// timestamp — which is exactly what exposes an oscillation.
+function dbgRod(r,kind,detail){
+ if(r!==dbgLogRod)return;
+ if(kind===dbgLogLastKind)return;
+ dbgLogLastKind=kind;
+ dbgLogPush(dbgFmtT(S.time)+'  '+kind+(detail?('  '+detail):''));
+}
+// real contact: collideRod calls this the first time a foot box (or capsule graze) actually
+// resolves against the ball during a swing — so a ★KICK followed by ✓CONTACT connected, and a
+// ★KICK that ends in a ✗WHIFF (logged by updateRods when the swing completes untouched) missed.
+function dbgHit(r,man,foot,pow,vn,b){
+ if(r!==dbgLogRod)return;
+ dbgLogLastKind='HIT';
+ dbgLogPush(dbgFmtT(S.time)+'  ✓CONTACT '+(foot?'foot':'leg ')+' man='+man+(pow?' [POWER]':'')
+  +'  vn='+vn.toFixed(0)+'  ball→'+b.v.length().toFixed(0)+'u/s');
+}
+// the kick GATE: logs every fire (with gap since the last), and the first failing
+// condition when blocked (deduped). g = the gate's raw booleans/values from ai.js.
+function dbgKickGate(r,g){
+ if(r!==dbgLogRod)return;
+ const now=S.time;
+ if(g.fired){
+  const gap=dbgLogPrevKick>=0?(now-dbgLogPrevKick):-1;dbgLogPrevKick=now;dbgLogLastKind='KICK';
+  dbgLogPush(dbgFmtT(now)+'  ★KICK  gap='+(gap>=0?gap.toFixed(2)+'s':'--')
+   +'  rel='+g.rel.toFixed(1)+' dz='+g.dz.toFixed(2)+' spd='+g.speed.toFixed(0)
+   +(g.overFoot?' [over]':' [inFront]')+(g.act?(' act='+g.act):''));
+  return;
+ }
+ let why;
+ if(r.kickT>=0)why='swinging kickT='+r.kickT.toFixed(2);
+ else if(r.cd>0)why='cooldown '+r.cd.toFixed(2)+'s';
+ else if(!(g.overFoot||g.inFront))why='out-of-reach rel='+g.rel.toFixed(1);
+ else if(!g.aligned)why='not-aligned dz='+g.dz.toFixed(2);
+ else if(!g.low)why='ball-high';
+ else if(g.wait)why='wait-sweetspot';
+ else if(g.holdShot)why='hold-for-lane';
+ else why='?';
+ const kind='BLK:'+why.split(' ')[0];
+ if(kind!==dbgLogLastKind){dbgLogLastKind=kind;dbgLogPush(dbgFmtT(now)+'  ·blocked  '+why+(g.act?('  act='+g.act):''));}
+}
 
 function dbgMat(col,op){return new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false});}
 
@@ -47,7 +135,8 @@ function buildAIPanel(){
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
-    {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'}
+    {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
+    {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'}
   ];
  for(const it of items){
   const lbl=document.createElement('label');
@@ -58,6 +147,15 @@ function buildAIPanel(){
   const dot=document.createElement('span');dot.className='dot';
   dot.style.backgroundColor=it.col;lbl.appendChild(dot);
   lbl.appendChild(document.createTextNode(it.label));
+  dbgAIPanel.appendChild(lbl);
+ }
+ // kick-log console mirror: echo the traced rod's lines to devtools too (off by default)
+ {const lbl=document.createElement('label');
+  const cb=document.createElement('input');cb.type='checkbox';cb.checked=dbgLogConsole;
+  cb.addEventListener('change',()=>{dbgLogConsole=cb.checked;});
+  lbl.appendChild(cb);
+  const dot=document.createElement('span');dot.className='dot';dot.style.backgroundColor='#ffcf4d';lbl.appendChild(dot);
+  lbl.appendChild(document.createTextNode('Kick→Console (L=pick rod)'));
   dbgAIPanel.appendChild(lbl);
  }
  document.body.appendChild(dbgAIPanel);
@@ -258,6 +356,23 @@ function buildDebug(){
   rzg.visible=false;dbgAIRedrop.push(rzg);
  }
 
+ // deadzones: the active table's dead-ball pockets (activeTable.deadzones — corners where a
+ // pinned ball can't be reached, so the stuck-timer ticks CONFIG.deadball.zoneMult× faster;
+ // see deadzoneMult in powerups.js). Each corner zone {xMin,zMin} → one flat box per corner,
+ // spanning xMin..F.L/2 by zMin..F.W/2. Static; goes hot red while a live ball sits inside a
+ // pocket. updateAIVis hides boxes whose zone isn't in the CURRENT table (handles table swaps).
+ const dzDim=dbgMat(0xff4d4d,.16),dzHot=dbgMat(0xff4d4d,.55);
+ const dzList=(activeTable&&activeTable.deadzones)||[];
+ for(const z of dzList){
+  const w=F.L/2-z.xMin,d=F.W/2-z.zMin;
+  for(const sx of [-1,1])for(const sz of [-1,1]){
+   const m=new THREE.Mesh(new THREE.BoxGeometry(w,0.05,d),dzDim);
+   m.position.set(sx*(z.xMin+F.L/2)/2,0.05,sz*(z.zMin+F.W/2)/2);
+   m.visible=false;dbgAIGroup.add(m);
+   dbgDeadzones.push({mesh:m,zone:z,sx,sz,matDim:dzDim,matHot:dzHot});
+  }
+ }
+
  // lowY: translucent horizontal plane at y = lowY (AI only kicks below this)
  const lowYM=dbgMat(0x2af5ff,.10);
  dbgAILowY=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),lowYM);
@@ -346,6 +461,18 @@ function updateAIVis(){
   for(const s of dbgFootReach)s.mesh.visible=on&&dbgAIOpts.footReach;
    for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
    for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
+
+   // deadzones: static corner pockets; only for the active table (hide any built for another
+   // table); hot red while a live ball actually sits inside that corner (matches deadzoneMult).
+   {const cur=(activeTable&&activeTable.deadzones)||[];
+   for(const dz of dbgDeadzones){
+    const vis=on&&dbgAIOpts.deadzones&&cur.indexOf(dz.zone)>=0;
+    dz.mesh.visible=vis;if(!vis)continue;
+    let hot=false;
+    for(const b of S.balls){const p=b.m.position;
+     if(Math.sign(p.x)===dz.sx&&Math.sign(p.z)===dz.sz&&Math.abs(p.x)>dz.zone.xMin&&Math.abs(p.z)>dz.zone.zMin){hot=true;break;}}
+    dz.mesh.material=hot?dz.matHot:dz.matDim;
+   }}
 
    // sweetSpot: per-man area follows the live foot (slide offset + dir); hot yellow while
    // that man's aimSweet fired this frame. Matches physics.js collideRod's fz / relR test.
@@ -497,6 +624,7 @@ function toggleDebug(){
   for(const c of dbgFootS)c.mesh.visible=dbgOn;
   dbgAIGroup.visible=dbgOn;
  if(dbgAIPanel)dbgAIPanel.style.display=dbgOn?'block':'none';
+ if(dbgLogPanel)dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
  updateAIVis();
  banner('COLLISION DEBUG',dbgOn?'ON · red=wall green=goal yellow=player':'OFF',1.1);
  Au.ui();

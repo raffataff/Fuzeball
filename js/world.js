@@ -11,7 +11,41 @@ let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
 let rods=[],indicator,dropRing;
 let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
 let sprites=[],spriteTex,particles,pGeo,pData=[];
-let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={};
+let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={}; const modelCacheOrder=[]; // LRU key order, most-recent at end
+
+/* ---- figurine template cache LRU (shared helpers; also used by PV.cache in customize.js) ----
+   Loading a figurine caches its GLB template scene; browsing every figurine would otherwise pin
+   all ~19 in RAM. These cap a cache to CONFIG.playerModel.cacheMax, evicting the least-recently
+   used entries whose id isn't in `protect`. */
+function touchModelCache(order,id){const k=order.indexOf(id);if(k>=0)order.splice(k,1);order.push(id);}
+function cacheModelTemplate(cache,order,id,scene){cache[id]=scene;touchModelCache(order,id);}
+/* Free a template's GPU buffers + textures. ONLY call when nothing clones it anymore (evicted +
+   not an active/shown figurine) — clone(true) shares geometry/textures with the template, so
+   disposing a live one would blank the meshes using it. */
+function disposeModelTemplate(root){
+ if(!root||!root.traverse)return;
+ root.traverse(c=>{if(!c.isMesh)return;
+  if(c.geometry&&c.geometry.dispose)c.geometry.dispose();
+  const mats=Array.isArray(c.material)?c.material:[c.material];
+  for(const m of mats){if(!m)continue;
+   for(const k of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap']){const t=m[k];if(t&&t.dispose)t.dispose();}
+   if(m.dispose)m.dispose();}});
+}
+/* Evict LRU entries past cap. `protect` = Set of ids never evicted (currently on-table / shown).
+   `dispose` true → also free GPU immediately (only safe when NO clone references the template);
+   false → drop the JS ref only (lets V8 reclaim the big decoded-image/geometry arrays once
+   unreferenced, GPU frees on the eventual context teardown). Both current callers pass false
+   because a just-swapped figurine can still have live clones sharing the template's geometry. */
+function capModelCache(cache,order,protect,dispose){
+ const cap=(CONFIG.playerModel&&CONFIG.playerModel.cacheMax)||6;
+ for(let i=0;i<order.length&&order.length>cap;){
+  const id=order[i];
+  if(protect&&protect.has(id)){i++;continue;}
+  order.splice(i,1);
+  const scene=cache[id];delete cache[id];
+  if(dispose)disposeModelTemplate(scene);
+ }
+}
 
 function initThree(){
  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true});
@@ -62,17 +96,13 @@ function buildEnvironment(){
 
 function buildTable(){
  // primitive table lives in primTable so a loaded GLB table can hide it wholesale (see models.js).
- primTable=new THREE.Group();scene.add(primTable);
- const loader=new THREE.TextureLoader();
+ primTable=new THREE.Group();scene.add(primTable);tableGroups.classic=primTable;
  const fieldMat=new THREE.MeshStandardMaterial({roughness:.85});
  fieldMesh=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),fieldMat);
  fieldMesh.rotation.x=-Math.PI/2;fieldMesh.receiveShadow=true;primTable.add(fieldMesh);
-  for(const [pid,pdef] of Object.entries(CONFIG.pitches)){
-    loader.load('assets/'+pdef.tex,tex=>{
-     tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[pid]=tex;
-    if(pid===cfg.pitch){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}
-   });
-  }
+  // Load ONLY the active pitch's texture (was: all ~7 up front, decoding every image into
+  // RAM for the one shown). The rest come in on demand via drawField→loadPitchTex.
+  loadPitchTex(cfg.pitch,tex=>{if(tex&&fieldMesh){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}});
  wallMat=new THREE.MeshStandardMaterial({color:0x7a4b22,roughness:.6,metalness:.1});
  const body=new THREE.Mesh(new THREE.BoxGeometry(F.L+10,10,F.W+10),wallMat);
  body.position.y=-5.2;body.receiveShadow=true;primTable.add(body);
@@ -114,6 +144,7 @@ function buildTable(){
   g.userData.net=nets;
   const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
+ tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh);  // procedural fallback (hidden when a skin GLB is shown)
 }
 
 /* procedural goal net: white diamond mesh on a transparent canvas so the net reads from any camera
@@ -168,9 +199,14 @@ function loadPlayerModel(onReady){
     });
     done();
    };
-  if(modelCache[am.id]){useCache(modelCache[am.id]);return;}
+  if(modelCache[am.id]){touchModelCache(modelCacheOrder,am.id);useCache(modelCache[am.id]);return;}
   new THREE.GLTFLoader().load(am.src,
-   gltf=>{modelCache[am.id]=gltf.scene;useCache(gltf.scene);},
+   gltf=>{cacheModelTemplate(modelCache,modelCacheOrder,am.id,gltf.scene);useCache(gltf.scene);
+    // Evict old templates (ref-drop only, dispose=false): a just-swapped-away figurine can still
+    // have live clones on the table sharing this geometry until rebuildRodMen runs, so we never
+    // free GPU here — dropping the ref lets V8 reclaim the bulk once all clones are gone. The two
+    // active figurines are protected regardless.
+    capModelCache(modelCache,modelCacheOrder,new Set([activeModel(0).id,activeModel(1).id]),false);},
    undefined,
    ()=>{console.warn('player model load failed for team '+team);done();}
   );
@@ -298,6 +334,17 @@ function freePitchMeshGPU(c){
    for(const k of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap']){
     const t=m[k];if(t&&t.dispose)t.dispose();}}
 }
+/* Lazy pitch-texture loader/cache. Loads assets/<pitch.tex> once, caches it in
+   fieldTexCache, and hands it back (or null on failure) via cb. Only the JPG-fallback path
+   uses this — when a pitch GLB is present drawField never touches fieldTexCache. */
+function loadPitchTex(pid,cb){
+  if(fieldTexCache[pid]){if(cb)cb(fieldTexCache[pid]);return;}
+  const pdef=CONFIG.pitches[pid];
+  if(!pdef){if(cb)cb(null);return;}
+  new THREE.TextureLoader().load('assets/'+pdef.tex,tex=>{
+   tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[pid]=tex;if(cb)cb(tex);
+  },undefined,()=>{console.warn('pitch texture missing (assets/'+pdef.tex+')');if(cb)cb(null);});
+}
 function drawField(){
   const pdef=CONFIG.pitches[cfg.pitch];
   if(!pdef)return;
@@ -318,8 +365,16 @@ function drawField(){
     }
     if(shown){if(fieldMesh)fieldMesh.visible=false;return;}
   }
-  if(fieldMesh){fieldMesh.visible=true;const tex=fieldTexCache[cfg.pitch];
-   if(tex){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}}
+  if(fieldMesh){fieldMesh.visible=true;
+   const cur=cfg.pitch;
+   loadPitchTex(cur,tex=>{
+    if(cfg.pitch!==cur)return;                     // user switched again while this loaded — let the newer call win
+    if(tex){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;
+     for(const k in fieldTexCache){if(k!==cur&&fieldTexCache[k]){ // keep only the active pitch resident
+      if(fieldTexCache[k].dispose)fieldTexCache[k].dispose();delete fieldTexCache[k];}}
+    }
+   });
+  }
 }
 
 function applyTheme(){
@@ -384,5 +439,7 @@ function rebuildRodMen(){
 /* Load a freshly-selected figurine and refresh everything already on the table. */
 function reloadPlayerModel(onReady){
   playerModel=[null,null];playerTeamMats[0]={};playerTeamMats[1]={};playerHairParts[0]=new Set();playerHairParts[1]=new Set();
-  loadPlayerModel(()=>{applyColors();if(rods.length)rebuildRodMen();if(onReady)onReady();});
+  loadPlayerModel(()=>{applyColors();if(rods.length)rebuildRodMen();
+   if(typeof ensureExplosionModel==='function'){ensureExplosionModel(activeModel(0).id);ensureExplosionModel(activeModel(1).id);} // pull in the newly-picked figurine's shatter GLB
+   if(onReady)onReady();});
 }

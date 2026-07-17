@@ -289,6 +289,146 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-16
+- **Release audit fixes** (full-codebase pass). (1) **Gamepad analog slide was dead**:
+  `gamepadUpdate` shaped stick deflection with `Math.pow(n,cfg.padSlideCurve)` but
+  `padSlideCurve` was never defined anywhere → `pow(n,undefined)`=NaN → `if(ay)` never
+  fired (d-pad still worked). Added `padSlideCurve:1` to cfg defaults (`config.js`) and
+  `OPT_DEFAULTS` (`options.js`); old saves keep the new default (Object.assign only
+  overwrites saved keys). (2) **Pitch tex fallback paths fixed** to match the files on
+  disk: neon → `pitches/neon_nights.jpg`, champions_green → `.png`, champions_purple →
+  `pitches/prime_champions_purple.png` (were all wrong → fallback silently failed when
+  the pitch GLB mesh is absent). (3) **Cup prevKit chain**: `cupPlayTie` re-snapshotted
+  prevKit from live cfg on EVERY tie, so from tie 2 on it captured the already-swapped
+  cup kit/table — finishing the cup then restored the CUP setup instead of the user's.
+  Now reuses `S.lg.prevKit` when one is being carried. (4) `openCup` now hides `#win` +
+  `#hud` (arriving via win-screen Continue left them stacked under the bracket).
+  (5) Win-screen cup round label used `CUP.rounds[LG.cup.round]` AFTER `cupRecord`
+  advanced the round (off-by-one) — now shows `S.lg.banner` (the round actually played).
+  (6) Removed duplicate `base:1` key in `league.divisions[0]`. Files: `js/config.js`,
+  `js/options.js`, `js/league.js`, `js/flow.js`. Verified by re-read (sandbox wouldn't
+  boot). KNOWN SHIP-GAPS flagged, not changed: classic `glass` skin + `circuit` table
+  GLBs don't exist yet (their dropdown entries show a bare/fallback table); explosion
+  GLBs missing for stormer/manStumpy/womanKimi/womanAndroid (clean fallback to instant
+  vanish + console warn); opening Options mid-league-match and touching any control
+  saveCfg's the league-swapped kit/table into the player's persisted settings.
+- **Table SKINS (swappable liveries per shape, pitch-style)** — a table is now a SHAPE with one
+  or more `skins` (paint-job GLBs on the SAME geometry), chosen from a new **Skin** dropdown, so
+  shape and look are decoupled (shape = physics-fixed, skin = cosmetic). `CONFIG.tables[*]` lost
+  its top-level `glb`/`glbFallback`; each now has `skins:{id:{name,glb,glbFallback}}` + `defSkin`
+  (`glb` relative to `folder`). Classic ships two skins (`wood` default + `glass`); arena/circuit
+  have one. `cfg.skins` (map table-id→skin-id, per-table memory) persists the choice; old saves
+  default to `defSkin`. Plumbing (all id/skin-keyed): `skinGroups[id][skinId]` (sub-group per skin
+  under the table group), `skinHasFrame`, `skinLed`, `tablePrimObjs[id]` (procedural fallback
+  meshes captured in `buildTable`/`buildArenaTable`). `models.js` `loadTableModel` now loads only
+  each table's ACTIVE skin at boot; `loadSkin(id,skinId,cb)` lazy-loads the rest on demand, caches
+  by id/skin, routes meshes by the same name contract, and on a missing GLB drops the empty group
+  so `applySkin` falls back to the primitives. `applyTable` (arena.js) shows the table group then
+  calls `applySkin(id)`: toggles skin sub-group visibility (a hidden group hides its subtree — cheap),
+  shows primitives only when the active skin has no GLB, repoints `ledMat` at the active skin's LED
+  mesh, and hides the primitive goal frame when the skin brings its own posts. `curSkin(id)` /
+  `selectSkin(id,skinId)` helpers; `ui.js` `refreshSkinSelect()` fills `#setSkin` from the current
+  table's skins (and hides the row when a table has only one skin). `tableHasFrame` is now vestigial
+  (superseded by `skinHasFrame`). Pipeline: `build_table.py`/`export_table.py` gained `SKIN_ID`
+  (+ `-- <table> <skin>` arg); `TABLE_DEFS` skins carry their own `glb`+`style`, so a layman builds a
+  new skin with e.g. `-- classic glass`. **Add a skin = texture the shape in Blender, export a GLB,
+  add one line to `CONFIG.tables[id].skins`.** Files: `js/config.js`, `js/arena.js`, `js/world.js`,
+  `js/models.js`, `js/ui.js`, `index.html`, `tools/build_table.py`, `tools/export_table.py`.
+  Verified by re-read (sandbox wouldn't boot).
+- **Parametric multi-table Blender pipeline + 3rd table (`circuit`)** — added
+  `tools/build_table.py` (parametric builder) and `tools/export_table.py` (parametric
+  exporter); the single-table `build_arena_table.py`/`export_arena_table.py` are KEPT as
+  backups. `build_table.py` holds a `TABLE_DEFS` registry (mirrors `CONFIG.tables`): each def
+  picks a `shape` (`'flat'`=classic box walls via `build_flat_*`, `'bowl'`=the arena SDF via
+  `build_bowl_*`, params in `P`) and a `style` (colours/emissive), and emits shell + goals +
+  nets + field + led (+optional shared `room`) honouring the mesh-name contract
+  (`field*`/`led*`/`goal_net*`/`goal_frame*`/`wall_end*`). Pick the table via the top-of-file
+  `TABLE_ID` or a headless `-- <id>` arg; it saves `assets/tables/<folder>/fuzeball_<id>.blend`
+  (never clobbers a textured one) + first-pass GLBs. `export_table.py` bakes throwaway copies
+  (neg-scale/modifier-safe, same trick as the arena exporter) and defines the table GLB as
+  "every mesh that isn't a ball / `room_*` / `ref_*`", so any decor the artist adds ships
+  automatically; `TABLES` maps id→folder/glb/room. **`circuit`** is the worked 3rd table: a flat
+  glowing-circuit reskin — `collision:'flat'` so it reuses the classic physics UNCHANGED, added
+  to `CONFIG.tables` (auto-appears in the Table dropdown) + `TABLE_DEFS`/`TABLES`. To see it:
+  `blender -b -P tools/build_table.py -- circuit` then `-P tools/export_table.py -- circuit`
+  (until then, selecting Circuit shows the shared pitch + goals + ground but no walls, since its
+  GLB doesn't exist and it has no procedural fallback). **Recipe to add table N:** `TABLE_DEFS`
+  entry + `TABLES` entry + `CONFIG.tables` entry; a `'flat'` shape is drop-in, a NEW shape needs
+  a `build_<shape>_*` here + a collision branch in `physics.js`. Files: `tools/build_table.py`
+  (new), `tools/export_table.py` (new), `js/config.js` (circuit entry). Python verified by
+  re-read (sandbox wouldn't boot).
+- **Table system is now a registry (multi-table ready)** — replaced the hardcoded two-table
+  (`primTable`/`arenaTable`, boolean `ARENA_ON=cfg.table==='arena'`) setup with a data-driven
+  `CONFIG.tables` registry. Each entry: `name`, `folder`+`glb` (+optional `glbFallback`),
+  `collision` (`'flat'`=classic box walls in `physics.js` | `'bowl'`=arena SDF in `arena.js`),
+  optional `room` (environment GLB, relative to folder), `defTheme` (metadata). Arena's shape
+  params moved under `arena.bowl` (alias `const ARENA=CONFIG.tables.arena.bowl` keeps every
+  `ARENA.*` ref valid). New generic plumbing: `tableGroups{}` (id→THREE.Group; `buildTable` sets
+  `classic`, `buildArenaTable` sets `arena`, `loadTableModel` creates fresh groups for GLB-only
+  tables), `tableRooms{}` (id→env GLB), `activeTable` (current def). `applyTable()` is fully
+  registry-driven: pick id from `cfg.table` (falls back to classic), show that group + its room /
+  hide the rest, set `ARENA_ON=activeTable.collision==='bowl'` so physics/balls/powerups/debug are
+  UNCHANGED. `loadTableModel`/`loadRoomModel` loop `CONFIG.tables`; `registerArenaMorph` now gated
+  on `collision==='bowl'`; classic's GLB still loads via the `glbFallback` (`assets/fuzeball_table.glb`)
+  until the file is moved to `assets/tables/classic/`. `ui.js` populates the Table + Theme dropdowns
+  from the registries (like the pitch select), so adding an entry auto-adds its option — added a
+  `name` field to each `CONFIG.themes` entry for the labels. `loadRodModels` now tries `assets/rods/`
+  then falls back to `assets/` root (rods are shared across tables). **Adding a table = drop a GLB
+  honouring the mesh-name contract (`field*`/`led*`/`goal_net*`/`goal_frame*`/`wall_end*`) under
+  `assets/tables/<id>/` + one `CONFIG.tables` entry; a `'flat'` shape needs no physics change, a new
+  SHAPE adds a collision branch. Livery = one `CONFIG.themes` entry; pitch = existing
+  `CONFIG.pitches` registry (already GLB-slot based — left as-is).** Pitches deliberately untouched
+  (already optimal: per-variant GPU free/re-attach in `drawField`). Files: `js/config.js`,
+  `js/arena.js`, `js/world.js`, `js/models.js`, `js/ui.js`. Verified by re-read (sandbox wouldn't boot).
+  TODO (asset moves, binary — do in a shell): `assets/fuzeball_table.glb` →
+  `assets/tables/classic/fuzeball_table_classic.glb`; `assets/fuzeball_rod_{1,2,3,5}man.glb` →
+  `assets/rods/`. Both are optional (fallbacks cover them) but complete the tidy structure.
+- **AI reaction latency (`reactDelay`)** — the AI no longer tracks the ball frame-perfectly.
+  Each sim step every live ball's `{x,y,z,vx,vy,vz}` is pushed into a per-ball ring buffer
+  (`ballRecord`/`recordBalls`, called at the top of `aiUpdate`), and each rod reads the sample
+  from `round(reactDelay*sim.hz)` steps back via `aiView(r,b,delay)` — a reusable **per-rod**
+  proxy (`r.pv`) shaped like `{m:{position},v}` holding the DELAYED state. From the `best=aiView(…)`
+  line down, all reach/aim/kick reads run off perception; nearest-ball SELECTION stays live, and
+  the physical kick still resolves against the real ball in `physics.js`, so contact is honest —
+  only the decision lags. This is a genuine see-then-act latency, distinct from (and on top of) the
+  existing `react` low-pass smoothing (which stays as hand wobble). `DIFFS.*.reactDelay`
+  (rookie .25 / pro .12 / legend .06 s) is now the dominant human-feel knob; it's scaled per rod by
+  `stReact` (higher rea → shorter delay, fatigue lengthens it). Buffer length =
+  `ceil(CONFIG.ai.reactMax*sim.hz)+1`; `syncBall` calls `primeBallHist(b)` on every teleport
+  (serve/redrop/split/NaN) so the delayed view snaps to the new spot instead of streaking. Old
+  saves w/o `reactDelay` → `0` (live passthrough); works in AI-vs-AI (no stats) too. Files:
+  `js/config.js` (`DIFFS.reactDelay`, `ai.reactMax`), `js/ai.js` (buffer + `aiView`), `js/balls.js`
+  (`syncBall` prime). Verified by re-read (sandbox wouldn't boot).
+- **Ball-trajectory prediction is now a stat** — `stPred(r)` (`js/stats.js`) scales the AI's
+  anticipation lead `D.pred` (both the z-lead and the defensive-line lead in `aiUpdate`). Homed on
+  **iq** (reading the play is cognition, not execution — keeps `acc` about precision), gentle and
+  FLOORED: `max(predFloor, 1+(iq−5)*predIq)`, base 5 = ×1. Uses the CONTINUOUS `stIQ`-style term,
+  NOT the per-beat `r.aiIQ` boolean. Computed once/rod as `predL=D.pred*stPred(r)`. Config:
+  `CONFIG.stats.predIq:.06`, `predFloor:.7`. Files: `js/stats.js`, `js/config.js`, `js/ai.js`.
+- **AI slide agility is now a stat** — `stAgil(r)` (`js/stats.js`) scales the AI rod's direction-
+  change accel cap in `updateRods` (`AIC.slideAccel*stAgil(r)*dt`). Keyed on **spd** (a fast rod
+  both tops out higher AND reverses quicker) with its OWN coefficient `CONFIG.stats.agil:.09` so
+  snappiness tunes apart from top speed; fatigue folds in. **AI-only** — the user rod keeps its
+  instant/speed-capped branch. Base 5 = ×1, so unbuilt/non-league teams are unchanged. Files:
+  `js/stats.js`, `js/config.js`, `js/rods.js`.
+- **Stamina broadened** — `stFat` (fatigue) now feeds the AI's accuracy + decision channels too,
+  not just speed/reaction. `stErr` divides by `stFat` (wander error GROWS when tired), `stAim`
+  multiplies by it (goal aim fades), `stIQ` multiplies by it (fewer clever plays), `stPred`
+  multiplies inside its floor (reads the play late, never below `predFloor`). Each channel capped at
+  the same ≤`fatMax` (25%) fade; ramp is 0 until `fatStart` so NO early-match change, and `sta=10`
+  never fades. Deliberately left OUT of shared execution (`stHit`/`stGrip`/`stAccFrac`/`aimAssist`)
+  so a tired team plays sluggish + sloppy + dozy while the HUMAN's kick feel never degrades. File:
+  `js/stats.js`.
+- **League brains now configurable + per-division** — `teamDiff(t)` no longer hardcodes `'pro'`
+  during a league match; it reads `S.lg.diff` (per-division override) falling back to
+  `CONFIG.league.baseDiff` (now `'rookie'`, so a fresh league starts gentle and builds pull teams
+  up from there). `lgPlayMatch` stashes `S.lg.diff` from the current division's optional `diff`
+  field (`CONFIG.league.divisions[t].diff`, now set rookie→pro→legend up the ladder so the ceiling
+  ramps with the tier), cup matches use `CUP.diff||baseDiff`. NOTE: flat `baseDiff` lowers the
+  whole league's CEILING too (stats multiply the difficulty's base numbers), which is why the
+  per-division `diff` fields exist. Files: `js/config.js` (`league.baseDiff` + `divisions[].diff`),
+  `js/league.js` (`teamDiff`, `lgPlayMatch`, cup `S.lg`).
+
 ### 2026-07-12
 - **Cannonball now shatters itself on detonation** (`js/config.js`, `js/models.js`,
   `js/fracture.js`, `js/fx.js`, `js/audio.js`, `js/balls.js`). Previously the ball just

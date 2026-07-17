@@ -18,6 +18,7 @@ addEventListener('keydown',e=>{
  }
   if(e.code==='KeyV'&&S.phase!=='menu'){S.camMode=(S.camMode+1)%CAM.modes.length;Au.ui();}
  if(e.code==='KeyC'&&S.phase!=='menu'){toggleDebug();return;}
+ if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;

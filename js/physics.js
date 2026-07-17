@@ -213,6 +213,7 @@ function collideRod(b,r){
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;
+    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,-vn,b);}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
      b.didSplit=true;
      const nb=makeBall('split');nb.didSplit=true;
@@ -261,6 +262,7 @@ function collideRod(b,r){
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;
+   if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,-vn,b);}  // debug: mark first contact (capsule graze) of this swing
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;

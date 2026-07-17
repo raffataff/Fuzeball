@@ -41,7 +41,7 @@ function makeBall(key){
 }
 // call after ANY hard set of m.position outside physics (serve, redrop, split, NaN redrop):
 // snaps the interp buffers to the mesh so the ball appears at the new spot without streaking there.
-function syncBall(b){b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);}
+function syncBall(b){b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);}
 // Per-frame visual warning for a live cannonball: while the detonation timer is
 // inside the warn window, pulse the ball's outline shell + a bleed light red,
 // snapping to a sharp flash right on each countdown beep and decaying until the
