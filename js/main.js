@@ -90,6 +90,10 @@ function boot(){
  buildRods();applyTable();applyTheme();applyColors();
  if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
  requestAnimationFrame(loop);
+ // Footprint dump: boot() is pre-first-frame (GPU uploads lazily on render, so
+ // texture/shader counts read low here); the delayed snapshot is the real
+ // menu-idle cost. Call memLog('x') from the console any time for a fresh read.
+ if(typeof memLog==='function'){memLog('boot');setTimeout(()=>memLog('boot+3s'),3000);}
 }
 // requestIdleCallback w/ a setTimeout fallback (Safari has no native rIC) — used to nudge
 // remaining heavy one-off work (shader precompile) off the browser's busiest ticks.

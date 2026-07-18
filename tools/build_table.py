@@ -43,11 +43,22 @@ import bpy, bmesh, math, os, sys
 from mathutils import Vector, Matrix
 
 # --------------------------------------------------------------------------
+# Your Fuzeball project folder. Leave "" to auto-detect (works headless AND from
+# the Text Editor). Set an absolute path if auto-detect ever guesses wrong.
+# --------------------------------------------------------------------------
+PROJECT_DIR_OVERRIDE = r"E:\bobby\Documents\Fuzeball"
+
+# --------------------------------------------------------------------------
 # WHICH TABLE + SKIN TO BUILD  (edit here, or pass `-- <table> [skin]` headless)
 # SKIN_ID = "" means the table's default skin.
 # --------------------------------------------------------------------------
 TABLE_ID = "classic"
 SKIN_ID  = "glass"
+
+# Balls + pitches are managed in their own Blender scenes, so this table pipeline
+# leaves them alone. Flip INCLUDE_BALLS to True only if you want this script to also
+# build/export fuzeball_ball.glb. (Pitches are never touched by this script.)
+INCLUDE_BALLS = False
 
 # --------------------------------------------------------------------------
 # game constants (mirror js/config.js -- CONFIG.table)
@@ -674,12 +685,35 @@ def resolve_skin_id(d):
         return SKIN_ID
     return d.get("defSkin") or next(iter(d["skins"]))
 
-def out_dir_for(folder):
+def project_root():
+    """Find the Fuzeball folder robustly. Text-Editor runs don't set __file__, so we
+    try (1) the override, (2) walking up from the script or the open .blend until we
+    hit a folder that has both assets/ and tools/, (3) a last-resort relative guess."""
+    if PROJECT_DIR_OVERRIDE:
+        return PROJECT_DIR_OVERRIDE
+    starts = []
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        starts.append(os.path.dirname(os.path.abspath(__file__)))
     except NameError:
-        script_dir = os.path.dirname(bpy.data.filepath)
-    return os.path.normpath(os.path.join(script_dir, "..", "assets", "tables", folder))
+        pass
+    if bpy.data.filepath:
+        starts.append(os.path.dirname(bpy.data.filepath))
+    for start in starts:
+        d = start
+        for _ in range(8):
+            if os.path.isdir(os.path.join(d, "assets")) and os.path.isdir(os.path.join(d, "tools")):
+                return d
+            nd = os.path.dirname(d)
+            if nd == d:
+                break
+            d = nd
+    try:
+        return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    except NameError:
+        return os.getcwd()
+
+def out_dir_for(folder):
+    return os.path.normpath(os.path.join(project_root(), "assets", "tables", folder))
 
 # ==========================================================================
 def main():
@@ -713,9 +747,11 @@ def main():
     put(col_t, *build_goal_frames(style))
     put(col_t, *build_base_legs(style))
 
-    col_b = reset_collection("Balls")
-    balls = build_balls()
-    put(col_b, *balls)
+    balls = []
+    if INCLUDE_BALLS:
+        col_b = reset_collection("Balls")
+        balls = build_balls()
+        put(col_b, *balls)
 
     col_ref = reset_collection("Reference")
     put(col_ref, *build_reference())
@@ -737,7 +773,8 @@ def main():
     # first-pass GLBs so the game shows the skin right away
     table = [o for o in col_t.objects if o.type == "MESH"]
     export_glb(table, out_dir, glb)
-    export_glb(balls, out_dir, "fuzeball_ball.glb", zero_locations=True)
+    if INCLUDE_BALLS and balls:
+        export_glb(balls, out_dir, "fuzeball_ball.glb", zero_locations=True)
     if col_room:
         room = [o for o in col_room.objects if o.type == "MESH"]
         export_glb(room, out_dir, "fuzeball_room_%s.glb" % tid)

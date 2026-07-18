@@ -14,6 +14,27 @@
 let dbgGroup=null,dbgOn=false,dbgCaps=[],dbgBalls=[],dbgFootS=[];
 let dbgArenaWalls=null,dbgContourRings=[];
 
+/* ===== memory / GPU footprint dump ======================================
+   Boot logs (see main.js) fire this at boot and again once assets have
+   uploaded, so you can see what the menu-idle scene actually costs. Call
+   memLog('label') from the console any time for a fresh snapshot. GPU counts
+   come from renderer.info (geometries/textures/shader programs), JS heap from
+   performance.memory (Chrome only). scene-node count is a rough object tally. */
+function memFmt(b){return (b||b===0)?(b/1048576).toFixed(1)+'MB':'n/a';}
+function memLog(tag){
+ tag=tag||'?';
+ const ri=(typeof renderer!=='undefined'&&renderer)?renderer.info:null;
+ const pm=(typeof performance!=='undefined')&&performance.memory;
+ const geos=ri?ri.memory.geometries:'?',texs=ri?ri.memory.textures:'?';
+ const progs=(ri&&ri.programs)?ri.programs.length:'?';
+ let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
+ const mc=(typeof modelCache!=='undefined'&&modelCache)?Object.keys(modelCache).length:'?';
+ console.log('%c[MEM '+tag+']','color:#2af5ff;font-weight:bold',
+  'JS heap '+memFmt(pm&&pm.usedJSHeapSize)+' / limit '+memFmt(pm&&pm.jsHeapSizeLimit)
+  +' | GPU '+geos+' geoms, '+texs+' textures, '+progs+' shaders'
+  +' | scene '+nodes+' nodes | modelCache '+mc+' templates');
+}
+
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
 let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false,sweetSpot:false,deadzones:false};

@@ -242,7 +242,7 @@ function lgOrder(){const a=LG.teams.map((t,i)=>({i,t}));a.sort((x,y)=>y.t.p-x.t.
 function lgOrderDiv(tier){const a=LG.teams.map((t,i)=>({i,t})).filter(e=>e.t.div===tier);a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round];return R?R.find(f=>f[0]===LG.playerId||f[1]===LG.playerId):null;}
 /* ---- figurine render image map ---- */
-const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanAndroid:1,manStumpy:1,alienTamirok:1,alienGrimlot:1};
+const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanAndroid:1,manStumpy:1,alienTamirok:1,alienGrimlot:1,rocko:1,womanSasha:1,alienKatum:1};
 function modelRender(id){
  if(!RENDER_MAP[id])return null;
   const base=id
@@ -258,10 +258,10 @@ function modelRender(id){
   ==='manrichie'?'richie':id
   ==='stormer'?'stormer':id
   ==='alienTamirok'?'tamirok':id
-  ==='manStumpy'?'stumpy':id
-  ==='rocko'?'rocko':null
-  ==='womanSasha'?'sasha':null
-  ==='alienKatum'?'katum':null
+ // ==='manStumpy'?'stumpy':id
+  ==='rocko'?'rocko':id
+  ==='womanSasha'?'sasha':id
+  ==='alienKatum'?'katum':id
   
   ;
  return 'assets/renders/render_'+base+'_cycles.png';

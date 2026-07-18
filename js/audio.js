@@ -8,11 +8,13 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   let l=0;for(let i=0;i<len;i++){l=(l+(Math.random()*2-1)*.02)*.985;d[i]=l*6;}
   const s=c.createBufferSource();s.buffer=b;s.loop=true;
   const f=c.createBiquadFilter();f.type='bandpass';f.frequency.value=560;f.Q.value=.55;
-  this.crowd=c.createGain();this.crowd.gain.value=.05;
+  this.crowd=c.createGain();this.crowd.gain.value=0;
   s.connect(f);f.connect(this.crowd);this.crowd.connect(this.mg);s.start();
  }catch(e){}},
  setOn(on){if(this.mg)this.mg.gain.value=on?0.55:0;},
- tick(dt){if(this.crowd){this.exc=Math.max(0,this.exc-dt*.3);this.crowd.gain.value=.05+this.exc*.28;}},
+ tick(dt){if(this.crowd){this.exc=Math.max(0,this.exc-dt*.3);
+  const inMatch=typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win';
+  this.crowd.gain.value=(cfg.ambience&&inMatch)?.05+this.exc*.28:0;}},
  env(g,t0,a,d,pk){g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(pk,t0+a);g.gain.exponentialRampToValueAtTime(.0001,t0+a+d);},
  beep(fr,d=.1,type='square',v=.18,slide=0){if(!this.ctx)return;const c=this.ctx,o=c.createOscillator(),g=c.createGain();
   o.type=type;o.frequency.setValueAtTime(fr,c.currentTime);

@@ -24,7 +24,7 @@ function bindUI(){
  $('setTable').value=cfg.table||'classic';
  refreshSkinSelect();
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
- $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;
+ $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;$('setAmbience').checked=cfg.ambience;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
  $('nameRed').maxLength=$('nameBlue').maxLength=CONFIG.control.nameMaxLength;
  $('mcRed').textContent='PLAY '+cfg.redName;$('mcBlue').textContent='PLAY '+cfg.blueName;
@@ -46,6 +46,7 @@ function bindUI(){
  $('setPower').onchange=e=>{cfg.power=e.target.checked;saveCfg();};
  $('setAuto').onchange=e=>{cfg.auto=e.target.checked;saveCfg();};
  $('setSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);saveCfg();};
+ $('setAmbience').onchange=e=>{cfg.ambience=e.target.checked;saveCfg();};
  $('nameRed').oninput=e=>{cfg.redName=(e.target.value||'RED').toUpperCase();$('mcRed').textContent='PLAY '+cfg.redName;refreshKitUI();saveCfg();};
  $('nameBlue').oninput=e=>{cfg.blueName=(e.target.value||'BLUE').toUpperCase();$('mcBlue').textContent='PLAY '+cfg.blueName;refreshKitUI();saveCfg();};
  wireRodCard('btnRed','redRods','red');

@@ -27,12 +27,22 @@ import bpy, bmesh, os, sys
 from mathutils import Vector, Matrix
 
 # --------------------------------------------------------------------------
+# Your Fuzeball project folder. Leave "" to auto-detect (works headless AND from
+# the Text Editor). Set an absolute path if auto-detect ever guesses wrong.
+# --------------------------------------------------------------------------
+PROJECT_DIR_OVERRIDE = r"E:\bobby\Documents\Fuzeball"
+
+# --------------------------------------------------------------------------
 # WHICH TABLE + SKIN  (edit here, or pass `-- <table> [skin]` headless). Mirrors
 # the folder / skins / room fields of js/config.js CONFIG.tables + build_table.py.
 # SKIN_ID = "" means the table's default skin.
 # --------------------------------------------------------------------------
 TABLE_ID = "classic"
 SKIN_ID  = "glass"
+
+# Balls + pitches live in their own scenes, so this exporter ignores them. Flip
+# INCLUDE_BALLS to True only if you want it to also write fuzeball_ball.glb.
+INCLUDE_BALLS = False
 
 TABLES = {
     "classic": {"folder": "classic", "room": False, "defSkin": "alienShip",
@@ -66,12 +76,35 @@ def resolve_skin(d):
         return SKIN_ID
     return d.get("defSkin") or next(iter(d["skins"]))
 
-def assets_dir(folder):
+def project_root():
+    """Find the Fuzeball folder robustly. Text-Editor runs don't set __file__, so we
+    try (1) the override, (2) walking up from the script or the open .blend until we
+    hit a folder that has both assets/ and tools/, (3) a last-resort relative guess."""
+    if PROJECT_DIR_OVERRIDE:
+        return PROJECT_DIR_OVERRIDE
+    starts = []
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        starts.append(os.path.dirname(os.path.abspath(__file__)))
     except NameError:
-        script_dir = os.path.dirname(bpy.data.filepath)
-    return os.path.normpath(os.path.join(script_dir, "..", "assets", "tables", folder))
+        pass
+    if bpy.data.filepath:
+        starts.append(os.path.dirname(bpy.data.filepath))
+    for start in starts:
+        d = start
+        for _ in range(8):
+            if os.path.isdir(os.path.join(d, "assets")) and os.path.isdir(os.path.join(d, "tools")):
+                return d
+            nd = os.path.dirname(d)
+            if nd == d:
+                break
+            d = nd
+    try:
+        return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    except NameError:
+        return os.getcwd()
+
+def assets_dir(folder):
+    return os.path.normpath(os.path.join(project_root(), "assets", "tables", folder))
 
 def base_name(name):
     return name.split(".")[0]                      # "goal_net_left.001" -> "goal_net_left"
@@ -143,10 +176,13 @@ def main():
     if not table:
         print("  (no table meshes found -- check you have the .blend open)")
 
-    export_objects(balls, out_dir, "fuzeball_ball.glb",
-                   translate_map={b: -world_bbox_center(b) for b in balls})
-    if not balls:
-        print("  (no ball meshes named classic/fire/cannon/split/golden)")
+    # balls are excluded from the table GLB above; only export them if you ask (default: no,
+    # you keep balls in a separate scene)
+    if INCLUDE_BALLS:
+        export_objects(balls, out_dir, "fuzeball_ball.glb",
+                       translate_map={b: -world_bbox_center(b) for b in balls})
+        if not balls:
+            print("  (no ball meshes named classic/fire/cannon/split/golden)")
 
     if d.get("room"):
         export_objects(room, out_dir, "fuzeball_room_%s.glb" % tid)
