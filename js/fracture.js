@@ -184,13 +184,22 @@ function disposeFracture(i){
    spawns a swirl once its respawn is within respawnLead. Clips LOOP (the effect
    is a continuous rising column), so a short bake just repeats. The instance
    tracks the rod's z-slide every frame so the particles land exactly where the
-   man reappears; rods.js still owns flipping the real figure visible the instant
-   S.time passes r.removedUntil — this just clears the swirl at the same moment. */
+   man reappears.
 
-/* Spawn the swirl for rod r's man mi, keyed to reform at `until`
-   (=r.removedUntil[mi]). No-op if the GLB never loaded (missing file / fractureFx
-   off) — the man still respawns on schedule, just without the flourish. */
-function spawnRespawnSwirl(r,mi,until){
+   TIMING (the whole point of the effect):
+     reform-lead ............ swirl spawns, full opacity          (lead = swirlLead())
+     reform ................. rods.js flips the figure visible and starts its
+                              respawnFade fade-in — the swirl is STILL PLAYING
+     reform+tail ............ swirl disposed                      (tail = swirlTail())
+   The swirl deliberately OUTLIVES r.removedUntil by `tail`; it used to die exactly
+   at reform, which read as the player's arrival killing the particles. Its opacity
+   ramp is anchored to the END of the tail, not to reform, so the two cross-dissolve. */
+
+/* Spawn the swirl for rod r's man mi, where `reform` is the moment the figurine comes
+   back (=r.removedUntil[mi]). The instance lives until reform+swirlTail(), NOT until
+   reform. No-op if the GLB never loaded (missing file / fractureFx off) — the man
+   still respawns on schedule, just without the flourish. */
+function spawnRespawnSwirl(r,mi,reform){
   const tpl=respawnSwirlTemplate;if(!tpl)return;
   const C=CONFIG.cannonball;
   const inst=cloneFractureInstance(tpl);
@@ -203,31 +212,61 @@ function spawnRespawnSwirl(r,mi,until){
   const mats=[];
   inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=1;mats.push(c.material);});
   const mixer=new THREE.AnimationMixer(inst);
-  // LOOP every clip (contrast spawnFracture's one-shot LoopOnce): a short baked
-  // swirl then repeats to fill however long respawnLead is set to.
+  // LOOP every clip (contrast spawnFracture's one-shot LoopOnce) so a short bake
+  // repeats to fill the lead+tail window. With respawnSwirlFit the window is instead
+  // matched to the bake: ONE timeScale off the LONGEST clip (not per-clip) so every
+  // shard keeps its authored relative timing, just slower/faster overall.
+  const win=swirlLead()+swirlTail();
+  let dur=0;for(const c of tpl.clips)if(c.duration>dur)dur=c.duration;
+  const ts=(C.respawnSwirlFit&&dur>0&&win>0)?dur/win:1;
+  mixer.timeScale=ts;
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopRepeat);a.play();}
   let light=null;
   if((C.respawnSwirlLight||0)>0){                       // optional soft team-tinted glow riding the column
    const col=r.team===0?cfg.redColor:cfg.blueColor;
    light=new THREE.PointLight(col,0,48);light.position.set(r.x,(C.respawnSwirlY||0)+5,z);scene.add(light);
   }
-  S.swirl.push({obj:inst,mixer,mats,light,rod:r,mi,until});
+  // `until` = when the swirl DIES, which is respawnSwirlTail seconds PAST the reform
+  // moment — that overlap is what keeps the particles going while the figurine fades in.
+  S.swirl.push({obj:inst,mixer,mats,light,rod:r,mi,until:reform+swirlTail()});
+}
+
+/* Seconds the swirl outlives the reform (defaults to the figurine fade-in length so
+   the whole materialise happens inside the particles). */
+function swirlTail(){
+  const C=CONFIG.cannonball;
+  return C.respawnSwirlTail!=null?C.respawnSwirlTail:(C.respawnFade||0);
+}
+
+/* How early (before reform) the swirl starts. respawnLead>0 forces a window; 0/absent
+   = AUTO, meaning the LONGEST baked clip in the GLB, so the exported animation plays
+   through in full instead of being cut off by an arbitrary lead. */
+function swirlLead(){
+  const C=CONFIG.cannonball;
+  if(C.respawnLead>0)return C.respawnLead;
+  const cl=respawnSwirlTemplate&&respawnSwirlTemplate.clips;
+  let d=0;if(cl)for(const c of cl)if(c.duration>d)d=c.duration;
+  return Math.max(0,d-swirlTail())||d||3;   // clip length spans lead+tail; fall back to 3s if the GLB has no clips
 }
 
 /* Per-frame, real dt (call from main.js's loop alongside fractureUpdate). Two
    passes: (1) spawn a swirl for any removed man whose respawn is now within
-   respawnLead and doesn't already have one; (2) advance/track/fade the live ones,
-   disposing at the reform moment. */
+   swirlLead() and doesn't already have one; (2) advance/track/fade the live ones,
+   disposing swirlTail() seconds AFTER reform (so the particles keep swirling
+   through the figurine's fade-in). */
 function respawnSwirlUpdate(dt){
   const C=CONFIG.cannonball;
   if(respawnSwirlTemplate){
-   const lead=C.respawnLead||3;
+   const lead=swirlLead();
    for(const r of rods){
     if(!r.removedUntil)continue;
     for(let mi=0;mi<r.baseZ.length;mi++){
      const ru=r.removedUntil[mi];
-     if(!ru||ru<=S.time||ru-S.time>lead)continue;         // not removed / already back / too early
-     if(S.swirl.some(f=>f.rod===r&&f.mi===mi))continue;    // one per man per removal window
+     // NOTE: no `ru<=S.time` skip — the swirl deliberately outlives the reform by
+     // swirlTail(), and the man is already back (removedUntil in the past) for that
+     // whole stretch. The tail check below retires it instead.
+     if(!ru||ru-S.time>lead||S.time-ru>=swirlTail())continue; // not removed / too early / tail already over
+     if(S.swirl.some(f=>f.rod===r&&f.mi===mi))continue;       // one per man per removal window
      spawnRespawnSwirl(r,mi,ru);
     }
    }
@@ -238,10 +277,10 @@ function respawnSwirlUpdate(dt){
      f.mixer.update(dt);
      const z=f.rod.offset+f.rod.baseZ[f.mi];                 // follow the slide so the swirl lands where the man reforms
      f.obj.position.z=z;
-     const left=f.until-S.time;
-     // Full opacity until `fade` seconds before reform (17.4s → when the player
-     // fade-in begins), then dims 1→0 across exactly that window so the particles
-     // converge INTO the figurine as it materialises — both complete at reform.
+     const left=f.until-S.time;                              // f.until = reform + tail
+     // Full opacity until `fade` seconds before the swirl's END (not before reform):
+     // with fade = respawnSwirlTail the dim begins exactly as the figurine starts
+     // fading IN, so particles and player cross-dissolve instead of hand-off.
      const k=left>=fade?1:clamp(left/fade,0,1);
      for(const m of f.mats)m.opacity=k;
      if(f.light){f.light.position.z=z;f.light.intensity=lit*k;}

@@ -49,14 +49,14 @@ const CONFIG = {
   countIn:3.6,      // opening countdown length (s)
   recount:1.5,      // countdown length after a goal/out
   goalHold:2.0,     // 'goal' celebration phase before re-count (s)
-  goalSlowmo:0.25,  // time-scale during that phase (slow-mo)
-  outHold:1.0,      // pause after a ball goes out (s)
-  warnT:10          // final-seconds warning: clock pulses red + ticks in the last N seconds
+  goalSlowmo:0.15,  // time-scale during that phase (slow-mo)
+  outHold:1.5,      // pause after a ball goes out (s)
+  warnT:5          // final-seconds warning: clock pulses red + ticks in the last N seconds
  },
 
  /* ---- simulation timing ---------------------------------------------- */
  sim:{
-  hz:120,        // fixed physics rate (steps/sec). The sim always advances in
+  hz:60,        // fixed physics rate (steps/sec). The sim always advances in
                  // constant 1/hz slices; the renderer interpolates between slices,
                  // so motion is smooth at any display refresh. Higher = crisper
                  // collisions at more CPU. 120 is a good balance.
@@ -177,13 +177,13 @@ const CONFIG = {
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.8, rodH:7.50, playerH:-6.90, arm:6.30, prad:1.0, grav:250,
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, prad:1.0, grav:250,
    footT:0.99,                      // arm-fraction from pivot to foot centre (1=foot, 0.85 = 15% above foot)
    footBox:{x:1.3,y:1.2,z:1.35},     // foot box half-extents: {x=along leg, y=perpendicular, z=along rod}
    footBoxOff:{x:-0.65,y:0.57},        // centre offset from foot-base in rod-local: {x=along leg, y=perpendicular}
-   footBoxReach:0.95,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
+   footBoxReach:1.0,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
    footJitter:0.1,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
-   subMin:3, subMax:5, subTravel:1.5,   // adaptive substep bounds + target travel per step
+   subMin:3, subMax:7, subTravel:1.0,   // adaptive substep bounds + target travel per step
    floorRest:0.42,                        // vertical restitution off the floor
    floorRestCut:6,                        // below this upward speed the bounce dies to 0
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
@@ -277,12 +277,12 @@ ai:{
    //     Defaults below == the current shared values, so nothing changes until you tweak them.
    heldFwd:{
       on:true,          // false = old transient behaviour (hold forward only during the swing, no persistent evade)
-      xFront:7.2,       // drop-sweep x-window AHEAD of the rod (dir-relative) — a ball within this counts as "in the zone"
+      xFront:6.5,       // drop-sweep x-window AHEAD of the rod (dir-relative) — a ball within this counts as "in the zone"
       xBack:2.9,        // drop-sweep x-window BEHIND the rod (dir-relative magnitude)
       zMargin:0.1,      // z-DEPTH of the zone: footBox.z + BALL_R + this (used for BOTH detection and the escape's clear target)
-      maxSpeed:40,      // only evade/slide-away for balls slower than this (faster balls just pass the men)
-      vz:0.1,            // ball |v.z| above which the slide commits opposite the ball's z-drift (else opposite the side it sits on)
-      abortT:5.0        // release the evade after this long (safety valve; a genuinely stuck ball then trips the dead-ball redrop)
+      maxSpeed:20,      // only evade/slide-away for balls slower than this (faster balls just pass the men)
+      vz:20,            // ball |v.z| above which the slide commits opposite the ball's z-drift (else opposite the side it sits on)
+      abortT:1.0        // release the evade after this long (safety valve; a genuinely stuck ball then trips the dead-ball redrop)
    },
    // --- inFootRange helper: the dir-relative rectangle a foot can touch, ONE source of truth
    //     for the safe-raise / safe-lower "would we clip the ball?" questions. Forward depth =
@@ -306,7 +306,7 @@ ai:{
       on:true,
       angle:-0.6,        // partial back-raise trap angle (rod-local, ×kickDir like raiseA)
       lerp:6,             // ease rate toward the trap angle (slower than raiseLerp — a soft catch)
-      back:-4.1,          // dir-relative x window behind the rod where a trap makes sense…
+      back:-4.5,          // dir-relative x window behind the rod where a trap makes sense…
       front:-0.2,         // …ends just behind the rod line (past this the normal kick path owns it)
       maxVX:18,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
       maxSpeed:18,        // total ball speed cap for attempting/keeping a trap
@@ -314,8 +314,8 @@ ai:{
       gkReach:20,          // GK-only: also enter the trap when the ball is within this far BEYOND
                         //   the keeper's z-slide band (early-detect a ball drifting back toward a
                         //   goal it can't yet slide onto). Outfield rods ignore this, use alignZ.
-      settleT:0.8,       // min seconds in the trap before the scoop shot may fire
-      shootFrom:-0.35,     // scoop fires once the ball is past this (near the trap foot's reach)
+      settleT:1.2,       // min seconds in the trap before the scoop shot may fire
+      shootFrom:-0.25,     // scoop fires once the ball is past this (near the trap foot's reach)
       abortT:5.5          // give up after this long and fall back to the raise latch
    },
    // --- trap-shot kick: a dedicated kick curve fired from the trap action. Shorter windup
@@ -327,9 +327,9 @@ ai:{
       strike:0.2,   strikeA:1.75,   // long forward sweep, high peak for power
       hold:0.35,                     // hold peak
       drop:0.45,                     // return to neutral
-      powFrom:0.17, powTo:0.22,     // late wide power window
-      restPower:0.2,                // big pop in the power window
-      rest:0.01                      // heftier passive touch outside the window
+      powFrom:0.17, powTo:0.2,     // late wide power window
+      restPower:0.19,                // big pop in the power window
+      rest:0.25                      // heftier passive touch outside the window
    },
    // --- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
    //     thresholds. A slow, sideways ball loiters in this x-band behind the rod but isn't far
@@ -344,7 +344,7 @@ ai:{
       angle:-0.9,        // defined lift angle the rod eases to (rod-local, ×kickDir; full raiseA is -1.6)
       lerp:8,             // ease rate toward the angle (a brisk, clean lift)
       back:-5.5,          // dir-relative x band behind the rod where a loitering ball triggers a safe-raise…
-      front:0.75,        // …up to just behind the rod line (past this the normal kick path owns it)
+      front:0.95,        // …up to just behind the rod line (past this the normal kick path owns it)
       maxVX:10,            // ball |v.x| must be under this (sideways/loitering — enough x-speed reaches the feet on its own)
       maxSpeed:70,        // total ball speed cap for entering/holding a safe-raise
       abortT:8.5          // give up after this long and fall back to the normal path
@@ -786,13 +786,15 @@ ai:{
    fractureLife:2.9,   // seconds the ball debris lives before disposal; the ball has no respawn so this is self-contained (keep >= the baked clip length)
    fractureScale:1,    // scale for the ball-fracture instance (baked in-scene at game scale, so 1; bump if the export came out small/large)
    // --- respawn swirl (swirly particles that rise from the floor to the rod in the last seconds before a removed player reforms) ---
-   respawnSwirlSrc:'assets/animations/swirl_particles.glb', // baked swirly-particle GLB — one shared asset for every figurine. ⚠ SET this to the actual filename you added to assets/animations. Clips are LOOPED, so a short bake just repeats to fill respawnLead.
-    respawnLead:3,          // seconds before a removed player respawns that the swirl starts (player reforms at 20s → swirl begins at 17s)
+   respawnSwirlSrc:'assets/animations/swirl_particles.glb', // baked swirly-particle GLB — one shared asset for every figurine. ⚠ SET this to the actual filename you added to assets/animations. Clips are LOOPED, so a short bake just repeats to fill the window.
+    respawnLead:5,          // seconds BEFORE the player reforms that the swirl starts. With removeDuration:20 → 5 means the swirl kicks in 15s after the explosion. 0 = AUTO (use the baked clip's own length, which starts it as early as the bake is long)
+    respawnSwirlTail:2.6,   // seconds the swirl KEEPS PLAYING AFTER the player reforms. The figurine's fade-in (respawnFade) happens inside this window, so the particles are still swirling while it materialises. Set = respawnFade to cover the whole fade-in
+    respawnSwirlFit:true,   // true = time-stretch the baked clip so the WHOLE exported animation plays exactly once across the (respawnLead + respawnSwirlTail) window — use when the bake is longer than the window and you don't want it cut off mid-swirl. false = play at authored speed and LOOP to fill (a long bake then gets truncated at the reform)
    respawnSwirlScale:1,    // scale for the swirl instance (bump if the export came out small/large)
    respawnSwirlY:0,        // world-Y the swirl is seated at; 0 = floor. The baked animation is expected to rise from here up toward the rod
-     respawnSwirlFadeOut:0.4, // seconds the swirl fades out — matched to respawnFade so it only starts dimming at 17.4s (when the player fade-in begins) and converges into the figurine by reform
+     respawnSwirlFadeOut:1.6, // seconds the swirl spends dimming 1→0 at the very END of its life (i.e. the last N seconds of the tail). = respawnSwirlTail means it starts dimming the instant the player begins fading in, so the two cross-dissolve
      respawnSwirlLight:3.6,  // peak intensity of a soft team-tinted point light riding the swirl (0 = no light)
-     respawnFade:2.6          // seconds the returning figurine eases in from transparent → opaque on respawn (gentle fade-in instead of a hard pop)
+     respawnFade:2.6          // seconds the returning figurine eases in from transparent → opaque on respawn (gentle fade-in instead of a hard pop). Starts AT reform, i.e. at the start of respawnSwirlTail
   },
 
 /* ---- ball types ----------------------------------------------------- */
