@@ -67,23 +67,55 @@ function userControlUpdate(dt){
    drives in-match play + pause/resume, which is the controller baseline a
    Steam build needs. Layout: left-stick Y / d-pad ↕ = slide · A(0) or RT(7) =
    kick · X(2) or LT(6) = raise (hold) · LB(4)/RB(5) or d-pad ↔ = switch rod ·
-   Y(3) = camera · Start(9) = pause. */
+   Y(3) = camera · Start(9) = pause.
+   TOTAL CONTROL mode (cfg.padControlMode='total'): the triggers stop being
+   raise/kick and become an analog slide-speed modifier — LT eases toward
+   cfg.padTCFine (precision steps), RT toward cfg.padTCFast (fast moves),
+   neither = cfg.padTCBase middle-ground. Kick = A only, raise = X only. The
+   right stick still angles the rod on its bound axis; the OTHER right axis is
+   the swerve line — its deflection is stored on the rod (r.tcSpin) and
+   physics.js bends the ball with it on contact. */
 const gpPrev={};let gpRaiseHeld=false;
 function gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);}
+// Shared TC swerve read: raw right-stick axes → signed swerve in ±1 (deadzone-rescaled,
+// sens-scaled, invert applied). gamepadUpdate stores it on the rod; the options live
+// tester previews the same value, so what you see there is what the strike applies.
+function tcSwerveFromAxes(gp){
+ let sx=(cfg.padAngleAxis==='rx'?gp.axes[3]:gp.axes[2])||0;
+ if(Math.abs(sx)>cfg.padDeadzone)sx=(Math.abs(sx)-cfg.padDeadzone)/(1-cfg.padDeadzone)*Math.sign(sx);else sx=0;
+ return clamp(sx*cfg.padTCSwerve,-1,1)*(cfg.padTCSpinInvert?-1:1);
+}
 addEventListener('gamepadconnected',e=>{console.log('gamepad connected:',e.gamepad.id);});
 function gamepadUpdate(dt){
  if(!$('options').classList.contains('hidden'))return; // options screen owns the pad (live tester)
  const pads=navigator.getGamepads?navigator.getGamepads():[];
  let gp=null;for(const p of pads){if(p){gp=p;break;}}
- if(!gp)return;
+ if(!gp){S.tcMult=1;return;}
  // snapshot the rising edge (down now, up last poll) of every button we use, in one pass
  const just={};
  for(const i of [0,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
  if(just[9]&&(S.phase==='play'||S.phase==='count'||S.phase==='pause'))togglePause();
  if(!(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&S.userTeam>=0&&S.ctrlRods.length)){
-  if(gpRaiseHeld)gpRaiseHeld=false;return;
+  if(gpRaiseHeld)gpRaiseHeld=false;S.tcMult=1;return;
  }
- const r=S.ctrlRods[S.ctrl],DZ=cfg.padDeadzone;
+ const r=S.ctrlRods[S.ctrl],DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
+ // TC SPEED: the analog triggers scale how many units the SLIDE STEP covers per frame (slideMult).
+ // LT squeezes toward padTCFine (precision — smaller steps), RT toward padTCFast (fast — bigger
+ // steps), neither = padTCBase middle-ground; LT wins when both are held. This is a step-SIZE knob,
+ // NOT a rod-speed throttle: S.tcMult feeds the rod's chase cap in rods.js but is floored at 1 so
+ // the rod always tracks its target at full user speed. Fine mode must not make the rod feel like
+ // syrup — it just moves the target in finer increments; the rod still snaps to it crisply. RT's
+ // boost (>1) still raises the cap so big fast steps aren't clipped. Untouched pad → tcMult 1.
+ let slideMult=1;
+ if(TC){
+  const trig=i=>{const b=gp.buttons[i];return b?(b.value||(b.pressed?1:0)):0;};
+  const lt=trig(6),rt=trig(7);
+  let m=cfg.padTCBase;
+  if(rt>0)m=lerp(m,cfg.padTCFast,rt);
+  if(lt>0)m=lerp(m,cfg.padTCFine,lt);
+  const padLive=gp.buttons.some(b=>b.pressed||b.value>0.02)||gp.axes.some(a=>Math.abs(a)>DZ);
+  slideMult=m;S.tcMult=padLive?Math.max(1,m):1;
+ }else S.tcMult=1;
  // SLIDE: which analog axis drives the men is configurable — 'ly' = left-stick up/down (axis 1),
  // 'lx' = left-stick left/right (axis 0). Deflection PAST the deadzone is rescaled to 0..1 (so speed
  // eases up from zero instead of snapping to DZ-worth of speed at the edge — that hard step is what
@@ -96,8 +128,8 @@ function gamepadUpdate(dt){
   if(cfg.padSlideInvert)ay=-ay;
  }
  if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
- if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*dt,-r.maxOff,r.maxOff);
- if(just[0]||just[7])kickRod(r);                     // A / RT
+ if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);
+ if(just[0]||(!TC&&just[7]))kickRod(r);              // A / RT (RT only in classic — in TC it's the speed trigger)
  if(just[3])S.camMode=(S.camMode+1)%CAM.modes.length;// Y
  if(just[4]||just[14])setCtrl(S.ctrl-1);             // LB / d-pad ←
  if(just[5]||just[15])setCtrl(S.ctrl+1);             // RB / d-pad →
@@ -114,10 +146,16 @@ function gamepadUpdate(dt){
   r.padAngleTarget=(d>=0?d*KICK.strikeA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
   r.padAngleOn=true;
  }else{r.padAngleTarget=0;r.padAngleOn=false;}
+ // TC SWERVE: the right-stick axis NOT bound to angle is the swerve line. Sampled via the
+ // shared tcSwerveFromAxes (also what the options tester previews) and stored on the rod;
+ // physics.js adds it to the ball's side-spin on contact — so the line the stick takes
+ // through the strike bends the shot. Angle control above is untouched: one stick, both effects.
+ if(TC){r.tcSpin=tcSwerveFromAxes(gp);}
+ else if(r.tcSpin)r.tcSpin=0;
  // raise is a HOLD; only write r.raise from the pad while its button is down or we just released
  // it, so a connected-but-idle pad never clobbers keyboard/mouse raise. If the right stick is
  // actively driving the angle, skip the binary raise so it doesn't fight.
- const raise=gpDown(gp,2)||gpDown(gp,6);             // X / LT
+ const raise=gpDown(gp,2)||(!TC&&gpDown(gp,6));      // X / LT (LT only in classic — in TC it's the precision trigger)
  if(!r.padAngleOn){if(raise){r.raise=true;gpRaiseHeld=true;}else if(gpRaiseHeld){r.raise=false;gpRaiseHeld=false;}}
 }
 function toggleFreeRoam(){

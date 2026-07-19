@@ -204,6 +204,9 @@ function collideRod(b,r){
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
+    // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
+    if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
+     b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
     // tiny imperfection prevents pixel-perfect side-to-side oscillations
     const jit=Math.abs(jm)*FOOT_JITTER;
     b.v.x+=(Math.random()-.5)*jit;b.v.y+=(Math.random()-.5)*jit*.3;b.v.z+=(Math.random()-.5)*jit;
@@ -213,7 +216,7 @@ function collideRod(b,r){
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;
-    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,-vn,b);}  // debug: mark first contact of this swing
+    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b);}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
      b.didSplit=true;
      const nb=makeBall('split');nb.didSplit=true;
@@ -258,11 +261,14 @@ function collideRod(b,r){
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
+    // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
+    if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
+     b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
     if(pow)aimAssist(b,r);
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;
-   if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,-vn,b);}  // debug: mark first contact (capsule graze) of this swing
+   if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b);}  // debug: mark first contact (capsule graze) of this swing — capsule can't be a sweet hit
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;

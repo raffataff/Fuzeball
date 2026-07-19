@@ -16,7 +16,7 @@ function loop(t){
  if(active){
   const FIXED=1/SIM.hz;
   /* --- wall-clock timers (real time, once per frame) --- */
-  if(S.phase==='play')S.matchTime+=rdt;
+  if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
   if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0)startCount(MATCH.recount);}
   else if(S.phase==='count'){
    S.countT-=rdt;

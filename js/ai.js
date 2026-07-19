@@ -40,12 +40,16 @@ function teamRods(t){const a=[];for(const r of rods)if(r.team===t)a.push(r);retu
 function manLive(r,i){return!(r.removedUntil[i]&&r.removedUntil[i]>S.time);}
 // Rectangular "a live foot could touch this ball" test — ONE source of truth for the
 // safe-raise / safe-lower reach questions. The box is dir-relative around each live foot on
-// the rod: it reaches underFootFront ahead (a dropping/kicking swing) and footRangeBack behind
+// the rod: it reaches underFootFront ahead (a dropping/kicking swing) and `back` behind
 // (a raising swing sweeps back), and footBox.z + BALL_R + clearMargin either side in z (a
 // foot's z footprint). True ⇒ lowering/raising the rod right now would clip ball b.
-function inFootRange(r,b){
+// `back` defaults to the full footRangeBack (the raise-sweep depth); pass a smaller value
+// (e.g. underFootBack) for a tighter "ball is right at the feet" test — used to drop the
+// raise latch only when the ball is genuinely close, not the moment it enters the deep reach.
+function inFootRange(r,b,back){
+ back=(back===undefined)?AIC.footRangeBack:back;
  const dir=r.team===0?1:-1,rel=(b.m.position.x-r.x)*dir;
- if(rel>AIC.underFootFront||rel<-AIC.footRangeBack)return false;
+ if(rel>AIC.underFootFront||rel<-back)return false;
  const hz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=b.m.position.z;
  for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;if(Math.abs(bz-(r.baseZ[i]+r.offset))<hz)return true;}
  return false;
@@ -143,36 +147,41 @@ function shotEval(team,bx,bz){
    // ALL are gone the rod can't touch the ball, so drop it out of the aim/kick logic.
    let liveN=0;for(let i=0;i<r.baseZ.length;i++)if(manLive(r,i))liveN++;
    if(!liveN){r.raise=false;r.behindFlag=false;r.act=null;continue;}
-   // ---- safe-lower side-step: this rod kicked, missed, and is HELD forward by a ball
-   //      still in its drop-sweep zone (updateRods pins kickT at KICK.hold and sets
-   //      heldFwd). Do NOT keep aligning onto the ball — that was the hover-forever
-   //      deadlock. Instead COMMIT a slide away from it (evade-style: opposite its z-drift
-   //      / the side it sits on) until every foot is clearZ-clear of the ball in z; the hold
-   //      then releases and the swing drops itself. A committed direction (vs the old
-   //      nearest-clear offset, which tracked a rolling ball and made the rod creep forward
-   //      ALONG with it) leaves the ball behind decisively. Runs before the active-pair
-   //      check on purpose: a rod benched mid-hold must still escape or it hangs forward. ----
-   if(r.heldFwd){
+   // ---- post-kick hold-evade (CONFIG.ai.heldFwd): after a kick, if a SLOW ball is still in this
+   //      rod's DROP-SWEEP x-window, keep the rod HELD FORWARD (updateRods pins the strike angle
+   //      while r.evadeHold is live) and slide the men decisively AWAY (committed direction:
+   //      opposite the ball's z-drift, else opposite the side it sits on) while SUPPRESSING re-aim
+   //      + re-kick, until the ball leaves the x-window / speeds up / the safety timer expires.
+   //      The persistent latch (r.evadeHold) is the fix for "follows the ball swinging": without it
+   //      the rod cleared z for ONE frame, dropped, and man-selection dragged it straight back onto
+   //      the slow ball to re-kick. It never lowers while the ball is in front, so the drop can't
+   //      swipe it backward. Runs before the active-pair check: a benched rod mid-hold must still
+   //      escape or it hangs forward for the rest of the point. ----
+   const HF=AIC.heldFwd;
+   if(HF.on&&(r.heldFwd||r.evadeHold>0)){
     let hb=null,hd=1e9;const hdir=r.team===0?1:-1;
     for(const b of S.balls){if(b.scored)continue;const rel=(b.m.position.x-r.x)*hdir;
-     if(rel<-AIC.underFootBack||rel>AIC.underFootFront)continue;
+     if(rel<-HF.xBack||rel>HF.xFront)continue;
      const ad=Math.abs(rel);if(ad<hd){hd=ad;hb=b;}}
-    if(hb&&hb.v.length()<AIC.repositionSpeed){
-     // Commit AWAY from the ball (evade-style) rather than drifting to the NEAREST clear offset:
-     // a nearest-clear point sits just beside the ball and tracks its z as it rolls, so the rod
-     // crept forward-held ALONG with the ball. Pick a decisive direction — opposite the ball's
-     // z-drift, else opposite the side it sits on — and slide until every foot is clear of the
-     // drop-sweep z-band. The rod stays held forward the whole slide; the hold only releases once
-     // the ball is z-clear, so the drop can't sweep it backward (no own-goal on the return).
-     const cz=FOOT_BOX.z+BALL_R+AIC.clearMargin,bz=hb.m.position.z;
-     const prefer=Math.abs(hb.v.z)>AIC.evade.vz?(hb.v.z>0?-1:1):((bz-r.offset)>0?-1:1);
-     let o=clearOffset(r,bz,cz,prefer);
-     if(o==null)o=clearOffset(r,bz,cz,0);                       // no room that way — take the nearest clear either side
-     if(o!=null)r.target=o;
-     r.aiMan=-1;                                                // free man-index hysteresis for the post-release re-pick
-    }
-    if(dbgLogRod===r)dbgRod(r,'HELD-ESC',hb?('rel='+((hb.m.position.x-r.x)*(r.team===0?1:-1)).toFixed(1)+' tgt='+r.target.toFixed(1)):'');
-    continue;
+    if(hb&&hb.v.length()<HF.maxSpeed){
+     if(!r.evadeSpent){
+      r.evadeHold=(r.evadeHold||0)+dt;                          // latch: persists past the swing's completion so re-aim can't re-grab the ball
+      if(r.evadeHold<HF.abortT){                                // within the budget → slide AWAY + suppress re-aim/kick
+       const cz=FOOT_BOX.z+BALL_R+HF.zMargin,bz=hb.m.position.z;
+       const prefer=Math.abs(hb.v.z)>HF.vz?(hb.v.z>0?-1:1):((bz-r.offset)>0?-1:1); // commit AWAY from the ball, no dither
+       let o=clearOffset(r,bz,cz,prefer);
+       if(o==null)o=clearOffset(r,bz,cz,0);                     // no room that way — take the nearest clear either side
+       if(o!=null)r.target=o;
+       r.aiMan=-1;                                              // free man-index hysteresis for the post-release re-pick
+       if(dbgLogRod===r)dbgRod(r,'HELD-ESC','rel='+((hb.m.position.x-r.x)*hdir).toFixed(1)+' tgt='+r.target.toFixed(1)+' t='+r.evadeHold.toFixed(1));
+       continue;
+      }
+      r.evadeSpent=true;                                        // budget spent (couldn't clear — e.g. wall-jammed): stop pinning, drop when z-clear, let the dead-ball redrop relieve it
+      if(dbgLogRod===r)dbgRod(r,'HELD-SPENT','evade budget spent — releasing to dead-ball');
+     }
+     // spent: fall through to the normal path. updateRods no longer evade-pins (uf still guards a
+     // ball right at the feet), so the swing drops once z-clear and play resumes.
+    }else{r.evadeHold=0;r.evadeSpent=false;}                    // ball left the x-window / sped up → rearm for next time
    }
    if(!isActiveRod(r)){
     if(dbgLogRod===r)dbgRod(r,'BENCH');
@@ -261,13 +270,19 @@ function shotEval(team,bx,bz){
   //      and kicking the ball backward into its own goal — which is what happens
   //      when raiseBehind is tuned tight.  Released only by the ball arriving at
   //      the feet, so the normal drop + kick path takes over from there.
-  //      EXCEPTION (footStuck): a nearly-stopped ball sitting directly in a foot's
-  //      reach must NOT raise — the raising swing sweeps the foot backward THROUGH
-  //      the ball and knocks it into our own goal (esp. the GK). Suppress the latch
-  //      and drop the men; the evade action below slides the rod clear instead. ----
-  const footStuck=speed<AIC.footTrapSlow && inFootRange(r,best);
-  if(footStuck){
-   r.raise=false;r.behindFlag=false;       // pinned at the feet — never swing back through it
+  //      EXCEPTION: a ball sitting in a live foot's reach must NOT swing back — the raising
+  //      swing sweeps the foot backward THROUGH the ball into our own goal (esp. the GK).
+  //      Purely LOCATION-based, no speed gate. TWO reaches, so the latch doesn't lower too early:
+  //      • footStuck (full footRangeBack, 7.2u) — vetoes the back-swing ACTIONS (safeRaise/trap)
+  //        below, whose swing genuinely sweeps that deep.
+  //      • latchStuck (tighter underFootBack, 2.9u) — DROPS the raise latch only when the ball is
+  //        genuinely at the feet. A ball approaching from deep keeps the rod raised (latched) all
+  //        the way in instead of the men lowering the instant it enters the 7.2u back-reach.
+  //      Either way the men then drop + the evade action slides the rod clear. ----
+  const footStuck=inFootRange(r,best);
+  const latchStuck=inFootRange(r,best,AIC.underFootBack);
+  if(latchStuck){
+   r.raise=false;r.behindFlag=false;       // ball right at the feet — drop, never swing back through it
   }else{
    if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
    if(r.behindFlag){
@@ -293,9 +308,11 @@ function shotEval(team,bx,bz){
    // holding the raise and letting the drop-nudge it. (safeRaise otherwise exits only on the ball
    // leaving the band / speeding up / lifting / timing out — none of which is "it's a good hit".)
    const srKick=(overFoot||inFront)&&aligned&&r.kickT<0&&r.cd<=0;
-   if(srKick||relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT){r.act=null;r.raise=false;r.behindFlag=false;}
+   // footStuck bail: if the ball has drifted into a foot's back-swing reach while we're lifted,
+   // abort NOW so the men drop instead of the lift sweeping back through it (own-goal guard).
+   if(srKick||footStuck||relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT){r.act=null;r.raise=false;r.behindFlag=false;}
    else{r.raise=false;r.behindFlag=false;}         // the action owns the angle while it holds
-  }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<SR.front&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!inFootRange(r,best)){
+  }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<SR.front&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!footStuck){
    r.act='safeRaise';r.actT=0;r.raise=false;r.behindFlag=false;
   }
   // ---- trap action (r.act='trap'): a smart rod (iq roll) catches a slow ball arriving
@@ -311,7 +328,9 @@ function shotEval(team,bx,bz){
   const trapZ=r.role==='GK'?Math.abs(bp.z-clamp(bp.z,r.baseZ[0]-r.maxOff,r.baseZ[0]+r.maxOff))<TR.gkReach:dz<TR.alignZ;
   if(r.act==='trap'){
    r.actT+=dt;
-   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||r.actT>TR.abortT)r.act=null;
+   // footStuck bail: same own-goal guard as safeRaise — a ball in a foot's back-swing reach
+   // drops the trap posture rather than easing the partial back-raise into it.
+   if(footStuck||relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||r.actT>TR.abortT)r.act=null;
   }else if(TR.on&&r.aiIQ&&r.raise&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ){
    r.act='trap';r.actT=0;
   }

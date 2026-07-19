@@ -38,8 +38,18 @@ function fxChipHTML(t,fe,end){
 }
 let fxHudT=0,fxSigCache='';
 function hudTick(rdt){
- const mm=String(Math.floor(S.matchTime/60)).padStart(2,'0'),ss=String(Math.floor(S.matchTime%60)).padStart(2,'0');
- $('matchTime').textContent=mm+':'+ss;
+ // Clock: unlimited → counts up; timed → counts DOWN to the limit, pulsing red in the final
+ // seconds (MATCH.warnT); once level time runs out it flips to a pulsing SUDDEN DEATH badge.
+ const mt=$('matchTime'),lim=gameTimeLimit();
+ if(S.suddenDeath){mt.textContent='SUDDEN DEATH';mt.classList.add('sd');mt.classList.remove('warn');}
+ else{
+  let shown;
+  if(lim>0){shown=Math.max(0,Math.ceil(lim-S.matchTime));mt.classList.toggle('warn',shown<=MATCH.warnT);}
+  else{shown=Math.floor(S.matchTime);mt.classList.remove('warn');}
+  mt.classList.remove('sd');
+  const mm=String(Math.floor(shown/60)).padStart(2,'0'),ss=String(Math.floor(shown%60)).padStart(2,'0');
+  mt.textContent=mm+':'+ss;
+ }
  fxHudT-=rdt;if(fxHudT>0)return;fxHudT=.1;
  let sig='';const live=[];
  [0,1].forEach(t=>{const e=S.eff[t];FX_EFFECTS.forEach(fe=>{const end=e[fe.key];

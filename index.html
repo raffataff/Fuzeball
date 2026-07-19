@@ -31,7 +31,7 @@
       <img id="introGB" class="introGhost" src="assets/fuzeball_logo.png" alt="">
       <img id="introLogo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
       <div id="introShine"></div>
-      <div id="introTag">ARCADE SPORTS ACTION</div>
+      <div id="introTag"></div>
       <div id="introLoad">Loading</div>
     </div>
   </div>
@@ -73,6 +73,7 @@
       <div class="row"><label><span class="lblR">Team 1</span> AI</label><select id="setDiffRed"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label><span class="lblB">Team 2</span> AI</label><select id="setDiffBlue"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label>Goals to win</label><select id="setGoals"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
+      <div class="row"><label>Game time</label><select id="setGameTime"><option value="0" selected>Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option></select></div>
        <div class="row"><label>Table theme</label><select id="setTheme"><option value="classic">Classic Club</option><option value="neon">Neon Nights</option><option value="royal">Royal Arena</option><option value="verdant">Verdant Field</option></select></div>
        <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
        <div class="row"><label>Skin</label><select id="setSkin"></select></div>
@@ -199,6 +200,10 @@
     </div>
     <div class="panel lgSetupPanel">
       <h3>Match rules</h3>
+      <div class="row"><label>Control</label><select id="lgSetupControl" class="lgSetupSelect">
+        <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
+        <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
+      </select></div>
       <div class="row"><label>Special balls</label><input type="checkbox" id="lgSetupSpecial" checked></div>
       <div class="row"><label>Power-ups</label><input type="checkbox" id="lgSetupPower" checked></div>
     </div>
@@ -213,24 +218,36 @@
   <h2 class="lgTitle">FUZEBALL LEAGUE</h2>
   <div class="lgSub" id="lgSeasonTag">SEASON 1</div>
   <div class="lgWrap">
+    <div class="lgSide">
     <div class="panel">
       <h3>Standings</h3>
       <div id="lgTable"></div>
+    </div>
+    <div class="panel hidden lgHist" id="lgHistPanel">
+      <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
+      <div id="lgHist"></div>
+    </div>
     </div>
     <div class="lgSide">
       <div class="panel">
         <h3>Next Match</h3>
         <div class="lgFixture" id="lgFixture"></div>
-        <div class="row" id="lgControlRow"><label>Control</label><select id="lgControl">
-          <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
-          <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
-        </select></div>
-        <button class="btn lgPlayBtn" id="lgPlay">▶ Play Match</button>
         <div id="lgRound"></div>
       </div>
       <div class="panel hidden" id="lgLastPanel">
         <h3>Last Round</h3>
         <div id="lgLast"></div>
+      </div>
+      <div class="panel" id="lgSettingsPanel">
+        <h3>Match Settings</h3>
+        <div class="row" id="lgGameTimeRow"><label>Game time</label><select id="lgGameTime">
+          <option value="0">Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
+        </select></div>
+        <div class="row" id="lgControlRow"><label>Control</label><select id="lgControl">
+          <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
+          <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
+        </select></div>
+        <button class="btn lgPlayBtn" id="lgPlay">▶ Play Match</button>
       </div>
     </div>
     <div class="panel">
@@ -242,10 +259,7 @@
       <div class="lgScoutRec" id="lgScoutRec"></div>
       <div class="lgScoutRate" id="lgScoutBody"></div>
     </div>
-    <div class="panel hidden lgHist" id="lgHistPanel">
-      <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
-      <div id="lgHist"></div>
-    </div>
+    
   </div>
   <div class="btnRow">
     <button class="btn gold hidden" id="lgCup">🏆 Champions Cup</button>
@@ -260,6 +274,16 @@
   <div class="optWrap">
     <div class="panel optPanel">
       <h3>Controller</h3>
+      <div class="row"><label>Control mode</label><select id="optCtlMode"><option value="classic">Classic</option><option value="total">Total Control</option></select></div>
+      <div id="optTC" class="hidden">
+        <div class="czSlide"><label>Base speed</label><input type="range" id="optTCBase" min="0.3" max="1.2" step="0.05"><span class="czVal" id="optTCBaseV"></span></div>
+        <div class="czSlide"><label>LT fine</label><input type="range" id="optTCFine" min="0.05" max="1" step="0.05"><span class="czVal" id="optTCFineV"></span></div>
+        <div class="czSlide"><label>RT fast</label><input type="range" id="optTCFast" min="1" max="3" step="0.05"><span class="czVal" id="optTCFastV"></span></div>
+        <div class="czSlide"><label>Swerve sens</label><input type="range" id="optTCSwerve" min="0" max="3" step="0.05"><span class="czVal" id="optTCSwerveV"></span></div>
+        <div class="row"><label>Invert swerve</label><input type="checkbox" id="optTCSpinInv"></div>
+        <div class="optHint" id="optTCHint"></div>
+        <div class="optDiv"></div>
+      </div>
       <div class="row"><label>Left stick — slide</label><select id="optSlideAxis"><option value="ly">Up / Down</option><option value="lx">Left / Right</option></select></div>
       <div class="czSlide"><label>Slide sens</label><input type="range" id="optSlideSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optSlideSensV"></span></div>
       <div class="row"><label>Invert slide</label><input type="checkbox" id="optSlideInv"></div>
@@ -283,8 +307,24 @@
         <div class="optStick"><div class="optWell" id="optLWell"><span class="optAxisLine" id="optLAxis"></span><span class="optDot" id="optLDot"></span></div><span class="optStickLbl" id="optLLbl">L · slide</span></div>
         <div class="optStick"><div class="optWell" id="optRWell"><span class="optAxisLine" id="optRAxis"></span><span class="optDot" id="optRDot"></span></div><span class="optStickLbl" id="optRLbl">R · angle</span></div>
       </div>
+      <div class="optSwerve hidden" id="optSwerve">
+        <svg class="optSwerveSvg" id="optSwerveSvg" viewBox="0 0 150 110" aria-hidden="true">
+          <line x1="75" y1="102" x2="75" y2="12" class="optSwerveLine"/>
+          <path id="optSwerveLive" class="optSwerveLive" d=""/>
+          <path id="optSwervePath" class="optSwervePath" d=""/>
+          <circle id="optSwerveBall" r="3.2" class="optSwerveBall" cx="75" cy="102" style="opacity:0"/>
+          <text id="optSwerveType" class="optSwerveType" x="75" y="8" text-anchor="middle">SWING (A) TO READ IT</text>
+        </svg>
+        <div class="optSwerveStats">
+          <div class="optStat"><span class="optStatV" id="optSwStatSw">—</span><span class="optStatL">swerve</span></div>
+          <div class="optStat"><span class="optStatV" id="optSwStatSpin">—</span><span class="optStatL">spin</span></div>
+          <div class="optStat"><span class="optStatV" id="optSwStatBend">—</span><span class="optStatL">bend</span></div>
+          <div class="optStat"><span class="optStatV" id="optSwStatDrift">—</span><span class="optStatL">drift @ goal</span></div>
+        </div>
+        <div class="optSwerveLbls"><span id="optSwerveL">◀ LEFT</span><span class="optSwerveName" id="optSwerveLivePct">0%</span><span id="optSwerveR">RIGHT ▶</span></div>
+      </div>
       <div class="optBtns" id="optBtns"></div>
-      <div class="optHint">Move the sticks and press buttons — the highlighted axis is the one bound above.</div>
+      <div class="optHint">Move the sticks and press buttons — the highlighted axis is the one bound above. In Total Control mode, hold your swerve on the right stick and press A to swing: the tester reads the shot back — flight curve, spin, total bend and drift at goal range.</div>
     </div>
   </div>
   <div class="btnRow">

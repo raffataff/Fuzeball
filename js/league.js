@@ -59,6 +59,8 @@ function loadLG(slot){
   if(LG.name==null)LG.name='LEAGUE '+(LG.slot+1);
   if(LG.special==null)LG.special=cfg.special;
   if(LG.power==null)LG.power=cfg.power;
+  if(LG.gameTime==null)LG.gameTime=0; // old leagues predate timed play → unlimited (unchanged)
+  if(LG.control==null)LG.control='';  // old leagues predate saved rod control → all rods
   // fix invalid pitch values from old saves (e.g. 'royal' was a GLB name, not a pitch ID)
   if(LG.divs){
     const validPitches=Object.keys(CONFIG.pitches);
@@ -173,6 +175,8 @@ function lgNewSeason(keep,opts,forceSlot){
     season:1,round:0,playerId:0,
     special:opts&&opts.special!=null?opts.special:(LG?LG.special:cfg.special),
     power:opts&&opts.power!=null?opts.power:(LG?LG.power:cfg.power),
+    gameTime:opts&&opts.gameTime!=null?opts.gameTime:(LG?LG.gameTime:(cfg.gameTime||0)), // match time limit (mins; 0=unlimited) — set from the lobby Match Settings panel; new leagues seed from the quick-match pref
+    control:opts&&opts.control!=null?opts.control:(LG?LG.control:''), // default rod control for this save ('' all rods · GK/DEF/MID/ATT lock · watch spectate); lobby overrides persist here too
     teams:[],divs:[],hist:[]};
  }
  for(const t of teams){t.w=0;t.l=0;t.gf=0;t.ga=0;t.p=0;}
@@ -205,14 +209,27 @@ function lgTeamForm(ti){
  }
  return out;
 }
-function lgSim(a,b){ // race to LGC.goals — like the live rules, so no draws
+function lgSim(a,b){ // league fixture: timed leagues sim low-scoring, unlimited leagues race to LGC.goals
   const A=LG.teams[a].bld,B=LG.teams[b].bld;
-  return lgSimBlds(A,B);
+  return lgSimBlds(A,B,(LG&&LG.gameTime)||0);
 }
-function lgSimBlds(A,B){ // same race, but takes two builds directly (cup entrants aren't LG.teams)
+// Two builds directly (cup entrants aren't LG.teams). `mins` = the league's game-time limit (>0 =
+// timed; 0/omitted = unlimited → the classic race-to-goals, so cup callers are unchanged). Timed:
+// draw a RANDOM total-goal count in [simMinGoals, simMaxGoals] from a centre-weighted (triangular)
+// distribution — so scores range from a tight 1–0 up to a 5–4, most sit mid-range, and lopsided
+// clean sheets are rarer — then split those goals by strength `p`, capped at LGC.goals per team (a
+// team hitting the cap ends regulation early, like the live 5-goal cap). A level game is settled by
+// a sudden-death golden goal, so the result is ALWAYS decisive (no draws) — the league
+// table/points/promotion code is untouched. `mins` only selects timed-vs-unlimited; the score
+// spread is deliberately length-agnostic so every timed league gets the same lively variety.
+function lgSimBlds(A,B,mins){
   const p=1/(1+Math.exp(-((lgOff(A)-lgDef(B))-(lgOff(B)-lgDef(A)))*LGC.simK));
   let ga=0,gb=0;
-  while(ga<LGC.goals&&gb<LGC.goals){if(Math.random()<p)ga++;else gb++;}
+  if(!mins){while(ga<LGC.goals&&gb<LGC.goals){if(Math.random()<p)ga++;else gb++;}return[ga,gb];}
+  const lo=LGC.simMinGoals,hi=LGC.simMaxGoals,roll=()=>lo+Math.floor(Math.random()*(hi-lo+1));
+  const total=Math.round((roll()+roll())/2);   // triangular: varied across lo..hi, clustered mid
+  for(let i=0;i<total&&ga<LGC.goals&&gb<LGC.goals;i++){if(Math.random()<p)ga++;else gb++;}
+  while(ga===gb){if(Math.random()<p)ga++;else gb++;}   // golden goal — keeps it decisive
   return[ga,gb];
 }
 /* ---- upgrade economy ---- */
@@ -270,6 +287,9 @@ function modelRender(id){
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
 function teamCol(t){return S.lg?S.lg.cols[t]:(t===0?cfg.redColor:cfg.blueColor);}
 function goalTarget(){return S.lg?(S.lg.cup?CUP.goals:LGC.goals):cfg.goals;}
+// Match time limit in SECONDS (0 = unlimited). Quick/AI matches read cfg.gameTime; a league match
+// reads the league's own LG.gameTime chosen at creation; the cup stays unlimited (race to CUP.goals).
+function gameTimeLimit(){const m=S.lg?(S.lg.cup?0:((LG&&LG.gameTime)||0)):(cfg.gameTime||0);return m*60;}
 function teamDiff(t){return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds are layered on baseDiff (per-division override via S.lg.diff)
 function renderLgTape(op){
  const T=LG.teams,me=T[LG.playerId],them=T[op];
@@ -607,6 +627,9 @@ function renderLgTable(){
 }
 function renderLgFix(){
  const pd=playerDiv(),dv=LG.divs[pd],done=!!dv.champ,T=LG.teams,pid=LG.playerId;
+ $('lgSettingsPanel').classList.toggle('hidden',done); // no match to configure once a division is complete
+ $('lgGameTime').value=String(LG.gameTime||0);
+ $('lgControl').value=LG.control||''; // seed from the save's default so it survives reloads
  $('lgPlay').classList.toggle('hidden',done);
  $('lgControlRow').classList.toggle('hidden',done);
  if(done){
@@ -795,6 +818,7 @@ function openSetup(slot){
  $('lgSetupHex').textContent=cfg.redColor;
  $('lgSetupSpecial').checked=cfg.special;
  $('lgSetupPower').checked=cfg.power;
+ $('lgSetupControl').value=(LG&&LG.control)||''; // default rod control baked into this save (still overridable in the lobby)
  $('lgSetupDiv').value='1';
  LSP.load(cfg.modelRed,cfg.redColor); // initial 3D preview
  const pal=$('lgSetupPal');pal.innerHTML='';
@@ -830,7 +854,8 @@ function openSetup(slot){
    model:selModel?selModel.dataset.id:cfg.modelRed,
    startDiv:+$('lgSetupDiv').value,
    special:$('lgSetupSpecial').checked,
-   power:$('lgSetupPower').checked
+   power:$('lgSetupPower').checked,
+   control:$('lgSetupControl').value
   };
   lgNewSeason(false,opts,slot);
   $('lgSetup').classList.add('hidden');
@@ -1034,6 +1059,8 @@ function bindLeague(){
   $('lgBack').onclick=()=>{$('league').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
   $('lgNew').onclick=()=>{lgNewSeason(!!LG&&!!LG.divs[playerDiv()].champ);renderLeague();const fx=lgPlayerFixture();if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}Au.ui();};
    $('lgPlay').onclick=lgPlayMatch;
+   $('lgGameTime').onchange=e=>{if(LG){LG.gameTime=+e.target.value;saveLG();}Au.ui();}; // league-wide time limit, changeable per round from the lobby
+   $('lgControl').onchange=e=>{if(LG){LG.control=e.target.value;saveLG();}Au.ui();};       // persist the lobby rod-control choice so it survives reloads
    $('lgCup').onclick=openCup;
    $('btnWinContinue').onclick=lgWinContinue;
    $('lgSEContinue').onclick=lgReturn;

@@ -20,7 +20,7 @@ function bindUI(){
  for(const [tid,tdef] of Object.entries(CONFIG.tables)){const o=document.createElement('option');o.value=tid;o.textContent=(tdef.name||tid).toUpperCase();tableSel.appendChild(o);}
  const themeSel=$('setTheme');themeSel.innerHTML='';
  for(const [thid,thdef] of Object.entries(CONFIG.themes)){const o=document.createElement('option');o.value=thid;o.textContent=thdef.name||thid;themeSel.appendChild(o);}
- $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setTheme').value=cfg.theme;
+ $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setGameTime').value=String(cfg.gameTime||0);$('setTheme').value=cfg.theme;
  $('setTable').value=cfg.table||'classic';
  refreshSkinSelect();
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
@@ -31,6 +31,7 @@ function bindUI(){
  $('setDiffRed').onchange=e=>{cfg.diffRed=e.target.value;cfg.diff=cfg.diffRed;saveCfg();};
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
+ $('setGameTime').onchange=e=>{cfg.gameTime=+e.target.value;saveCfg();};
  $('setTheme').onchange=e=>{cfg.theme=e.target.value;applyTheme();saveCfg();};
   $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();refreshSkinSelect();saveCfg();};
   $('setSkin').onchange=e=>{if(typeof selectSkin==='function')selectSkin(cfg.table,e.target.value);};

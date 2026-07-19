@@ -4,7 +4,7 @@ function startMatch(mode,rodLockRole){
  Au.init();Au.ui();
  S.mode=mode;S.userTeam=mode==='red'?0:mode==='blue'?1:-1;
  S.rodLockRole=rodLockRole||null;
- S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;
+ S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
   clearBalls();clearPU();clearFractures();
@@ -45,7 +45,8 @@ function startMatch(mode,rodLockRole){
  $('ballTag').textContent=BALL_TYPES.classic.name;
   updateScoreUI();updateChips();
   const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'GOOD LUCK');
-  banner('FIRST TO '+goalTarget(),sub,1.7);
+  const _lim=gameTimeLimit();
+  banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7);
  startCount(MATCH.countIn);
 }
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;$('count').style.display='block';$('count').textContent='';}
@@ -56,10 +57,25 @@ function onGoal(team,b){
  goalFx(team,b);
  updateScoreUI(team);
  removeBall(b);
+ if(S.suddenDeath){endMatch(team);return;}          // golden goal: first strike after a level time-up wins
  if(S.score[team]>=goalTarget()){endMatch(team);return;}
  banner(teamName(team)+' GOAL!',
   val>1?'GOLDEN BALL — COUNTS ×2':HYPE[Math.floor(Math.random()*HYPE.length)],1.9);
  if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;}
+}
+/* Match clock (timed modes only). Called every frame during 'play' after S.matchTime advances.
+   Ticks the final-seconds warning, then at time-up either ends the match (a team ahead) or drops
+   into sudden death (level) — play carries straight on, the HUD flips to SUDDEN DEATH, and the
+   next goal wins via the guard in onGoal. Fires once: it either ends the match (phase → win) or
+   sets S.suddenDeath (which this early-returns on thereafter). Off/unlimited → no-op. */
+function checkMatchClock(){
+ const lim=gameTimeLimit();               // seconds; 0 = unlimited
+ if(lim<=0||S.suddenDeath)return;
+ const rem=lim-S.matchTime;
+ if(rem<=MATCH.warnT){const s=Math.ceil(rem);if(s>=1&&s!==S.clockBeep){S.clockBeep=s;Au.beep(1200,.08,'square',.16);}}
+ if(rem>0)return;
+ if(S.score[0]!==S.score[1]){Au.whistle(2);endMatch(S.score[0]>S.score[1]?0:1);}
+ else{S.suddenDeath=true;Au.whistle();banner('SUDDEN DEATH','NEXT GOAL WINS',2.2);}
 }
 function outOfBounds(b){
  removeBall(b);Au.whistle();

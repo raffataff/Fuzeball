@@ -232,18 +232,21 @@ function respawnSwirlUpdate(dt){
     }
    }
   }
-  const fade=C.respawnSwirlFadeOut||.001, lit=C.respawnSwirlLight||0;
-  for(let i=S.swirl.length-1;i>=0;i--){
-   const f=S.swirl[i];
-   f.mixer.update(dt);
-   const z=f.rod.offset+f.rod.baseZ[f.mi];                 // follow the slide so the swirl lands where the man reforms
-   f.obj.position.z=z;
-   const left=f.until-S.time;
-   const k=left<=fade?clamp(left/fade,0,1):1;              // opacity: full, then fade over the last `fade` seconds
-   for(const m of f.mats)m.opacity=k;
-   if(f.light){f.light.position.z=z;f.light.intensity=lit*k;}
-   if(left<=0)disposeSwirl(i);
-  }
+    const fade=C.respawnSwirlFadeOut||.001, lit=C.respawnSwirlLight||0;
+    for(let i=S.swirl.length-1;i>=0;i--){
+     const f=S.swirl[i];
+     f.mixer.update(dt);
+     const z=f.rod.offset+f.rod.baseZ[f.mi];                 // follow the slide so the swirl lands where the man reforms
+     f.obj.position.z=z;
+     const left=f.until-S.time;
+     // Full opacity until `fade` seconds before reform (17.4s → when the player
+     // fade-in begins), then dims 1→0 across exactly that window so the particles
+     // converge INTO the figurine as it materialises — both complete at reform.
+     const k=left>=fade?1:clamp(left/fade,0,1);
+     for(const m of f.mats)m.opacity=k;
+     if(f.light){f.light.position.z=z;f.light.intensity=lit*k;}
+     if(left<=0)disposeSwirl(i);
+   }
 }
 
 function disposeSwirl(i){

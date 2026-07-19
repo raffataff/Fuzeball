@@ -196,6 +196,10 @@ Three levers, all tuned in `CONFIG.ai`:
 - **Input:** ←/→ or Q/E switch rod; ↑/↓ or mouse slide; Space/click kick; Shift/right-click
   raise; 1–4 select rod; V cycle camera; Esc pause; mouse wheel switch rod. Wired in the
   `input` section + `userControlUpdate` (which also does auto rod-switch when `cfg.auto`).
+  Gamepad (`gamepadUpdate`): left stick slide, A/RT kick, X/LT raise, right-stick absolute rod
+  angle, LB/RB switch rod; the optional 'Total Control' mode (Options → Controller) remaps the
+  triggers to analog slide-speed and puts a swerve line on the free right-stick axis (see
+  changelog 2026-07-18).
 - **Power-ups (`PU_TYPES`):** `boost` (1.5x hit impulse off the collecting team's rods),
   `freeze` (slow rival rod movement to 20%), `big` (wider goal by 1.45x).
   Applied to `S.eff[team]` as expiry timestamps vs `S.time`. `spawnPU`/`collectPU`/`powerupUpdate`.
@@ -288,6 +292,40 @@ positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggl
 visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readout
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
+
+### 2026-07-18
+- **Back-swing own-goal guard is now purely location-based** (`js/ai.js`). A slow ball sitting
+  directly behind a man could still get swung into its own goal: the `footStuck` guard was
+  speed-gated (`speed<AIC.footTrapSlow && inFootRange`), so a ball creeping slower than the
+  threshold but not stopped slipped through and the rod raised THROUGH it (esp. the GK). Fixed by
+  making `footStuck = inFootRange(r,best)` — no speed gate, so it triggers however slowly the ball
+  moves whenever the ball is in a live foot's back-swing reach. Because `safeRaise`/`trap` own the
+  swing angle in `updateRods` INDEPENDENTLY of `r.raise`, suppressing the raise latch alone wasn't
+  enough: added `footStuck` to both actions' held-exit conditions so an already-lifted rod bails
+  and drops the men instead of sweeping back through the ball; `safeRaise`'s entry gate now reads
+  `!footStuck` (same value, reusing the computed one), and `trap`'s entry is already blocked since
+  it requires `r.raise` (which `footStuck` forces false). The ball then routes to men-down + the
+  `evade` slide-clear. Trade-off: the veto is strictly positional, so a FAST dead-aligned ball from
+  behind is no longer let through by a raise — the men hold as a wall instead; `footRangeBack` (how
+  deep behind the veto reaches) is the knob if that ever feels too passive. `footTrapSlow` is now
+  unused by this path (still read by the vestigial foot-trap break below it). Verified by re-read
+  (sandbox wouldn't boot).
+- **'Total Control' gamepad mode** (`cfg.padControlMode` `'classic'|'total'`, Options → Controller).
+  The triggers stop being raise/kick and become an analog slide-speed modifier: LT eases toward
+  `padTCFine` (precision steps), RT toward `padTCFast`, neither = `padTCBase` middle-ground (all
+  Options sliders; the result scales both the target step in `input.js` and, via `S.tcMult`, the
+  user chase cap in `rods.js`). Kick = A only, raise = X only in this mode. The right stick keeps
+  rod angle on its bound axis; the OTHER right axis is the swerve line — stored per-rod as
+  `r.tcSpin` and added to `b.spin` on ball contact in `collideRod` (`KICK.tcSpinGain` per contact,
+  clamped by `spinClamp`; `padTCSwerve` sens slider, `padTCSpinInvert` flip). A connected-but-
+  untouched pad leaves `S.tcMult` at 1 so keyboard/mouse play is never slowed. Classic mode is
+  byte-for-byte the old behaviour.
+- **Swerve preview in the Options live tester** (TC mode only): `tcSwerveFromAxes(gp)` in
+  `input.js` is the single stick→swerve pipeline, shared by `gamepadUpdate` (stores `r.tcSpin`)
+  and `optionsTick` (renders the preview). An SVG flight path bends a quadratic off the straight
+  dashed 'swing line' with the live swerve value; a ball loops along it and the % label rides
+  above the curve end on the bend side. `updateTCVis` shows/hides both the TC sliders and the
+  preview.
 
 ### 2026-07-16
 - **Release audit fixes** (full-codebase pass). (1) **Gamepad analog slide was dead**:

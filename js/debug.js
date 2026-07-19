@@ -29,10 +29,10 @@ function memLog(tag){
  const progs=(ri&&ri.programs)?ri.programs.length:'?';
  let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
  const mc=(typeof modelCache!=='undefined'&&modelCache)?Object.keys(modelCache).length:'?';
- console.log('%c[MEM '+tag+']','color:#2af5ff;font-weight:bold',
+ /*console.log('%c[MEM '+tag+']','color:#2af5ff;font-weight:bold',
   'JS heap '+memFmt(pm&&pm.usedJSHeapSize)+' / limit '+memFmt(pm&&pm.jsHeapSizeLimit)
   +' | GPU '+geos+' geoms, '+texs+' textures, '+progs+' shaders'
-  +' | scene '+nodes+' nodes | modelCache '+mc+' templates');
+  +' | scene '+nodes+' nodes | modelCache '+mc+' templates');*/
 }
 
 // AI debug state
@@ -100,10 +100,10 @@ function dbgRod(r,kind,detail){
 // real contact: collideRod calls this the first time a foot box (or capsule graze) actually
 // resolves against the ball during a swing — so a ★KICK followed by ✓CONTACT connected, and a
 // ★KICK that ends in a ✗WHIFF (logged by updateRods when the swing completes untouched) missed.
-function dbgHit(r,man,foot,pow,vn,b){
+function dbgHit(r,man,foot,pow,sweet,vn,b){
  if(r!==dbgLogRod)return;
  dbgLogLastKind='HIT';
- dbgLogPush(dbgFmtT(S.time)+'  ✓CONTACT '+(foot?'foot':'leg ')+' man='+man+(pow?' [POWER]':'')
+ dbgLogPush(dbgFmtT(S.time)+'  ✓CONTACT '+(foot?'foot':'leg ')+' man='+man+(pow?' [POWER]':'')+(sweet?' [SWEET]':'')
   +'  vn='+vn.toFixed(0)+'  ball→'+b.v.length().toFixed(0)+'u/s');
 }
 // the kick GATE: logs every fire (with gap since the last), and the first failing
@@ -283,11 +283,11 @@ function buildDebug(){
  }
 
  // dropSweep: per-man danger boxes — a ball inside one gets swiped if the rod lowers
- // from a held-forward angle. x = sweep window (underFootBack..underFootFront, dir-
- // relative), z = ±(footBox.z + BALL_R + clearMargin) around each foot. Positioned
+ // from a held-forward angle. x = sweep window (heldFwd.xBack..heldFwd.xFront, dir-
+ // relative), z = ±(footBox.z + BALL_R + heldFwd.zMargin) around each foot. Positioned
  // per-frame (follows slide); hot pink while the rod is actually held (r.heldFwd).
- const dsW=AIC.underFootBack+AIC.underFootFront;
- const dsZ=(FOOT_BOX.z+BALL_R+AIC.clearMargin)*2;
+ const dsW=AIC.heldFwd.xBack+AIC.heldFwd.xFront;
+ const dsZ=(FOOT_BOX.z+BALL_R+AIC.heldFwd.zMargin)*2;
  const dsGeo=new THREE.BoxGeometry(dsW,0.05,dsZ);
  const dsDim=dbgMat(0xff5c8a,.15),dsHot=dbgMat(0xff5c8a,.5);
  for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
@@ -538,7 +538,7 @@ function updateAIVis(){
    const vis=on&&dbgAIOpts.dropSweep;
    ds.mesh.visible=vis;if(!vis)continue;
    const r=ds.rod,dir=r.team===0?1:-1;
-   ds.mesh.position.set(r.x+(AIC.underFootFront-AIC.underFootBack)/2*dir,0.05,r.baseZ[ds.manIdx]+r.offset);
+   ds.mesh.position.set(r.x+(AIC.heldFwd.xFront-AIC.heldFwd.xBack)/2*dir,0.05,r.baseZ[ds.manIdx]+r.offset);
    ds.mesh.material=r.heldFwd?ds.matHot:ds.matDim;
   }
 
