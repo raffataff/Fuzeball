@@ -65,7 +65,7 @@ const CONFIG = {
  },
 
  /* ---- table geometry ------------------------------------------------- */
- table:{ L:120, W:68, wallH:10, goalHalf:11, goalH:9.5, goalDepth:9 },
+ table:{ L:120, W:68, wallH:10, goalHalf:11, goalH:10.2, goalDepth:9 },
 
  /* ---- table registry ---------------------------------------------------- */
  // Each entry is ONE selectable table SHAPE. `folder` is its asset folder;
@@ -96,7 +96,7 @@ const CONFIG = {
    defSkin:'alienShip', // default skin name (must match a skins entry)
    skins:{
     alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, // current textured classic (fallback = old file location)
-   // glass:{name:'Glass', glb:'fuzeball_table_classic_glass.glb'}                                     // build: tools/build_table.py -- classic glass
+    glass:{name:'Glass', glb:'fuzeball_table_classic_glass.glb'}                                     // build: tools/build_table.py -- classic glass
    },
    // Dead-ball pockets (see CONFIG.deadball.zoneMult + deadzoneMult() in powerups.js). A ball
    // pinned in one of these regions is unreachable — no man can slide to it — so the dead-ball
@@ -107,7 +107,7 @@ const CONFIG = {
    // wall-corner pockets behind the keeper line. Tune per table; `mult` optional (defaults to
    // CONFIG.deadball.zoneMult). Omit `deadzones` entirely for a table with no dead pockets.
    deadzones:[
-    {xMin:47, zMin:18}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:47, zMin:16.5}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   arena:{
@@ -164,15 +164,26 @@ const CONFIG = {
     {xMin:45, zMin:16.5}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
-  /*circuit:{                                  // worked example of a NEW table — a flat 'circuit-board' reskin
-   name:'Circuit',
-   folder:'assets/tables/circuit/',
-   collision:'flat',                         // reuses the classic flat-box collision (physics.js) — no physics change needed
+  circuit:{                                  // flat shape with a WALLED goal end: the two mouth-flanking
+   name:'Circuit',                           //   end walls are joined into ONE solid face the goal is
+   folder:'assets/tables/circuit/',          //   inset into — over-the-bar shots bounce back into play
+   collision:'flat',                         // classic flat-box collision + the endWall bounce (physics.js)
+   endWall:{
+    h:16.2                                     // solid end-wall height: balls hitting x=±60 below this bounce
+                                             //   back instead of sailing over. Big Goal still widens the
+                                             //   inset mouth (opening tracks goalHalf*bigGoalMult; the GLB's
+                                             //   wall_end_* flanks slide + goal_frame_header_* stretches to
+                                             //   match). Mirror tools/build_table.py TABLE_DEFS circuit
+                                             //   endWallH when changing.
+   },
    room:null,                                // no bespoke backdrop; uses the shared ground plane + crowd
    defTheme:'neon',                          // glowing-circuit look pairs with the neon livery (metadata only)
    defSkin:'standard',
-   skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} }
-  }*/
+   skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
+   deadzones:[
+    {xMin:47, zMin:16.5}   // same wall-corner pockets as classic (walls sit at the same x/z)
+   ]
+  }
  },
 
  /* ---- core physics --------------------------------------------------- */
@@ -181,7 +192,7 @@ physics:{
    footT:0.99,                      // arm-fraction from pivot to foot centre (1=foot, 0.85 = 15% above foot)
    footBox:{x:1.3,y:1.2,z:1.35},     // foot box half-extents: {x=along leg, y=perpendicular, z=along rod}
    footBoxOff:{x:-0.65,y:0.57},        // centre offset from foot-base in rod-local: {x=along leg, y=perpendicular}
-   footBoxReach:1.0,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
+   footBoxReach:1.1,                // multiplier on BALL_R for foot-box collision distance (lower = tighter)
    footJitter:0.1,                // random velocity perturbation fraction after foot collision (prevents perfect oscillations)
    subMin:3, subMax:7, subTravel:1.0,   // adaptive substep bounds + target travel per step
    floorRest:0.42,                        // vertical restitution off the floor
@@ -203,18 +214,18 @@ kick:{
    // swing-angle curve keyframes (see updateRods): time windows and peak angles
    windup:0.0,  windupA:-0.45,   // pull-back window / angle
    strike:0.08,  strikeA:1.,     // strike ramp end / peak forward angle
-   hold:0.50,                     // hold peak until this time
-   drop:0.7,                     // fully returned by this time
-   raiseA:-1.6, raiseLerp:18, dropLerp:8, // lift-men angle + settle rates
+   hold:0.30,                     // hold peak until this time
+   drop:0.4,                     // fully returned by this time
+   raiseA:-1.6, raiseLerp:18, dropLerp:6, // lift-men angle + settle rates
    padAngleLerp:40,                // right-stick angle smoothing: 0 = DIRECT 1:1 (stick position = rod angle, full swing speed);
                                     //   >0 = optional exponential ease rate (1/s) if you want softer control. Keep 0 for a true
                                     //   flick-through where fast stick motion = fast rod = hard kick (angVel-driven strike power).
    userSpeed:80,                  // slide speed of the player-driven rod (u/s)
    aiOwnMult:1.,                // AI rods on the user's team slide a bit slower
    boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse), freeze (speed)
-   rest:0.01, restPower:0.2,     // ball restitution: passive touch vs kick power window
-   powFrom:0.06, powTo:0.08,      // kickT window that counts as the power strike
-   grip:0.11,                     // how much the foot's velocity is imparted to the ball
+   rest:0.01, restPower:0.5,     // ball restitution: passive touch vs kick power window
+   powFrom:0.02, powTo:0.08,      // kickT window that counts as the power strike
+   grip:0.1,                     // how much the foot's velocity is imparted to the ball
    // --- sweet spot: a clean strike landing in the narrow CENTRE of the foot (z) AND a tight
    //     forward band (dir-relative x, measured off the rod like the AI's overFoot zone) earns
    //     a POWER bonus and forces the aim-assist on — even outside the timed power window. The
@@ -224,10 +235,10 @@ kick:{
    //     on:false restores the flat, position-independent kick. ---
    sweetSpot:{
       on:true,
-      zFrac:0.8,          // sweet z half-width = footBox.z × this, centred on the foot (0.3 → ±0.405u)
+      zFrac:0.95,          // sweet z half-width = footBox.z × this, centred on the foot (0.3 → ±0.405u)
       xMin:1.8, xMax:3.7, // dir-relative x band ahead of the ROD the ball must strike within (a tight ~2u
                         //   sweet zone sitting where a clean forward drive contacts — cf. overFootOffset 2.59)
-      strBase:0.2,       // hit-impulse bonus at neutral acc (stat base 5): +20%
+      strBase:0.3,       // hit-impulse bonus at neutral acc (stat base 5): +20%
       strAcc:0.40,        // extra hit-impulse bonus scaling to +40% at max acc (linear from base)
       iqBonus:0.15,       // extra bonus fraction when the rod's iq roll is set this frame (smart AI only)
       forceAssist:true,   // apply aimAssist on a sweet hit even when NOT in the timed power window
@@ -243,12 +254,12 @@ kick:{
  /* ---- AI behaviour --------------------------------------------------- */
 ai:{
    gkPad:2,                                   // keeper stays within goalHalf + this
-   reactMax:.35,                              // longest reaction latency the per-ball history ring must cover (s).
+   reactMax:.25,                              // longest reaction latency the per-ball history ring must cover (s).
                                                 // Buffer length = ceil(reactMax*sim.hz)+1 steps. Must exceed the biggest
                                                 // DIFFS.reactDelay × stReact's ~1.5 slow-rea/fatigue floor (rookie .25×1.5≈.375).
    ttaMax:1.1,                                // only lead the ball's z if it arrives within this (s)
-   inFrontMin:1.65, inFrontMax:6.8,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
-   underFootFront:7.2, underFootBack:2.9,     // ahead/BEHIND (positive magnitude) of rod where a swung rod stays forward instead of lowering — window is rel∈[-underFootBack, underFootFront], so it MUST cover rel≈0 (ball under the player). Raise underFootBack for more behind-coverage if feet still clip. (prevents own-goal swipe + lowering onto a ball at the feet)
+   inFrontMin:1.65, inFrontMax:6.6,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
+   underFootFront:7., underFootBack:2.9,     // ahead/BEHIND (positive magnitude) of rod where a swung rod stays forward instead of lowering — window is rel∈[-underFootBack, underFootFront], so it MUST cover rel≈0 (ball under the player). Raise underFootBack for more behind-coverage if feet still clip. (prevents own-goal swipe + lowering onto a ball at the feet)
    lowY:2,                                    // only swing when the ball is below this height
    raiseBehind:-7.5,                          // ball must be at least this far behind (real, dir-relative) to consider raising
    overFoot:2.2,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
@@ -260,8 +271,8 @@ ai:{
    //     clearZ per foot = footBox.z + BALL_R + clearMargin. Stops the hover-forever
    //     deadlock where the AI kept re-aligning ONTO the ball it was hovering over.
    //     Debug: 'Drop Sweep' layer in the AI panel shows the per-man danger boxes. ---
-   repositionSpeed:46,                        // max ball speed that triggers the side-step (above this, shots pass through raised men)
-   clearMargin:0.2,                           // extra z-clearance beyond footBox.z + BALL_R before lowering is safe (inFootRange / latchStuck / evade)
+   repositionSpeed:66,                        // max ball speed that triggers the side-step (above this, shots pass through raised men)
+   clearMargin:0.1,                           // extra z-clearance beyond footBox.z + BALL_R before lowering is safe (inFootRange / latchStuck / evade)
 
    // --- held-forward evade (post-kick) — its own tunable section -----------------------------------
    //     After a kick, if a SLOW ball is still in this rod's DROP-SWEEP zone, the rod stays HELD
@@ -277,12 +288,12 @@ ai:{
    //     Defaults below == the current shared values, so nothing changes until you tweak them.
    heldFwd:{
       on:true,          // false = old transient behaviour (hold forward only during the swing, no persistent evade)
-      xFront:6.5,       // drop-sweep x-window AHEAD of the rod (dir-relative) — a ball within this counts as "in the zone"
+      xFront:5.5,       // drop-sweep x-window AHEAD of the rod (dir-relative) — a ball within this counts as "in the zone"
       xBack:2.9,        // drop-sweep x-window BEHIND the rod (dir-relative magnitude)
       zMargin:0.1,      // z-DEPTH of the zone: footBox.z + BALL_R + this (used for BOTH detection and the escape's clear target)
       maxSpeed:20,      // only evade/slide-away for balls slower than this (faster balls just pass the men)
       vz:20,            // ball |v.z| above which the slide commits opposite the ball's z-drift (else opposite the side it sits on)
-      abortT:1.0        // release the evade after this long (safety valve; a genuinely stuck ball then trips the dead-ball redrop)
+      abortT:.70        // release the evade after this long (safety valve; a genuinely stuck ball then trips the dead-ball redrop)
    },
    // --- inFootRange helper: the dir-relative rectangle a foot can touch, ONE source of truth
    //     for the safe-raise / safe-lower "would we clip the ball?" questions. Forward depth =
@@ -294,7 +305,7 @@ ai:{
       // --- foot-trap break: drop a raised rod when a slow ball is pinned right at a foot.
    //     (NOTE: previously referenced but never defined — made the check dead code.) ---
    footTrapSlow:20.0,                         // ball speed under this is "pinned"
-   footTrapZ:0.5,                            // ball within this z of any foot counts as "at the foot"
+   footTrapZ:0.8,                            // ball within this z of any foot counts as "at the foot"
 
    // --- trap action (r.act='trap'): a slow ball arriving from behind is CAUGHT instead
    //     of full-raised over — the rod eases to a partial back angle (full raiseA just
@@ -305,17 +316,17 @@ ai:{
    trap:{
       on:true,
       angle:-0.6,        // partial back-raise trap angle (rod-local, ×kickDir like raiseA)
-      lerp:6,             // ease rate toward the trap angle (slower than raiseLerp — a soft catch)
-      back:-4.5,          // dir-relative x window behind the rod where a trap makes sense…
+      lerp:4,             // ease rate toward the trap angle (slower than raiseLerp — a soft catch)
+      back:-5.4,          // dir-relative x window behind the rod where a trap makes sense…
       front:-0.2,         // …ends just behind the rod line (past this the normal kick path owns it)
       maxVX:18,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
-      maxSpeed:18,        // total ball speed cap for attempting/keeping a trap
-      alignZ:.50,         // z-alignment (nearest man) needed to commit to the trap
+      maxSpeed:35,        // total ball speed cap for attempting/keeping a trap
+      alignZ:0.80,         // z-alignment (nearest man) needed to commit to the trap
       gkReach:20,          // GK-only: also enter the trap when the ball is within this far BEYOND
                         //   the keeper's z-slide band (early-detect a ball drifting back toward a
                         //   goal it can't yet slide onto). Outfield rods ignore this, use alignZ.
-      settleT:1.2,       // min seconds in the trap before the scoop shot may fire
-      shootFrom:-0.25,     // scoop fires once the ball is past this (near the trap foot's reach)
+      settleT:12.2,       // min seconds in the trap before the scoop shot may fire
+      shootFrom:-0.45,     // scoop fires once the ball is past this (near the trap foot's reach)
       abortT:5.5          // give up after this long and fall back to the raise latch
    },
    // --- trap-shot kick: a dedicated kick curve fired from the trap action. Shorter windup
@@ -327,9 +338,9 @@ ai:{
       strike:0.2,   strikeA:1.75,   // long forward sweep, high peak for power
       hold:0.35,                     // hold peak
       drop:0.45,                     // return to neutral
-      powFrom:0.17, powTo:0.2,     // late wide power window
-      restPower:0.19,                // big pop in the power window
-      rest:0.25                      // heftier passive touch outside the window
+      powFrom:0.16, powTo:0.2,     // late wide power window
+      restPower:0.18,                // big pop in the power window
+      rest:0.15                      // heftier passive touch outside the window
    },
    // --- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
    //     thresholds. A slow, sideways ball loiters in this x-band behind the rod but isn't far
@@ -341,12 +352,12 @@ ai:{
    //     Debug: 'Safe Raise' layer in the AI panel (lime; hot while a rod is safe-raising). ---
    safeRaise:{
       on:true,
-      angle:-0.9,        // defined lift angle the rod eases to (rod-local, ×kickDir; full raiseA is -1.6)
-      lerp:8,             // ease rate toward the angle (a brisk, clean lift)
-      back:-5.5,          // dir-relative x band behind the rod where a loitering ball triggers a safe-raise…
-      front:0.95,        // …up to just behind the rod line (past this the normal kick path owns it)
+      angle:-0.8,        // defined lift angle the rod eases to (rod-local, ×kickDir; full raiseA is -1.6)
+      lerp:4,             // ease rate toward the angle (a brisk, clean lift)
+      back:-5.8,          // dir-relative x band behind the rod where a loitering ball triggers a safe-raise…
+      front:0.65,        // …up to just behind the rod line (past this the normal kick path owns it)
       maxVX:10,            // ball |v.x| must be under this (sideways/loitering — enough x-speed reaches the feet on its own)
-      maxSpeed:70,        // total ball speed cap for entering/holding a safe-raise
+      maxSpeed:85,        // total ball speed cap for entering/holding a safe-raise
       abortT:8.5          // give up after this long and fall back to the normal path
    },
    // --- evade action (r.act='evade'): a slow ball is stuck directly BEHIND a man (inFootRange)
@@ -357,8 +368,8 @@ ai:{
    //     Debug: 'Evade' layer in the AI panel (teal; hot while a rod is evading). ---
    evade:{
       on:true,
-      vz:0,             // |ball v.z| above this = "has z-momentum" → step opposite it; below → step by side
-      maxSpeed:100,        // only evade balls slower than this (faster balls clear the men on their own)
+      vz:30,             // |ball v.z| above this = "has z-momentum" → step opposite it; below → step by side
+      maxSpeed:80,        // only evade balls slower than this (faster balls clear the men on their own)
       abortT:8.5,         // give up after this long (a truly boxed dead ball gets redropped anyway)
       behindDead:2.9      // min dir-relative x distance the ball must be BEHIND the rod for evade to fire
                         // (ballR + footBox.x + buffer) — prevents the player hitting the ball backwards
@@ -366,12 +377,12 @@ ai:{
    // --- decision thresholds: a smart rod (iq roll) with the ball approaching in the
    //     inFront window WAITS for it to reach the overFoot sweet spot instead of
    //     poking at full stretch — meatier, better-aimed strike. ---
-   waitTta:1.,        // waiting is only allowed if the ball reaches the rod within this (s)
-   waitMinVX:2,         // …and is approaching at least this fast in x (else kick now)
+   waitTta:2.,        // waiting is only allowed if the ball reaches the rod within this (s)
+   waitMinVX:6,         // …and is approaching at least this fast in x (else kick now)
   
    // --- goal targeting: aim strikes at the opponent goal mouth (accuracy = DIFFS.aim) -------
    aimGain:10,                                // converts desired lateral (vz/vx) into a z aim-offset — bigger = stronger steering toward goal
-   aimMax:0.8,                                // clamp on that offset (u): the man must still contact the ball or the shot whiffs in z
+   aimMax:1.2,                                // clamp on that offset (u): the man must still contact the ball or the shot whiffs in z
    aimGoalZ:0.85,                              // aim within ±this fraction of goalHalf (stay off the posts)
    aimSpread:1.3,                             // low-accuracy spray: aimed spot wanders ±(1-aim)*goalHalf*this across the mouth
    // --- gap-aware aiming: smart, accurate rods read the opposing men (keeper + any defender
@@ -427,7 +438,7 @@ ai:{
    // --- two-hands + anti-jitter -----------------------------------------
    hands:3,                                   // rods per team that may actively move at once (like 2 human hands)
    pairCommit:0.3,                            // min seconds a rod stays in the active pair before it can be swapped
-   manHyst:0.6,                               // a different man must beat the current one by this many z-units to steal aim
+   manHyst:2.6,                               // a different man must beat the current one by this many z-units to steal aim
    retargetDead:0.07,                          // desired slide must differ from current target by this (z) before we re-aim
    errLerp:3.0,                               // rate the wandering aim error drifts toward its new target (per s)
    slideAccel:750                             // AI rod slide acceleration cap (u/s²) — kills instant direction flips
@@ -737,9 +748,9 @@ ai:{
    // player is holding / spinning against a wall). Speed alone missed those, and resting on a foot
    // reset the old timer every frame (collideRod's S.still=0), delaying the whistle.
    moveEps:2,          // ball must roam a horizontal box wider than this (units) to count as "in play"
-   stallT:2.6,         // every ball boxed-in this long → whistle + re-drop them all
+   stallT:3.6,         // every ball boxed-in this long → whistle + re-drop them all
    wedgeT:2.2,         // multi-ball: one ball boxed-in this long → re-drop just it
-   zoneMult:2.4,       // inside a table deadzone (CONFIG.tables[*].deadzones) the stuck-timer ticks
+   zoneMult:3,       // inside a table deadzone (CONFIG.tables[*].deadzones) the stuck-timer ticks
                        // this ×faster → the wait drops from stallT/wedgeT to ~stallT/zoneMult
                        // (2.6/2.4≈1.1s). 1 = no speed-up; higher = quicker re-drop in the pockets.
    redrop:{y:30,z:16,vel:30,  // fresh drop box + launch speed (x removed — now uses zones)
@@ -761,6 +772,7 @@ ai:{
    [85,38,0,0,-4,0],    // Behind Goal 2
    [66,44,41,31,17,14],  // Goal 2 Corner
    [-66,44,41,31,-17,-14],  // Goal 1 Corner
+   [-50,52,0, 0,16,0], // RED MID CAM
    ],   
    
   follow:0.0014, lookFollow:0.01, lerp:3,   // ball-follow weights + position lerp

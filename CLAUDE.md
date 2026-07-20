@@ -293,6 +293,29 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-20
+- **Circuit table redesigned as a WALLED-goal flat table** (`js/config.js`, `js/arena.js`,
+  `js/physics.js`, `tools/build_table.py`). Each goal end is now ONE solid wall the goal mouth is
+  inset into — the two mouth-flanking end walls are joined (visually and physically) into a single
+  face, so over-the-crossbar shots slap the wall and bounce back into play instead of sailing out.
+  - `CONFIG.tables.circuit` UNcommented + gained `endWall:{h:26}` (solid end-wall height; also
+    added classic-style `deadzones`). New global `ENDWALL_H` (`arena.js`, set in `applyTable`:
+    `activeTable.endWall.h` for flat tables, else 0). `physics.js` `stepBall` flat branch: the
+    mouth pass-through is gated `(p.y<goalH||!ENDWALL_H)` and the end-x bounce height is
+    `ENDWALL_H||F.wallH` — so classic is byte-identical and walled tables bounce anything below
+    the wall top at x=±(L/2−BALL_R), incl. above the bar within the mouth. **Big Goal works
+    unchanged**: the opening still tracks `goalHalf*bigGoalMult` in the same expressions.
+  - Visuals need NO new game code: the walled GLB's `wall_end_*` flanks are full-height and
+    `registerBigGoalMeshes` already slides their inner edge with the widen; the new above-goal
+    header panel is named `goal_frame_header_l/r` so `glbGoalGrow` z-scales it about z=0 —
+    header width and flank inner edges stay flush through the widen (same `goalHalf*mult`).
+  - `tools/build_table.py`: `build_flat_shell(style,end_wall_h=None)` — None = old classic output
+    (unchanged); set = full-height flanks + header per end. `TABLE_DEFS.circuit.endWallH=26.0`
+    (keep matched to `CONFIG.tables.circuit.endWall.h`), `main()` passes it through. Build with
+    `blender -b -P tools/build_table.py -- circuit` then `-P tools/export_table.py -- circuit`.
+    Until the GLB is built, Circuit physics works but the end walls are invisible (no procedural
+    fallback). Verified by re-read (sandbox wouldn't boot).
+
 ### 2026-07-18
 - **Back-swing own-goal guard is now purely location-based** (`js/ai.js`). A slow ball sitting
   directly behind a man could still get swung into its own goal: the `footStuck` guard was

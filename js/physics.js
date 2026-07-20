@@ -47,15 +47,19 @@ function stepBall(b,h){
    else if(p.z<-zl&&v.z<0){p.z=-zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
   }
   if(!b.scored){
-   const xl=F.L/2-BALL_R;
+   // ENDWALL_H>0 (walled tables, e.g. circuit): each end is ONE solid wall up to that height with
+   // the goal mouth INSET into it — an over-the-bar shot slaps the wall face and bounces back in.
+   // 0 (classic): wall only flanks the mouth to wallH; over the bar sails through as before.
+   // The mouth opening itself still tracks goalHalf*bigGoalMult, so Big Goal widens the inset.
+   const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // goal ONLY under the bar & whole ball over the line
-    else if(p.y<F.wallH+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
+    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){if(p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // goal ONLY under the bar & whole ball over the line
+    else if(p.y<ew+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh){if(p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<F.wallH+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
+    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){if(p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
+    else if(p.y<ew+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }
   }else{
    const bx=F.L/2+F.goalDepth-BALL_R;

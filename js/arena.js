@@ -158,6 +158,7 @@ function buildArenaTable(){
 
 /* ===== active flag ===== */
 let ARENA_ON=false;
+let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): solid end-wall height the goal is inset into; 0 = classic open-over-the-bar ends. Read by physics.js stepBall.
 // Registry-driven: select the table by id from CONFIG.tables, show its group, hide the rest,
 // swap its environment, set the collision flag, then show the active SKIN. Adding a table or a
 // skin needs no change here.
@@ -165,6 +166,7 @@ function applyTable(){
  const id=CONFIG.tables[cfg.table]?cfg.table:'classic';   // fall back to classic for unknown/old saves
  activeTable=CONFIG.tables[id];
  ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
+ ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
  // show only the selected table's group (its skin sub-groups + primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
  // environment: a table with its own room GLB (e.g. arena's arcade backdrop) shows it and hides

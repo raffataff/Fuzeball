@@ -398,10 +398,16 @@ def build_bowl_led(style, r=0.35, sides=8):
 # ==========================================================================
 # SHAPE: 'flat'  (classic box walls -- mirrors js/world.js buildTable geometry)
 # ==========================================================================
-def build_flat_shell(style):
-    """Side walls + the four goal-mouth-flanking end walls. End walls are named
-    wall_end_* so the game's registerBigGoalMeshes wires them into the big-goal
-    widen; side walls just render."""
+def build_flat_shell(style, end_wall_h=None):
+    """Side walls + end walls. End-wall pieces honour the game's name contract:
+      wall_end_*          -> registerBigGoalMeshes slides their INNER edge with the big-goal widen
+      goal_frame_header_* -> glbGoalGrow z-scales it about z=0, so it widens in step with the mouth
+    Classic (end_wall_h None): four short mouth-flanking segments, open above the bar.
+    Walled  (end_wall_h set, e.g. circuit): each end is ONE solid wall of that height with the
+    goal INSET into it — full-height flanks + a header panel from the crossbar up. The flanks'
+    inner edges and the header's width stay flush through the Big Goal widen because the game
+    drives both off the same goalHalf*mult. Physics side: CONFIG.tables[*].endWall.h makes
+    over-the-bar shots bounce off this face (js/physics.js) — keep the two heights matched."""
     out = []
     wall_m = mat("shell_wall", style["wall"], metal=style.get("wallMetal", 0.15),
                  rough=style.get("wallRough", 0.55),
@@ -409,16 +415,31 @@ def build_flat_shell(style):
                  alpha=style.get("wallAlpha", 1.0))
     wh = WALL_H + 2
     wy = wh / 2 - 1
-    # long side walls (near = +z camera side, far = -z)
+    # long side walls (near = +z camera side, far = -z) — always classic height
     for name, sz in (("wall_side_near", 1), ("wall_side_far", -1)):
         out.append(set_mats(gbox(name, (L + 10, wh, 3), (0, wy, sz * (W / 2 + 1.5))), wall_m))
-    # end walls: two segments per goal, flanking the mouth (segW each side of the goal opening)
     seg_w = (W - 2 * GOAL_HALF) / 2
-    for lr, sx in (("l", -1), ("r", 1)):
-        for nf, sz in (("near", 1), ("far", -1)):
+    if end_wall_h is None:
+        # classic: two short segments per goal, flanking the mouth (segW each side of the opening)
+        for lr, sx in (("l", -1), ("r", 1)):
+            for nf, sz in (("near", 1), ("far", -1)):
+                out.append(set_mats(
+                    gbox("wall_end_%s_%s" % (lr, nf), (3, wh, seg_w),
+                         (sx * (L / 2 + 1.5), wy, sz * (GOAL_HALF + seg_w / 2))), wall_m))
+    else:
+        # walled: one visually-continuous wall per end (flanks + header share the wall material
+        # and the same x/thickness, so the seams vanish), goal mouth inset GOAL_HALF*2 x GOAL_H
+        ewh = end_wall_h + 1                  # runs from y=-1 (buried lip) up to end_wall_h
+        ey = (end_wall_h - 1) / 2.0
+        hh = end_wall_h - GOAL_H              # header: crossbar top -> wall top
+        for lr, sx in (("l", -1), ("r", 1)):
+            for nf, sz in (("near", 1), ("far", -1)):
+                out.append(set_mats(
+                    gbox("wall_end_%s_%s" % (lr, nf), (3, ewh, seg_w),
+                         (sx * (L / 2 + 1.5), ey, sz * (GOAL_HALF + seg_w / 2))), wall_m))
             out.append(set_mats(
-                gbox("wall_end_%s_%s" % (lr, nf), (3, wh, seg_w),
-                     (sx * (L / 2 + 1.5), wy, sz * (GOAL_HALF + seg_w / 2))), wall_m))
+                gbox("goal_frame_header_%s" % lr, (3, hh, GOAL_HALF * 2),
+                     (sx * (L / 2 + 1.5), GOAL_H + hh / 2.0, 0)), wall_m))
     return out
 
 def build_flat_field(style):
@@ -649,10 +670,12 @@ TABLE_DEFS = {
             "frame": (0.92, 0.94, 1.0, 1), "net": (0.9, 0.2, 0.25, 1),
             "body": (0.06, 0.07, 0.12, 1)}}},
     },
-    # --- circuit: NEW flat table (reuses classic collision) with a glowing-circuit look.
-    #     Worked example of adding a table -- flat shape needs no physics change. ---
+    # --- circuit: flat table with a WALLED goal end (glowing-circuit look). endWallH turns each
+    #     end into ONE solid wall the goal is inset into -- over-the-bar shots bounce back in.
+    #     MUST match CONFIG.tables.circuit.endWall.h in js/config.js (the physics height). ---
     "circuit": {
         "name": "Circuit", "folder": "circuit", "room": False, "shape": "flat",
+        "endWallH": 26.0,
         "defSkin": "standard",
         "skins": {"standard": {"glb": "fuzeball_table_circuit.glb", "style": {
             "wall": (0.04, 0.06, 0.10, 1), "wallMetal": 0.55, "wallRough": 0.3,
@@ -740,8 +763,8 @@ def main():
     col_t = reset_collection("%s Table" % d["name"])
     if d["shape"] == "bowl":
         put(col_t, build_bowl(style), build_bowl_field(style), build_bowl_led(style))
-    else:  # 'flat'
-        put(col_t, build_flat_field(style), *build_flat_shell(style))
+    else:  # 'flat' (optional endWallH -> walled goal ends, see build_flat_shell)
+        put(col_t, build_flat_field(style), *build_flat_shell(style, d.get("endWallH")))
         put(col_t, *build_flat_led(style))
     put(col_t, *build_goal_nets(style))
     put(col_t, *build_goal_frames(style))
