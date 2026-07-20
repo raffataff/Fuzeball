@@ -4,9 +4,11 @@
    controls that drive it. Colour + finish edits are pushed onto the live game
    materials too, so what you sculpt here is exactly what walks onto the table. */
 
+// w/h/dpr = the studio viewport, fed to the SHARED preview renderer (PRV, world.js) each frame.
+// There is deliberately no `renderer` here any more — see the PRV block for why.
 const PV={on:false,ready:false,loadedId:null,team:0,spin:true,
  yaw:.5,pitch:0,dist:8,dragging:false,px:0,py:0,
- renderer:null,scene:null,camera:null,root:null,model:null,mats:[],
+ w:0,h:0,dpr:1,scene:null,camera:null,root:null,model:null,mats:[],
  rim:null,platform:null,ringMesh:null,cache:{},cacheOrder:[],baseScale:1};
 
 /* Record a figurine template into the shared preview cache (PV.cache — used by the studio,
@@ -190,11 +192,10 @@ function czSyncUI(){czSyncModels();czSyncColor();czSyncFinish();czSyncYaw();}
 function pvInit(){
  if(PV.ready)return;
  const cv=$('pvCanvas');
- // No preserveDrawingBuffer: pvTick renders every frame (display stays painted) and pvSnapshot
- // renders synchronously right before toDataURL — so the drawing buffer needn't be retained.
- PV.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
- PV.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
- PV.renderer.outputEncoding=THREE.sRGBEncoding;
+ // #pvCanvas is a plain 2D surface now: pvTick renders through the SHARED offscreen context (PRV)
+ // and blits the result here. Never attach a WebGLRenderer to it — a canvas hands out exactly one
+ // context type for its lifetime, and getContext('2d') would start returning null.
+ PV.dpr=Math.min(devicePixelRatio,2);
  PV.scene=new THREE.Scene();
  PV.camera=new THREE.PerspectiveCamera(42,1,.1,200);
  PV.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.9));
@@ -264,11 +265,14 @@ function pvApply(){
  if(PV.model)PV.model.scale.setScalar(PV.baseScale*(cfg.modelScale||1));
 }
 
+// Record the viewport for PRV rather than sizing a renderer — the shared context is only resized
+// at draw time, and only when the numbers actually changed.
 function pvResize(){
  if(!PV.ready)return;
  const cv=$('pvCanvas'),w=cv.clientWidth||cv.parentElement.clientWidth,h=cv.clientHeight||cv.parentElement.clientHeight;
  if(!w||!h)return;
- PV.renderer.setSize(w,h,false);PV.camera.aspect=w/h;PV.camera.updateProjectionMatrix();
+ PV.w=w;PV.h=h;PV.dpr=Math.min(devicePixelRatio,2);
+ PV.camera.aspect=w/h;PV.camera.updateProjectionMatrix();
 }
 
 function pvTick(){
@@ -278,32 +282,27 @@ function pvTick(){
  PV.root.rotation.y=PV.yaw;PV.root.rotation.x=PV.pitch;
  const d=PV.dist;
  PV.camera.position.set(0,1.55+d*.13,d);PV.camera.lookAt(0,1.5,0);
- PV.renderer.render(PV.scene,PV.camera);
+ PRV.draw(PV.scene,PV.camera,$('pvCanvas'),PV.w,PV.h,PV.dpr);
 }
 
 function pvSnapshot(){
- if(!PV.ready)return;
- PV.renderer.render(PV.scene,PV.camera);
+ if(!PV.ready||!PV.w)return;
  const a=document.createElement('a');
  a.download='fuzeball_'+cfg[PV.team===0?'modelRed':'modelBlue']+'_'+(PV.team===0?'red':'blue')+'.png';
- a.href=PV.renderer.domElement.toDataURL('image/png');a.click();
+ a.href=PRV.dataURL(PV.scene,PV.camera,PV.w,PV.h,PV.dpr);a.click();
  $('czSnap').classList.add('on');setTimeout(()=>$('czSnap').classList.remove('on'),350);
 }
 
 /* ================= menu figurine thumbnails =================
-   A tiny offscreen renderer that stamps a posed, team-coloured figurine into
-   each menu column on demand (never per-frame). Shares PV.cache so the .glb
-   isn't fetched twice. */
-const THB={ready:false,r:null,scene:null,cam:null,root:null,rim:null,
+   Stamps a posed, team-coloured figurine into each menu column on demand (never per-frame),
+   through the SHARED preview context (PRV) — no renderer of its own. Shares PV.cache so the .glb
+   isn't fetched twice. THB.W/H is the thumbnail size handed to PRV at render time. */
+const THB={ready:false,W:240,H:320,dpr:2,scene:null,cam:null,root:null,rim:null,
  model:[null,null],mats:[[],[]],loadedId:[null,null],baseScale:[1,1]};
 function thumbInit(){
  if(THB.ready)return;
- // No preserveDrawingBuffer: thumbRender reads toDataURL synchronously right after render (same
- // tick, before the browser composites/clears), and the canvas itself is offscreen (never shown).
- THB.r=new THREE.WebGLRenderer({antialias:true,alpha:true});
- THB.r.setPixelRatio(2);THB.r.setSize(240,320,false);THB.r.outputEncoding=THREE.sRGBEncoding;
  THB.scene=new THREE.Scene();
- THB.cam=new THREE.PerspectiveCamera(36,240/320,.1,200);
+ THB.cam=new THREE.PerspectiveCamera(36,THB.W/THB.H,.1,200);
  THB.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.95));
  const k=new THREE.DirectionalLight(0xffffff,1.2);k.position.set(5,11,7);THB.scene.add(k);
  THB.rim=new THREE.PointLight(0xffffff,1.3,50);THB.rim.position.set(-4,4,-5);THB.scene.add(THB.rim);
@@ -347,6 +346,5 @@ function thumbRender(team){
  THB.model[team].scale.setScalar(THB.baseScale[team]*(cfg.modelScale||1));
  THB.root.rotation.y=team===0?cfg.redYaw:cfg.blueYaw;   // per-team configurable pose
  THB.cam.position.set(0,2.0,7.6);THB.cam.lookAt(0,1.65,0);
- THB.r.render(THB.scene,THB.cam);
- return THB.r.domElement.toDataURL('image/png');
+ return PRV.dataURL(THB.scene,THB.cam,THB.W,THB.H,THB.dpr);
 }

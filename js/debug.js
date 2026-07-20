@@ -29,10 +29,73 @@ function memLog(tag){
  const progs=(ri&&ri.programs)?ri.programs.length:'?';
  let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
  const mc=(typeof modelCache!=='undefined'&&modelCache)?Object.keys(modelCache).length:'?';
- /*console.log('%c[MEM '+tag+']','color:#2af5ff;font-weight:bold',
+ // Resident TABLE assets, by name — the whole point of the lazy loader (CONFIG.tableAssets), so
+ // list them rather than count them: a regression here reads as extra keys, not a bigger number.
+ const sk=(typeof skinOrder!=='undefined'&&skinOrder)?(skinOrder.join(',')||'none'):'?';
+ const rm=(typeof roomOrder!=='undefined'&&roomOrder)?(roomOrder.join(',')||'none'):'?';
+ // The main canvas isn't the only GL context: the studio, the menu thumbnails and the league setup
+ // preview all draw through ONE shared offscreen renderer (PRV, world.js), which holds its own
+ // upload of whatever figurines they've shown. Reported separately because main-renderer counts
+ // alone look innocent while the second context grows. It only exists once something used it.
+ const sub=[];
+ if(typeof PRV!=='undefined'&&PRV&&PRV.r&&PRV.r.info)
+  sub.push('preview '+PRV.r.info.memory.geometries+'g/'+PRV.r.info.memory.textures+'t @'+PRV.w+'x'+PRV.h);
+ console.log('%c[MEM '+tag+']','color:#2af5ff;font-weight:bold',
   'JS heap '+memFmt(pm&&pm.usedJSHeapSize)+' / limit '+memFmt(pm&&pm.jsHeapSizeLimit)
   +' | GPU '+geos+' geoms, '+texs+' textures, '+progs+' shaders'
-  +' | scene '+nodes+' nodes | modelCache '+mc+' templates');*/
+  +' | scene '+nodes+' nodes | modelCache '+mc+' templates'
+  +' | skins ['+sk+'] rooms ['+rm+']'
+  +' | tex '+memFmt(memTexBytes())
+  +(sub.length?' | extra contexts: '+sub.join(', '):''));
+}
+
+/* ===== texture footprint audit =========================================
+   renderer.info counts textures but says nothing about their SIZE, and size is what actually
+   costs: ONE 4096² RGBA texture is 64MB uploaded (86MB with mipmaps) and roughly that again for
+   the decoded CPU-side image the loader keeps alive. Eighteen of those is 1.5GB from a scene that
+   reads as trivially small in every other metric. memTex() lists the worst offenders so an
+   oversized bake is obvious; memTexBytes() is the one-line total memLog prints.
+
+   Walks the live scene AND the off-scene template caches (figurines, explosions, evicted-but-
+   referenced skins, the ball/pitch GLBs), de-duped by texture uuid, so a texture shared between
+   ten meshes is counted once. Estimate, not truth: it assumes 8-bit RGBA and mipmaps, which is
+   what an uncompressed glTF PNG/JPG becomes once uploaded. */
+function texSize(t){
+ const im=t&&t.image;if(!im)return{w:0,h:0,b:0};
+ const w=im.width||im.naturalWidth||im.videoWidth||0,h=im.height||im.naturalHeight||im.videoHeight||0;
+ return{w,h,b:w*h*4*(t.generateMipmaps===false?1:4/3)};
+}
+function memTexCollect(){
+ const seen=new Map(),roots=[];
+ const push=o=>{if(o&&o.traverse)roots.push(o);};
+ if(typeof scene!=='undefined')push(scene);
+ if(typeof modelCache!=='undefined')for(const k in modelCache)push(modelCache[k]);
+ if(typeof PV!=='undefined'&&PV&&PV.cache)for(const k in PV.cache)push(PV.cache[k]);
+ if(typeof explosionTemplates!=='undefined')for(const k in explosionTemplates)push(explosionTemplates[k].scene);
+ if(typeof ballExplosionTemplate!=='undefined'&&ballExplosionTemplate)push(ballExplosionTemplate.scene);
+ if(typeof respawnSwirlTemplate!=='undefined'&&respawnSwirlTemplate)push(respawnSwirlTemplate.scene);
+ if(typeof ballModel!=='undefined')push(ballModel);
+ if(typeof pitchModel!=='undefined')push(pitchModel);
+ if(typeof tableRooms!=='undefined')for(const k in tableRooms)push(tableRooms[k]);
+ const KEYS=['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap','envMap'];
+ for(const r of roots)r.traverse(c=>{
+  if(!c.material)return;
+  for(const m of (Array.isArray(c.material)?c.material:[c.material])){
+   if(!m)continue;
+   for(const k of KEYS){const t=m[k];if(!t||!t.uuid||seen.has(t.uuid))continue;
+    const s=texSize(t);if(s.b)seen.set(t.uuid,{name:(t.name||m.name||c.name||'?')+' ['+k+']',w:s.w,h:s.h,b:s.b});}
+  }
+ });
+ return [...seen.values()].sort((a,b)=>b.b-a.b);
+}
+function memTexBytes(){let n=0;for(const t of memTexCollect())n+=t.b;return n;}
+/* Console helper: memTex() → the 15 fattest textures resident, biggest first. Anything at
+   2048² or above on a prop the player never sees up close is a candidate for a downsize. */
+function memTex(n){
+ const list=memTexCollect();let tot=0;for(const t of list)tot+=t.b;
+ console.log('%c[TEX] '+list.length+' unique, '+memFmt(tot)+' est. (uncompressed RGBA + mipmaps)','color:#ffcf4d;font-weight:bold');
+ console.table(list.slice(0,n||15).map(t=>({texture:t.name,px:t.w+'×'+t.h,MB:+(t.b/1048576).toFixed(1)})));
+ return tot;
 }
 
 // AI debug state

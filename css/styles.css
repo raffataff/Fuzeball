@@ -454,6 +454,30 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #introFlash.on{animation:inFlash .6s ease-out both}
 @keyframes inFlash{0%{opacity:1}100%{opacity:0}}
 #introSkip{position:absolute;bottom:26px;left:0;right:0;text-align:center;font-size:11px;letter-spacing:.4em;color:#4c5c7d;text-transform:uppercase;opacity:0;transition:opacity .5s}
+/* ===== layout editor (js/layout.js) ===== */
+/* .lyCustom = a saved arrangement is applied: panels go absolute inside the wrap,
+   the .lgSide columns dissolve (display:contents) so every panel positions against
+   the wrap itself. .lyEditing = live edit mode on top of that. */
+.lyCustom{position:relative;align-content:flex-start;width:100%}
+/* a custom arrangement can be taller than the screen — anchor to the top and scroll
+   (league is already like this; this matters for the main menu) */
+.lyScroll{justify-content:flex-start;overflow-y:auto}
+/* the ⊞ corner buttons: same square chrome as the Options gear */
+.lyGearBtn{font-size:20px}
+.lyGearBtn:hover{transform:scale(1.12)}
+#menuEditLayout{top:74px}
+#lgEditLayout{position:fixed}
+.lyCustom .lgSide{display:contents}
+.lyCustom .panel{position:absolute!important;flex:none!important;margin:0!important;width:auto;max-width:none!important;min-width:0!important;min-height:0!important;max-height:none!important;overflow:auto}
+.lyEditing .panel{cursor:move;outline:1px dashed rgba(255,207,77,.45);overflow:hidden}
+.lyEditing .panel *{pointer-events:none}
+.lyEditing .panel.hidden{display:block!important;opacity:.5}
+.lyEditing{background-image:linear-gradient(rgba(255,207,77,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,207,77,.06) 1px,transparent 1px);background-size:16px 16px}
+.lyDrag{outline:1px solid var(--gold)!important;box-shadow:0 0 24px color-mix(in srgb,var(--gold) 45%,transparent)!important;z-index:5;opacity:1!important}
+.lyRz{position:absolute;right:2px;bottom:2px;width:18px;height:18px;cursor:nwse-resize;pointer-events:auto!important;border-right:3px solid rgba(255,207,77,.75);border-bottom:3px solid rgba(255,207,77,.75);border-radius:0 0 8px 0}
+#lyBar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;background:rgba(10,13,24,.94);border:1px solid rgba(255,207,77,.35);border-radius:12px;padding:8px 10px 8px 16px;box-shadow:0 8px 30px rgba(0,0,0,.55)}
+#lyBar .lyBarTxt{font-family:'Russo One',sans-serif;font-size:11px;letter-spacing:.1em;color:var(--gold)}
+#lyBar .btn{padding:7px 14px;font-size:12px}
 #introSkip.on{opacity:.55}
 #introSkip.off{opacity:0}
 #intro.fast *{animation-duration:.22s!important;animation-delay:0s!important;transition-duration:.3s!important;transition-delay:0s!important}

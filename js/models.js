@@ -19,30 +19,50 @@ let ballExplosionTemplate=null; // {scene, clips} — the cannonball's own shatt
 let respawnSwirlTemplate=null;  // {scene, clips} — the shared swirly respawn-particle GLB (CONFIG.cannonball.respawnSwirlSrc), consumed by fracture.js spawnRespawnSwirl
 
 /* --- static table --------------------------------------------------------- */
-/* Load the ACTIVE skin of every table at boot (a table = a shape; skins are its swappable
-   paint jobs). Non-active skins lazy-load when first picked in the Skin dropdown.
-   buildTable/buildArenaTable pre-create each table's group (procedural fallback inside);
-   a GLB-only table gets a fresh empty group here. */
+/* LAZY BY DEFAULT (CONFIG.tableAssets). A table skin GLB + its room backdrop are the fattest
+   single assets in the game, and only ONE table is ever visible — so boot fetches only the
+   ACTIVE table's active skin and room. Every other skin/room loads on demand the moment it's
+   picked (applyTable / selectSkin are the only switch paths and both call through here), and
+   LRU-evicted past the caps. Set CONFIG.tableAssets.preloadAll to restore the old eager boot.
+   Groups for EVERY table are still created here: applyTable's visibility loop walks tableGroups,
+   and buildTable/buildArenaTable put each table's procedural fallback inside its own group. */
 function loadTableModel(){
+ const eager=!!(CONFIG.tableAssets&&CONFIG.tableAssets.preloadAll);
+ const cur=(typeof cfg!=='undefined'&&CONFIG.tables[cfg.table])?cfg.table:'classic';
  for(const id in CONFIG.tables){
   if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
+  if(!eager&&id!==cur)continue;                    // lazy: everything but the active table waits for a pick
   const sk=(typeof curSkin==='function')?curSkin(id):null;
   if(sk)loadSkin(id,sk,()=>{applyTable();applyTheme();applyColors();drawField();});
  }
- loadRoomModel();
+ if(eager){for(const id in CONFIG.tables)ensureRoom(id);}
+ else ensureRoom(cur);
 }
+
+/* --- skin residency (LRU) --------------------------------------------------
+   skinOrder holds 'id/skinId' keys, least-recently-used first. Loading or showing a skin
+   touches it; pruneTableAssets disposes the tail past CONFIG.tableAssets.cacheSkins. Rooms
+   get the same treatment via roomOrder. The ACTIVE table's skin/room are always protected,
+   so a cap of 1 is legal (and means "never hold anything you aren't looking at"). */
+const skinOrder=[],roomOrder=[];
+function skinKey(id,skinId){return id+'/'+skinId;}
+function touchSkin(id,skinId){const k=skinKey(id,skinId),i=skinOrder.indexOf(k);if(i>=0)skinOrder.splice(i,1);skinOrder.push(k);}
+function touchRoom(id){const i=roomOrder.indexOf(id);if(i>=0)roomOrder.splice(i,1);roomOrder.push(id);}
 
 /* Load one skin (a textured GLB of a table's shape) into its own sub-group under the table
    group, cached by id/skin. Missing GLB -> drop the empty group so applySkin falls back to the
-   procedural primitives. cb runs on success OR failure. */
+   procedural primitives. cb runs on success OR failure. Every mesh is stamped with its owning
+   skin key so disposeTableSkin can unpick this skin's entries from the shared big-goal /
+   arena-morph registries without disturbing the skin that's still on screen. */
 function loadSkin(id,skinId,cb){
  skinGroups[id]=skinGroups[id]||{};
- if(skinGroups[id][skinId]){if(cb)cb();return;}     // already loaded (cache)
+ if(skinGroups[id][skinId]){touchSkin(id,skinId);if(cb)cb();return;}   // already loaded (cache)
  const T=CONFIG.tables[id],S=T&&T.skins&&T.skins[skinId];
  if(!S){if(cb)cb();return;}
  if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
  const grp=new THREE.Group();grp.visible=false;
- tableGroups[id].add(grp);skinGroups[id][skinId]=grp;
+ tableGroups[id].add(grp);skinGroups[id][skinId]=grp;touchSkin(id,skinId);
+ const key=skinKey(id,skinId);
  const loader=new THREE.GLTFLoader();
  const hook=gltf=>{
   try{
@@ -50,6 +70,7 @@ function loadSkin(id,skinId,cb){
    gltf.scene.traverse(c=>{
     if(!c.isMesh)return;
     c.castShadow=true;c.receiveShadow=true;
+    c.userData.skinKey=key;                        // ownership stamp — read by disposeTableSkin's registry sweep
     const n=onm(c);
     if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
     else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
@@ -66,11 +87,64 @@ function loadSkin(id,skinId,cb){
  };
  const fail=()=>{
   tableGroups[id].remove(grp);delete skinGroups[id][skinId];    // no GLB -> fall back to primitives
+  const oi=skinOrder.indexOf(key);if(oi>=0)skinOrder.splice(oi,1);
   console.warn('skin GLB missing for '+id+'/'+skinId+' ('+(T.folder||'')+S.glb+')');
   if(cb)cb();
  };
  const primary=(T.folder||'')+S.glb;
  loader.load(primary,hook,undefined,()=>{S.glbFallback?loader.load(S.glbFallback,hook,undefined,fail):fail();});
+}
+
+/* Free one loaded skin: strip its meshes out of the shared big-goal + arena-morph registries
+   (they're stamped with skinKey), detach the sub-group, then dispose its geometry/textures.
+   Safe to hard-dispose (unlike figurine templates) because a skin GLB is never clone()d — the
+   loaded scene IS the only instance. NEVER call on the skin currently being shown. */
+function disposeTableSkin(id,skinId){
+ const grp=skinGroups[id]&&skinGroups[id][skinId];if(!grp)return;
+ if(!grp.children.length)return;   // sub-group exists but the GLB hasn't landed — leave the in-flight load alone
+ const key=skinKey(id,skinId),mine=o=>o&&o.userData&&o.userData.skinKey===key;
+ for(let gi=0;gi<2;gi++){
+  glbGoalGrow[gi]=glbGoalGrow[gi].filter(o=>!mine(o));
+  glbGoalWall[gi]=glbGoalWall[gi].filter(e=>!mine(e.o));
+ }
+ glbGoalSplit=glbGoalSplit.filter(e=>!mine(e.o));
+ if(typeof arenaMorph!=='undefined'){arenaMorph=arenaMorph.filter(e=>!mine(e.o));arenaMorphDirty=true;} // force one restore pass over what's left
+ if(skinLed[id]&&skinLed[id][skinId]){
+  if(ledMat===skinLed[id][skinId])ledMat=primLedMat;   // don't leave the LED fx driving a freed material
+  delete skinLed[id][skinId];
+ }
+ if(skinHasFrame[id])delete skinHasFrame[id][skinId];
+ if(tableGroups[id])tableGroups[id].remove(grp);
+ delete skinGroups[id][skinId];
+ const oi=skinOrder.indexOf(key);if(oi>=0)skinOrder.splice(oi,1);
+ disposeModelTemplate(grp);                            // shared GPU-free helper (world.js)
+ console.log('table skin freed: '+key);
+}
+
+/* Evict skins/rooms past their caps, least-recently-used first. `keep*` are the assets currently
+   ON SCREEN and are never freed; the caps count them, so cacheSkins:1 leaves room for nothing
+   else and cacheSkins:2 keeps one previous skin warm. Deliberately measured as "how many NON-kept
+   entries may stay" rather than a raw list length, so a stale asset can't squat the last slot
+   when the active table brings none of its own (e.g. switching arena → classic, which has no
+   room, still frees the arena backdrop). Called only after a switch has SETTLED — the incoming
+   asset is already resident, so nothing visible is ever freed. */
+function pruneTableAssets(keepSkin,keepRoom){
+ const A=CONFIG.tableAssets||{};
+ const extraS=Math.max(0,(A.cacheSkins||1)-1),extraR=Math.max(0,(A.cacheRooms||1)-1);
+ let nS=0;for(const k of skinOrder)if(k!==keepSkin)nS++;
+ for(let i=0;i<skinOrder.length&&nS>extraS;){
+  const k=skinOrder[i];
+  if(k===keepSkin){i++;continue;}
+  const s=k.indexOf('/');disposeTableSkin(k.slice(0,s),k.slice(s+1));   // splices k out of skinOrder itself
+  if(skinOrder[i]===k)i++;else nS--;                                    // guard: only count down on a real removal
+ }
+ let nR=0;for(const id of roomOrder)if(id!==keepRoom)nR++;
+ for(let i=0;i<roomOrder.length&&nR>extraR;){
+  const id=roomOrder[i];
+  if(id===keepRoom){i++;continue;}
+  disposeRoom(id);
+  if(roomOrder[i]===id)i++;else nR--;
+ }
 }
 
 /* Register a loaded table GLB's goal parts for the big-goal widen. The diamond net already
@@ -105,23 +179,47 @@ function registerBigGoalMeshes(root){
    Authored in game/world coords (floor ~y=-44, walls ±190, centred on origin),
    so it drops straight into the scene with no transform. Tied to the arena
    table: applyTable toggles its visibility with ARENA_ON. */
-function loadRoomModel(){
- // Load each table's optional environment GLB into tableRooms[id]; applyTable toggles which is shown.
- for(const id in CONFIG.tables){
-  const T=CONFIG.tables[id];if(!T.room)continue;
-  const url=(T.folder||'')+T.room;
-  new THREE.GLTFLoader().load(url,gltf=>{
-   try{
-    const room=gltf.scene;
-    room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // backdrop, not a shadow caster
-    room.visible=false;scene.add(room);
-    tableRooms[id]=room;
-    applyTable();                                 // set initial visibility to match the current table
-    console.log(T.room+' loaded');
-   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
-  },undefined,()=>console.warn('room GLB missing for '+id+' ('+url+'), no environment'));
- }
+/* Load ONE table's optional environment GLB into tableRooms[id]; applyTable toggles which is
+   shown. Lazy + idempotent: a no-op if the table has no room, it's already resident, or a fetch
+   is in flight. cb runs on success, failure, and every no-op, so callers can gate on it. */
+const roomLoading={};
+function ensureRoom(id,cb){
+ const T=CONFIG.tables[id];
+ if(!T||!T.room){if(cb)cb();return;}
+ if(tableRooms[id]){touchRoom(id);if(cb)cb();return;}
+ if(roomLoading[id]){if(cb)cb();return;}            // in flight — applyTable runs again on arrival
+ roomLoading[id]=true;touchRoom(id);
+ const url=(T.folder||'')+T.room;
+ new THREE.GLTFLoader().load(url,gltf=>{
+  delete roomLoading[id];
+  try{
+   const room=gltf.scene;
+   room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // backdrop, not a shadow caster
+   room.visible=false;scene.add(room);
+   tableRooms[id]=room;
+   applyTable();                                 // set initial visibility to match the current table
+   console.log(T.room+' loaded ('+id+')');
+  }catch(e){console.warn('room GLB hookup failed for '+id,e);}
+  if(cb)cb();
+ },undefined,()=>{
+  delete roomLoading[id];
+  const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
+  console.warn('room GLB missing for '+id+' ('+url+'), no environment');
+  if(cb)cb();
+ });
 }
+/* Free an evicted room backdrop. Rooms are never cloned, so a hard dispose is safe.
+   NEVER call on the room currently visible. */
+function disposeRoom(id){
+ const room=tableRooms[id];if(!room)return;
+ scene.remove(room);delete tableRooms[id];
+ const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
+ disposeModelTemplate(room);
+ console.log('table room freed: '+id);
+}
+// Back-compat shim: the old eager all-rooms loader. Nothing calls it now (loadTableModel
+// drives ensureRoom) — kept so an external/console caller doesn't hit a missing function.
+function loadRoomModel(){for(const id in CONFIG.tables)ensureRoom(id);}
 
 /* --- rods ----------------------------------------------------------------- */
 function loadRodModels(onReady){

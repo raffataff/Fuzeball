@@ -328,19 +328,21 @@ function lgPlayMatch(){
   cfg.table=pdiv.table||LGC.divisions[playerDiv()].table||'classic';
   cfg.theme=pdiv.theme||LGC.divisions[playerDiv()].theme||'classic';
   cfg.pitch=pdiv.pitch||LGC.divisions[playerDiv()].pitch||'grass1';
-  applyTable();applyTheme();
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
+ // Table assets are lazy (CONFIG.tableAssets) and a division can force a table the player has
+ // never opened, so kickoff waits on its skin/room GLB too — the tape screen (or the brief
+ // hidden beat when tape is off) IS the loading room. Cached assets call back synchronously,
+ // so the usual case is unchanged.
+ let tapeDone=!LGC.tape,modelDone=false,tableDone=false;
+ const check=()=>{if(!(tapeDone&&modelDone&&tableDone))return;$('lgTape').classList.add('hidden');start();};
+ applyTable(()=>{tableDone=true;check();});applyTheme();
+ loadPlayerModel(()=>{modelDone=true;check();});
  if(LGC.tape){
   renderLgTape(op);
   $('lgTape').classList.remove('hidden');
-  let tapeDone=false,modelDone=false;
-  const check=()=>{if(tapeDone&&modelDone){$('lgTape').classList.add('hidden');start();}};
-  loadPlayerModel(()=>{modelDone=true;check();});
   const go=()=>{tapeDone=true;check();};
   $('lgTape').onclick=()=>{clearTimeout(tid);go();};
   const tid=setTimeout(go,LGC.tapeT*1000);
- }else{
-  loadPlayerModel(start);
  }
 }
 function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisions
@@ -593,6 +595,7 @@ function openLeague(reveal){
  renderLeague(reveal);
  const fx=lgPlayerFixture();
  if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}
+ layApply('league'); // custom panel arrangement, if one is saved (js/layout.js)
 }
 function renderLeague(reveal){
  const pd=playerDiv(),dv=LG.divs[pd];
@@ -745,19 +748,19 @@ function openSlots(){
 }
 /* ---- setup form ---- */
 /* ---- 3D figurine preview for setup form ---- */
-let LSP={r:null,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null,plat:null,lid:null,bs:1,
+// Renders through the SHARED preview context (PRV, world.js) into #lgSetupFig as a plain 2D
+// canvas. The old dedicated renderer needed preserveDrawingBuffer because it drew straight to a
+// visible canvas once per interaction with no rAF loop; blitting to 2D removes that need — the
+// destination canvas holds the pixels and the compositor won't clear them.
+let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null,plat:null,lid:null,bs:1,
  init(){
-  if(this.r)return;const cv=$('lgSetupFig');
-  // preserveDrawingBuffer stays: this renders ONCE per interaction to a VISIBLE canvas with no
-  // rAF loop, so without it the preview would blank after the browser's next composite.
-  this.r=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true,preserveDrawingBuffer:true});
-  this.r.setPixelRatio(Math.min(devicePixelRatio,2));
-  this.r.setSize(200,260,false);this.r.outputEncoding=THREE.sRGBEncoding;
+  if(this.ready)return;
+  this.dpr=Math.min(devicePixelRatio,2);
   this.scene=new THREE.Scene();
   this.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.95));
   const k=new THREE.DirectionalLight(0xffffff,1.2);k.position.set(5,11,7);this.scene.add(k);
   this.rim=new THREE.PointLight(0xffffff,1.3,50);this.rim.position.set(-4,4,-5);this.scene.add(this.rim);
-  this.cam=new THREE.PerspectiveCamera(36,200/260,.1,200);
+  this.cam=new THREE.PerspectiveCamera(36,this.W/this.H,.1,200);
   this.cam.position.set(0,2.0,8.5);this.cam.lookAt(0,1.65,0);
   this.root=new THREE.Group();this.scene.add(this.root);
   const ring=new THREE.Mesh(new THREE.RingGeometry(3.1,3.45,64),
@@ -766,6 +769,7 @@ let LSP={r:null,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null
   const plat=new THREE.Mesh(new THREE.CylinderGeometry(2.8,3.1,.3,48),
    new THREE.MeshStandardMaterial({color:0x0c1020,emissive:0x1a2540,emissiveIntensity:.5,roughness:.35,metalness:.7}));
   plat.position.y=-.2;this.scene.add(plat);this.plat=plat;
+  this.ready=true;
  },
  load(modelId,col){
   this.init();
@@ -805,7 +809,7 @@ let LSP={r:null,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null
   if(this.rim)this.rim.color.copy(c);
   if(this.ringM)this.ringM.material.color.copy(c);
   if(this.plat)this.plat.material.emissive.copy(c).multiplyScalar(.28);
-  this.r.render(this.scene,this.cam);
+  PRV.draw(this.scene,this.cam,$('lgSetupFig'),this.W,this.H,this.dpr);
  }
 };
 function openSetup(slot){
@@ -933,18 +937,20 @@ function cupPlayTie(){
   document.documentElement.style.setProperty('--c1',cfg.blueColor);
   cfg.table=CUP.table;cfg.theme=CUP.theme;
   cfg.pitch=CUP.pitches[Math.floor(Math.random()*CUP.pitches.length)];
-  applyTable();applyTheme();
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
+  // Same lazy-table gate as lgPlayMatch: CUP.table is often one the player never picked in the
+  // menu, so hold kickoff until its GLB lands behind the tape screen.
+  let tapeDone=!LGC.tape,modelDone=false,tableDone=false;
+  const check=()=>{if(!(tapeDone&&modelDone&&tableDone))return;$('lgTape').classList.add('hidden');start();};
+  applyTable(()=>{tableDone=true;check();});applyTheme();
+  loadPlayerModel(()=>{modelDone=true;check();});
   if(LGC.tape){
     renderCupTape(oppId);
     $('lgTape').classList.remove('hidden');
-    let tapeDone=false,modelDone=false;
-    const check=()=>{if(tapeDone&&modelDone){$('lgTape').classList.add('hidden');start();}};
-    loadPlayerModel(()=>{modelDone=true;check();});
     const go=()=>{tapeDone=true;check();};
     $('lgTape').onclick=()=>{clearTimeout(tid);go();};
     const tid=setTimeout(go,LGC.tapeT*1000);
-  }else loadPlayerModel(start);
+  }
 }
 function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not LG.teams)
   const me=cupEnt('player'),them=cupEnt(oppId);

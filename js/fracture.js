@@ -209,8 +209,28 @@ function spawnRespawnSwirl(r,mi,reform){
   // swing/raise tilt, so the column always rises straight up in world space.
   inst.position.set(r.x,C.respawnSwirlY||0,z);inst.scale.set(s,s,s);
   scene.add(inst);
+  // Team tint. cloneFractureInstance already clones every material per-instance, so
+  // writing colour here can't leak back into the shared template. Unlike a figurine
+  // (where only teamParts recolour and skin/visor stay as authored) the swirl GLB is
+  // ALL effect, so by default every mesh takes the kit colour; respawnSwirlTintParts
+  // narrows it to a name list if the bake has something that must stay neutral.
+  const col=new THREE.Color(r.team===0?cfg.redColor:cfg.blueColor);
+  const tint=C.respawnSwirlTint!==false, em=C.respawnSwirlEmissive!=null?C.respawnSwirlEmissive:1;
+  const only=C.respawnSwirlTintParts&&C.respawnSwirlTintParts.length?
+   new Set(C.respawnSwirlTintParts.map(s=>s.toLowerCase())):null;
   const mats=[];
-  inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=1;mats.push(c.material);});
+  inst.traverse(c=>{if(!c.isMesh)return;
+   const ms=Array.isArray(c.material)?c.material:[c.material];
+   for(const m of ms){
+    m.transparent=true;m.opacity=1;
+    // '.001' suffixes come from glTF de-duping the same material across shards — strip
+    // them so a name list matches the way it does on the live figurine.
+    if(tint&&(!only||only.has(String(m.name||'').toLowerCase().replace(/\.\d+$/,'')))){
+     if(m.color)m.color.copy(col);
+     if(m.emissive)m.emissive.copy(col).multiplyScalar(em);
+    }
+    mats.push(m);
+   }});
   const mixer=new THREE.AnimationMixer(inst);
   // LOOP every clip (contrast spawnFracture's one-shot LoopOnce) so a short bake
   // repeats to fill the lead+tail window. With respawnSwirlFit the window is instead
@@ -223,8 +243,7 @@ function spawnRespawnSwirl(r,mi,reform){
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopRepeat);a.play();}
   let light=null;
   if((C.respawnSwirlLight||0)>0){                       // optional soft team-tinted glow riding the column
-   const col=r.team===0?cfg.redColor:cfg.blueColor;
-   light=new THREE.PointLight(col,0,48);light.position.set(r.x,(C.respawnSwirlY||0)+5,z);scene.add(light);
+   light=new THREE.PointLight(col.getHex(),0,48);light.position.set(r.x,(C.respawnSwirlY||0)+5,z);scene.add(light);
   }
   // `until` = when the swirl DIES, which is respawnSwirlTail seconds PAST the reform
   // moment — that overlap is what keeps the particles going while the figurine fades in.

@@ -59,6 +59,7 @@
 
 <div id="menu" class="screen introHide">
   <button id="btnOptions" class="optGear" title="Options">⚙</button>
+  <button id="menuEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
   <div class="tagline">v0.1.16</div>
   <div class="modeRow">
@@ -68,7 +69,7 @@
     <div class="modeCard league" id="btnLeague"><div class="ico">🏆</div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
   </div>
   <div class="panelWrap">
-    <div class="panel">
+    <div class="panel" id="menuSetupPanel">
       <h3>Match Setup</h3>
       <div class="row"><label><span class="lblR">Team 1</span> AI</label><select id="setDiffRed"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label><span class="lblB">Team 2</span> AI</label><select id="setDiffBlue"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
@@ -84,7 +85,7 @@
       <div class="row"><label>Sound</label><input type="checkbox" id="setSound" checked></div>
       <div class="row"><label>Ambience</label><input type="checkbox" id="setAmbience" checked></div>
     </div>
-    <div class="panel kitPanel">
+    <div class="panel kitPanel" id="menuKitPanel">
       <h3>Teams &amp; Kits</h3>
       <div class="kitCols">
         <div class="kitCol">
@@ -99,7 +100,7 @@
         </div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="menuCtlPanel">
       <h3>Controls</h3>
       <div class="ctl">
         <b>◀ ▶ / Q E</b><span>switch rod</span>
@@ -215,11 +216,12 @@
 </div>
 
 <div id="league" class="screen hidden">
+  <button id="lgEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <h2 class="lgTitle">FUZEBALL LEAGUE</h2>
   <div class="lgSub" id="lgSeasonTag">SEASON 1</div>
   <div class="lgWrap">
     <div class="lgSide">
-    <div class="panel">
+    <div class="panel" id="lgStandingsPanel">
       <h3>Standings</h3>
       <div id="lgTable"></div>
     </div>
@@ -229,7 +231,7 @@
     </div>
     </div>
     <div class="lgSide">
-      <div class="panel">
+      <div class="panel" id="lgFixturePanel">
         <h3>Next Match</h3>
         <div class="lgFixture" id="lgFixture"></div>
         <div id="lgRound"></div>
@@ -250,7 +252,7 @@
         <button class="btn lgPlayBtn" id="lgPlay">▶ Play Match</button>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="lgSquadPanel">
       <h3>Squad · <span class="lgUPWrap"><span id="lgUP">0</span> ⚙ parts</span></h3>
       <div id="lgSquad"></div>
     </div>
@@ -405,7 +407,7 @@
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
   'js/core.js','js/config.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/hud.js','js/ui.js','js/options.js','js/league.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/main.js'
  ];
  function loadOne(item,done){

@@ -3,6 +3,10 @@
 let renderer,scene,camera,dirLight;
 const teamMat=[null,null],teamGlow=[null,null];
 let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
+// primLedMat = the PROCEDURAL led material built in buildTable. ledMat is repointed at whichever
+// skin GLB is showing (applySkin), so disposing an evicted skin would leave ledMat dangling on a
+// freed material — disposeTableSkin falls back to this one. Never disposed.
+let primLedMat=null;
 // big-goal GLB hookup, per goal index [0=left/-x, 1=right/+x] (matches goalFrames order):
 // glbGoalGrow = baked frame meshes uniform-scaled about z=0; glbGoalWall = end-wall meshes {o,inner,outer,sgn} slid open. Filled by registerBigGoalMeshes, driven in bigGoalUpdate.
 let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
@@ -46,6 +50,77 @@ function capModelCache(cache,order,protect,dispose){
   if(dispose)disposeModelTemplate(scene);
  }
 }
+
+/* ---- shared offscreen preview renderer (PRV) ------------------------------
+   The customize turntable, the menu figurine thumbnails and the league-setup preview each used to
+   own a WebGLRenderer. Every GL context carries its own framebuffer AND its own upload of every
+   texture/geometry it draws, so a figurine on the table, in the studio and in a thumbnail existed
+   THREE times in VRAM. They now share ONE offscreen context: a caller sizes it, renders its scene,
+   and the pixels are blitted into its own plain 2D canvas via drawImage.
+   Three things this relies on, all load-bearing:
+   - A target canvas must never have had a webgl context attached — a canvas hands out exactly one
+     context type for its lifetime, so these targets are 2d-only now.
+   - preserveDrawingBuffer is unnecessary (and gone): the pixels come to rest in the destination 2D
+     canvas, which the compositor won't clear. LSP needed that flag before precisely because it
+     drew straight to a visible canvas once per interaction.
+   - Resizing a GL drawing buffer REALLOCATES it, so size() is a no-op when nothing changed — the
+     studio's 60fps path never resizes, it just renders and blits. */
+/* The drawing buffer is GROW-ONLY and consumers render into a sub-viewport of it, rather than the
+   buffer being resized per call. That matters because the callers interleave at input rate: the
+   finish sliders run czAfterFinish on every `input` event, which repaints the two menu thumbnails
+   (240x320) while the studio (panel-sized) is mid-turntable — resize-per-call would reallocate the
+   framebuffer twice per slider tick. Requested sizes are in CSS px + a dpr; PRV works in device px
+   and pins its own pixelRatio to 1 so there's exactly one place the conversion happens.
+   Viewport sits at the buffer's TOP-left, which in GL's bottom-left origin is y = bh − height —
+   that way the region maps to drawImage's top-left source rect with no flip. */
+const PRV={r:null,bw:0,bh:0,w:0,h:0,dpr:0,scratch:null,
+ get(){
+  if(PRV.r)return PRV.r;
+  PRV.r=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  PRV.r.setPixelRatio(1);                    // we hand it device pixels directly
+  PRV.r.outputEncoding=THREE.sRGBEncoding;
+  PRV.r.setScissorTest(true);                // so clear() only touches the active sub-viewport
+  return PRV.r;
+ },
+ /* Render `scene` into the top-left ww×hh of the shared buffer, growing it if needed.
+    Returns [ww,hh] in device px, or null if the request was degenerate. */
+ frame(scene,cam,w,h,dpr){
+  if(!w||!h)return null;
+  dpr=dpr||1;
+  const r=PRV.get(),ww=Math.max(1,Math.round(w*dpr)),hh=Math.max(1,Math.round(h*dpr));
+  if(ww>PRV.bw||hh>PRV.bh){                  // grow only — never shrink, so interleaved callers don't thrash
+   PRV.bw=Math.max(PRV.bw,ww);PRV.bh=Math.max(PRV.bh,hh);
+   r.setSize(PRV.bw,PRV.bh,false);
+  }
+  const y=PRV.bh-hh;                         // GL origin is bottom-left; put our region at the top
+  r.setViewport(0,y,ww,hh);r.setScissor(0,y,ww,hh);
+  r.render(scene,cam);
+  PRV.w=w;PRV.h=h;PRV.dpr=dpr;               // last-drawn size, for memLog
+  return [ww,hh];
+ },
+ // Blit into `target` (a 2D canvas), matching its backing store so the copy is 1:1 with no
+ // resample. Same tick as the render, so no preserveDrawingBuffer is needed.
+ draw(scene,cam,target,w,h,dpr){
+  if(!target)return;
+  const d=PRV.frame(scene,cam,w,h,dpr);if(!d)return;
+  const ww=d[0],hh=d[1];
+  if(target.width!==ww||target.height!==hh){target.width=ww;target.height=hh;}
+  const ctx=target.getContext('2d');if(!ctx)return;
+  ctx.clearRect(0,0,ww,hh);
+  ctx.drawImage(PRV.r.domElement,0,0,ww,hh,0,0,ww,hh);   // source rect = our sub-viewport
+ },
+ // Same, but into a private scratch canvas → PNG data URL (menu thumbnails, studio snapshot).
+ // Going via a 2D scratch means we never read back from the GL buffer at all.
+ dataURL(scene,cam,w,h,dpr){
+  const d=PRV.frame(scene,cam,w,h,dpr);if(!d)return null;
+  const ww=d[0],hh=d[1];
+  if(!PRV.scratch)PRV.scratch=document.createElement('canvas');
+  const s=PRV.scratch;if(s.width!==ww||s.height!==hh){s.width=ww;s.height=hh;}
+  const ctx=s.getContext('2d');ctx.clearRect(0,0,ww,hh);
+  ctx.drawImage(PRV.r.domElement,0,0,ww,hh,0,0,ww,hh);
+  return s.toDataURL('image/png');
+ }
+};
 
 function initThree(){
  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true});
@@ -114,7 +189,7 @@ function buildTable(){
  const ewG=new THREE.BoxGeometry(3,F.wallH+2,segW);
  [-1,1].forEach(sx=>{[-1,1].forEach(sz=>{const w=new THREE.Mesh(ewG,wallMat);
   w.position.set(sx*(F.L/2+1.5),(F.wallH+2)/2-1,sz*(F.goalHalf+segW/2));w.castShadow=true;primTable.add(w);});});
- ledMat=new THREE.MeshStandardMaterial({color:0x38e0ff,emissive:0x38e0ff,emissiveIntensity:1.1,roughness:.4});
+ ledMat=primLedMat=new THREE.MeshStandardMaterial({color:0x38e0ff,emissive:0x38e0ff,emissiveIntensity:1.1,roughness:.4});
  const stripG=new THREE.BoxGeometry(F.L+10,.7,.7);
  [-1,1].forEach(s=>{const st=new THREE.Mesh(stripG,ledMat);st.position.set(0,F.wallH+1.15,s*(F.W/2+1.5));primTable.add(st);});
  // ---- goal cages: round posts + crossbar + back frame + diamond-mesh net, on the goal line x=±L/2 ----

@@ -126,4 +126,5 @@ function gotoMenu(){
  $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');$('league').classList.add('hidden');
  $('menu').classList.remove('hidden');
  indicator.visible=false;dropRing.visible=false;$('count').style.display='none';
+ layApply('menu'); // re-clamp the custom panel arrangement to the current window (js/layout.js)
 }

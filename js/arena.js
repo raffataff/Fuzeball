@@ -162,7 +162,13 @@ let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): solid end-w
 // Registry-driven: select the table by id from CONFIG.tables, show its group, hide the rest,
 // swap its environment, set the collision flag, then show the active SKIN. Adding a table or a
 // skin needs no change here.
-function applyTable(){
+/* onReady (optional) fires once the selected table's skin GLB and room backdrop are BOTH
+   resident — league/cup gate their match start on it so a fixture-forced table never pops in
+   mid-kickoff. It's called synchronously when everything is already cached (the common
+   menu case), so it's cheap to pass. Table assets are lazy (CONFIG.tableAssets): the skin/room
+   fetch is kicked off HERE, and only once the new one has landed do we evict the old — so the
+   screen never shows a hole. Until then applySkin falls back to the procedural primitives. */
+function applyTable(onReady){
  const id=CONFIG.tables[cfg.table]?cfg.table:'classic';   // fall back to classic for unknown/old saves
  activeTable=CONFIG.tables[id];
  ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
@@ -181,8 +187,18 @@ function applyTable(){
  if(pitchGroup&&grp)grp.add(pitchGroup);
  const nets=tableNets[id];
  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
- // load (if needed) + show the active skin; applySkin owns primitives/goal-frame/LED
- if(typeof loadSkin==='function')loadSkin(id,curSkin(id),()=>{applySkin(id);if(typeof drawField==='function')drawField();});
+ // load (if needed) + show the active skin + room; applySkin owns primitives/goal-frame/LED.
+ // Both legs report in before we prune, so the incoming assets are resident before anything is freed.
+ const sk=curSkin(id);
+ let left=2;
+ const settled=()=>{
+  if(--left)return;
+  if(typeof pruneTableAssets==='function')pruneTableAssets(sk?id+'/'+sk:null,hasRoom?id:null);
+  if(onReady)onReady();
+ };
+ if(typeof loadSkin==='function')loadSkin(id,sk,()=>{applySkin(id);if(typeof drawField==='function')drawField();settled();});
+ else settled();
+ if(typeof ensureRoom==='function')ensureRoom(id,settled);else settled();
  applySkin(id);
  if(typeof drawField==='function')drawField();
 }
@@ -196,20 +212,33 @@ function curSkin(id){
 // Show the active skin's GLB, hide the other skins, fall back to the procedural primitives when
 // the active skin has no GLB, repoint the LED-fx material, and hide the primitive goal frame when
 // the skin brings its own posts. Cheap: sub-group .visible toggles (a hidden group hides its subtree).
+// 'Loaded' means the sub-group has CHILDREN, not merely that it exists: loadSkin parents an EMPTY
+// group the moment a fetch starts, so with lazy table assets the first switch to a table would
+// otherwise hide the primitives and render nothing until the GLB landed. Empty = keep primitives up,
+// and the loadSkin callback re-runs this to swap them out.
 function applySkin(id){
  const T=CONFIG.tables[id];if(!T)return;
- const sk=curSkin(id),groups=skinGroups[id]||{},active=groups[sk];
+ const sk=curSkin(id),groups=skinGroups[id]||{},g=groups[sk],active=(g&&g.children.length)?g:null;
  for(const s in groups)groups[s].visible=(s===sk);         // show active skin, hide siblings
  const prims=tablePrimObjs[id];
- if(prims)prims.forEach(m=>{m.visible=!active;});          // primitives fill in only when the skin has no GLB
- if(skinLed[id]&&skinLed[id][sk])ledMat=skinLed[id][sk];   // LED fx follow the visible skin
+ if(prims)prims.forEach(m=>{m.visible=!active;});          // primitives fill in only when the skin has no GLB (yet)
+ // LED fx follow whatever is actually on screen: the active skin's baked LED material, or the
+ // procedural one the primitives use while a skin GLB is still loading / absent.
+ if(active&&skinLed[id]&&skinLed[id][sk])ledMat=skinLed[id][sk];
+ else if(!active&&primLedMat)ledMat=primLedMat;
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
- goalFrames.forEach(g=>{if(g.userData&&g.userData.front)g.userData.front.visible=!custom;});
+ goalFrames.forEach(gf=>{if(gf.userData&&gf.userData.front)gf.userData.front.visible=!custom;});
 }
-// Pick a skin for a table (from the Skin dropdown): remember it, lazy-load its GLB, show it.
+// Pick a skin for a table (from the Skin dropdown): remember it, lazy-load its GLB, show it,
+// then evict skins past CONFIG.tableAssets.cacheSkins — AFTER the new one has landed, so
+// A/B-ing two skins with cacheSkins:2 never re-fetches and never shows a gap.
 function selectSkin(id,skinId){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
- if(typeof loadSkin==='function')loadSkin(id,skinId,()=>{applySkin(id);if(typeof drawField==='function')drawField();});
+ const T=CONFIG.tables[id],hasRoom=!!(T&&T.room);
+ if(typeof loadSkin==='function')loadSkin(id,skinId,()=>{
+  applySkin(id);if(typeof drawField==='function')drawField();
+  if(typeof pruneTableAssets==='function')pruneTableAssets(id+'/'+skinId,hasRoom?id:null);
+ });
  applySkin(id);
  if(typeof saveCfg==='function')saveCfg();
 }

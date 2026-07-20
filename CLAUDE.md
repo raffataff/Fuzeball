@@ -294,6 +294,116 @@ below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
 ### 2026-07-20
+- **⊞ Layout editor — player-arrangeable panels (league lobby + main menu)** (`js/layout.js` new,
+  plus `index.html`, `css/styles.css`, `js/config.js`, one-line hooks in `js/league.js` /
+  `js/flow.js`). A square ⊞ button (`.lyGearBtn`, same chrome as the Options gear — on the menu
+  it sits directly below ⚙, on the league screen it's `position:fixed` top-right so it survives
+  the screen's scroll) toggles an edit mode: every registered panel becomes draggable
+  (grab anywhere) and resizable (gold bottom-right corner handle) on a 16px grid matching the
+  wrap's dot background; a fixed gold toolbar offers ✓ Done / Reset layout. Arrangements persist
+  in `cfg.layouts[screenId] = {p:{elId:{x,y,w,h}},h}` (px within the wrap) inside the normal
+  `fuzeball` localStorage; **no save = the stock CSS flow, byte-identical**.
+  - Mechanism: `.lyCustom` on `.lgWrap` makes it `position:relative` with an explicit height,
+    dissolves the `.lgSide` columns (`display:contents`) and switches every `.panel` to
+    `position:absolute` driven by inline left/top/width/height. `layApply(id)` (called at the
+    end of `openLeague`) applies a save, clamping x/width to the live wrap width; ≤1040px
+    viewports keep the stacked mobile flow untouched. A debounced window-resize listener
+    re-applies. Panels league.js hides at runtime (scout/history/last-round) still get coords
+    while hidden, so they pop in at their saved spot; in edit mode they render as 50%-opacity
+    ghosts (`.lyEditing .panel.hidden{display:block!important}`) so they can be placed.
+    A custom arrangement also stamps `.lyScroll` on the screen (top-anchored + `overflow-y:auto`)
+    since absolute heights can exceed the viewport — league is already like that, the menu isn't.
+    Menu screen: registered as `LAY_SCREENS.menu` over `#menu .panelWrap`
+    (`menuSetupPanel`/`menuKitPanel`/`menuCtlPanel`); applied at layout.js load (menu is on
+    screen at boot) and re-clamped in `gotoMenu`.
+  - Edit mode (`.lyEditing`): grid-line overlay, dashed gold outlines, `cursor:move`, panel
+    CONTENT gets `pointer-events:none` (drags can't trip buttons/selects); drags/resizes go
+    through one `pointerdown` delegate on the wrap + window move/up/cancel listeners, snap via
+    `laySnap`, save on release (`laySave` also recomputes wrap height). First-ever edit seeds
+    the save from `layCapture` (the panels' live flow rects). Reset deletes the save and
+    returns to flow. Panels needed stable ids — added `lgStandingsPanel`/`lgFixturePanel`/
+    `lgSquadPanel` in `index.html` (the rest already had them).
+  - **Adding a screen** = one `LAY_SCREENS` entry (screen id, wrap selector, panel ids) + a
+    `layApply(id)` call where the screen opens + a button wired to `layEditStart(id)`.
+  - Verified live in the browser pane (drag, resize, persist across reload, reset, ≤1040
+    skip; menu editor verified by hot-patching the live page). NOTE: the pane caches BOTH
+    `styles.css` AND `js/*.js` across edits under file:// — cache-bust (or hot-patch) when
+    re-testing changed files there.
+- **Four WebGL contexts → two** (`js/world.js`, `js/customize.js`, `js/league.js`, `js/debug.js`).
+  The customize turntable (`PV`), the menu figurine thumbnails (`THB`) and the league-setup preview
+  (`LSP`) each owned a `WebGLRenderer`. Every GL context carries its own framebuffer AND its own
+  upload of every texture/geometry it draws, so a figurine on the table, in the studio and in a
+  thumbnail existed THREE times in VRAM. They now share one offscreen renderer, **`PRV`**
+  (`world.js`): a caller renders its scene through `PRV.draw(scene,cam,targetCanvas,w,h,dpr)` and
+  the pixels are blitted into its own plain 2D canvas, or `PRV.dataURL(...)` for the thumbnails.
+  Only the main game canvas keeps a dedicated context.
+  - **`#pvCanvas` and `#lgSetupFig` are 2d-only canvases now.** A canvas hands out exactly one
+    context type for its lifetime — attach a `WebGLRenderer` to either again and `getContext('2d')`
+    starts returning null and the preview silently goes blank. Both are CSS-sized, so `PRV`
+    overwriting their backing store is safe.
+  - `LSP` lost `preserveDrawingBuffer:true`. It needed it because it drew straight to a VISIBLE
+    canvas once per interaction with no rAF loop; the pixels now come to rest in the destination 2D
+    canvas, which the compositor won't clear. Same reason `dataURL` goes via a 2D scratch canvas
+    instead of reading back the GL buffer.
+  - **The shared buffer is GROW-ONLY, with each caller rendering into a sub-viewport** rather than
+    resizing per call. The callers interleave at input rate — the finish sliders run
+    `czAfterFinish` on every `input` event, repainting both 240×320 thumbnails while the
+    panel-sized studio is mid-turntable — and resize-per-call would reallocate the framebuffer
+    twice per slider tick. The viewport sits at the buffer's TOP-left (GL's bottom-left origin
+    means `y = bh − hh`) so it maps to `drawImage`'s top-left source rect with no flip;
+    `setScissorTest(true)` keeps `clear()` inside it. `PRV` pins its own `pixelRatio` to 1 and
+    takes CSS px + dpr, so there's one place the conversion happens.
+  - Sizes moved onto the consumers: `PV.w/h/dpr` (set in `pvResize`), `THB.W/H/dpr`, `LSP.W/H/dpr`.
+    `LSP` gained a `ready` flag (its old init guard was `if(this.r)`).
+- **`memLog` re-enabled + `memTex()` added** (`js/debug.js`). `memLog` was fully commented out, so
+  none of the above was measurable. It now also prints resident table skins/rooms BY NAME (a lazy-
+  loader regression reads as extra keys, not a bigger number), the shared preview context's
+  geometry/texture counts, and an estimated texture total. **`memTex(n)`** consoles the fattest
+  resident textures with pixel dimensions — `renderer.info` counts textures but says nothing about
+  size, and size is what costs: one 4096² RGBA texture is 64MB uploaded (86MB with mipmaps) plus
+  roughly that again for the decoded CPU-side image, so an 18-texture scene can be >1GB while every
+  other metric looks trivial. Walks the live scene plus the off-scene template caches, de-duped by
+  texture uuid. Estimate assumes 8-bit RGBA + mipmaps (what an uncompressed glTF PNG/JPG becomes).
+- **Table + room GLBs are now LAZY and LRU-evicted** (`js/config.js`, `js/models.js`,
+  `js/arena.js`, `js/world.js`, `js/league.js`). `loadTableModel` used to loop `CONFIG.tables` and
+  fetch EVERY table's active skin, and `loadRoomModel` every `room` backdrop — three table shells
+  and three environments resident to show one, before the player had done anything. Now boot loads
+  only `cfg.table`'s active skin + its room; the rest load the moment they're picked and evicted
+  once displaced. Figurines/explosions were already lazy (`modelCache`, `ensureExplosionModel`), so
+  this was the last bulk-load left.
+  - **`CONFIG.tableAssets`** (new): `preloadAll` (false; true = old eager boot, handy for profiling
+    with zero pop-in), `cacheSkins:2`, `cacheRooms:1`. Caps count the ACTIVE entry, which is always
+    protected — so `cacheSkins:2` keeps one previous skin warm for instant A/B in the menu,
+    `:1` holds nothing you aren't looking at.
+  - `models.js`: `skinOrder`/`roomOrder` LRU key lists (`touchSkin`/`touchRoom`),
+    `disposeTableSkin(id,skinId)`, `disposeRoom(id)`, `pruneTableAssets(keepSkin,keepRoom)`;
+    `loadRoomModel` split into per-table **`ensureRoom(id,cb)`** (idempotent, guards in-flight via
+    `roomLoading`; the old name survives as a shim). Skin GLBs and rooms are never `clone()`d — the
+    loaded scene IS the only instance — so unlike figurine templates these HARD-dispose via the
+    shared `disposeModelTemplate` (world.js). Prune counts *non-kept* entries rather than raw list
+    length, so a stale asset can't squat the last slot (arena→classic still frees the arena room).
+  - **Registry bookkeeping is the sharp edge**: `loadSkin` stamps every mesh with
+    `userData.skinKey` (`'id/skinId'`), and `disposeTableSkin` filters that key out of
+    `glbGoalGrow`/`glbGoalWall`/`glbGoalSplit` (big-goal widen) and `arenaMorph` (bowl morph)
+    before freeing — otherwise those arrays keep freed meshes alive and `bigGoalUpdate` drives
+    corpses. Any FUTURE registry that indexes skin meshes must be swept here too.
+  - `ledMat` is repointed at whichever skin is showing, so freeing one could dangle it: `world.js`
+    now keeps **`primLedMat`** (the procedural LED material from `buildTable`, never disposed) and
+    both `disposeTableSkin` and `applySkin` fall back to it.
+  - **`applySkin` 'loaded' test changed from group-exists to group-HAS-CHILDREN.** `loadSkin`
+    parents an empty sub-group the instant a fetch starts; with eager loading that was invisible,
+    but lazily it meant the first switch to a table hid the primitives and rendered NOTHING until
+    the GLB landed. Empty now = keep primitives up, and the `loadSkin` callback re-runs `applySkin`
+    to swap them in. (Circuit has no primitives, so it's briefly bare — expected.)
+  - **`applyTable(onReady)`** gained an optional callback firing once skin AND room are resident
+    (synchronous when cached, i.e. the normal menu case); it kicks the fetch off and only prunes
+    after both land, so nothing visible is ever freed. `lgPlayMatch`/`cupPlayTie` now gate kickoff
+    on `tableDone` alongside `modelDone`/`tapeDone` — a division/cup can force a table the player
+    never opened, and the versus-tape screen is the loading room. `selectSkin` prunes on the same
+    settle rule.
+  - Verified by re-read (sandbox wouldn't boot). Boot order confirmed safe: `initThree` runs
+    `buildTable`/`buildArenaTable` (creating `tableGroups.classic`/`.arena` + their primitives)
+    before `startLoading` → `loadTableModel`, which only fresh-creates groups for GLB-only tables.
 - **Circuit table redesigned as a WALLED-goal flat table** (`js/config.js`, `js/arena.js`,
   `js/physics.js`, `tools/build_table.py`). Each goal end is now ONE solid wall the goal mouth is
   inset into — the two mouth-flanking end walls are joined (visually and physically) into a single
