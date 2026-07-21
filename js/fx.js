@@ -103,7 +103,7 @@ function cannonExplodeFx(pos){
    look (rainbow hue-cycle or theme colour) with a brightness pulse. */
 function ledUpdate(rdt){
  if(!ledMat)return;
- const L=CONFIG.leds;
+ const L=(typeof curLeds!=='undefined'&&curLeds)?curLeds:CONFIG.leds;  // per-room LED mood (applyRoom); falls back to defaults
  if(ledGoalT>0){
   ledGoalT-=rdt;
   const c=ledGoalTeam===0?cfg.redColor:cfg.blueColor,ph=MATCH.goalHold-ledGoalT;

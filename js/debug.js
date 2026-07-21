@@ -76,7 +76,7 @@ function memTexCollect(){
  if(typeof respawnSwirlTemplate!=='undefined'&&respawnSwirlTemplate)push(respawnSwirlTemplate.scene);
  if(typeof ballModel!=='undefined')push(ballModel);
  if(typeof pitchModel!=='undefined')push(pitchModel);
- if(typeof tableRooms!=='undefined')for(const k in tableRooms)push(tableRooms[k]);
+ if(typeof roomGroups!=='undefined')for(const k in roomGroups)push(roomGroups[k]);
  const KEYS=['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap','envMap'];
  for(const r of roots)r.traverse(c=>{
   if(!c.material)return;

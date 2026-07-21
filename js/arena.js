@@ -52,7 +52,7 @@ function arenaClampSpawn(pp){
 /* ===== arena mesh generator (shared: visuals, debug, mirrored in tools/build_arena_table.py) ===== */
 let arenaTable=null,arenaLedLine=null,hStep=0,arenaMats=null,tableNets={};
 const tableGroups={};                  // table id -> THREE.Group (holds the procedural fallback + skin sub-groups). Set by buildTable / buildArenaTable / models.js.
-const tableRooms={};                   // table id -> optional environment GLB scene. Populated by models.js loadRoomModel.
+const roomGroups={};                   // ROOM id -> its backdrop environment GLB group (CONFIG.rooms). Populated by models.js ensureRoom; shown/hidden by applyRoom (world.js). Rooms are independent of tables.
 let activeTable=CONFIG.tables.classic; // the currently-selected table def; applyTable() sets it. physics reads its collision via ARENA_ON.
 // --- skins (swappable paint jobs on a table's shape; see CONFIG.tables[*].skins) ---
 const skinGroups={};                   // table id -> { skinId -> THREE.Group holding that skin's loaded GLB }. Filled by models.js loadSkin.
@@ -175,30 +175,23 @@ function applyTable(onReady){
  ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
  // show only the selected table's group (its skin sub-groups + primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
- // environment: a table with its own room GLB (e.g. arena's arcade backdrop) shows it and hides
- // the shared ground plane + crowd cylinder; tables without a room keep the shared backdrop.
- const hasRoom=!!activeTable.room;
- for(const tid in tableRooms){if(tableRooms[tid])tableRooms[tid].visible=(tid===id&&hasRoom);}
- if(typeof groundMesh!=='undefined'&&groundMesh)groundMesh.visible=!hasRoom;
- if(typeof crowdMesh!=='undefined'&&crowdMesh)crowdMesh.visible=!hasRoom;
- // the shared themed pitch plane rides inside whichever table group is active
+ // NOTE: the environment (room GLB + ground/crowd backdrop) is owned by applyRoom (world.js) now —
+ // it's a location, independent of the table. applyTable only touches the table itself.
+ // the shared pitch plane rides inside whichever table group is active
  const grp=tableGroups[id]||primTable;
  if(fieldMesh&&grp){grp.add(fieldMesh);fieldMesh.visible=true;}
  if(pitchGroup&&grp)grp.add(pitchGroup);
  const nets=tableNets[id];
  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
- // load (if needed) + show the active skin + room; applySkin owns primitives/goal-frame/LED.
- // Both legs report in before we prune, so the incoming assets are resident before anything is freed.
+ // load (if needed) + show the active skin; applySkin owns primitives/goal-frame/LED. Prune only
+ // AFTER the incoming skin is resident, so nothing visible is ever freed.
  const sk=curSkin(id);
- let left=2;
  const settled=()=>{
-  if(--left)return;
-  if(typeof pruneTableAssets==='function')pruneTableAssets(sk?id+'/'+sk:null,hasRoom?id:null);
+  if(typeof pruneSkins==='function')pruneSkins(sk?id+'/'+sk:null);
   if(onReady)onReady();
  };
  if(typeof loadSkin==='function')loadSkin(id,sk,()=>{applySkin(id);if(typeof drawField==='function')drawField();settled();});
  else settled();
- if(typeof ensureRoom==='function')ensureRoom(id,settled);else settled();
  applySkin(id);
  if(typeof drawField==='function')drawField();
 }
@@ -234,10 +227,9 @@ function applySkin(id){
 // A/B-ing two skins with cacheSkins:2 never re-fetches and never shows a gap.
 function selectSkin(id,skinId){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
- const T=CONFIG.tables[id],hasRoom=!!(T&&T.room);
  if(typeof loadSkin==='function')loadSkin(id,skinId,()=>{
   applySkin(id);if(typeof drawField==='function')drawField();
-  if(typeof pruneTableAssets==='function')pruneTableAssets(id+'/'+skinId,hasRoom?id:null);
+  if(typeof pruneSkins==='function')pruneSkins(id+'/'+skinId);
  });
  applySkin(id);
  if(typeof saveCfg==='function')saveCfg();

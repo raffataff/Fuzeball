@@ -63,6 +63,7 @@ function loop(t){
  fxUpdate(rdt);
  cameraUpdate(rdt);
  debugUpdate();
+ sweetGuideUpdate();
  if(S.phase!=='menu')hudTick(rdt);
  renderer.render(scene,camera);
 }
@@ -87,7 +88,7 @@ function applyLogo(){
 function boot(){
  if(booted)return;booted=true;
  applyLogo();
- buildRods();applyTable();applyTheme();applyColors();
+ buildRods();applyTable();applyRoom();applyColors();
  if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
  requestAnimationFrame(loop);
  // Footprint dump: boot() is pre-first-frame (GPU uploads lazily on render, so

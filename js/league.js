@@ -10,6 +10,9 @@
 // without forking it.
 const LGC=CONFIG.league,LG_ROLES=['GK','DEF','MID','ATT'],LG_KEYS=['spd','str','acc','ctl','rea','sta','iq'];
 let LG=null;
+// Resolve a room id for a division/cup: pass through a valid CONFIG.rooms id, map a legacy theme
+// key (old saved leagues stored `theme`) via themeToRoom, else fall back to 'open'.
+function roomIdOf(v){return (v&&CONFIG.rooms[v])?v:((v&&CONFIG.themeToRoom[v])||'open');}
 function lgBlk(base){const b=base!=null?base:STC.base;const blk={};for(const k of LG_KEYS)blk[k]=b;return blk;}
 function lgBld(base){return{GK:lgBlk(base),DEF:lgBlk(base),MID:lgBlk(base),ATT:lgBlk(base)};}
 // promotion floor-raise: bump every stat still sitting at the OLD division base up toward the
@@ -184,7 +187,7 @@ function lgNewSeason(keep,opts,forceSlot){
  const divs=[];for(let t=0;t<3;t++){
   const tids=teams.filter(te=>te.div===t).map(te=>te.id);
    divs.push({name:LGC.divisions[t].name,tier:t,teamIds:tids,fixtures:lgFixtures(tids),results:[],champ:null,
-    table:LGC.divisions[t].table||'classic',theme:LGC.divisions[t].theme||'classic',pitch:LGC.divisions[t].pitch||'grass1'});
+    table:LGC.divisions[t].table||'classic',room:roomIdOf(LGC.divisions[t].room),pitch:LGC.divisions[t].pitch||'grass1'});
  }
   LG.divs=divs;
   LG.seasonEnd=null; // season-end summary already shown/applied — don't re-trigger
@@ -318,24 +321,24 @@ function lgPlayMatch(){
  const pdConf=LGC.divisions[playerDiv()];              // this division's brain difficulty (falls back to baseDiff)
  S.lg={op,diff:(pdConf&&pdConf.diff)||LGC.baseDiff,names:[T[pid].name,T[op].name],cols:[T[pid].col,T[op].col],rec:false,
         prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,special:cfg.special,power:cfg.power,
-                 table:cfg.table,theme:cfg.theme,pitch:cfg.pitch}};
+                 table:cfg.table,room:cfg.room,pitch:cfg.pitch}};
  const sel=$('lgControl').value;
  $('league').classList.add('hidden');
  cfg.redColor=T[pid].col;cfg.modelRed=T[pid].model;cfg.blueColor=T[op].col;cfg.modelBlue=T[op].model;cfg.special=LG.special;cfg.power=LG.power;
    document.documentElement.style.setProperty('--c0',cfg.redColor);
    document.documentElement.style.setProperty('--c1',cfg.blueColor);
-  const pdiv=LG.divs[playerDiv()];
-  cfg.table=pdiv.table||LGC.divisions[playerDiv()].table||'classic';
-  cfg.theme=pdiv.theme||LGC.divisions[playerDiv()].theme||'classic';
-  cfg.pitch=pdiv.pitch||LGC.divisions[playerDiv()].pitch||'grass1';
+  const pdiv=LG.divs[playerDiv()],dconf=LGC.divisions[playerDiv()];
+  cfg.table=pdiv.table||dconf.table||'classic';
+  cfg.room=roomIdOf(pdiv.room||pdiv.theme||dconf.room||dconf.theme);   // pdiv.theme = legacy saved leagues (mapped via themeToRoom)
+  cfg.pitch=pdiv.pitch||dconf.pitch||'grass1';
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
  // Table assets are lazy (CONFIG.tableAssets) and a division can force a table the player has
  // never opened, so kickoff waits on its skin/room GLB too — the tape screen (or the brief
  // hidden beat when tape is off) IS the loading room. Cached assets call back synchronously,
  // so the usual case is unchanged.
- let tapeDone=!LGC.tape,modelDone=false,tableDone=false;
- const check=()=>{if(!(tapeDone&&modelDone&&tableDone))return;$('lgTape').classList.add('hidden');start();};
- applyTable(()=>{tableDone=true;check();});applyTheme();
+ let tapeDone=!LGC.tape,modelDone=false,tableDone=false,roomDone=false;
+ const check=()=>{if(!(tapeDone&&modelDone&&tableDone&&roomDone))return;$('lgTape').classList.add('hidden');start();};
+ applyTable(()=>{tableDone=true;check();});applyRoom(()=>{roomDone=true;check();});
  loadPlayerModel(()=>{modelDone=true;check();});
  if(LGC.tape){
   renderLgTape(op);
@@ -926,7 +929,7 @@ function cupPlayTie(){
   // prevKit: carry the EXISTING snapshot through consecutive ties (after tie 1 the live cfg
   // already holds the cup kit/table — re-snapshotting it would lose the user's real setup).
   const pk=(S.lg&&S.lg.prevKit)||{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
-            special:cfg.special,power:cfg.power,table:cfg.table,theme:cfg.theme,pitch:cfg.pitch};
+            special:cfg.special,power:cfg.power,table:cfg.table,room:cfg.room,pitch:cfg.pitch};
   S.lg={cup:true,diff:CUP.diff||LGC.baseDiff,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
         banner:'CHAMPIONS CUP · '+CUP.rounds[LG.cup.round],rec:false,prevKit:pk};
   const sel=$('cupControl').value;
@@ -935,14 +938,14 @@ function cupPlayTie(){
   cfg.special=CUP.special;cfg.power=CUP.power;
   document.documentElement.style.setProperty('--c0',cfg.redColor);
   document.documentElement.style.setProperty('--c1',cfg.blueColor);
-  cfg.table=CUP.table;cfg.theme=CUP.theme;
+  cfg.table=CUP.table;cfg.room=roomIdOf(CUP.room||CUP.theme);
   cfg.pitch=CUP.pitches[Math.floor(Math.random()*CUP.pitches.length)];
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
   // Same lazy-table gate as lgPlayMatch: CUP.table is often one the player never picked in the
   // menu, so hold kickoff until its GLB lands behind the tape screen.
-  let tapeDone=!LGC.tape,modelDone=false,tableDone=false;
-  const check=()=>{if(!(tapeDone&&modelDone&&tableDone))return;$('lgTape').classList.add('hidden');start();};
-  applyTable(()=>{tableDone=true;check();});applyTheme();
+  let tapeDone=!LGC.tape,modelDone=false,tableDone=false,roomDone=false;
+  const check=()=>{if(!(tapeDone&&modelDone&&tableDone&&roomDone))return;$('lgTape').classList.add('hidden');start();};
+  applyTable(()=>{tableDone=true;check();});applyRoom(()=>{roomDone=true;check();});
   loadPlayerModel(()=>{modelDone=true;check();});
   if(LGC.tape){
     renderCupTape(oppId);

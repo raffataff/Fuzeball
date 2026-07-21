@@ -185,13 +185,13 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .lgWrap .panel::before{content:'';position:absolute;top:0;left:18px;right:18px;height:2px;border-radius:0 0 3px 3px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.55;pointer-events:none}
 .lgWrap .panel h3{position:relative}
 #lgTable{display:grid;grid-template-columns:20px minmax(110px,1fr) 16px repeat(5,30px);gap:4px 6px;font-size:15px;font-weight:600;align-items:center;overflow-x:auto;padding-bottom:2px}
-#lgTable .h{font-family:'Russo One',sans-serif;font-size:9.5px;letter-spacing:.08em;color:#7f93ba;text-align:center}
+#lgTable .h{font-family:'Russo One',sans-serif;font-size:9.5px;letter-spacing:.18em;color:#ba7f7f;text-align:center}
 #lgTable .h:nth-child(2){text-align:left}
 #lgTable .h:nth-child(3){font-size:8px}
-#lgTable .nm{display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
+#lgTable .nm{display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;font-weight:400}
 #lgTable .nm.me{color:var(--gold)}
 #lgTable .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
-#lgTable .num{font-family:'Russo One',sans-serif;font-size:12px;text-align:center;color:#c6d2ea}
+#lgTable .num{font-family:'Russo One',sans-serif;font-size:12px;text-align:center;color:#c6d2ea;font-weight:400}
 .lgFixture{display:flex;align-items:center;justify-content:center;gap:12px;font-family:'Russo One',sans-serif;font-weight:800;font-size:16px;margin:4px 0 10px;flex-wrap:wrap;text-align:center}
 .lgVs{color:#5d6f92;font-size:11px;letter-spacing:.2em}
 .lgPlayBtn{width:100%;margin-top:6px}

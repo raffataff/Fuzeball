@@ -114,8 +114,8 @@ function gotoMenu(){
    cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
    cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;
    cfg.special=S.lg.prevKit.special;cfg.power=S.lg.prevKit.power;
-   cfg.table=S.lg.prevKit.table;cfg.theme=S.lg.prevKit.theme;cfg.pitch=S.lg.prevKit.pitch;
-   applyTable();applyTheme();
+   cfg.table=S.lg.prevKit.table;cfg.room=S.lg.prevKit.room;cfg.pitch=S.lg.prevKit.pitch;
+   applyTable();applyRoom();
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
   S.phase='menu';clearBalls();clearPU();clearFractures();

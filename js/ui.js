@@ -14,13 +14,13 @@ function refreshSkinSelect(){
  if(sel.parentElement)sel.parentElement.style.display=Object.keys(skins).length>1?'':'none';
 }
 function bindUI(){
- // populate the table + theme (livery) dropdowns from the CONFIG registries (like the pitch select below),
- // so adding an entry to CONFIG.tables / CONFIG.themes auto-adds its option — no HTML edit needed.
+ // populate the table + location dropdowns from the CONFIG registries (like the pitch select below),
+ // so adding an entry to CONFIG.tables / CONFIG.rooms auto-adds its option — no HTML edit needed.
  const tableSel=$('setTable');tableSel.innerHTML='';
  for(const [tid,tdef] of Object.entries(CONFIG.tables)){const o=document.createElement('option');o.value=tid;o.textContent=(tdef.name||tid).toUpperCase();tableSel.appendChild(o);}
- const themeSel=$('setTheme');themeSel.innerHTML='';
- for(const [thid,thdef] of Object.entries(CONFIG.themes)){const o=document.createElement('option');o.value=thid;o.textContent=thdef.name||thid;themeSel.appendChild(o);}
- $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setGameTime').value=String(cfg.gameTime||0);$('setTheme').value=cfg.theme;
+ const roomSel=$('setRoom');roomSel.innerHTML='';
+ for(const [rid,rdef] of Object.entries(CONFIG.rooms)){const o=document.createElement('option');o.value=rid;o.textContent=rdef.name||rid;roomSel.appendChild(o);}
+ $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setGameTime').value=String(cfg.gameTime||0);$('setRoom').value=cfg.room;$('setReflect').checked=cfg.reflections;
  $('setTable').value=cfg.table||'classic';
  refreshSkinSelect();
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
@@ -32,7 +32,8 @@ function bindUI(){
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
  $('setGameTime').onchange=e=>{cfg.gameTime=+e.target.value;saveCfg();};
- $('setTheme').onchange=e=>{cfg.theme=e.target.value;applyTheme();saveCfg();};
+ $('setRoom').onchange=e=>{cfg.room=e.target.value;applyRoom();saveCfg();};
+  $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;applyRoom();saveCfg();};
   $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();refreshSkinSelect();saveCfg();};
   $('setSkin').onchange=e=>{if(typeof selectSkin==='function')selectSkin(cfg.table,e.target.value);};
   // populate pitch select from the CONFIG.pitches registry

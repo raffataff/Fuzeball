@@ -23,6 +23,7 @@ addEventListener('keydown',e=>{
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(S.userTeam<0)return;
+ if(e.code==='KeyB'){toggleSweetGuide();return;}   // toggle the sweet-spot guide (controller ○ mirrors this)
  if(e.code==='Space')kickRod(S.ctrlRods[S.ctrl]);
  if(e.code==='ShiftLeft'||e.code==='ShiftRight')S.ctrlRods[S.ctrl].raise=true;
  if(e.code==='ArrowLeft'||e.code==='KeyQ')setCtrl(S.ctrl-1);
@@ -93,7 +94,7 @@ function gamepadUpdate(dt){
  if(!gp){S.tcMult=1;return;}
  // snapshot the rising edge (down now, up last poll) of every button we use, in one pass
  const just={};
- for(const i of [0,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
+ for(const i of [0,1,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
  if(just[9]&&(S.phase==='play'||S.phase==='count'||S.phase==='pause'))togglePause();
  if(!(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&S.userTeam>=0&&S.ctrlRods.length)){
   if(gpRaiseHeld)gpRaiseHeld=false;S.tcMult=1;return;
@@ -130,6 +131,7 @@ function gamepadUpdate(dt){
  if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
  if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);
  if(just[0]||(!TC&&just[7]))kickRod(r);              // A / RT (RT only in classic — in TC it's the speed trigger)
+ if(just[1])toggleSweetGuide();                      // ○ (B) — toggle the sweet-spot guide
  if(just[3])S.camMode=(S.camMode+1)%CAM.modes.length;// Y
  if(just[4]||just[14])setCtrl(S.ctrl-1);             // LB / d-pad ←
  if(just[5]||just[15])setCtrl(S.ctrl+1);             // RB / d-pad →

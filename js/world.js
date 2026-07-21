@@ -1,6 +1,11 @@
 'use strict';
 /* ================= three.js world ================= */
-let renderer,scene,camera,dirLight;
+let renderer,scene,camera,dirLight,hemiLight;
+// Room (location) runtime state. roomGroups (id->backdrop GLB group) lives in arena.js (loaded
+// first). activeRoom = the current CONFIG.rooms entry; roomEnvCache caches baked reflection maps
+// ('syn:id' synthetic | 'glb:id' from the room model); curLeds = CONFIG.leds merged with the
+// active room's led override (fx.js ledUpdate reads it); pmremGen is the shared PMREM baker.
+let activeRoom=null,roomEnvCache={},pmremGen=null,curLeds=CONFIG.leds;
 const teamMat=[null,null],teamGlow=[null,null];
 let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
 // primLedMat = the PROCEDURAL led material built in buildTable. ledMat is repointed at whichever
@@ -131,7 +136,7 @@ function initThree(){
  scene=new THREE.Scene();
  camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,700);
  camera.position.set(0,92,86);camera.lookAt(0,0,2);
- scene.add(new THREE.HemisphereLight(0xcdd9ff,0x1c1610,.85));
+ hemiLight=new THREE.HemisphereLight(0xcdd9ff,0x1c1610,.85);scene.add(hemiLight); // colours/intensity set per-room by applyRoom
  dirLight=new THREE.DirectionalLight(0xffffff,1.05);
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
  dirLight.shadow.mapSize.set(2048,2048);
@@ -141,32 +146,45 @@ function initThree(){
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
-  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildEnvironment();
+  buildTable();buildArenaTable();buildCrowd();buildFxPools();
+  scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 }
 
-/* Bake a neon-arcade environment map (PMREM) and set it as scene.environment so
-   EVERY MeshStandardMaterial — balls (esp. the metallic golden), the table, and
-   the players — picks up reflections/soft image-based lighting. Without this,
-   fully-metallic materials render black (nothing to reflect). Baked once, static.
-   Colours echo the arena room so reflections read as "the room" on any table. */
-function buildEnvironment(){
- if(!renderer||!scene)return;
- const pmrem=new THREE.PMREMGenerator(renderer);
- pmrem.compileEquirectangularShader();
+/* Reflection env-maps (PMREM). scene.environment feeds EVERY MeshStandardMaterial — balls
+   (esp. the metallic golden), the table, the players — soft image-based lighting + reflections;
+   without one, fully-metallic materials render black. Two bakers, both routed through applyRoom:
+     • bakeSyntheticEnv — a room's `env` spec (coloured panels in a dark shell). Cheap, static.
+       Used when a room has no glb, when reflect is off, or when cfg.reflections is off.
+     • bakeGlbEnv — real reflections baked FROM a room's backdrop GLB. Used when the room
+       reflects AND cfg.reflections is on. */
+function pmrem(){return pmremGen||(pmremGen=new THREE.PMREMGenerator(renderer));}
+function bakeSyntheticEnv(spec){
+ if(!renderer)return null;
  const es=new THREE.Scene();
  es.add(new THREE.Mesh(new THREE.BoxGeometry(560,320,560),                       // dark room shell
-  new THREE.MeshBasicMaterial({color:0x0b1022,side:THREE.BackSide})));
- const panel=(col,x,y,z,w,h)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
-  new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide}));
-  m.position.set(x,y,z);m.lookAt(0,0,0);es.add(m);};                             // neon strips → coloured reflections
- panel(0x18e0ff,-250, 30,-110,260,120);   // cyan wall glow
- panel(0xff2bd6, 250, 30, 110,260,120);   // magenta wall glow
- panel(0x9b6bff,   0,150,-250,340,90);    // purple back strip
- panel(0xffffff,   0,155,   0,150,150);   // soft white key from above
- scene.environment=pmrem.fromScene(es,0.02,1,1200).texture;                      // sigma small (≤20 blur samples); near/far cover the 560-unit shell
- if(!scene.background)scene.background=new THREE.Color(0x070910);                 // subtle backdrop where nothing else draws
- pmrem.dispose();
+  new THREE.MeshBasicMaterial({color:(spec&&spec.shell)||0x0b1022,side:THREE.BackSide})));
+ if(spec&&spec.panels)for(const p of spec.panels){                               // [hex,x,y,z,w,h] coloured glow panels
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(p[4],p[5]),new THREE.MeshBasicMaterial({color:p[0],side:THREE.DoubleSide}));
+  m.position.set(p[1],p[2],p[3]);m.lookAt(0,0,0);es.add(m);
+ }
+ const tex=pmrem().fromScene(es,0.02,1,1200).texture;                            // sigma small; near/far cover the 560-unit shell
+ es.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
+ return tex;
+}
+/* Bake from the actual room model: temporarily reparent the backdrop group into an isolated
+   scene (with an ambient fill so non-emissive surfaces register), bake, then move it back. This
+   is synchronous — no frame renders in between — so the on-screen group is undisturbed. */
+function bakeGlbEnv(group){
+ if(!renderer||!group)return null;
+ const parent=group.parent,vis=group.visible;
+ const es=new THREE.Scene();
+ es.add(new THREE.HemisphereLight(0xffffff,0x404040,1.0));
+ group.visible=true;es.add(group);                                              // move out of the main scene (Object3D has one parent)
+ const tex=pmrem().fromScene(es,0.04,1,1200).texture;
+ if(parent)parent.add(group);else scene.add(group);                             // move it back
+ group.visible=vis;
+ return tex;
 }
 
 function buildTable(){
@@ -452,13 +470,51 @@ function drawField(){
   }
 }
 
-function applyTheme(){
- const th=THEMES[cfg.theme];
- scene.background=new THREE.Color(th.bg);
- scene.fog=new THREE.Fog(th.bg,200,430);
- wallMat.color.set(th.wall);
- ledMat.color.set(th.led);ledMat.emissive.set(th.led);
- drawField();
+/* Pick the active room's reflection env (synthetic vs baked-from-GLB), cache it, and install it.
+   Re-run whenever the room, its loaded state, or cfg.reflections changes. */
+function setRoomEnv(id,rm){
+ if(!renderer||!scene)return;
+ const glbReady=roomGroups[id]&&roomGroups[id].children.length;
+ const wantGlb=!!(cfg.reflections&&rm.reflect&&glbReady);
+ const key=(wantGlb?'glb:':'syn:')+id;
+ if(!roomEnvCache[key])roomEnvCache[key]=wantGlb?bakeGlbEnv(roomGroups[id]):bakeSyntheticEnv(rm.env);
+ if(roomEnvCache[key])scene.environment=roomEnvCache[key];
+}
+/* Apply the selected room/location: backdrop colour + fog, scene lighting, LED mood, reflection
+   env, and the backdrop geometry (a room GLB, or the shared ground plane + rotating crowd when it
+   has none). Rooms are independent of the table + pitch — any combination is valid. onReady (opt)
+   fires once the room's GLB is resident (synchronous when cached / when the room has no GLB), so
+   league/cup can gate kickoff on it like they do the table. */
+function applyRoom(onReady){
+ const id=CONFIG.rooms[cfg.room]?cfg.room:'open';
+ const rm=CONFIG.rooms[id];activeRoom=rm;
+ scene.background=new THREE.Color(rm.bg);
+ scene.fog=new THREE.Fog(rm.bg,rm.fog?rm.fog[0]:200,rm.fog?rm.fog[1]:430);
+ if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
+ if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
+ // LED mood: merge the room's override over CONFIG.leds (fx.js ledUpdate reads curLeds). A 'hold'
+ // idle seeds the strip colour now; 'rainbow' is driven per-frame so its seed doesn't matter.
+ curLeds=Object.assign({},CONFIG.leds,rm.led||{});
+ if(curLeds.idle!=='rainbow'&&ledMat){const c=(rm.led&&rm.led.color)||0x38e0ff;ledMat.color.set(c);if(ledMat.emissive)ledMat.emissive.set(c);}
+ const hasGlb=!!rm.glb;
+ // show the active room's backdrop (if resident), hide the rest; swap the shared ground+crowd in
+ // when this room has no bespoke backdrop.
+ const show=()=>{
+  for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&hasGlb);}
+  if(groundMesh)groundMesh.visible=!hasGlb;
+  if(crowdMesh)crowdMesh.visible=!hasGlb;
+ };
+ show();setRoomEnv(id,rm);
+ if(hasGlb&&typeof ensureRoom==='function'){
+  ensureRoom(id,()=>{                                    // GLB resident: reveal it + upgrade env to the real reflection bake
+   show();setRoomEnv(id,rm);
+   if(typeof pruneRooms==='function')pruneRooms(id);
+   if(onReady)onReady();
+  });
+ }else{
+  if(typeof pruneRooms==='function')pruneRooms(null);
+  if(onReady)onReady();
+ }
 }
 function applyColors(){
  for(let t=0;t<2;t++){

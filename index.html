@@ -61,7 +61,7 @@
   <button id="btnOptions" class="optGear" title="Options">⚙</button>
   <button id="menuEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.16</div>
+  <div class="tagline">v0.1.17</div>
   <div class="modeRow">
     <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
     <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
@@ -75,7 +75,8 @@
       <div class="row"><label><span class="lblB">Team 2</span> AI</label><select id="setDiffBlue"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label>Goals to win</label><select id="setGoals"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
       <div class="row"><label>Game time</label><select id="setGameTime"><option value="0" selected>Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option></select></div>
-       <div class="row"><label>Table theme</label><select id="setTheme"><option value="classic">Classic Club</option><option value="neon">Neon Nights</option><option value="royal">Royal Arena</option><option value="verdant">Verdant Field</option></select></div>
+       <div class="row"><label>Location</label><select id="setRoom"></select></div>
+       <div class="row"><label>Reflections</label><input type="checkbox" id="setReflect" checked></div>
        <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
        <div class="row"><label>Skin</label><select id="setSkin"></select></div>
        <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
@@ -408,7 +409,7 @@
   'js/core.js','js/config.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/main.js'
+  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/main.js'
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;

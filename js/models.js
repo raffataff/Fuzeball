@@ -9,7 +9,7 @@
    cannonball, golden, split) and map them to ball types. */
 const rodTemplates={};   // men-count -> loaded rod scene (bar+handle+collar+knob)
 let ballModel=null;      // loaded ball GLB scene (with material slots)
-let roomModel=null;      // deprecated — per-table environment GLBs now live in tableRooms[id] (arena.js); kept to avoid a dangling ref
+let roomModel=null;      // deprecated — room/location GLBs now live in roomGroups[id] (arena.js), keyed by CONFIG.rooms id; kept to avoid a dangling ref
 let pitchModel=null;     // loaded pitch GLB scene (one mesh per theme variant)
 const ballMatMap={};     // ballType -> material name in GLB
 const pitchMatMap={};    // pitch variant -> material (unused for now; mirrors ball loader)
@@ -33,10 +33,12 @@ function loadTableModel(){
   if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
   if(!eager&&id!==cur)continue;                    // lazy: everything but the active table waits for a pick
   const sk=(typeof curSkin==='function')?curSkin(id):null;
-  if(sk)loadSkin(id,sk,()=>{applyTable();applyTheme();applyColors();drawField();});
+  if(sk)loadSkin(id,sk,()=>{applyTable();applyRoom();applyColors();drawField();});
  }
- if(eager){for(const id in CONFIG.tables)ensureRoom(id);}
- else ensureRoom(cur);
+ // Rooms (locations) are their own axis now: boot fetches only the active room's backdrop; the
+ // rest load when picked. preloadAll fetches every room's backdrop up front (old eager boot).
+ if(eager){for(const id in CONFIG.rooms)ensureRoom(id);}
+ else{const rm=(typeof cfg!=='undefined'&&CONFIG.rooms[cfg.room])?cfg.room:'open';ensureRoom(rm,()=>{if(typeof applyRoom==='function')applyRoom();});}
 }
 
 /* --- skin residency (LRU) --------------------------------------------------
@@ -125,12 +127,12 @@ function disposeTableSkin(id,skinId){
    ON SCREEN and are never freed; the caps count them, so cacheSkins:1 leaves room for nothing
    else and cacheSkins:2 keeps one previous skin warm. Deliberately measured as "how many NON-kept
    entries may stay" rather than a raw list length, so a stale asset can't squat the last slot
-   when the active table brings none of its own (e.g. switching arena → classic, which has no
-   room, still frees the arena backdrop). Called only after a switch has SETTLED — the incoming
-   asset is already resident, so nothing visible is ever freed. */
-function pruneTableAssets(keepSkin,keepRoom){
- const A=CONFIG.tableAssets||{};
- const extraS=Math.max(0,(A.cacheSkins||1)-1),extraR=Math.max(0,(A.cacheRooms||1)-1);
+   when the active table brings none of its own. Called only after a switch has SETTLED — the
+   incoming asset is already resident, so nothing visible is ever freed.
+   Skins (table paint jobs) and rooms (locations) are pruned by SEPARATE functions now that they're
+   independent axes: applyTable prunes skins, applyRoom prunes rooms. */
+function pruneSkins(keepSkin){
+ const extraS=Math.max(0,((CONFIG.tableAssets||{}).cacheSkins||1)-1);
  let nS=0;for(const k of skinOrder)if(k!==keepSkin)nS++;
  for(let i=0;i<skinOrder.length&&nS>extraS;){
   const k=skinOrder[i];
@@ -138,6 +140,9 @@ function pruneTableAssets(keepSkin,keepRoom){
   const s=k.indexOf('/');disposeTableSkin(k.slice(0,s),k.slice(s+1));   // splices k out of skinOrder itself
   if(skinOrder[i]===k)i++;else nS--;                                    // guard: only count down on a real removal
  }
+}
+function pruneRooms(keepRoom){
+ const extraR=Math.max(0,((CONFIG.tableAssets||{}).cacheRooms||1)-1);
  let nR=0;for(const id of roomOrder)if(id!==keepRoom)nR++;
  for(let i=0;i<roomOrder.length&&nR>extraR;){
   const id=roomOrder[i];
@@ -146,6 +151,8 @@ function pruneTableAssets(keepSkin,keepRoom){
   if(roomOrder[i]===id)i++;else nR--;
  }
 }
+// Back-compat shim (no in-tree caller): prune both axes at once.
+function pruneTableAssets(keepSkin,keepRoom){pruneSkins(keepSkin);pruneRooms(keepRoom);}
 
 /* Register a loaded table GLB's goal parts for the big-goal widen. The diamond net already
    grows (it's a goalFrames sub-group fx.js scales on z), but the GLB frame posts and the little
@@ -175,51 +182,52 @@ function registerBigGoalMeshes(root){
  console.log('registerBigGoalMeshes: '+nGrow+' frame + '+nWall+' wall mesh(es) ('+glbGoalSplit.length+' split)');
 }
 
-/* --- arena room / environment ---------------------------------------------
-   Authored in game/world coords (floor ~y=-44, walls ±190, centred on origin),
-   so it drops straight into the scene with no transform. Tied to the arena
-   table: applyTable toggles its visibility with ARENA_ON. */
-/* Load ONE table's optional environment GLB into tableRooms[id]; applyTable toggles which is
-   shown. Lazy + idempotent: a no-op if the table has no room, it's already resident, or a fetch
-   is in flight. cb runs on success, failure, and every no-op, so callers can gate on it. */
+/* --- rooms / locations (environment backdrops) ------------------------------
+   A room GLB is authored in game/world coords (floor ~y=-44, walls ±190, centred on origin),
+   so it drops straight into the scene with no transform. Rooms are keyed by ROOM id (CONFIG.rooms)
+   and are independent of tables — applyRoom (world.js) toggles which one is shown and bakes its
+   reflection env. */
+/* Load ONE room's backdrop GLB into roomGroups[id]. Lazy + idempotent: a no-op if the room has no
+   glb, it's already resident, or a fetch is in flight. cb runs on success, failure, and every
+   no-op, so applyRoom can gate on it. */
 const roomLoading={};
 function ensureRoom(id,cb){
- const T=CONFIG.tables[id];
- if(!T||!T.room){if(cb)cb();return;}
- if(tableRooms[id]){touchRoom(id);if(cb)cb();return;}
- if(roomLoading[id]){if(cb)cb();return;}            // in flight — applyTable runs again on arrival
+ const R=CONFIG.rooms&&CONFIG.rooms[id];
+ if(!R||!R.glb){if(cb)cb();return;}
+ if(roomGroups[id]){touchRoom(id);if(cb)cb();return;}
+ if(roomLoading[id]){if(cb)cb();return;}            // in flight — applyRoom runs again on arrival
  roomLoading[id]=true;touchRoom(id);
- const url=(T.folder||'')+T.room;
+ const url=(R.folder||'')+R.glb;
  new THREE.GLTFLoader().load(url,gltf=>{
   delete roomLoading[id];
   try{
    const room=gltf.scene;
    room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // backdrop, not a shadow caster
    room.visible=false;scene.add(room);
-   tableRooms[id]=room;
-   applyTable();                                 // set initial visibility to match the current table
-   console.log(T.room+' loaded ('+id+')');
+   roomGroups[id]=room;
+   console.log('room "'+id+'" loaded ('+R.glb+')');
   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
   if(cb)cb();
  },undefined,()=>{
   delete roomLoading[id];
   const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
-  console.warn('room GLB missing for '+id+' ('+url+'), no environment');
+  console.warn('room GLB missing for '+id+' ('+url+'), using shared backdrop');
   if(cb)cb();
  });
 }
-/* Free an evicted room backdrop. Rooms are never cloned, so a hard dispose is safe.
-   NEVER call on the room currently visible. */
+/* Free an evicted room backdrop + its baked GLB reflection map. Rooms are never cloned, so a hard
+   dispose is safe. NEVER call on the room currently visible. */
 function disposeRoom(id){
- const room=tableRooms[id];if(!room)return;
- scene.remove(room);delete tableRooms[id];
+ const room=roomGroups[id];if(!room)return;
+ scene.remove(room);delete roomGroups[id];
  const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
  disposeModelTemplate(room);
- console.log('table room freed: '+id);
+ if(typeof roomEnvCache!=='undefined'){const k='glb:'+id;if(roomEnvCache[k]){if(roomEnvCache[k].dispose)roomEnvCache[k].dispose();delete roomEnvCache[k];}}
+ console.log('room freed: '+id);
 }
-// Back-compat shim: the old eager all-rooms loader. Nothing calls it now (loadTableModel
-// drives ensureRoom) — kept so an external/console caller doesn't hit a missing function.
-function loadRoomModel(){for(const id in CONFIG.tables)ensureRoom(id);}
+// Back-compat shim: the old eager all-rooms loader. Nothing calls it now — kept so an
+// external/console caller doesn't hit a missing function.
+function loadRoomModel(){for(const id in CONFIG.rooms)ensureRoom(id);}
 
 /* --- rods ----------------------------------------------------------------- */
 function loadRodModels(onReady){
