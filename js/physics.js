@@ -26,6 +26,13 @@ function stepBall(b,h){
  // safety: if physics ever produces a non-finite state, re-drop this ball instead of poisoning the sim.
  if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.z)||!isFinite(v.x)||!isFinite(v.y)||!isFinite(v.z)){
   p.set(rand(-5,5),PHY.redropY,rand(-8,8));v.set(0,0,0);b.spin=0;syncBall(b);return;}
+ // knuckleball: erratic flutter — periodically re-kick the side-spin to a fresh random value so the
+ // flight path weaves unpredictably. Energy-safe: spin only rotates the horizontal velocity below.
+ if(b.t.knuckle){
+  b.knuckT-=h;
+  if(b.knuckT<=0){const K=b.t.knuckle;b.knuckT=rand(K.every[0],K.every[1]);
+   b.spin=clamp(b.spin+rand(-K.kick,K.kick),-K.max,K.max);}
+ }
  // spin/Magnus curve: rotate the horizontal velocity by a small angle (pure rotation = no energy added = stable).
  if(b.spin){
   const a=clamp(b.spin*PHY.spinTurn*h,-PHY.spinMax,PHY.spinMax),cs=Math.cos(a),sn=Math.sin(a),vx=v.x,vz=v.z;
@@ -214,8 +221,11 @@ function collideRod(b,r){
     // tiny imperfection prevents pixel-perfect side-to-side oscillations
     const jit=Math.abs(jm)*FOOT_JITTER;
     b.v.x+=(Math.random()-.5)*jit;b.v.y+=(Math.random()-.5)*jit*.3;b.v.z+=(Math.random()-.5)*jit;
-    // aim-assist bends a clean shot goalward: in the timed power window as before, OR on a sweet hit
-    if(pow||(sweet&&SW.forceAssist))aimAssist(b,r);
+    // aim-assist bends a shot goalward: for the HUMAN only on a clean strike (power window or sweet
+    // hit — a skill reward), but for AI rods on EVERY contact so they reliably aim in all modes.
+    // aimAssist itself only acts on shots already moving goalward within its cone, so a defensive
+    // touch (moving away) is untouched — this can't turn stray clears into shots.
+    if(pow||(sweet&&SW.forceAssist)||!isUserRod(r))aimAssist(b,r);
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
@@ -268,7 +278,7 @@ function collideRod(b,r){
     // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    if(pow)aimAssist(b,r);
+    if(pow||!isUserRod(r))aimAssist(b,r);   // human: power window only; AI: every contact (goalward-only, see foot-box note)
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;

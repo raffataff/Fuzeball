@@ -23,7 +23,7 @@ function bindUI(){
  $('setDiffRed').value=cfg.diffRed;$('setDiffBlue').value=cfg.diffBlue;$('setGoals').value=cfg.goals;$('setGameTime').value=String(cfg.gameTime||0);$('setRoom').value=cfg.room;$('setReflect').checked=cfg.reflections;
  $('setTable').value=cfg.table||'classic';
  refreshSkinSelect();
- $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;
+ $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;$('setReplay').checked=cfg.replay;
  $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;$('setAmbience').checked=cfg.ambience;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
  $('nameRed').maxLength=$('nameBlue').maxLength=CONFIG.control.nameMaxLength;
@@ -46,6 +46,7 @@ function bindUI(){
   pitchSel.onchange=e=>{cfg.pitch=e.target.value;if(typeof drawField==='function')drawField();saveCfg();};
  $('setSpecial').onchange=e=>{cfg.special=e.target.checked;saveCfg();};
  $('setPower').onchange=e=>{cfg.power=e.target.checked;saveCfg();};
+ $('setReplay').onchange=e=>{cfg.replay=e.target.checked;saveCfg();};
  $('setAuto').onchange=e=>{cfg.auto=e.target.checked;saveCfg();};
  $('setSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);saveCfg();};
  $('setAmbience').onchange=e=>{cfg.ambience=e.target.checked;saveCfg();};

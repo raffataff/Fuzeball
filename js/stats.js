@@ -41,7 +41,11 @@ function stPred(r){return Math.max(STC.predFloor,(1+(ST(r,'iq')-STC.base)*STC.pr
 // acts above base accuracy, only on goalward shots already near the target cone,
 // and the bend is clamped small — it sweetens good strikes, it can't rescue bad ones.
 function aimAssist(b,r){
- const a=Math.max(0,ST(r,'acc')-STC.base)/(STC.max-STC.base)*STC.assistMax;if(a<=0)return;
+ // Decoupled from a hard accuracy gate: every rod gets a BASELINE bend (assistBase) so aiming
+ // happens even with no build, and accuracy scales it up toward assistMax (and fades it toward 0
+ // below base). Accuracy still matters — it just no longer switches aiming fully off at base.
+ const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
+ const a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);if(a<=0)return;
  const dir=r.team===0?1:-1,v=b.v,p=b.m.position;
  if(v.x*dir<STC.assistMinVX)return;
  // aim at the rod's chosen gap when gap-aiming this frame, else the goal-mouth centre (z=0)

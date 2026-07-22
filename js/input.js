@@ -10,6 +10,7 @@ function setCtrl(i){
 addEventListener('keydown',e=>{
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
+ if(S.phase==='replay'){replaySkip();return;}   // any key skips the goal replay
  if(e.code==='Escape'){
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
@@ -40,6 +41,7 @@ cvs.addEventListener('mousemove',e=>{
  r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens;
 });
 cvs.addEventListener('mousedown',e=>{
+ if(S.phase==='replay'){replaySkip();return;}   // click skips the goal replay
  if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||S.userTeam<0)return;
  if(e.button===0)kickRod(S.ctrlRods[S.ctrl]);
  if(e.button===2)S.ctrlRods[S.ctrl].raise=true;
@@ -95,6 +97,7 @@ function gamepadUpdate(dt){
  // snapshot the rising edge (down now, up last poll) of every button we use, in one pass
  const just={};
  for(const i of [0,1,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
+ if(S.phase==='replay'){if(just[0]||just[1]||just[9])replaySkip();S.tcMult=1;return;}   // A/B/Start skip the goal replay
  if(just[9]&&(S.phase==='play'||S.phase==='count'||S.phase==='pause'))togglePause();
  if(!(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&S.userTeam>=0&&S.ctrlRods.length)){
   if(gpRaiseHeld)gpRaiseHeld=false;S.tcMult=1;return;

@@ -181,7 +181,15 @@ function bakeGlbEnv(group){
  const es=new THREE.Scene();
  es.add(new THREE.HemisphereLight(0xffffff,0x404040,1.0));
  group.visible=true;es.add(group);                                              // move out of the main scene (Object3D has one parent)
+ // Hide transparent/transmissive meshes (glass etc.) for the bake: three's PMREM pass has no
+ // transmission render and nothing behind them, so they bake as solid WHITE blobs that flood
+ // scene.environment and wash the whole scene. Glass barely reads in a reflection anyway.
+ // All restored right after the bake, so the room on screen is untouched.
+ const hidden=[];
+ group.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+  if(o.visible&&ms.some(m=>m&&(m.transmission>0||(m.transparent&&m.opacity<1)))){hidden.push(o);o.visible=false;}});
  const tex=pmrem().fromScene(es,0.04,1,1200).texture;
+ for(const o of hidden)o.visible=true;                                          // restore
  if(parent)parent.add(group);else scene.add(group);                             // move it back
  group.visible=vis;
  return tex;

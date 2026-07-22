@@ -53,6 +53,7 @@ function redropBall(b){
  b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null; // clear the stall tracker
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
+ replayCut();   // the teleport would streak across a replay — drop the stale footage
 }
 // How fast the dead-ball stuck-timer should tick at world position p. Returns >1 inside one of
 // the active table's deadzones (corner pockets etc. — where a pinned ball can't be reached, so

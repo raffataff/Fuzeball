@@ -293,6 +293,59 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info. The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-22
+- **Goal instant replays** (`js/replay.js` new, + `CONFIG.replay`/`REPLAY` alias + `cfg.replay`
+  toggle, hooks in `main.js`/`flow.js`/`balls.js`/`powerups.js`/`input.js`/`ui.js`, `#replayUI`
+  DOM + CSS). A flight recorder (`recordReplay`, called in the fixed-step loop AFTER `physics` and
+  only while the post-step phase is still `'play'` — so the goal step itself is never recorded and
+  the buffer ends with the ball still at the line for the freeze-frame) writes every ball's pos +
+  type and every rod's offset/angle into preallocated typed-array ring buffers (~7s @ sim hz,
+  ~100KB, zero allocation per step). On a goal, `onGoal` queues (`replayQueue`); when the normal
+  goal-celebration timer expires, `main.js` hands off to `replayStart()` instead of `startCount`
+  **iff** `replayPending()` (cfg on + footage ≥ `minLen`). Playback = new `S.phase==='replay'`:
+  sim frozen (not in the `active` list), `replayUpdate(rdt)` re-poses 4 pooled ghost spheres
+  (re-tinted per recorded ball type, trails via a `spawnTrail` shim off the live sprite pool) and
+  drives the REAL rod pivots straight from the buffer (display only — `r.offset/r.angle` untouched;
+  the interp block restores them next active frame). Camera: 5 hand-placed shots (rail / net cam /
+  corner crane / sky drone / ball cam — rides goal-side of the ball gazing back up the pitch at
+  the scoring team via a per-shot look override `RP.lookTo`+`RP.hasLook`), random per replay,
+  never repeating, hand-held chase (`camLerp`/`lookLerp`), easing into slow-mo
+  (`slowLast`→`slowSpeed`) with an fov push-in (`zoom`), a freeze-frame hold (`holdT`), then
+  `flash()` + `startCount(recount)`. ALL shot placement numbers live in `CONFIG.replay.shots`
+  (per-shot blocks; x values near the goal are ×gx so they mirror per end). Skippable by ANY key
+  (input.js keydown guard), click (canvas mousedown guard), or pad A/B/Start (gamepadUpdate guard).
+  UI: letterbox bars slide in + pulsing ● REPLAY tag + skip hint; `body.replayOn` fades the HUD out.
+  - **Buffer cuts** (`replayCut`): `serve`, `redropBall`, `startMatch` — a replay can never show a
+    teleport streak. `replayCut` ALSO clears the queue flag (a too-short rally would otherwise leave
+    a stale queue that made the next out-of-bounds hold play a bogus replay). `replayAbort` (menu
+    quit / endMatch / new match) tears playback down without the re-count handoff.
+  - No replay on a match-winning goal (endMatch path returns before the queue). Match Setup gained
+    a "Goal replays" checkbox (`#setReplay` ↔ `cfg.replay`, old saves migrate to `true`). Tuning
+    all in `CONFIG.replay`. Verified by re-read (sandbox wouldn't boot).
+
+### 2026-07-21
+- **British pub room + GLB punctual lights** (`tools/build_pub_room.py` new, `js/models.js`,
+  `js/config.js`). `build_pub_room.py` (conventions of `build_arena_table.py`: game coords,
+  `g2b`, bmesh, version-safe `mat`) builds a placeholder pub — shell w/ oak beams + wainscot,
+  bar (counter/brass rail/pumps/backbar/mirror/bottles/sign), fireplace w/ emissive embers,
+  dartboard, frosted windows, `room_picture_1..3` (one material each — cheap retexture wins),
+  tables/stools/bench, and **`room_pendant`** (cable + green-enamel frustum shade + emissive
+  bulb) hanging over the table centre. Saves `assets/rooms/pub/fuzeball_pub.blend` (no-clobber)
+  and exports `fuzeball_room_pub.glb` itself **including lights** — `export_table.py` is
+  mesh-only, so re-export this room by setting the script's `EXPORT_ONLY=True` with the
+  textured .blend open. `gcyl` gained an optional `r2` (frustum).
+  - **Lights ship IN the GLB** (KHR_lights_punctual: pendant SPOT pointing down at the table,
+    3 sconce POINTs w/ matching fixtures, fireplace POINT). `ensureRoom` (`models.js`) now
+    normalises lights in a loaded room: `castShadow=false`, intensity ×`R.lightScale` clamped
+    ≤4, and a default `distance` (spot 260 / point 180, decay 2) since glTF omits range →
+    three.js would never attenuate. Blender exports watts as candela (~54×W), hence
+    **`CONFIG.rooms.*.lightScale`** (pub .0004; script wattages are pre-tuned to it — tune
+    mood via lightScale, not the .py). Rooms without a lightScale are untouched (×1, and the
+    arcade GLB has no lights anyway).
+  - `CONFIG.rooms.pub`: 'Sports Bar' → 'British Pub', points at the new GLB, `reflect:true`,
+    hemi/dir eased (.72→.6 / .95→.8) since the GLB lights add. Build:
+    `blender -b -P tools/build_pub_room.py`. Verified by re-read (sandbox wouldn't boot).
+
 ### 2026-07-20
 - **⊞ Layout editor — player-arrangeable panels (league lobby + main menu)** (`js/layout.js` new,
   plus `index.html`, `css/styles.css`, `js/config.js`, one-line hooks in `js/league.js` /

@@ -328,15 +328,18 @@ function shotEval(team,bx,bz){
   const trapZ=r.role==='GK'?Math.abs(bp.z-clamp(bp.z,r.baseZ[0]-r.maxOff,r.baseZ[0]+r.maxOff))<TR.gkReach:dz<TR.alignZ;
   if(r.act==='trap'){
    r.actT+=dt;
-   // footStuck bail: same own-goal guard as safeRaise — a ball in a foot's back-swing reach
-   // drops the trap posture rather than easing the partial back-raise into it.
-   if(footStuck||relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||r.actT>TR.abortT)r.act=null;
-  }else if(TR.on&&r.aiIQ&&r.raise&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ){
-   r.act='trap';r.actT=0;
+   // Exit once the ball escapes the catch band, speeds up, lifts, or we've held too long. NOTE:
+   // deliberately NO footStuck abort here — a trap's whole JOB is to hold a ball AT the feet, and
+   // since entry requires alignment (⇒ inFootRange ⇒ footStuck), a footStuck abort killed the trap
+   // one frame after it began (why traps were never seen). The forward `front` bound is the own-goal
+   // guard instead: the instant the ball rolls to the rod line the normal kick path takes back over.
+   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||r.actT>TR.abortT)r.act=null;
+  }else if(TR.on&&r.aiIQ&&!r.act&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ){
+   r.act='trap';r.actT=0;                   // no longer gated on r.raise — a slow, aligned ball behind is caught directly, latched or not
   }
   if(r.act==='trap'){
    r.raise=false;r.behindFlag=false;       // trap owns the angle (updateRods) — latch released
-    if(r.actT>TR.settleT&&relReal>TR.shootFrom&&dz<TR.alignZ&&r.kickT<0&&r.cd<=0){
+    if(r.actT>TR.settleT&&dz<TR.alignZ&&r.kickT<0&&r.cd<=0){   // held long enough + man aligned + off cd → scoop it forward
      if(dbgLogRod===r)dbgRod(r,'TRAPSHOT','rel='+relReal.toFixed(1)+' dz='+dz.toFixed(2));
      kickRod(r,'trapShot');                 // scoop shot with dedicated trap power window
      r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);

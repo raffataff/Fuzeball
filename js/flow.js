@@ -7,7 +7,7 @@ function startMatch(mode,rodLockRole){
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
-  clearBalls();clearPU();clearFractures();
+  clearBalls();clearPU();clearFractures();replayAbort();replayCut();
   // Prime BOTH teams' shatter GLBs here — every mode funnels through startMatch, so this covers
   // quick/AI matches AND league/cup (whose loadPlayerModel setup skips reloadPlayerModel's prime).
   // clearFractures() above means no live instance references any template, so it's safe to then
@@ -61,7 +61,8 @@ function onGoal(team,b){
  if(S.score[team]>=goalTarget()){endMatch(team);return;}
  banner(teamName(team)+' GOAL!',
   val>1?'GOLDEN BALL — COUNTS ×2':HYPE[Math.floor(Math.random()*HYPE.length)],1.9);
- if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;}
+ if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
+  replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay + footage length)
 }
 /* Match clock (timed modes only). Called every frame during 'play' after S.matchTime advances.
    Ticks the final-seconds warning, then at time-up either ends the match (a team ahead) or drops
@@ -85,7 +86,7 @@ function endMatch(w){
  S.phase='win';
  Au.goal();Au.whistle(3);
  flash();S.shake=1;
- clearBalls();clearPU();
+ clearBalls();clearPU();replayAbort();
   const wasLg=!!S.lg;
   if(wasLg){(S.lg.cup?cupRecord:lgRecord)(w);} // record + sim the rest while the bridge is live
  $('winTitle').textContent=teamName(w)+' WINS!';
@@ -118,7 +119,7 @@ function gotoMenu(){
    applyTable();applyRoom();
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
-  S.phase='menu';clearBalls();clearPU();clearFractures();
+  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();
   // No match live — free every shatter GLB except the two figurines the menu now shows (kept warm
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);

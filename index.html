@@ -57,11 +57,18 @@
   <div id="ballVel"></div>
 </div>
 
+<!-- Goal instant replay chrome (js/replay.js): letterbox bars slide in, a pulsing
+     REPLAY tag + skip hint ride them. The HUD dims out underneath (body.replayOn). -->
+<div id="replayUI" class="hidden">
+  <div class="repBar top"><span id="repTag"><i></i>REPLAY</span></div>
+  <div class="repBar bot"><span id="repSkip">any key / click — skip</span></div>
+</div>
+
 <div id="menu" class="screen introHide">
   <button id="btnOptions" class="optGear" title="Options">⚙</button>
   <button id="menuEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.17</div>
+  <div class="tagline">v0.1.18</div>
   <div class="modeRow">
     <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
     <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
@@ -82,6 +89,7 @@
        <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
       <div class="row"><label>Special balls</label><input type="checkbox" id="setSpecial" checked></div>
       <div class="row"><label>Power-ups</label><input type="checkbox" id="setPower" checked></div>
+      <div class="row"><label>Goal replays</label><input type="checkbox" id="setReplay" checked></div>
       <div class="row"><label>Auto rod switch</label><input type="checkbox" id="setAuto" checked></div>
       <div class="row"><label>Sound</label><input type="checkbox" id="setSound" checked></div>
       <div class="row"><label>Ambience</label><input type="checkbox" id="setAmbience" checked></div>
@@ -408,7 +416,7 @@
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
   'js/core.js','js/config.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/main.js'
  ];
  function loadOne(item,done){

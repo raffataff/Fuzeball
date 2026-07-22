@@ -20,7 +20,7 @@ function makeBall(key){
   }
   // prev/cur = the true sim position one fixed-step ago / now. The renderer draws
   // m.position lerped between them (see loop); physics only ever writes 'cur'.
-  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,
+  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,knuckT:0,
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
    prev:new THREE.Vector3(),cur:new THREE.Vector3()};
@@ -87,6 +87,7 @@ function pickType(){
 }
 function serve(){
  resetRodRotation();
+ replayCut();   // fresh rally = fresh footage (a replay must never show the drop-in teleport)
  const key=pickType();
  const b=makeBall(key);
  b.m.position.set(rand(-SRV.spread,SRV.spread),SRV.dropY,rand(-SRV.zSpread,SRV.zSpread));

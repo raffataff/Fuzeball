@@ -17,7 +17,7 @@ function loop(t){
   const FIXED=1/SIM.hz;
   /* --- wall-clock timers (real time, once per frame) --- */
   if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
-  if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0)startCount(MATCH.recount);}
+  if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else startCount(MATCH.recount);}}
   else if(S.phase==='count'){
    S.countT-=rdt;
    const v=Math.ceil(S.countT);
@@ -38,6 +38,9 @@ function loop(t){
    else if(S.phase==='count')userControlUpdate(FIXED);
    updateRods(FIXED);
    physics(FIXED);
+   if(S.phase==='play')recordReplay(); // flight recorder (replay.js): a few float writes into a ring buffer.
+                                       // Post-physics gate on purpose: the goal step itself isn't recorded,
+                                       // so the buffer ends with the ball still at the line (freeze-frame keeps it).
    S.time+=FIXED;physAcc-=FIXED;steps++;stepped=true;
   }
   if(steps>=SIM.maxSteps)physAcc=0;                    // spiral-of-death guard: drop the backlog
@@ -60,8 +63,9 @@ function loop(t){
    fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
    respawnSwirlUpdate(rdt); // spawn/advance/fade the pre-respawn swirl for removed players
   }
+ replayUpdate(rdt);      // playback owns balls/rods/camera while phase==='replay' (no-op otherwise)
  fxUpdate(rdt);
- cameraUpdate(rdt);
+ if(S.phase!=='replay')cameraUpdate(rdt);   // the replay's shot camera has the conn during playback
  debugUpdate();
  sweetGuideUpdate();
  if(S.phase!=='menu')hudTick(rdt);

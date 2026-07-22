@@ -202,7 +202,16 @@ function ensureRoom(id,cb){
   delete roomLoading[id];
   try{
    const room=gltf.scene;
-   room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}}); // backdrop, not a shadow caster
+   const ls=R.lightScale||1;
+   room.traverse(c=>{
+    if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}                     // backdrop, not a shadow caster
+    else if(c.isLight){                                                        // KHR punctual lights baked into the glb
+     // Blender watts arrive as candela (~54x the wattage) — scale by the room's lightScale,
+     // clamp as a guard, and give point/spot a falloff (glTF omits range -> distance 0 = infinite).
+     c.castShadow=false;c.intensity=Math.min(c.intensity*ls,4);
+     if(c.isPointLight||c.isSpotLight){if(!c.distance)c.distance=c.isSpotLight?260:180;c.decay=2;}
+    }
+   });
    room.visible=false;scene.add(room);
    roomGroups[id]=room;
    console.log('room "'+id+'" loaded ('+R.glb+')');
@@ -405,8 +414,8 @@ function loadBallModel(onReady){
    the origin — show ONLY the matching one; missing types fall back to classic. */
 function makeBallModel(key){
   if(!ballModel)return null;
-  const want=ballMatMap[key.toLowerCase()]?key.toLowerCase():'classic';
-  if(!ballMatMap[want])return null;
+  const want=key.toLowerCase();
+  if(!ballMatMap[want])return null;   // no baked mesh slot for this type (e.g. knuckleball) → caller uses the generated colour sphere
   const g=ballModel.clone(true);
   let any=false;
   g.traverse(c=>{
