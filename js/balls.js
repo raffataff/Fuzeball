@@ -20,11 +20,12 @@ function makeBall(key){
   }
   // prev/cur = the true sim position one fixed-step ago / now. The renderer draws
   // m.position lerped between them (see loop); physics only ever writes 'cur'.
-  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,knuckT:0,
+  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,knuckT:0,overBar:0,
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
    prev:new THREE.Vector3(),cur:new THREE.Vector3()};
   if(t.light){b.light=new THREE.PointLight(t.light,1.1,34);scene.add(b.light);}
+  applyBallEnv(b);   // local cube-map reflection envMap (no-op when cfg.reflections off) — set at birth so the null→tex shader recompile is here, not mid-rally
   if(key==='cannon'){
    // per-instance outline shell (own geo/mat — never shared with other ball
    // instances, unlike the GLB clone's base material) that pulses red as the
@@ -41,7 +42,7 @@ function makeBall(key){
 }
 // call after ANY hard set of m.position outside physics (serve, redrop, split, NaN redrop):
 // snaps the interp buffers to the mesh so the ball appears at the new spot without streaking there.
-function syncBall(b){b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);}
+function syncBall(b){b.overBar=0;b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);}
 // Per-frame visual warning for a live cannonball: while the detonation timer is
 // inside the warn window, pulse the ball's outline shell + a bleed light red,
 // snapping to a sharp flash right on each countdown beep and decaying until the
@@ -116,6 +117,7 @@ function cannonballUpdate(dt){
     let nearestRod=-1,nearestMan=-1,nearestDist=Infinity;
     for(let ri=0;ri<rods.length;ri++){
      const r=rods[ri];
+     if(r.trnHidden)continue;             // training sandbox: don't blast a man off a hidden rod
      const sa=Math.sin(r.angle),ca=Math.cos(r.angle);
      const ax=r.x,ay=ROD_H;
      const fx=ax+sa*ARM,fy=ay-ca*ARM;
@@ -133,7 +135,10 @@ function cannonballUpdate(dt){
      spawnFracture(r,nearestMan);
      banner('💣 REMOVED!','ONE PLAYER TAKEN OUT',1.5);
     }
-    if(!S.balls.length&&S.phase==='play'){resetRodRotation();banner('💣 EXPLOSION!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
+    if(!S.balls.length&&S.phase==='play'){
+     if(S.trn){trainingBallGone();}      // training sandbox: respawn at the last spot, never enter the goal-hold
+     else{resetRodRotation();banner('💣 EXPLOSION!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
+    }
     break;
    }
   }

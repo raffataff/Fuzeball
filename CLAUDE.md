@@ -65,9 +65,10 @@ CONFIG. `cfg`/`saveCfg` (the persisted in-menu settings) also live here.
 - Goals sit at `x = ±60` (±L/2). **Left goal net is red, right goal net is blue.**
 - Ball into the **right** goal → **team 0 (red) scores**; into the **left** goal →
   **team 1 (blue) scores**. (Easy to get backwards — double-check when touching scoring.)
-- Key constants: `BALL_R=1.6`, `ROD_H=7.50` (rod pivot height), `ARM=6.30` (collision arm
-  length, pivot→foot), `PRAD=1.0` (player collision radius), `GRAV=280`.
-  `FOOT_T=0.99` (foot position along arm, 1=foot). Foot collision is an **oriented box**
+- Key constants (all live in `CONFIG.physics` — check there, this list has drifted before):
+  `BALL_R=1.9`, `ROD_H=7.50` (rod pivot height), `ARM=6.30` (collision arm
+  length, pivot→foot), `PRAD=1.0` (player collision radius), `GRAV=250`.
+  `FOOT_T=1.0` (foot position along arm, 1=foot). Foot collision is an **oriented box**
   (`CONFIG.physics.footBox` half-extents, `footBoxOff` centre offset from foot-base in
   rod-local space); debug wireframe confirms placement.
 
@@ -244,8 +245,7 @@ Three levers, all tuned in `CONFIG.ai`:
 Recently completed: adaptive substepping + anti-tunneling; energy-conserving spin/curve;
 meatier kicks (0.46 restitution in the power window); NaN guard; per-ball stuck recovery;
 goalie reduced 3→1 (1-2-5-3 layout); AI rewritten to swing at any reachable ball and keep
-men down to block; `redropBall` relocates; shorter dead-ball timers; `ARM` 8.4→9.0 to close
-the mid-gap reach; **two-hands rule** (`pickActiveRods` — only 2 rods/team move at once, the
+men down to block; `redropBall` relocates; shorter dead-ball timers; **two-hands rule** (`pickActiveRods` — only 2 rods/team move at once, the
 rest hold & block, user's rod always one of the two); **AI anti-jitter** (man-index hysteresis,
 retarget deadzone, drifting wander, accel-capped slide — all in `CONFIG.ai`); **fixed-timestep
 sim + render interpolation** (`CONFIG.sim`, `physAcc`, `syncBall`, per-ball `prev`/`cur`) so
@@ -290,10 +290,335 @@ then toggles `dbgGroup`/`dbgAIGroup`/panel visibility. `debugUpdate()` runs per-
 positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggles
 (manHyst rings, target dots, aligned bars, foot-reach boxes) and applies checkbox
 visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readout
-below the camera info. The panel is built via `document.createElement` in
+below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#rodAngle`). The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-24
+- **League/cup shatter GLBs now warm in the LOBBY, not at kickoff** (`js/league.js` — new
+  `primeMatchExplosions(idA,idB)` helper + calls in `openLeague` and `renderCup`). Fixes the
+  first-cannonball-kill stall in league games. `startMatch` already primes both teams' explosion
+  GLBs (`ensureExplosionModel` → load + off-screen `warmFractureTemplate` shader compile), but for
+  a LEAGUE opponent that prime only KICKS OFF at kickoff and is async, so the first kill could beat
+  the load/compile. Quick/AI matches don't hit this because main.js primes the default red/blue at
+  boot and they're usually the two on the table. The helper calls the SAME `ensureExplosionModel`
+  earlier — from the lobby, where the next fixture is known — so by the time the player clicks Play
+  the shatters are resident + warmed and the later `startMatch` prime is a no-op. **Passes figurine
+  model IDS, not team indices**: `cfg.modelRed/Blue` aren't swapped to the league teams until
+  `lgPlayMatch`, so `activeModel()` would read the wrong (menu) figurines in the lobby — instead it
+  reads `LG.teams[playerId].model`/`LG.teams[op].model` (league) and `cupEnt('player').model`/
+  `opp.model` (cup). No pruning here; `startMatch` still bounds residency to the two teams on the
+  table. Guarded on `ensureExplosionModel` existing (clean skip when fracture fx is off). Verified
+  by re-read (sandbox wouldn't boot).
+- **Local ball reflections (cube-map that tracks the ball)** (`CONFIG.ballReflect`, `js/world.js`,
+  `js/balls.js`, `js/main.js`, `js/ui.js`). `scene.environment` (the room PMREM bake) is a DISTANT
+  env — it can't show the table/pitch/men the ball sits among, so a metallic ball (esp. golden,
+  `metalness .85`) only ever reflected the far room. Added a single shared `THREE.CubeCamera` +
+  `WebGLCubeRenderTarget` (`buildBallReflect`, called in `initThree`) that rides the **lead ball**
+  (nearest the camera) and renders the real scene around it each throttled frame; its cube texture
+  is reused as `.envMap` on **every** ball material (`setBallEnv`/`applyBallEnv`, set at ball birth
+  in `makeBall` so the null→texture shader recompile happens then, not mid-rally). `material.envMap`
+  outranks `scene.environment`, so balls get local reflections while everything else keeps the room
+  bake — no double-count. `updateBallReflect()` (main loop, just before `renderer.render`) is the
+  ONE extra scene pass; it self-gates (off when `!cfg.reflections`, no balls, or phase not
+  play/goal/count), hides the lead ball so it can't reflect itself, and **freezes
+  `renderer.shadowMap.autoUpdate`** for the 6 faces so they reuse the previous frame's shadow map
+  instead of re-rendering it 6× (the real cost saver). Cube texture encoding = `sRGBEncoding` to
+  match `renderer.outputEncoding`. Perf knobs in `CONFIG.ballReflect`: `res:128` (ball-sized
+  balance), `every:2` (~30Hz cube update — invisible lag on a small ball, half the cost; raise if a
+  weak GPU dips), `near/far`, `intensity`. Gated by the existing Options **Reflections** checkbox
+  (`refreshBallReflect` on toggle) — off → balls fall back to the room env exactly as before.
+  Detached cube cam is safe: r128 `CubeCamera.update` calls `updateMatrixWorld()` when `parent===null`,
+  so `ballCube.position.copy(lead)` positions it correctly without adding it to the scene. Verified
+  by re-read + confirmed the `(near,far,renderTarget)` ctor / `.update(renderer,scene)` signatures
+  against the vendored `three.min.js` (sandbox wouldn't boot).
+
 ### 2026-07-22
+- **Trap carry fix: the dribble slid the man OFF the ball, then shot at nothing** (`js/ai.js`,
+  `CONFIG.ai.trap.carryLead`/`holdZ`). Regression introduced by the trap rewrite below; symptom was
+  traps + trapShots firing with the ball sitting between two players, nowhere near a foot. Three causes:
+  - **The carry aimed the man at `bp.z ± slideMax` (7u PAST the ball).** slideMax is a cumulative
+    travel budget, not a per-frame aim point — using it as the target slid the boot 7u clear of the
+    ball within ~0.2s, so the "carry" abandoned the ball immediately. New **`carryLead:0.9`** is the
+    per-frame lead (must stay well under the boot's z contact reach, `footBox.z + BALL_R ≈ 3.25`, or
+    the man just leaves); `slideMax` still caps cumulative travel from `r.trapZ0`.
+  - **The rewrite dropped the `dz<alignZ` gate on the shot.** The original fired
+    `kickRod(r,'trapShot')` only when a man was squared up; the phase rewrite gated on
+    `open||timeUp` alone, so once entered a trap ALWAYS produced a shot `settleT+holdT` later
+    regardless of where the ball had ended up. Re-added, and measured against the right man (below).
+  - **Alignment was measured with `dz` — the nearest man of ANY.** On a 2/3/5-man rod that is
+    routinely a different man from `r.trapMan`, so the rod could read as "aligned" because a
+    NEIGHBOUR happened to be near the ball. All three tests now use **`tdz`** = z-distance from the
+    ball to the trapping man specifically.
+  New **`holdZ:2.8`** is the live contact test: past it the boot isn't touching the ball, so the carry
+  releases (`TRAP-LOST` in the kick log) instead of holding a phantom. A `timeUp` that never squares up
+  now also releases rather than swinging. KNOWN, unchanged: `trap.gkReach` (6) still REPLACES the
+  alignZ entry test for keepers, so a GK can enter a trap posture for a ball up to ~±19 in z while its
+  slide band is ±13 — `holdZ` now bounds that to a ≤`settleT` flicker instead of a shot, but the entry
+  itself is still deliberately un-aligned (2026-07-11 design).
+- **Trap rewritten: it never actually held a ball** (`js/config.js` `CONFIG.ai.trap` + `CONFIG.ai.trapShot`,
+  `js/ai.js`, `js/physics.js` both collision passes, `js/rods.js`, `js/world.js`). Symptom: you only ever
+  saw the trap SHOT, never a catch, and a slow ball sitting in range never triggered a trap at all.
+  Five independent causes, all of them real:
+  - **`trap.minApproach` was +6** — entry required the ball CLOSING at >6 u/s, so a slow or dead ball
+    (the exact case that wants trapping) could never enter. Worse, `evade` then picked it up
+    (its `maxApproach` 4 admits slow balls) and slid the rod AWAY from it. Now **−2.5** with a new
+    `maxApproach:26` ceiling: a still or gently goal-ward ball is trappable, a rocket isn't. The old
+    own-goal rationale applied to the −0.9 back-tilt and no longer holds (see angle, below).
+  - **`trap.angle:-0.9` put the boot ABOVE the ball.** The foot box centre sits at
+    `y ≈ ROD_H − cos(a)·ARM` + the `footBoxOff` rotation; at −0.9 that's **y≈3.68** against a ball centre
+    at 1.9 — a full ball-diameter of daylight. The only contact it could make was a ~93%-downward normal
+    that shoved the ball into the floor with a 1.7u depenetration and squirted it forward. Now **−0.25**
+    (box centre y≈1.93, level with the ball) — a pin, not a hover.
+  - **The window was 2u wide and entirely behind the rod** (`back −5.5 → front −3.5`) while `settleT` was
+    1.05s. At the ≥6 u/s the entry demanded, the ball crossed that band in ≤0.33s, so `relReal>=front`
+    aborted the trap long before the settle completed — **the hold phase was unreachable by arithmetic.**
+    Now `back −6.0 → front +2.4`, i.e. from behind the men through the feet.
+  - **Nothing made the contact sticky.** `collideRod` had no idea a trap was happening: it used
+    `kick.rest` 0.01 / `kick.grip` 0.08 like any passive touch. Dead-ish but not adhesive, so the ball
+    parked near the boot and the rod slid out from under it. Both passes now switch to
+    **`trap.holdRest:0` + `trap.holdGrip:0.55`** while `r.act==='trap'` (and skip sweet-spot + aimAssist,
+    which exist to improve a STRIKE and would re-launch the ball). Grip lerps `b.v` toward the contact
+    point's velocity, whose z is the rod's slide — that is the carry. It self-limits: once the ball
+    matches the foot, `vn≥0` and no further impulse/grip applies.
+  - **The kick gate wasn't `!r.act`-gated.** Harmless while the window stopped short of the men, but
+    with `front:+2.4` the normal swing would fire at a ball we were holding and `kickRod` clears `r.act`
+    — killing the trap the instant the ball arrived. `canKick` now requires `!r.act` (safeRaise's
+    `srKick` override still works: it nulls `r.act` in the same frame first).
+  Trap is now a three-phase action driven off `r.actT`, owning `r.target`/`r.aiMan` and `continue`-ing:
+  **CATCH** (`settleT` 0.35s, boot pinned dead on the ball, no aim offset) → **CARRY** (`holdT` 1.3s max:
+  reads `shotEval` from the ball's live position, commits ONCE to the side whose lanes probe better at
+  ±`slideMax`×0.6 — committed for the same anti-dither reason as `evadeDir` — and dribbles that way up to
+  `slideMax` 7u at `carryMult` 0.5 rod speed) → **SHOOT** (`trapShot` as soon as the best lane clears by
+  `lineClear` 2.0, or unconditionally when `holdT` expires). `settleT+holdT` = 1.65s, deliberately under
+  `abortT` 3.0 and `deadball.stallT` 3.6 so a deliberate hold can't be whistled. Entry commits to one man
+  (`r.trapMan`, nearest live man in z) so man-index hysteresis can't drag the boot off the ball mid-carry.
+  New rod fields `trapMan`/`trapDir`/`trapZ0` (declared in `buildRods`, cleared in `kickRod` +
+  `resetRodRotation`). Kick-log traces `ACT:trap/catch`, `ACT:trap/carry` and a `TRAPSHOT` line carrying
+  lane clearance + distance carried.
+- **`trapShot` curve was a 71 rad/s tunnelling swing** (`CONFIG.ai.trapShot`). `strike` is the END TIME of
+  the ramp, so the forward sweep lasts `strike − windup`: 0.2 − 0.16 = **0.04s for 2.85 rad** (windupA −1.0
+  → strikeA 1.85), i.e. ~3.3× the normal kick's 21.8 rad/s and ~7u of foot travel per sim step — the same
+  pathology the `kickA0` fix below was written to remove, and why the one thing you did see looked wrong.
+  The −1.0 windup also dragged the pinned ball ~3.7u BACKWARD before striking it. Now `windup 0.10 /
+  windupA −0.5 / strike 0.20` = 2.35 rad over 0.10s ≈ **23.5 rad/s**, in line with a normal swing. Also
+  moved `powFrom` 0.17 → **0.10** so the power window opens WITH the strike: a ball pinned at the boot
+  contacts almost immediately, so the old window was missed every time and every scoop silently used the
+  passive `rest` instead of `restPower`. **RATE is the number to preserve when retuning — raise `strikeA`
+  and `strike` together.** Verified by re-read (sandbox wouldn't boot).
+- **Held-rod angle block in the TRAINING panel** (`js/training.js` `trnAngTick`, CSS `.trnAng*`).
+  Sits at the bottom of `#trnPanel` under the cyan ball metrics, gold to mark it as rod chrome:
+  `rod <T1/T2 role> <state>` / `ang <world°>  swing <rod-local°>` / `ω <rad/s>`, next to a small
+  SVG dial whose needle hangs straight down at 0 and swings toward +x (screen-right) with the
+  rod, so it mirrors the table. `swing` is `angle/kickDir` — reads alike for both teams and
+  lines up directly with `CONFIG.kick`'s `windupA` / `raiseA` / `trap.angle`. Both figures are
+  the **sim** `r.angle`/`r.angVel`, NOT the interpolated pivot, i.e. the values the swing curve
+  and contact impulse use — so an ω spike (≈80 vs a swing's 21.8) marks a step where the angle
+  jumped rather than swept. State = `KICK <kickT>` / AI action name / `RAISE` / `REST`. Tracks
+  `userRod()`, falling back to the kick-log traced rod (`dbgLogRod`) when nothing is held.
+  Static chrome (dial, ids) ships in `buildTrnPanel`'s one-time innerHTML; the tick writes one
+  small node + the needle's `rotate()`, once per FRAME (`trainingTick`), never per sim step.
+- **Rodless-match crash fixed (`Cannot read properties of undefined` on every mouse move/click)**
+  (`js/flow.js`, `js/input.js`, `js/training.js`). Root cause is NOT training-specific but training
+  is where it surfaced: **the menu is clickable before `boot()` runs.** `buildRods()` only happens in
+  `main.js` `boot()`, at the END of the GLB chain (which is itself delayed by `loadDelay` for the
+  intro), while `#menu` goes live as soon as the intro reveals — the intro reveals on ANY key/click
+  (`skip`), on the reduced-motion/`intro.on:false` path (`off()` at parse time), and on `holdMax`
+  expiry regardless of `introReady`. Start a match in that window and `S.ctrlRods =
+  rods.filter(…)` is **empty**; `boot()` then lands, builds rods and starts the loop, so the game
+  LOOKS fine while `S.ctrlRods[S.ctrl]` is `undefined` forever — hence the endless
+  `input.js` `maxOff` / `kickT` / `raise` throws on mousemove/click, and a training panel whose
+  "Rods · show/hide" list was built empty and latched that way via `trnBuilt`.
+  - `startMatch` now force-boots when `!rods.length` (`boot()` is idempotent and falls back to
+    primitives — its own comment sanctions a force-start), and swallows the click if `main.js`
+    hasn't parsed yet rather than starting a rodless match.
+  - New **`userRod()`** in `input.js` — the single accessor for the held rod, returns `null` when
+    there isn't one and self-heals a stale `S.ctrl`. Every site (keydown/keyup, canvas
+    mousemove/mousedown, mouseup, `userControlUpdate`, `gamepadUpdate`) goes through it; nothing
+    indexes `S.ctrlRods[S.ctrl]` raw any more.
+  - `training.js`: rod checkboxes moved out of `buildTrnPanel` into **`trnRodRows()`**, rebuilt from
+    `rods` on every `trainingEnter` (no-op when the count already matches), so a panel built early
+    can't stay empty for the session. Verified by re-read (sandbox wouldn't boot).
+- **Training mode** (`js/training.js` new + TRAINING card on the main menu, `CONFIG.training`,
+  hooks in `flow.js`/`ai.js`/`physics.js`/`balls.js`/`powerups.js`/`main.js`/`input.js`,
+  `S.trn` in `state.js`, CSS `/* ===== training mode ===== */`). Sandbox practice mode for
+  kick/action tuning: `startMatch('training')` (user = team 0) → `trainingEnter()` skips the
+  countdown, drops a ball at `CONFIG.training.spawn` and shows a left-side panel (`#trnPanel`,
+  built via createElement like the debug AI panel; `T` hides it, `—` collapses it).
+  - **Cross-module gate = `S.trn`** (null when off, the `TRN` state object while live) +
+    per-rod `r.trnHidden` — other files never reference training.js symbols directly except
+    `trainingEnter`/`trainingGoal`/`trainingBallGone` on paths only reachable in training.
+  - **Ball placement**: click-place mode (`G` or panel button; window-CAPTURE mousedown/
+    mousemove listeners beat input.js's kick/slide handlers, raycast onto the y=BALL_R plane,
+    green ghost ring preview, R-click cancels) + XZ number inputs. `trnPlace` clamps inside
+    the walls (`clampMargin`) and always `syncBall`s. `TRN.lastSpot` = last placed position.
+  - **Launcher**: speed/angle°/loft fields → `trnLaunch` (0° = +x toward the RIGHT goal,
+    90° = +z near side); "Reset + launch" re-places at `lastSpot` then fires — repeatable shots.
+  - **Saved spots**: 4 slots storing pos + launcher settings, persisted as `cfg.trnSpots`.
+  - **Freeze/step**: `P` toggles, `O`/⏭ single-steps. Implemented in the main loop: while
+    frozen `physAcc` is zeroed; each queued `stepQ` releases exactly one FIXED slice (render
+    keeps running so placement/camera stay live).
+  - **Per-team AI toggles** (both default OFF) + **per-rod show/hide**: gated rods in
+    `aiUpdate` hold dead still (`target=offset`, men down, actions cleared); hidden rods are
+    `pivot.visible=false`, skipped by `collideRod` (first line), cannonball nearest-man search,
+    and the AI gate.
+  - **Rules**: no scoring (goals → `trainingGoal`: fx + optional score tick via the "Count
+    goals" checkbox, ball resets to `lastSpot`), no match clock, no power-ups, dead-ball
+    auto-redrop OFF by default (checkbox opts back in), out-of-bounds/cannonball-detonation
+    re-drop/respawn instead of entering the goal-hold. `gotoMenu` → `trainingExit()` restores
+    hidden rods + clears the gate. Pause→Restart re-enters keeping the panel setup.
+  - **input.js keydown now ignores form controls** (`INPUT/SELECT/TEXTAREA` target returns
+    early) so typing in panel fields can't kick/slide — this also un-breaks typing SPACE in
+    the team-name inputs. Panel buttons blur on click so SPACE can't re-fire them; a capture
+    wheel guard stops panel scrolling from switching rods.
+  Verified by re-read (sandbox wouldn't boot).
+- **Swing starts from the rod's CURRENT angle (`r.kickA0`)** (`js/rods.js`). THE fix for "trap shots go
+  through the ball / power is inconsistent". The strike ramp began at the constant `windupA`, so a kick
+  launched off a RAISED rod (`raiseA` −1.6) or a trapping rod crossed ~1.5 rad in ONE sim step. Kick-log
+  proof — every kick preceded by `ACT:raise`/`ACT:trap` logged `ω 79–85` against the swing's normal
+  `ω 21.8`, i.e. a **4x** spike, always at `kickT 0.017` (swing step 1): `vn 439.7 → ball 330u/s`,
+  `jm 261` vs a normal `vn ~120 → ball ~75`, `jm ~70`. At ω 85 the foot travels ~9u in one step, which
+  is why it passed straight through the ball. `kickRod` now captures `r.kickA0=r.angle/r.kickDir` and
+  the curve ramps from there; with `windup>0` the pull-back sweeps from it too, so there is no
+  discontinuity anywhere. This is also what makes `windupA:0` actually mean "no back-pull".
+  Residual: a raised kick still sweeps a longer arc in the same `strike` seconds (≈32 rad/s vs 21.8) —
+  normalising the RATE instead of the duration is the follow-up if power still feels uneven.
+- **Rod swing is now sub-stepped with the ball** (`js/physics.js`). `physics()` substepped only the
+  BALLS; `r.angle`/`r.offset` were frozen at their end-of-step value for the whole sim step. At the
+  swing's 21.8 rad/s that is ~2.3u of foot travel per step — larger than `BALL_R` — so the finely
+  substepped ball was passed by a teleporting foot. This is why more substeps / lower `subTravel`
+  never helped. Two changes: foot speed (`|angVel|*ARM + |vz|`) now feeds `vmax` so a fast swing raises
+  the substep count, and each substep poses every rod at `lerp(startAngle,endAngle,f)`. The start pose
+  is reconstructed exactly as `angle - angVel*dt` (updateRods defines angVel that way), and the exact
+  end pose is restored after the loop for render/AI. `angVel`/`vz` are deliberately NOT rescaled —
+  they're the average rate over the step, which is what the contact impulse should use.
+- **Evade follow-through + re-entry lockout** (`js/ai.js`, `js/config.js`, `js/rods.js`). Fixes "they
+  evade for a frame, then chase". Exiting a successful clear dropped straight back into man-selection,
+  which re-aimed onto the ball, made `inFootRange` true again and re-fired evade — the log shows ACT
+  flipping evade/-/safeRaise with 5–15 changes suppressed between printed lines, for ~5s straight.
+  Now the exit distinguishes a genuine clear from a bail: on a clear it **latches the raise**
+  (`evade.raiseAfter`), which swings the foot BEHIND the ball in x so the following drop sweeps
+  forward and knocks it upfield — the "get behind the ball and hit it forward" the owner asked for —
+  and sets `r.evadeCd` (`evade.cd`, 0.8s, ticked in `updateRods`) to block re-entry while that plays
+  out. The latch alone was insufficient: `latchStuck` can clear it in the narrow rel −2.9..−1.6 band.
+- **`✓CONTACT` now logs the vn breakdown** (`js/physics.js` both collision passes, `js/debug.js`
+  `dbgHit`). vn is exactly `(foot·n − ball·n)`, so the second line splits it: `foot` (swing driving
+  into the ball) vs `ball` (the ball arriving into a stationary boot), plus `swing` (|ω × arm-to-
+  contact|, the FULL rotational speed — compare to `foot` to see how much of the swing landed),
+  `slide` (`r.vz`), `ω` (`r.angVel` — a one-step spike means the swing curve jumped rather than
+  swept), `jm` (impulse after rest/stHit/sweet/boost) and which `rest` value was used. `bn` is
+  captured before the impulse rewrites `b.v`; both captures are guarded on `dbgLogRod===r`, so the
+  cost is zero with the tracer off. Kick-log panel widened 440→660px for the detail line.
+- **Kick-curve findings (documented, NOT yet changed)** — `CONFIG.kick`, read off the kick log for the
+  blue ATT rod. Recorded here because two of them are counter-intuitive:
+  - **`windup:0` does NOT remove the back-pull.** The strike ramp's start value is `windupA`
+    (−0.45) regardless of `windup`; `windup` only sets how long the rod takes to REACH it. With
+    `windup:0` the first branch (`T<windup`) is dead and the ramp begins at −0.45, so at hz 60 the
+    first sampled swing angle is `-0.45+18.125×0.0167 = -0.148` — the foot still travels ~0.93u
+    BACKWARD on swing step 1, just instantly instead of over a window. The knob for "no back-pull"
+    is **`windupA:0`** (plus `strike:0.055` to hold the 18.125 rad/s angular rate, since the arc
+    shortens from 1.45 to 1.0 rad).
+  - **Kicking from a RAISED rod snaps the angle** from `raiseA` (−1.6) to ≈−0.148 in ONE step —
+    a 1.45 rad jump, so `angVel=(angle-prevAngle)/dt` spikes for that frame. This is the
+    "problems when shooting from a raised position", and it is NOT the back-pull. Fix is to start
+    the ramp from the rod's angle at kick time (capture `r.kickA0=r.angle/r.kickDir` in `kickRod`)
+    rather than from `windupA` — also the right base for a separate windup action later.
+  - **The timed power window is rarely reached.** `pow = kickT ∈ [powFrom,powTo)` is evaluated at
+    CONTACT, and contact resolves on swing step 1 (`kickT≈0.017`) in essentially every logged kick,
+    vs `powFrom:0.06` — because the AI only fires at balls ALREADY inside the foot's reach, so the
+    ball is hit as the swing starts, not at its peak. Consequence: every AI strike uses `rest:0.01`
+    (the absorbing touch) and `restPower:0.5` is close to dead config. `[SWEET]` (position-based,
+    `CONFIG.kick.sweetSpot`) DOES fire and produced the one outlier strike in the trace
+    (`vn=129.2 → 89u/s` vs a very uniform ~110 → ~44 for everything else). Strong argument for
+    making power position-based rather than timed. Retuning it is a big balance swing (≈+50%
+    impulse) — deliberately left for a decision.
+  - `rest`/`restPower` now documented in `config.js`: `jm=(1+rest)*(-vn)/mass` along the contact
+    normal, `vn` measured relative to the MOVING foot. 0 = dead/absorbing, 1 = elastic.
+- **Evade no longer fires on ARRIVING balls** (`js/ai.js`, `js/config.js`). Read off the kick log:
+  every evade in a 90s trace of the red DEF entered at `rel` −2.4..−2.9 with **`appr` positive**
+  (ball closing at 4.6–18.8 u/s) and lasted 0.1–0.35s before a kick. Evade is for a ball PARKED
+  against a foot, but its entry test was purely positional (`inFootRange` + slow), so after
+  `behindDead` dropped 3.1→1.6 a ball merely rolling in from behind tripped it. Cost: the rod threw
+  the block away, skipped aim + kick for a beat, and — because evade sets `r.target` to a cleared
+  offset — kept sliding AWAY during the swing, which is the likely cause of the two `✗WHIFF`s in the
+  same trace (both on ~9 u/s balls at `dz`<1.0, well inside the foot's 3.25u z-reach).
+  New `CONFIG.ai.evade.maxApproach` (4): entry AND hold both require the ball not be closing faster
+  than that. Exact mirror of `trap.minApproach` — trap wants a closing ball, evade wants a settled
+  one. Large value = old behaviour.
+- **`dbgHit` prints `vn` to 1dp** (`js/debug.js`). A graze rendered as a flat `vn=0` next to
+  `ball→31u/s`, which reads like free energy. It isn't: the impulse (`jm ∝ vn`) really was ~0 and the
+  speed came from the **grip** term — `b.v` is lerped toward the contact point's velocity (the foot's
+  swing speed) on ANY contact with `vn<0`, unscaled by how solid that contact is. NOT changed, but
+  worth knowing: scaling `stGrip` by contact solidity is the fix if grazes ever feel too powerful.
+- **CLAUDE.md constants corrected**: `BALL_R` 1.6→**1.9**, `GRAV` 280→**250**, `FOOT_T` 0.99→**1.0**
+  (all read from `CONFIG.physics`), and the stale "ARM 8.4→9.0" note dropped (`arm` is 6.30).
+- **Kick-log flood fixed: per-channel dedupe + thrash collapse** (`js/debug.js`). The tracer used ONE
+  shared dedupe slot (`dbgLogLastKind`) for every emitter, so any two that fire each step with
+  different-but-steady kinds ping-ponged forever: `dbgRod` wrote `ACT:trap`, `dbgKickGate` overwrote
+  it with `BLK:out-of-reach`, and next step both looked "changed" → 2 lines × sim hz. (Latent before
+  the ACT trace; the ACT line just made it constant.) Four changes:
+  - **`dbgLogLast` is now a per-CHANNEL map** + `dbgLogNew(ch,kind)`. Channel = the kind's prefix
+    before `':'` (so `ACT:*` dedupes against itself, `BLK:*` against itself), else `'act'`. A steady
+    state prints once regardless of what else is logging.
+  - **Thrash cap**: a channel changing faster than `DBG_LOG_GAP` (0.35s) has its lines swallowed and
+    counted, then emits one `⇄ thrash N changes suppressed` summary. A real A→B→A oscillation stays
+    visible but is bounded to ~3 lines/s per channel. Raise `DBG_LOG_GAP` for an even quieter log.
+  - **Repeat collapse**: an identical line folds into `×N` on the existing line (`dbgLogPush(s,key)`).
+  - **One DOM write per FRAME**: `dbgLogPush` only marks `dbgLogDirty`; `flushKickLog()` (called at
+    the top of `debugUpdate`) does the `innerHTML`. It was rewriting the panel on every SIM STEP.
+  - A real event (`★KICK` / `✓CONTACT`) clears `dbgLogLast` so steady states re-announce after it.
+- **Evade direction rewritten: `evadeDir()` + committed escape** (`js/ai.js`, `js/rods.js`,
+  `js/config.js`). Symptom: on a slow ball the rod shadowed it, then slid *way* off to the side
+  (often through the ball) before lowering. Two separate bugs in the direction pick, which both
+  evade sites (`evade` action + post-kick `heldFwd`) had inline and duplicated:
+  1. **The geometric branch measured against the wrong thing.** `(bz − r.offset) > 0 ? −1 : 1` is
+     the ball's side of the rod's CENTRE LINE, but the ball is stuck against a FOOT at
+     `baseZ[i]+offset`. Only equivalent for the 1-man GK (baseZ 0); on a 2/3/5-man rod it regularly
+     returned the side that dragged the men THROUGH the ball to the far side — the "slides into it
+     then way off" behaviour. Now the direction is the side of the MINIMUM-TRAVEL escape
+     (`clearOffset(...,0)`), which by construction is the side the trapped foot is already closest
+     to leaving, so it can never sweep across the ball.
+  2. **Direction was recomputed every frame**, so the sign flipped as the ball drifted over the foot
+     line (the comment claimed "commits, no dither"; it didn't). Now committed once and cached in
+     **`r.evadeDir`**, cleared on action exit / latch rearm / `kickRod` / `resetRodRotation`.
+  - `CONFIG.ai.heldFwd.vz` **0 → 5**. At 0 the `|v.z| > vz` test was always true, so a RESTING ball's
+    noise-level `v.z` picked the sign every frame — the post-kick escape was a coin flip. The drift
+    branch is meant for a ball with real z-momentum only; below the gate it's geometry's job. (The
+    user's read was right that `vz` only uses the drift rule above the threshold — that split is
+    correct and stays; it was the fallback that was broken.)
+  - `CONFIG.ai.evade.behindDead` **3.1 → 1.6**, closing the passive band flagged yesterday
+    (rel −3.1..−0.8 got no action at all). The old value's rationale ("prevents hitting the ball
+    backwards") doesn't apply: evade only slides in Z, it never rotates the rod, so it cannot knock
+    the ball goal-ward. What must not be stolen is a *strikeable* ball, and `!overFoot`/`!inFront`
+    already guard that — 1.6 leaves a 0.8u buffer to the overFoot zone's −0.8 edge.
+  - New helper `nearestFootZ(r,bz)`. Verified by re-read (sandbox wouldn't boot).
+- **Keeper own-goal fix: trap own-goal guards** (`js/ai.js`, `js/config.js`). Symptom: a slow ball
+  (1–2 u/s) sitting BEHIND the GK would make it lift slightly and slide onto the ball, shovelling
+  it into its own net. Culprit was the **trap**, not evade/safeRaise: `trap.gkReach` was **20**, and
+  for a GK that value REPLACES the `alignZ` z-test entirely (`trapZ`), so with a ±13 slide band the
+  keeper's trap gate was true for essentially any z on the pitch. Entry then only needed slow +
+  `relReal ∈ (−6, 0.5)`, so a dead ball goal-side of the keeper entered `r.act='trap'` →
+  `updateRods` eased the angle to `trap.angle` (−0.4, a BACKWARD tilt = the "slight raise") and,
+  because trap does NOT `continue`, man-selection kept slide-targeting the ball's z (the "moves
+  toward the ball"). Trap also outranks **evade** (evade needs `!r.act`), so the one action designed
+  to slide clear of a stuck ball never got a look in; 1.45s later `trapShot`'s −0.8 windup pulled
+  back through it again.
+  - `gkReach` 20 → **6** (documented default; big values make the keeper trap balls it isn't lined
+    up with, since it replaces alignZ rather than adding to it).
+  - New `trap.minApproach` (6): the ball must be CLOSING on the rod (`best.v.x*dir`). A trap tilts
+    the foot backward, which only works on a ball rolling ONTO the foot — a stationary or goal-ward
+    ball is evade's job. New `trap.ownGoalGuard` (12): no trap entered, and a live trap ABORTS, when
+    the ball is within that x-distance of the rod's OWN goal line (the abort drops the rod and the
+    drop sweeps the foot FORWARD, i.e. clears upfield). At 12 the GK never traps (its whole band is
+    1.5–8 from the line); drop to ~5 to allow keeper traps at the band edge. Both to 0 = old behaviour.
+  - Debug: `aiUpdate` now emits an **`ACT:<name>`** line to the kick log (`C` then `L`) on every
+    named-action change, with `rel/dz/spd/ownGoalD/appr` — names whichever of safeRaise / trap /
+    evade / raise-latch is driving a misbehaving rod. `dbgRod` dedupes, so it's one line per change.
+  - KNOWN GAP left deliberately: with the GK trap off there's a passive band at
+    `relReal ∈ (−evade.behindDead, overFootOffset−overFoot)` ≈ (−3.1, −0.8) where a footStuck ball
+    gets no action (safeRaise needs `!footStuck`, evade needs deeper than `behindDead`) — the rod
+    just blocks until the 3.6s dead-ball redrop. Lower `evade.behindDead` toward ~1.6 if that reads
+    as passive; evade only slides in z so it can't knock the ball goal-ward. Verified by re-read
+    (sandbox wouldn't boot).
 - **Goal instant replays** (`js/replay.js` new, + `CONFIG.replay`/`REPLAY` alias + `cfg.replay`
   toggle, hooks in `main.js`/`flow.js`/`balls.js`/`powerups.js`/`input.js`/`ui.js`, `#replayUI`
   DOM + CSS). A flight recorder (`recordReplay`, called in the fixed-step loop AFTER `physics` and

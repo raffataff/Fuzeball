@@ -19,6 +19,7 @@ let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
 // object) can't scale per-side, so it's morphed vertex-wise — each vert widens by its own goal's mult.
 let rods=[],indicator,dropRing;
 let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
+let rodsDressedFor=null; // rod-set key the rods currently wear (reskinRods skips a no-op switch)
 let sprites=[],spriteTex,particles,pGeo,pData=[];
 let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={}; const modelCacheOrder=[]; // LRU key order, most-recent at end
 
@@ -146,7 +147,7 @@ function initThree(){
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
-  buildTable();buildArenaTable();buildCrowd();buildFxPools();
+  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildBallReflect();
   scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 }
@@ -193,6 +194,41 @@ function bakeGlbEnv(group){
  if(parent)parent.add(group);else scene.add(group);                             // move it back
  group.visible=vis;
  return tex;
+}
+
+/* Local ball reflections. A single shared cube camera rides the lead ball and renders the REAL
+   scene around it into a low-res cube target, reused as `envMap` on every ball material — so a
+   metallic ball reflects the table/pitch/men it's actually among, not just the distant room bake
+   (scene.environment). One extra scene pass per (throttled) frame; shadow auto-update is frozen
+   for it so the 6 faces reuse the previous frame's shadow map instead of re-rendering it 6×.
+   All knobs in CONFIG.ballReflect; the whole thing no-ops when cfg.reflections is off. */
+let ballCubeRT=null,ballCube=null,ballReflN=0;
+function buildBallReflect(){
+ if(!renderer||ballCubeRT)return;
+ const R=CONFIG.ballReflect;
+ ballCubeRT=new THREE.WebGLCubeRenderTarget(R.res,{format:THREE.RGBAFormat,generateMipmaps:true,minFilter:THREE.LinearMipmapLinearFilter});
+ ballCubeRT.texture.encoding=THREE.sRGBEncoding;                                // renderer outputs sRGB → decode env the same way (matches PMREM path)
+ ballCube=new THREE.CubeCamera(R.near,R.far,ballCubeRT);
+}
+function ballReflectOn(){return !!(renderer&&ballCubeRT&&cfg.reflections&&CONFIG.ballReflect.on);}
+// set (or clear, env=null) the cube envMap on every mesh material under a ball; needsUpdate only
+// flips on an actual change (null↔texture recompiles the shader, so we do it once, at ball birth).
+function setBallEnv(b,env){
+ b.m.traverse(o=>{if(!o.isMesh)return;const ms=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of ms){if(m&&m.envMap!==env){m.envMap=env;m.envMapIntensity=CONFIG.ballReflect.intensity;m.needsUpdate=true;}}});
+}
+function applyBallEnv(b){setBallEnv(b,ballReflectOn()?ballCubeRT.texture:null);}   // called from makeBall
+function refreshBallReflect(){if(!ballCubeRT)return;const env=ballReflectOn()?ballCubeRT.texture:null;for(const b of S.balls)setBallEnv(b,env);} // Options toggle
+function updateBallReflect(){
+ if(!ballReflectOn()||!S.balls.length)return;
+ if(S.phase!=='play'&&S.phase!=='goal'&&S.phase!=='count')return;               // only while live balls are the visible reflectors
+ if(++ballReflN%CONFIG.ballReflect.every)return;                                // throttle whole-cube updates
+ let lead=S.balls[0],bd=1e30;                                                   // lead = ball nearest the camera (its reflection is the one the player sees)
+ for(const b of S.balls){const d=b.m.position.distanceToSquared(camera.position);if(d<bd){bd=d;lead=b;}}
+ const sa=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;    // reuse last frame's shadow map for the 6 faces
+ const vis=lead.m.visible;lead.m.visible=false;                                 // don't let the ball reflect itself
+ ballCube.position.copy(lead.m.position);ballCube.update(renderer,scene);
+ lead.m.visible=vis;renderer.shadowMap.autoUpdate=sa;
 }
 
 function buildTable(){
@@ -345,45 +381,82 @@ function makePlayer(team){
 function rodCollar(maxOff){return F.W/2+3+CONFIG.rods.wallClear+maxOff;}
 
 function buildRods(){
- const rodM=new THREE.MeshStandardMaterial({color:0xc8cfdb,roughness:.25,metalness:.9});
- const bumpMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.7,metalness:.2});
- const hl=CONFIG.rods.handleLen,cl=CONFIG.rods.collarLen,cap=CONFIG.rods.capOut;
+ const tid=(CONFIG.tables[cfg.table]?cfg.table:'classic');   // active table → picks the rod set
  RODDEFS.forEach((d,idx)=>{
   const sp=d.men===2?CONFIG.rods.spacing.two:d.men===3?CONFIG.rods.spacing.three:CONFIG.rods.spacing.other;
    let maxOff=(F.W-CONFIG.rods.margin-(d.men-1)*sp)/2;
    if(d.slideCap!=null)maxOff=Math.min(maxOff,d.slideCap);
    else if(d.role==='GK')maxOff=Math.min(maxOff,CONFIG.rods.gkSlide); // keeper stays in its area → shorter rod
-  const collar=rodCollar(maxOff);
   const pivot=new THREE.Group();pivot.position.set(d.x,ROD_H,0);scene.add(pivot);
-  let hg=null,cm=null;
-  const rodModel=makeRodModel(d.men,d.team);         // GLB rod if loaded, else null → primitives below
-  if(rodModel){pivot.add(rodModel);}
-  else{
-   // bar reaches the collar + cap on each end; the handle grip hides the near tip.
-   const rodMesh=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,2*(collar+cl+cap),10),rodM);
-   rodMesh.rotation.x=Math.PI/2;rodMesh.castShadow=true;pivot.add(rodMesh);
-   hg=new THREE.Group();
-   const hb=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,hl,12),teamMat[d.team]);hb.rotation.x=Math.PI/2;hg.add(hb);
-   const knob=new THREE.Mesh(new THREE.BoxGeometry(.9,.9,2.6),teamGlow[d.team]);knob.position.x=1.6;hg.add(knob);
-   hg.position.z=collar+hl/2;pivot.add(hg);
-   // collar: the stopper opposite the handle; the bar tip pokes `cap` past it.
-   cm=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,cl,12),bumpMat);
-   cm.rotation.x=Math.PI/2;cm.position.z=-(collar+cl/2);cm.castShadow=true;pivot.add(cm);
-  }
   const baseZ=[],men=[];
   for(let i=0;i<d.men;i++){const bz=(i-(d.men-1)/2)*sp;baseZ.push(bz);
     const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
-    rods.push({idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:hg,collar:cm,rodModel,
+    const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,aiMan:-1,
-    behindFlag:false,
+    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
-     removedUntil:[]});
+     removedUntil:[]};
+    rods.push(r);
+    dressRod(r,tid);                                  // hang the rod's hardware visual (GLB set or primitive)
   });
-  rodCustomMats=[];
-  rods.forEach(r=>{if(r.rodModel&&r.rodModel.userData.teamClones)
-   r.rodModel.userData.teamClones.forEach(c=>rodCustomMats.push({mat:c.mat,team:r.rodModel.userData.team,isGlow:c.isGlow}));});
+  rodsDressedFor=(typeof rodSetKey==='function')?rodSetKey(tid):'_shared';
+  refreshRodCustomMats();
  }
+
+/* (Re)build ONE rod's hardware visual on its pivot: the active table's GLB rod if that set has
+   this size, else the primitive bar+handle+collar. Removes any previous hardware first, so this
+   doubles as the table-switch reskin. The MEN (figurines) are owned by buildRods/rebuildRodMen
+   and are left untouched. */
+function dressRod(r,tid){
+ // Just detach previous hardware — do NOT dispose. GLB rod clones share geometry + template
+ // materials with the rodSets template (three.clone doesn't copy those), and the primitive
+ // handle/knob use the shared teamMat/teamGlow; disposing either would corrupt globals. Mirrors
+ // rebuildRodMen, which likewise removes-without-disposing. Table switches are rare (menu only).
+ if(r.rodModel){r.pivot.remove(r.rodModel);r.rodModel=null;}
+ if(r.rodBar){r.pivot.remove(r.rodBar);r.rodBar=null;}
+ if(r.handle){r.pivot.remove(r.handle);r.handle=null;}
+ if(r.collar){r.pivot.remove(r.collar);r.collar=null;}
+ const rodModel=makeRodModel(r.men.length,r.team,tid);   // GLB rod if the set has this size, else null
+ if(rodModel){r.pivot.add(rodModel);r.rodModel=rodModel;return;}
+ // primitive fallback (unchanged geometry). bar reaches collar+cap each end; handle hides the near tip.
+ const collar=rodCollar(r.maxOff);
+ const hl=CONFIG.rods.handleLen,cl=CONFIG.rods.collarLen,cap=CONFIG.rods.capOut;
+ const rodM=new THREE.MeshStandardMaterial({color:0xc8cfdb,roughness:.25,metalness:.9});
+ const bumpMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.7,metalness:.2});
+ const rodMesh=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,2*(collar+cl+cap),10),rodM);
+ rodMesh.rotation.x=Math.PI/2;rodMesh.castShadow=true;r.pivot.add(rodMesh);r.rodBar=rodMesh;
+ const hg=new THREE.Group();
+ const hb=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,hl,12),teamMat[r.team]);hb.rotation.x=Math.PI/2;hg.add(hb);
+ const knob=new THREE.Mesh(new THREE.BoxGeometry(.9,.9,2.6),teamGlow[r.team]);knob.position.x=1.6;hg.add(knob);
+ hg.position.z=collar+hl/2;r.pivot.add(hg);
+ // collar: the stopper opposite the handle; the bar tip pokes `cap` past it.
+ const cm=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,cl,12),bumpMat);
+ cm.rotation.x=Math.PI/2;cm.position.z=-(collar+cl/2);cm.castShadow=true;r.pivot.add(cm);
+ r.handle=hg;r.collar=cm;
+}
+
+/* Rebuild the rodCustomMats list (rod GLB team-colour materials) from the current rod models —
+   run after any dressRod pass so applyColors/applyFinish paint the fresh visuals. */
+function refreshRodCustomMats(){
+ rodCustomMats=[];
+ rods.forEach(r=>{if(r.rodModel&&r.rodModel.userData.teamClones)
+  r.rodModel.userData.teamClones.forEach(c=>rodCustomMats.push({mat:c.mat,team:r.rodModel.userData.team,isGlow:c.isGlow}));});
+}
+
+/* Swap every rod's hardware visual to `tableId`'s rod set (called from applyTable once the set is
+   resident). Physics untouched — visual only. No-op when the rods already wear this set. Handle
+   near-side flip is re-applied by startMatch, so it isn't repeated here. */
+function reskinRods(tableId){
+ if(!rods.length)return;                                  // rods not built yet (early applyTable) — buildRods dresses them
+ const tid=(CONFIG.tables[tableId]?tableId:'classic');
+ const key=(typeof rodSetKey==='function')?rodSetKey(tid):'_shared';
+ if(rodsDressedFor===key)return;
+ rodsDressedFor=key;
+ rods.forEach(r=>dressRod(r,tid));
+ refreshRodCustomMats();
+ if(typeof applyColors==='function')applyColors();        // paint + finish the new materials
+}
 
 function buildFxPools(){
  const cv=document.createElement('canvas');cv.width=64;cv.height=64;

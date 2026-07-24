@@ -33,7 +33,7 @@ function bindUI(){
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
  $('setGameTime').onchange=e=>{cfg.gameTime=+e.target.value;saveCfg();};
  $('setRoom').onchange=e=>{cfg.room=e.target.value;applyRoom();saveCfg();};
-  $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;applyRoom();saveCfg();};
+  $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;applyRoom();refreshBallReflect();saveCfg();};
   $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();refreshSkinSelect();saveCfg();};
   $('setSkin').onchange=e=>{if(typeof selectSkin==='function')selectSkin(cfg.table,e.target.value);};
   // populate pitch select from the CONFIG.pitches registry

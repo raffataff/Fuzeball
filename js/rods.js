@@ -41,15 +41,17 @@ function rodSpeedMult(r){
 function kickRod(r, style){
  if(r.kickT>=0)return;
  r.raise=false;r.kickT=0;r.act=null;r.kickStyle=style||null;
- r.kickHit=false;                       // debug tracer: set true by collideRod on real contact this swing
- r.evadeHold=0;r.evadeSpent=false;      // fresh post-kick held-evade budget for this swing
+ r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
+ r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;    // fresh post-kick held-evade budget + escape direction for this swing
+ r.trapMan=-1;r.trapDir=0;                         // a swing ends any trap carry (the ball is being released)
+ r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
  if(S.stats)S.stats.kicks[r.team]++;
 }
 function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
-   r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.tcSpin=0;
-  r.act=null;r.actT=0;
+   r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
+  r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
  }
@@ -62,6 +64,16 @@ function updateRods(dt){
    if(r.kickT>=0){
      r.kickT+=dt;const T=r.kickT;let a;
      const KS=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
+     /* The swing ramps from the rod's angle AT KICK TIME (r.kickA0, captured in kickRod) instead of
+        from the fixed windupA. Starting from a constant meant a kick launched off a RAISED rod
+        (angle raiseA −1.6) crossed ~1.5 rad in ONE step: angVel spiked to ~85 rad/s against the
+        swing's normal ~22, the foot teleported ~9u (straight past the ball — the tunnelling and the
+        sideways 'glitch'), and the impulse came out 4x too big. Kick-log evidence 2026-07-22.
+        With windup>0 the pull-back ALSO sweeps from kickA0 rather than snapping, so there is no
+        discontinuity anywhere in the curve. windup==0 → ramp runs kickA0 → strikeA directly, which
+        is what makes windupA:0 actually mean "no back-pull". */
+     const kA0=(r.kickA0!=null)?r.kickA0:0;
+     const rampA0=KS.windup>0?KS.windupA:kA0;
      let uf=false,dir=r.team===0?1:-1;
      for(const b of S.balls){
       if(b.scored)continue;const rel=(b.m.position.x-r.x)*dir;
@@ -75,8 +87,8 @@ function updateRods(dt){
      const holdF=(uf||(r.evadeHold>0&&!r.evadeSpent))&&T>=KS.hold;
      r.heldFwd=holdF;
      if(holdF){a=KS.strikeA;r.kickT=KS.hold;}
-     else if(T<KS.windup)a=KS.windupA*(T/KS.windup);
-     else if(T<KS.strike)a=KS.windupA+(KS.strikeA-KS.windupA)*((T-KS.windup)/(KS.strike-KS.windup));
+     else if(T<KS.windup)a=kA0+(KS.windupA-kA0)*(T/KS.windup);
+     else if(T<KS.strike)a=rampA0+(KS.strikeA-rampA0)*((T-KS.windup)/(KS.strike-KS.windup));
      else if(T<KS.hold)a=KS.strikeA;
      else if(T<KS.drop)a=KS.strikeA*(1-(T-KS.hold)/(KS.drop-KS.hold));
      else{a=0;r.kickT=-1;r.kickStyle=null;if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
@@ -91,7 +103,10 @@ function updateRods(dt){
    r.angle=KICK.padAngleLerp>0?lerp(r.angle,r.padAngleTarget,Math.min(1,KICK.padAngleLerp*dt)):r.padAngleTarget;
   }else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
-   const ms=(isUserRod(r)?KICK.userSpeed*S.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
+   let ms=(isUserRod(r)?KICK.userSpeed*S.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
+   // Carrying a trapped ball is a deliberate shuffle, not a slide: the boot can only drag the ball
+   // as fast as trap.holdGrip transfers velocity to it, so a full-speed slide just sheds the ball.
+   if(r.act==='trap')ms*=AIC.trap.carryMult;
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(isUserRod(r)){                                   // human hand: instant/responsive, speed-capped only
@@ -107,6 +122,7 @@ function updateRods(dt){
   r.vz=(r.offset-r.prevOffset)/dt;
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);
+  r.evadeCd=Math.max(0,(r.evadeCd||0)-dt);   // evade re-entry lockout (CONFIG.ai.evade.cd)
   r.pivot.rotation.z=r.angle;
   r.pivot.position.z=r.offset;
   const fadeT=CONFIG.cannonball.respawnFade;

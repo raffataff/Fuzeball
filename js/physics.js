@@ -4,12 +4,25 @@ function physics(dt){
  if(dt<=0||!S.balls.length)return;
  // adaptive substepping: keep per-step travel under ~subTravel so fast/heavy balls can't tunnel.
  // floor/air friction are applied per-substep as exp(k*h), so total exp(k*dt) is invariant to sub count.
+ // The FOOT counts as a fast mover too: updateRods advances r.angle a whole sim step at once, and at
+ // the swing's ~22 rad/s that is ~2.3u of foot travel per step — more than a ball radius — so the ball
+ // was finely substepped while the foot teleported straight past it. Feeding foot speed into vmax
+ // raises the substep count for a fast swing; the interpolation below then poses the rod at each
+ // substep so contacts resolve where the foot actually was.
  let vmax=0;for(const b of S.balls){const s=b.v.length();if(s>vmax)vmax=s;}
+ for(const r of rods){const fs=Math.abs(r.angVel)*ARM+Math.abs(r.vz);if(fs>vmax)vmax=fs;}
  const sub=clamp(Math.ceil(vmax*dt/PHY.subTravel),PHY.subMin,PHY.subMax),h=dt/sub;
+ // Rod pose at the START of this sim step, reconstructed exactly: updateRods set
+ // angVel=(angle-prevAngle)/dt, so angle-angVel*dt IS the previous angle. angVel/vz themselves are
+ // left alone — they're the average rate over the step, which is what the contact impulse wants.
+ for(const r of rods){r.sA0=r.angle-r.angVel*dt;r.sO0=r.offset-r.vz*dt;r.sA1=r.angle;r.sO1=r.offset;}
  for(let s=0;s<sub;s++){
+  const f=(s+1)/sub;
+  for(const r of rods){r.angle=lerp(r.sA0,r.sA1,f);r.offset=lerp(r.sO0,r.sO1,f);}
   for(let bi=S.balls.length-1;bi>=0;bi--)stepBall(S.balls[bi],h);
   for(let i=0;i<S.balls.length;i++)for(let j=i+1;j<S.balls.length;j++)ballBall(S.balls[i],S.balls[j]);
  }
+ for(const r of rods){r.angle=r.sA1;r.offset=r.sO1;}   // restore the exact end-of-step pose for render/AI
  for(const b of S.balls){
   const sp=b.v.length();
   if(S.stats&&sp>S.stats.topSpeed)S.stats.topSpeed=sp;
@@ -61,13 +74,18 @@ function stepBall(b,h){
    const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){if(p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // goal ONLY under the bar & whole ball over the line
+    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
+     if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
+     else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}                // goal ONLY under the bar, whole ball over the line, and NOT dropping in from over the top
     else if(p.y<ew+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
-    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){if(p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
+    if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
+     if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
+     else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
     else if(p.y<ew+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
    }
+   if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
   }else{
    const bx=F.L/2+F.goalDepth-BALL_R;
    if(p.x>bx&&v.x>0){p.x=bx;v.x*=-PHY.behindDamp;}
@@ -119,13 +137,18 @@ function stepBall(b,h){
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
-   // goal detection unchanged from classic
+   // goal detection — same over-the-bar guard as classic (the arena pocket is open at all heights, so lobs must be gated too)
    const xl=F.L/2-BALL_R;
    if(p.x>xl){
-    if(Math.abs(p.z)<gh0&&p.y<F.goalH){if(p.x>F.L/2+BALL_R){onGoal(0,b);return;}} // whole ball over the line
+    if(Math.abs(p.z)<gh0){
+     if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;
+     else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}
    }else if(p.x<-xl){
-    if(Math.abs(p.z)<gh1&&p.y<F.goalH){if(p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
+    if(Math.abs(p.z)<gh1){
+     if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
+     else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
    }
+   if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;
   }
  }
  if(!b.scored)goalFrameCollide(b,h);
@@ -157,10 +180,12 @@ function goalFrameCollide(b,h){
    if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
     const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post);}}
   }
-  // net roof: solid top over the goal box (behind the line). Only catches balls in the band
-  // above the mouth (below it is a clean shot under the bar), so over-the-bar lobs rest on top.
+  // net roof: solid top over the goal box (behind the line). A ball flagged as an over-the-bar lob
+  // (b.overBar for this end) is caught at ANY depth below the roofline so a fast drop can't tunnel
+  // through it into the net; an unflagged ball keeps the thin catch band as before.
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
-   if(xin&&Math.abs(p.z)<gh&&p.y>=GH&&p.y<GH+BALL_R&&v.y<0){
+  const roofSolid=sx>0?b.overBar===1:b.overBar===-1;
+   if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
    p.y=GH+BALL_R;if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
@@ -168,6 +193,7 @@ function goalFrameCollide(b,h){
  }
 }
 function collideRod(b,r){
+ if(r.trnHidden)return;                   // training sandbox: hidden rods are ghosts — no contact
  const p=b.m.position;
 /* ---- foot box (priority) ---- */
     const bx=FOOT_BOX.x,by=FOOT_BOX.y,bz=FOOT_BOX.z,offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*r.kickDir;
@@ -198,20 +224,34 @@ function collideRod(b,r){
    const cvx=-(cwy-ROD_H)*r.angVel,cvy=(cwx-r.x)*r.angVel,cvz=r.vz;
    const vn=(b.v.x-cvx)*nx+(b.v.y-cvy)*ny+(b.v.z-cvz)*nz;
    if(vn<0){
+     // tracer only: the ball's OWN normal speed before the impulse rewrites b.v. vn is exactly
+     // (ball·n − foot·n), so logging both halves shows whether a contact was driven by the swing
+     // or by the ball's own arrival speed. Zero cost when the tracer is off (dbgLogRod is null).
+     const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
      const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
      const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-     const rest=pow?ks.restPower:ks.rest;
+     /* TRAP CONTACT. While ai.js holds r.act==='trap' the boot is a dead, sticky surface instead of
+        the normal passive touch (kick.rest 0.01 / kick.grip 0.08). rest→0 kills the ball's speed
+        relative to the foot; the big grip is the CARRY — b.v is lerped hard toward the contact
+        point's own velocity, whose z component is the rod's slide (r.vz), so the ball travels with
+        the man being dribbled sideways. Without this a "trap" is just a soft bounce: the ball parks
+        near the boot and the rod slides out from under it. No sweet-spot bonus and no aim-assist on
+        a trap contact either — both exist to make a STRIKE better, and applying them here would
+        re-launch the ball we are trying to hold. */
+     const trapping=r.act==='trap'&&r.kickT<0;
+     const TRP=AIC.trap;
+     const rest=trapping?TRP.holdRest:(pow?ks.restPower:ks.rest);
     // sweet spot: ball struck in the narrow z-centre of the foot AND a tight forward x band
     //   (dir-relative off the rod, same reference the AI's overFoot zone uses). lz is the ball's
     //   z offset from the foot; relR is how far ahead of the rod it contacts.
     const relR=(p.x-r.x)*r.kickDir;
-    const sweet=SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
+    const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-    const g=stGrip(r);
+    const g=trapping?clamp(TRP.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
@@ -225,12 +265,13 @@ function collideRod(b,r){
     // hit — a skill reward), but for AI rods on EVERY contact so they reliably aim in all modes.
     // aimAssist itself only acts on shots already moving goalward within its cone, so a defensive
     // touch (moving away) is untouched — this can't turn stray clears into shots.
-    if(pow||(sweet&&SW.forceAssist)||!isUserRod(r))aimAssist(b,r);
+    if(!trapping&&(pow||(sweet&&SW.forceAssist)||!isUserRod(r)))aimAssist(b,r);
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     S.lastTouch=r.team;
-    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b);}  // debug: mark first contact of this swing
+    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
+     {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
      b.didSplit=true;
      const nb=makeBall('split');nb.didSplit=true;
@@ -264,25 +305,29 @@ function collideRod(b,r){
   const vn=rvx*nx+rvy*ny+rvz*nz;
   p.x+=nx*(R-d);p.y+=ny*(R-d);p.z+=nz*(R-d);
   if(vn<0){
+    const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;   // tracer only — see the foot-box pass
     const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-    const rest=pow?ks.restPower:ks.rest;
+    const trapping=r.act==='trap'&&r.kickT<0;   // dead + sticky while holding — see the foot-box pass
+    const TRP=AIC.trap;
+    const rest=trapping?TRP.holdRest:(pow?ks.restPower:ks.rest);
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-    const g=stGrip(r);
+    const g=trapping?clamp(TRP.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    if(pow||!isUserRod(r))aimAssist(b,r);   // human: power window only; AI: every contact (goalward-only, see foot-box note)
+    if(!trapping&&(pow||!isUserRod(r)))aimAssist(b,r);   // human: power window only; AI: every contact (goalward-only, see foot-box note)
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;
-   if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b);}  // debug: mark first contact (capsule graze) of this swing — capsule can't be a sweet hit
+   if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
+    {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact (capsule graze) of this swing — capsule can't be a sweet hit
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;

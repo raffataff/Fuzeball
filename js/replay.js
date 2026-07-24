@@ -53,16 +53,49 @@ function replayGhosts(){
   const m=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,20,14),
    new THREE.MeshStandardMaterial({color:0xffffff,roughness:.4,metalness:.05}));
   m.visible=false;scene.add(m);
-  RP.ghosts.push({m,typ:-1,trailT:0,prev:new THREE.Vector3(),shim:{m:{position:m.position},t:{trail:'#ffffff'}}});
+  // models: type-index -> GLB clone (lazy, cached for the session). When a type has
+  // a baked GLB slot we show that instead of the tinted sphere; null = no slot (e.g.
+  // knuckleball) or ball models disabled → keep the sphere fallback. active = the
+  // model currently shown for this ghost (null when the sphere is the active one).
+  RP.ghosts.push({m,typ:-1,trailT:0,prev:new THREE.Vector3(),
+   shim:{m:{position:m.position},t:{trail:'#ffffff'}},models:null,active:null,primed:false});
  }
+}
+// Lazily clone the GLB model for a recorded ball type; null if unavailable (no slot
+// or CONFIG.debug.useBallModel off). Cached per ghost so each replay type is built once.
+function replayGhostModel(g,ti){
+ if(!g.models)g.models={};
+ let model=g.models[ti];
+ if(model!==undefined)return model;
+ model=makeBallModel(RB.keys[ti]);
+ if(model){model.scale.setScalar(1);model.visible=false;scene.add(model);}
+ g.models[ti]=model;
+ return model;
+}
+// Hide a ghost entirely (end of footage for this slot, replay end/abort).
+function replayGhostHide(g){
+ g.m.visible=false;
+ if(g.models)for(const k in g.models){const mm=g.models[k];if(mm)mm.visible=false;}
+ g.active=null;g.primed=false;
 }
 function replayTint(g,ti){
  g.typ=ti;
  const t=BALL_TYPES[RB.keys[ti]];
- g.m.material.color.set(t.col);
- g.m.material.emissive.set(t.em||0x000000);
- g.m.material.emissiveIntensity=t.em?0.7:0;
- g.m.material.metalness=t.metal||.05;
+ const model=replayGhostModel(g,ti);
+ if(model){
+  // GLB-cloned model is the proper material; hide the sphere + any other cached models
+  g.active=model;g.m.visible=false;
+  for(const k in g.models){const mm=g.models[k];if(mm)mm.visible=(+k===ti);}
+ }else{
+  // no baked slot (or models disabled) → tinted sphere fallback, matching live behaviour
+  g.active=null;
+  for(const k in (g.models||{})){const mm=g.models[k];if(mm)mm.visible=false;}
+  g.m.visible=true;
+  g.m.material.color.set(t.col);
+  g.m.material.emissive.set(t.em||0x000000);
+  g.m.material.emissiveIntensity=t.em?0.7:0;
+  g.m.material.metalness=t.metal||.05;
+ }
  g.shim.t.trail=t.trail||'#ffffff';
 }
 // interpolated pose of slot s at logical float step j → out vector; false when the slot is empty
@@ -114,8 +147,8 @@ function replayStart(){
  if(si===RP.lastShot)si=(si+1)%REPLAY_SHOTS.length;
  RP.shot=si;RP.lastShot=si;
  RP.fov0=camera.fov;
- replayGhosts();
- for(const g of RP.ghosts){g.typ=-1;g.m.visible=false;g.trailT=0;}
+  replayGhosts();
+  for(const g of RP.ghosts){g.typ=-1;replayGhostHide(g);g.trailT=0;}
  document.body.classList.add('replayOn');
  $('replayUI').classList.remove('hidden');
  flash();Au.ui();
@@ -123,8 +156,8 @@ function replayStart(){
 function replayEnd(){
  if(!RP.on)return;RP.on=false;
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
- for(const g of RP.ghosts)g.m.visible=false;
- for(const r of rods){r.pivot.position.z=r.offset;r.pivot.rotation.z=r.angle;}   // hand the pivots back to the live sim pose
+  for(const g of RP.ghosts)replayGhostHide(g);
+  for(const r of rods){r.pivot.position.z=r.offset;r.pivot.rotation.z=r.angle;}   // hand the pivots back to the live sim pose
  document.body.classList.remove('replayOn');
  $('replayUI').classList.add('hidden');
  flash();
@@ -137,7 +170,7 @@ function replayAbort(){
  if(!RP.on)return;
  RP.on=false;
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
- if(RP.ghosts)for(const g of RP.ghosts)g.m.visible=false;
+  if(RP.ghosts)for(const g of RP.ghosts)replayGhostHide(g);
  document.body.classList.remove('replayOn');
  $('replayUI').classList.add('hidden');
 }
@@ -161,12 +194,13 @@ function replayUpdate(rdt){
  }
  /* ghost balls + trails off the live sprite pool */
  let focusSet=false;
- for(let s=0;s<RB.slots;s++){
-  const g=RP.ghosts[s],ti=rbBall(s,j,g.m.position);
-  if(ti<0){g.m.visible=false;continue;}
-  if(ti!==g.typ)replayTint(g,ti);
-  if(!g.m.visible){g.m.visible=true;g.prev.copy(g.m.position);}
-  if(!focusSet){RP.focus.copy(g.m.position);focusSet=true;}   // slot 0 (the rally ball) leads the shot
+  for(let s=0;s<RB.slots;s++){
+   const g=RP.ghosts[s],ti=rbBall(s,j,g.m.position);
+   if(ti<0){replayGhostHide(g);continue;}
+   if(ti!==g.typ)replayTint(g,ti);
+   if(g.active)g.active.position.copy(g.m.position);   // GLB model follows the recorded ball pos
+   if(!g.primed){g.primed=true;g.prev.copy(g.m.position);}
+   if(!focusSet){RP.focus.copy(g.m.position);focusSet=true;}   // slot 0 (the rally ball) leads the shot
   g.trailT-=rdt;
   if(g.trailT<=0&&g.prev.distanceTo(g.m.position)/Math.max(rdt,1e-4)>CONFIG.fx.trailSpeed){
    spawnTrail(g.shim);g.trailT=REPLAY.trailEvery;

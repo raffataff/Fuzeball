@@ -28,6 +28,9 @@ function loop(t){
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);
   /* --- fixed-rate simulation (slow-mo just consumes sim-time slower) --- */
   physAcc+=rdt*S.timeScale;
+  // training freeze: hold the sim (render keeps running so placement/camera stay live);
+  // each queued step (⏭ / O) releases exactly ONE fixed slice.
+  if(S.trn&&S.trn.freeze){if(S.trn.stepQ>0){S.trn.stepQ--;physAcc=FIXED;}else physAcc=0;}
   for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
   while(physAcc>=FIXED&&steps<SIM.maxSteps){
@@ -69,6 +72,8 @@ function loop(t){
  debugUpdate();
  sweetGuideUpdate();
  if(S.phase!=='menu')hudTick(rdt);
+ if(S.trn)trainingTick();               // training panel readout (ball pos/speed)
+ updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating, no-op off)
  renderer.render(scene,camera);
 }
 initThree();

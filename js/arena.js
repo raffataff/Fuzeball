@@ -194,6 +194,10 @@ function applyTable(onReady){
  else settled();
  applySkin(id);
  if(typeof drawField==='function')drawField();
+ // Rods are a per-table livery (visual only): ensure this table's set is resident, then reskin the
+ // rod hardware in. Idempotent + no-op when already wearing this set, so repeated applyTable calls
+ // are cheap; shows stock rods until a table's own GLBs land (or forever if it has none).
+ if(typeof ensureTableRods==='function')ensureTableRods(id,()=>{if(typeof reskinRods==='function')reskinRods(id);});
 }
 
 // The skin (livery) currently selected for a table: cfg.skins[id], else the table's defSkin.

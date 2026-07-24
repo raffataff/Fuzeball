@@ -117,13 +117,23 @@ let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
    dbgLogRod stays null until you press L. Toggle the console mirror with the
    'Kick→Console' checkbox in the AI panel. */
 let dbgLogRod=null,dbgLogLines=[],dbgLogPanel=null,dbgLogBody=null,dbgLogHdr=null;
-let dbgLogPrevKick=-1,dbgLogLastKind='',dbgLogConsole=false;
+let dbgLogPrevKick=-1,dbgLogConsole=false;
+/* Dedupe is PER CHANNEL, not one shared slot. With a single slot (the old dbgLogLastKind) any two
+   emitters that both fire every frame with different-but-steady kinds ping-pong forever: the ACT
+   trace writes 'ACT:trap', the gate trace immediately overwrites it with 'BLK:out-of-reach', so on
+   the next frame BOTH look changed and both print → 2 lines × sim hz = thousands of lines a second.
+   Now each emitter dedupes against its own last kind, so a steady state prints ONCE no matter what
+   else is logging. A real event (kick/contact) clears the channels so the following state re-announces. */
+let dbgLogLast={};
+/* Repeat collapse: an identical line arriving again (a genuine per-frame oscillation, which IS worth
+   seeing) folds into a ×N counter on the existing line instead of pushing thousands of copies. */
+let dbgLogRepKey='',dbgLogRepN=1,dbgLogRepTxt='',dbgLogDirty=false;
 function dbgRodName(r){return (r.team===0?'RED':'BLU')+' '+r.role+' x'+r.x;}
 function dbgFmtT(t){return 't'+t.toFixed(2);}
 function buildKickLogPanel(){
  if(dbgLogPanel)return;
  const p=document.createElement('div');p.id='dbgKickLog';
- p.style.cssText='position:fixed;left:10px;bottom:10px;z-index:60;width:440px;max-height:46vh;overflow:hidden;'
+ p.style.cssText='position:fixed;left:10px;bottom:10px;z-index:60;width:660px;max-height:46vh;overflow:hidden;'
   +'font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#ffe6a3;background:rgba(8,10,16,.82);'
   +'border:1px solid #ffcf4d;border-radius:8px;padding:8px 10px;pointer-events:none;white-space:pre;';
  const h=document.createElement('div');h.id='dbgKickLogHdr';
@@ -133,41 +143,87 @@ function buildKickLogPanel(){
  p.appendChild(h);p.appendChild(b);document.body.appendChild(p);
  dbgLogPanel=p;dbgLogHdr=h;dbgLogBody=b;
 }
-function renderKickLog(){if(dbgLogBody)dbgLogBody.innerHTML=dbgLogLines.join('<br>');}
-function dbgLogPush(s){
+function renderKickLog(){if(dbgLogBody)dbgLogBody.innerHTML=dbgLogLines.join('<br>');dbgLogDirty=false;}
+// Flushed once per FRAME from debugUpdate rather than on every push — the sim runs several steps per
+// frame, and rewriting innerHTML per step was both unreadable and needless DOM churn.
+function flushKickLog(){if(dbgLogDirty)renderKickLog();}
+/* key = an identity for "this is the same line as before". Same key ⇒ collapse into a ×N counter on
+   the line already at the bottom; different key (or none) ⇒ a new line. The console mirror only ever
+   sees new lines, so it can't flood either. */
+function dbgLogPush(s,key){
+ if(key&&key===dbgLogRepKey&&dbgLogLines.length){
+  dbgLogRepN++;
+  dbgLogLines[dbgLogLines.length-1]=dbgLogRepTxt+'  ×'+dbgLogRepN;
+  dbgLogDirty=true;return;
+ }
+ dbgLogRepKey=key||'';dbgLogRepN=1;dbgLogRepTxt=s;
  dbgLogLines.push(s);
  if(dbgLogLines.length>28)dbgLogLines.shift();
  if(dbgLogConsole)console.log('[kick] '+s);
- renderKickLog();
+ dbgLogDirty=true;
+}
+/* True only when `kind` differs from the last kind seen on THIS channel (see dbgLogLast above) AND
+   the channel isn't thrashing. A state that genuinely flips A→B→A every step (a real oscillation, and
+   the thing you most want to catch) would still emit a line per flip — at sim hz that's the flood all
+   over again. So a channel that changes faster than DBG_LOG_GAP has its individual lines swallowed and
+   counted; the next line that does get through is preceded by ONE '⇄ thrash  N changes suppressed'
+   summary. Oscillation stays visible, volume is capped at ~1/DBG_LOG_GAP lines per channel. */
+const DBG_LOG_GAP=0.35;
+let dbgLogT={},dbgLogSkip={};
+function dbgLogNew(ch,kind){
+ if(dbgLogLast[ch]===kind)return false;
+ const t=S.time,last=dbgLogT[ch];
+ dbgLogLast[ch]=kind;
+ if(last!=null&&t-last<DBG_LOG_GAP){dbgLogSkip[ch]=(dbgLogSkip[ch]||0)+1;return false;}
+ dbgLogT[ch]=t;
+ const n=dbgLogSkip[ch]||0;
+ if(n){dbgLogSkip[ch]=0;dbgLogPush(dbgFmtT(t)+'  '+ch+' ⇄ thrash  '+n+' changes suppressed',ch+'|thrash');}
+ return true;
 }
 // L cycles: null → rod0 → … → rodN → null. Resets the trace state each time.
 function cycleKickLog(){
  buildKickLogPanel();
  const i=dbgLogRod?rods.indexOf(dbgLogRod):-1,ni=i+1;
  dbgLogRod=ni>=rods.length?null:rods[ni];
- dbgLogLines.length=0;dbgLogPrevKick=-1;dbgLogLastKind='';
+ dbgLogLines.length=0;dbgLogPrevKick=-1;dbgLogLast={};dbgLogT={};dbgLogSkip={};dbgLogRepKey='';dbgLogRepN=1;dbgLogRepTxt='';
  dbgLogHdr.textContent=dbgLogRod?('KICK LOG · '+dbgRodName(dbgLogRod)+'   (L = next rod)'):'KICK LOG · off  (press L to pick a rod)';
  renderKickLog();
  dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
  banner('KICK LOG',dbgLogRod?dbgRodName(dbgLogRod):'OFF',1.0);Au.ui();
 }
-// state-change / action trace (benched, held-forward escape, trap-shot). Deduped
-// on `kind` so a steady state prints once; alternating states each print with a
-// timestamp — which is exactly what exposes an oscillation.
+/* state-change / action trace (benched, held-forward escape, trap-shot, ACT:*). Channel = the kind's
+   prefix before ':' when it has one, else 'act' — so the ACT:* trace dedupes against ITSELF (one line
+   per genuine action change) and can't ping-pong with the gate trace or with BENCH/HELD-ESC. */
 function dbgRod(r,kind,detail){
  if(r!==dbgLogRod)return;
- if(kind===dbgLogLastKind)return;
- dbgLogLastKind=kind;
- dbgLogPush(dbgFmtT(S.time)+'  '+kind+(detail?('  '+detail):''));
+ const i=kind.indexOf(':'),ch=i>0?kind.slice(0,i):'act';
+ if(!dbgLogNew(ch,kind))return;
+ dbgLogPush(dbgFmtT(S.time)+'  '+kind+(detail?('  '+detail):''),ch+'|'+kind);
 }
 // real contact: collideRod calls this the first time a foot box (or capsule graze) actually
 // resolves against the ball during a swing — so a ★KICK followed by ✓CONTACT connected, and a
 // ★KICK that ends in a ✗WHIFF (logged by updateRods when the swing completes untouched) missed.
-function dbgHit(r,man,foot,pow,sweet,vn,b){
+/* c = the vn breakdown captured in collideRod (optional). vn is EXACTLY (foot·n − ball·n) — the two
+   halves are logged separately so a contact can be attributed: a big `foot` term is the swing driving
+   the ball, a big negative `ball` term is the ball arriving into a stationary boot. Also:
+     swing  = |rotational contact-point velocity| = ω × arm-to-contact (the whole swing, not just its
+              normal component — compare against `foot` to see how much of the swing actually landed)
+     slide  = r.vz, the rod's sideways travel — the other source of contact-point motion
+     ω      = r.angVel this step. A one-step spike here means the swing curve jumped (see the
+              windupA / raised-rod note in CLAUDE.md) rather than swept.
+     jm     = impulse actually applied along n, AFTER rest/stHit/sweet/boost
+     rest   = which restitution was used — restPower if the timed power window was open, else rest */
+function dbgHit(r,man,foot,pow,sweet,vn,b,c){
  if(r!==dbgLogRod)return;
- dbgLogLastKind='HIT';
+ dbgLogLast={};                                  // a real event: let every steady state re-announce after it
+ // vn to 1dp: a graze (vn<0.5) used to render as a flat 'vn=0', which reads like the ball gained speed
+ // from a zero-force touch. It didn't — the impulse really was ~0 and the speed came from the GRIP term
+ // (b.v is lerped toward the contact point's velocity, i.e. the foot's swing speed, on any contact).
  dbgLogPush(dbgFmtT(S.time)+'  ✓CONTACT '+(foot?'foot':'leg ')+' man='+man+(pow?' [POWER]':'')+(sweet?' [SWEET]':'')
-  +'  vn='+vn.toFixed(0)+'  ball→'+b.v.length().toFixed(0)+'u/s');
+  +'  vn='+vn.toFixed(1)+'  ball→'+b.v.length().toFixed(0)+'u/s');
+ if(c)dbgLogPush('      vn = foot '+c.fn.toFixed(1)+' − ball '+c.bn.toFixed(1)
+  +'  │ swing '+c.sw.toFixed(1)+' slide '+c.sl.toFixed(1)+' ω '+c.w.toFixed(1)
+  +'  │ jm '+c.jm.toFixed(1)+' rest '+c.rest+' kickT '+c.kt.toFixed(3));
 }
 // the kick GATE: logs every fire (with gap since the last), and the first failing
 // condition when blocked (deduped). g = the gate's raw booleans/values from ai.js.
@@ -175,7 +231,8 @@ function dbgKickGate(r,g){
  if(r!==dbgLogRod)return;
  const now=S.time;
  if(g.fired){
-  const gap=dbgLogPrevKick>=0?(now-dbgLogPrevKick):-1;dbgLogPrevKick=now;dbgLogLastKind='KICK';
+  const gap=dbgLogPrevKick>=0?(now-dbgLogPrevKick):-1;dbgLogPrevKick=now;
+  dbgLogLast={};                                 // a real event: let every steady state re-announce after it
   dbgLogPush(dbgFmtT(now)+'  ★KICK  gap='+(gap>=0?gap.toFixed(2)+'s':'--')
    +'  rel='+g.rel.toFixed(1)+' dz='+g.dz.toFixed(2)+' spd='+g.speed.toFixed(0)
    +(g.overFoot?' [over]':' [inFront]')+(g.act?(' act='+g.act):''));
@@ -190,8 +247,8 @@ function dbgKickGate(r,g){
  else if(g.wait)why='wait-sweetspot';
  else if(g.holdShot)why='hold-for-lane';
  else why='?';
- const kind='BLK:'+why.split(' ')[0];
- if(kind!==dbgLogLastKind){dbgLogLastKind=kind;dbgLogPush(dbgFmtT(now)+'  ·blocked  '+why+(g.act?('  act='+g.act):''));}
+ const kind='BLK:'+why.split(' ')[0];             // dedupe on the REASON, not the numbers riding on it
+ if(dbgLogNew('gate',kind))dbgLogPush(dbgFmtT(now)+'  ·blocked  '+why+(g.act?('  act='+g.act):''),'gate|'+kind);
 }
 
 function dbgMat(col,op){return new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false});}
@@ -727,6 +784,7 @@ function debugUpdate(){
    updateBallVel();
    return;
   }
+  flushKickLog();                    // one DOM write per FRAME, not per sim step
   $('camInfo').style.display='block';
   $('ballSpeed').style.display='block';
   $('ballVel').style.display='block';

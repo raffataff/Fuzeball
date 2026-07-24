@@ -31,6 +31,7 @@ function collectPU(){
  disposePU();S.pu.timer=rand(PWR.respawn[0],PWR.respawn[1]);
 }
 function powerupUpdate(dt){
+ if(S.trn)return;                        // training sandbox: no random power-ups mid-test
  if(!cfg.power)return;
  if(!S.pu.obj){S.pu.timer-=dt;if(S.pu.timer<=0)spawnPU();return;}
  const o=S.pu.obj;
@@ -66,6 +67,7 @@ function deadzoneMult(p){
  return 1;
 }
 function deadBallUpdate(dt){
+ if(S.trn&&!S.trn.deadball)return;       // training sandbox: a placed ball must sit still forever unless opted in
  if(S.phase!=='play'||!S.balls.length)return;
  // A ball is DEAD when its true position (b.cur) stays inside a small box long enough — NOT when
  // its speed is low. A ball a player holds or spins against a wall keeps a high b.v.length() while

@@ -7,7 +7,19 @@ function setCtrl(i){
  S.lastSwitch=S.time;
  updateChips();Au.ui();
 }
+/* The rod the human is holding, or null when there ISN'T one — spectate (userTeam<0), or a
+   match started before boot() built the rods (mode card clicked while the asset chain was
+   still running), which leaves ctrlRods empty. EVERY input site goes through this; indexing
+   S.ctrlRods[S.ctrl] raw is what threw "Cannot read properties of undefined" on move/click.
+   Also self-heals a stale index rather than handing back a hole. */
+function userRod(){
+ if(S.userTeam<0||!S.ctrlRods.length)return null;
+ if(S.ctrl<0||S.ctrl>=S.ctrlRods.length)S.ctrl=0;
+ return S.ctrlRods[S.ctrl]||null;
+}
 addEventListener('keydown',e=>{
+ // typing in a form control (training panel, team names…) must never kick/slide/preventDefault
+ if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
  if(S.phase==='replay'){replaySkip();return;}   // any key skips the goal replay
@@ -25,33 +37,35 @@ addEventListener('keydown',e=>{
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(S.userTeam<0)return;
  if(e.code==='KeyB'){toggleSweetGuide();return;}   // toggle the sweet-spot guide (controller ○ mirrors this)
- if(e.code==='Space')kickRod(S.ctrlRods[S.ctrl]);
- if(e.code==='ShiftLeft'||e.code==='ShiftRight')S.ctrlRods[S.ctrl].raise=true;
+ const ur=userRod();if(!ur)return;
+ if(e.code==='Space')kickRod(ur);
+ if(e.code==='ShiftLeft'||e.code==='ShiftRight')ur.raise=true;
  if(e.code==='ArrowLeft'||e.code==='KeyQ')setCtrl(S.ctrl-1);
  if(e.code==='ArrowRight'||e.code==='KeyE')setCtrl(S.ctrl+1);
  if(/^Digit[1-4]$/.test(e.code))setCtrl(+e.code[5]-1);
 });
 addEventListener('keyup',e=>{keys[e.code]=false;
  if(S.freeRoam)return;
- if((e.code==='ShiftLeft'||e.code==='ShiftRight')&&S.userTeam>=0&&S.ctrlRods.length)S.ctrlRods[S.ctrl].raise=false;});
+ if(e.code==='ShiftLeft'||e.code==='ShiftRight'){const ur=userRod();if(ur)ur.raise=false;}});
 const cvs=$('game');
 cvs.addEventListener('mousemove',e=>{
- if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||S.userTeam<0)return;
- const r=S.ctrlRods[S.ctrl];
+ if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
+ const r=userRod();if(!r)return;
  r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens;
 });
 cvs.addEventListener('mousedown',e=>{
  if(S.phase==='replay'){replaySkip();return;}   // click skips the goal replay
- if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||S.userTeam<0)return;
- if(e.button===0)kickRod(S.ctrlRods[S.ctrl]);
- if(e.button===2)S.ctrlRods[S.ctrl].raise=true;
+ if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
+ const r=userRod();if(!r)return;
+ if(e.button===0)kickRod(r);
+ if(e.button===2)r.raise=true;
 });
-addEventListener('mouseup',e=>{if(!S.freeRoam&&e.button===2&&S.userTeam>=0&&S.ctrlRods.length)S.ctrlRods[S.ctrl].raise=false;});
+addEventListener('mouseup',e=>{if(!S.freeRoam&&e.button===2){const ur=userRod();if(ur)ur.raise=false;}});
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('wheel',e=>{if(!S.freeRoam&&S.phase==='play'&&S.userTeam>=0)setCtrl(S.ctrl+(e.deltaY>0?1:-1));});
 function userControlUpdate(dt){
- if(S.freeRoam||S.userTeam<0||!S.ctrlRods.length)return;
- const r=S.ctrlRods[S.ctrl];
+ if(S.freeRoam)return;
+ const r=userRod();if(!r)return;
  let dz=0;
  if(keys.ArrowUp||keys.KeyW)dz-=1;
  if(keys.ArrowDown||keys.KeyS)dz+=1;
@@ -99,10 +113,9 @@ function gamepadUpdate(dt){
  for(const i of [0,1,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!gpPrev[i];gpPrev[i]=d;}
  if(S.phase==='replay'){if(just[0]||just[1]||just[9])replaySkip();S.tcMult=1;return;}   // A/B/Start skip the goal replay
  if(just[9]&&(S.phase==='play'||S.phase==='count'||S.phase==='pause'))togglePause();
- if(!(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&S.userTeam>=0&&S.ctrlRods.length)){
-  if(gpRaiseHeld)gpRaiseHeld=false;S.tcMult=1;return;
- }
- const r=S.ctrlRods[S.ctrl],DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
+ const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?userRod():null;
+ if(!r){if(gpRaiseHeld)gpRaiseHeld=false;S.tcMult=1;return;}
+ const DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
  // TC SPEED: the analog triggers scale how many units the SLIDE STEP covers per frame (slideMult).
  // LT squeezes toward padTCFine (precision — smaller steps), RT toward padTCFast (fast — bigger
  // steps), neither = padTCBase middle-ground; LT wins when both are held. This is a step-SIZE knob,

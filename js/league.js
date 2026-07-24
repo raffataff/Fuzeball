@@ -294,6 +294,21 @@ function goalTarget(){return S.lg?(S.lg.cup?CUP.goals:LGC.goals):cfg.goals;}
 // reads the league's own LG.gameTime chosen at creation; the cup stays unlimited (race to CUP.goals).
 function gameTimeLimit(){const m=S.lg?(S.lg.cup?0:((LG&&LG.gameTime)||0)):(cfg.gameTime||0);return m*60;}
 function teamDiff(t){return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds are layered on baseDiff (per-division override via S.lg.diff)
+/* Pre-warm the shatter GLBs for the two figurines in the player's NEXT league/cup match while the
+   player is still sitting in the lobby, so the first cannonball kill of the match is a clone()+play()
+   with no disk-load or shader-compile stall. Quick/AI matches are covered because main.js primes the
+   default red/blue at boot AND startMatch primes activeModel(0/1) — but a LEAGUE opponent's figurine
+   is rarely one of those, so its shatter only started loading at startMatch (hence the first-kill lag).
+   This does the same ensureExplosionModel prime earlier: it loads + shader-warms off the game loop and
+   no-ops if already resident, so the later startMatch prime becomes a no-op. No pruning here — startMatch
+   still bounds residency to the two teams actually on the table; this only pulls them in ahead of time.
+   Guarded so a build without fracture fx / with the fn absent is a clean skip. Pass figurine model IDS
+   (t.model / cupEnt().model), NOT team indices — cfg.modelRed/Blue aren't swapped to the league teams
+   until lgPlayMatch, so activeModel() would read the wrong (menu) figurines here. */
+function primeMatchExplosions(idA,idB){
+ if(typeof ensureExplosionModel!=='function')return;
+ for(const id of [idA,idB])if(id)ensureExplosionModel(id);
+}
 function renderLgTape(op){
  const T=LG.teams,me=T[LG.playerId],them=T[op];
  const mo=CONFIG.playerModel.models.find(x=>x.id===me.model);
@@ -597,7 +612,10 @@ function openLeague(reveal){
  if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal();S.lgChampDone=true;}
  renderLeague(reveal);
  const fx=lgPlayerFixture();
- if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}
+ if(fx){const op=fx[0]===LG.playerId?fx[1]:fx[0];
+  renderLgScout(op);
+  primeMatchExplosions(LG.teams[LG.playerId].model,LG.teams[op].model); // warm both shatters now, while in the lobby
+ }
  layApply('league'); // custom panel arrangement, if one is saved (js/layout.js)
 }
 function renderLeague(reveal){
@@ -1048,7 +1066,8 @@ function renderCup(){
   }else{
     const tie=cupPlayerTie();
     if(tie){const opp=cupEnt(tie.a==='player'?tie.b:tie.a);
-      h+='<div class="cupNext">NEXT TIE: <span style="color:'+opp.col+'">'+opp.name+'</span></div>';}
+      h+='<div class="cupNext">NEXT TIE: <span style="color:'+opp.col+'">'+opp.name+'</span></div>';
+      primeMatchExplosions(cupEnt('player').model,opp.model);} // warm both shatters now, while in the cup bracket
   }
   $('cupBracket').innerHTML=h;
   $('cupPlay').classList.toggle('hidden',!cupPlayerTie());

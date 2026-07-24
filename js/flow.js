@@ -1,8 +1,16 @@
 'use strict';
 /* ================= game flow ================= */
 function startMatch(mode,rodLockRole){
+ // The menu is clickable BEFORE main.js's boot() has run (intro skipped by a key/click, the
+ // reduced-motion path, or the intro's holdMax expiring while GLBs are still loading). Starting
+ // then gave a match with rods===[] → S.ctrlRods empty → every canvas move/click threw on
+ // S.ctrlRods[S.ctrl]. boot() is idempotent and falls back to primitives, so just force it.
+ if(!rods.length){
+  if(typeof boot==='function')boot();
+  if(!rods.length)return;   // main.js not parsed yet — swallow the click rather than start a rodless match
+ }
  Au.init();Au.ui();
- S.mode=mode;S.userTeam=mode==='red'?0:mode==='blue'?1:-1;
+ S.mode=mode;S.userTeam=(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
  S.rodLockRole=rodLockRole||null;
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
@@ -44,6 +52,7 @@ function startMatch(mode,rodLockRole){
  $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
  $('ballTag').textContent=BALL_TYPES.classic.name;
   updateScoreUI();updateChips();
+  if(mode==='training'){trainingEnter();return;}   // sandbox: no countdown/serve — training.js owns the phase from here
   const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'GOOD LUCK');
   const _lim=gameTimeLimit();
   banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7);
@@ -51,7 +60,9 @@ function startMatch(mode,rodLockRole){
 }
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;$('count').style.display='block';$('count').textContent='';}
 function onGoal(team,b){
- if(b.scored)return;b.scored=true;
+ if(b.scored)return;
+ if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
+ b.scored=true;
  const val=b.t.value||1;
  S.score[team]+=val;
  goalFx(team,b);
@@ -70,6 +81,7 @@ function onGoal(team,b){
    next goal wins via the guard in onGoal. Fires once: it either ends the match (phase → win) or
    sets S.suddenDeath (which this early-returns on thereafter). Off/unlimited → no-op. */
 function checkMatchClock(){
+ if(S.trn)return;                         // training: no clock, ever
  const lim=gameTimeLimit();               // seconds; 0 = unlimited
  if(lim<=0||S.suddenDeath)return;
  const rem=lim-S.matchTime;
@@ -79,6 +91,7 @@ function checkMatchClock(){
  else{S.suddenDeath=true;Au.whistle();banner('SUDDEN DEATH','NEXT GOAL WINS',2.2);}
 }
 function outOfBounds(b){
+ if(S.trn){redropBall(b);Au.whistle();return;}   // training: keep the ball live, no goal-hold
  removeBall(b);Au.whistle();
  if(!S.balls.length&&S.phase==='play'){resetRodRotation();banner('OUT!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
 }
@@ -111,6 +124,7 @@ function togglePause(){
  else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');Au.ui();}
 }
 function gotoMenu(){
+  if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods + drop the training gate
   if(S.lg&&S.lg.prevKit){
    cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
    cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;

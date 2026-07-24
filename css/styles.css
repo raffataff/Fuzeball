@@ -284,8 +284,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
  .lgSlotBtnRow .miniBtn.del{color:var(--c0);border-color:rgba(255,77,90,.3)}
  .lgSlotBtnRow .miniBtn.del:hover{border-color:var(--c0);box-shadow:0 0 14px color-mix(in srgb,var(--c0) 40%,transparent)}
  /* setup form */
- .lgSetupWrap{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;max-width:1100px;width:100%;margin:0 auto 20px}
- .lgSetupPanel{flex:1 1 280px;max-width:340px;min-width:240px;min-height:0}
+ .lgSetupWrap{display:flex;gap:16px;justify-content:center;align-content:center;flex-wrap:wrap;max-width:1820px;width:100%;height:100%;margin:0 auto 20px}
+ .lgSetupPanel{flex:1 1 280px;min-width:350px;max-width:400px; min-height:450px;margin-bottom:20px;gap:13px;}
  .lgSetupPanel.lgSetupKit{flex:1 1 500px;max-width:520px;min-width:460px}
  .lgSetupKitRow{display:flex;gap:20px;align-items:flex-start}
  #lgSetupFig{width:200px;height:260px;border-radius:14px;background:#0b1020;border:1px solid var(--edge);box-shadow:inset 0 0 40px rgba(90,140,255,.08);display:block;cursor:grab;flex-shrink:0}
@@ -293,10 +293,10 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
  .lgSetupPanel .kitPal{gap:4px;grid-template-columns:repeat(8,1fr)}
  .lgSetupPanel .kitPal .czChip{border-radius:5px;aspect-ratio:1}
  .lgSetupHex{font-family:'Russo One',sans-serif;font-size:14px;color:#c6d2ea;letter-spacing:.06em;flex:1}
- .lgSetupModels{display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow-y:auto}
+ .lgSetupModels{display:flex;flex-wrap:wrap;gap:8px;max-height:100%;overflow-y:auto}
  .lgSetupModels .miniBtn{font-size:10px;padding:6px 10px;text-transform:uppercase}
  .lgSetupModels .miniBtn.on{color:#fff;border-color:var(--gold);box-shadow:0 0 12px color-mix(in srgb,var(--gold) 45%,transparent)}
- .lgSetupSelect{width:100%;padding:8px 10px;font-size:15px}
+ .lgSetupSelect{width:100%;padding:8px 10px;font-size:15px;margin-bottom:16px;}
  .lgSetupSelect option{background:#0d1322;color:#e8ecf5;font-size:14px}
  /* promotion / relegation zone tints */
  .lgProZone{background:linear-gradient(90deg,rgba(125,255,138,.08),transparent)}
@@ -503,7 +503,41 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #menu.introIn .modeRow .modeCard:nth-child(2){animation-delay:.22s}
 #menu.introIn .modeRow .modeCard:nth-child(3){animation-delay:.30s}
 #menu.introIn .modeRow .modeCard:nth-child(4){animation-delay:.38s}
+#menu.introIn .modeRow .modeCard:nth-child(5){animation-delay:.46s}
 #menu.introIn .panelWrap{animation:inRise .6s .32s both}
 #menu.introIn .foot,#menu.introIn .optGear{animation:inFade .6s .55s both}
 @keyframes inRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @keyframes inFade{from{opacity:0}to{opacity:1}}
+/* ===== training mode ===== */
+.modeCard.training:hover{border-color:#2bff88;box-shadow:0 0 28px rgba(43,255,136,.5),inset 0 0 22px rgba(43,255,136,.16)}
+#trnPanel{position:fixed;left:14px;top:70px;max-height:calc(100vh - 90px);width:256px;z-index:30;overflow-y:auto;background:linear-gradient(180deg,var(--glass),rgba(12,16,28,.95));border:1px solid var(--edge);border-radius:14px;padding:12px 14px;pointer-events:auto;box-shadow:inset 0 2px 8px rgba(0,0,0,.5),0 8px 28px rgba(0,0,0,.35);font-size:13px}
+#trnPanel h3{font-family:'Russo One',sans-serif;font-size:12px;letter-spacing:.18em;color:#2bff88;display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;text-transform:uppercase;text-shadow:0 0 8px rgba(43,255,136,.35)}
+#trnPanel.trnCollapsed .trnBody{display:none}
+.trnMin{cursor:pointer;width:22px;height:22px;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#bcd0f2;font-size:12px;line-height:1;pointer-events:auto}
+.trnMin:hover{border-color:#2bff88;color:#fff}
+.trnSect{font-family:'Russo One',sans-serif;font-size:10px;letter-spacing:.22em;color:#7f93ba;margin:10px 0 4px;text-transform:uppercase;border-bottom:1px solid var(--edge);padding-bottom:3px}
+.trnRow{display:flex;align-items:center;gap:6px;margin:5px 0;font-weight:600;color:#c6d2ea}
+.trnRow label{flex:0 0 auto}
+.trnRow input[type=number]{width:54px;background:#0d1322;border:1px solid var(--edge);border-radius:6px;color:#e8ecf5;padding:3px 5px;font:inherit;font-size:12px}
+.trnRow select{flex:1;background:#0d1322;border:1px solid var(--edge);border-radius:6px;color:#e8ecf5;padding:3px 5px;font:inherit;font-size:12px}
+.trnBtns{display:flex;gap:5px;margin:5px 0;flex-wrap:wrap}
+.trnBtn{cursor:pointer;flex:1 1 auto;font-family:'Russo One',sans-serif;font-size:10px;font-weight:800;letter-spacing:.05em;padding:6px 7px;border-radius:7px;background:#0d1322;border:1px solid var(--edge);color:#bcd0f2;transition:all .12s;text-transform:uppercase;pointer-events:auto}
+.trnBtn:hover{border-color:#2bff88;color:#fff}
+.trnBtn.on{color:#fff;border-color:#2bff88;background:#123324;box-shadow:0 0 10px rgba(43,255,136,.4)}
+.trnBtn.wide{flex:1 1 100%}
+.trnBtn.slot{flex:0 0 30px}
+.trnSlots{display:flex;gap:4px}
+.trnRods{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+.trnRod{display:flex;align-items:center;gap:5px;font-weight:600;color:#c6d2ea;cursor:pointer;font-size:12px}
+.trnRod i{font-style:normal;color:#7f93ba;font-size:10px;margin-left:auto}
+.trnHint{color:#7f93ba;font-size:11px;font-weight:500}
+.trnInfo{margin-top:10px;color:#2af5ff;font-family:'Russo One',sans-serif;font-size:11px;letter-spacing:.06em;min-height:14px}
+/* held-rod angle block: gold (rod chrome) vs the cyan ball metrics above it */
+.trnAng{display:flex;align-items:center;gap:9px;margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)}
+.trnAngT{flex:1;font-family:'Russo One',sans-serif;font-size:11px;letter-spacing:.05em;color:var(--gold);line-height:1.65}
+.trnAngT span{color:#7f93ba;margin-right:4px}
+.trnAngT b{color:#fff;font-weight:900;margin-right:7px}
+.trnAngT .st{color:var(--gold);margin-right:0}
+.trnAng svg{flex:0 0 58px}
+#trnPanel .lblR{color:var(--c0);font-weight:800}
+#trnPanel .lblB{color:var(--c1);font-weight:800}

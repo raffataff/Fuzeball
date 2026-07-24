@@ -74,6 +74,7 @@
     <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
     <div class="modeCard ai" id="btnAI"><div class="ico">🤖</div><div class="big">AI SHOWDOWN</div><div class="sub">Sit back &amp; spectate</div></div>
     <div class="modeCard league" id="btnLeague"><div class="ico">🏆</div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
+    <div class="modeCard training" id="btnTraining"><div class="ico">🎯</div><div class="big">TRAINING</div><div class="sub">Sandbox · place balls · practice</div></div>
   </div>
   <div class="panelWrap">
     <div class="panel" id="menuSetupPanel">
@@ -188,6 +189,19 @@
       <h3>League details</h3>
       <div class="row"><label>League name</label><input type="text" id="lgSetupLgName" maxlength="20"></div>
       <div class="row"><label>Your team</label><input type="text" id="lgSetupName" maxlength="20"></div>
+      <h3>Starting division</h3>
+      <select id="lgSetupDiv" class="lgSetupSelect">
+        <option value="0">Sunday League (weakest teams)</option>
+        <option value="1" selected>Pro League</option>
+        <option value="2">Premier League (strongest teams)</option>
+      </select>
+<h3>Match rules</h3>
+      <div class="row"><label>Control</label><select id="lgSetupControl" class="lgSetupSelect">
+        <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
+        <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
+      </select></div>
+      <div class="row"><label>Special balls</label><input type="checkbox" id="lgSetupSpecial" checked></div>
+      <div class="row"><label>Power-ups</label><input type="checkbox" id="lgSetupPower" checked></div>
     </div>
     <div class="panel lgSetupPanel lgSetupKit">
       <h3>Kit &amp; Figurine</h3>
@@ -200,23 +214,8 @@
         </div>
       </div>
     </div>
-    <div class="panel lgSetupPanel">
-      <h3>Starting division</h3>
-      <select id="lgSetupDiv" class="lgSetupSelect">
-        <option value="0">Sunday League (weakest teams)</option>
-        <option value="1" selected>Pro League</option>
-        <option value="2">Premier League (strongest teams)</option>
-      </select>
-    </div>
-    <div class="panel lgSetupPanel">
-      <h3>Match rules</h3>
-      <div class="row"><label>Control</label><select id="lgSetupControl" class="lgSetupSelect">
-        <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
-        <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
-      </select></div>
-      <div class="row"><label>Special balls</label><input type="checkbox" id="lgSetupSpecial" checked></div>
-      <div class="row"><label>Power-ups</label><input type="checkbox" id="lgSetupPower" checked></div>
-    </div>
+   
+      
   </div>
   <div class="btnRow">
     <button class="btn" id="lgSetupCreate">Create League</button>
@@ -417,7 +416,7 @@
   'js/core.js','js/config.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/main.js'
+  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/training.js','js/main.js'
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;

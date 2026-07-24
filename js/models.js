@@ -7,7 +7,9 @@
    loaded materials, and tint the rod 'team' / 'team_glow' materials per side.
    For balls, we load a single GLB with material slots (classic, fireball,
    cannonball, golden, split) and map them to ball types. */
-const rodTemplates={};   // men-count -> loaded rod scene (bar+handle+collar+knob)
+const rodSets={};        // rod-set key -> {men:scene, _done:true}. key '_shared' = stock assets/rods/; a table id = that table's own livery (CONFIG.tables[id].rods)
+const rodSetLoading={};   // rod-set key -> [pending cbs] while its load batch is in flight
+const ROD_SIZES=[1,2,3,5];
 let ballModel=null;      // loaded ball GLB scene (with material slots)
 let roomModel=null;      // deprecated — room/location GLBs now live in roomGroups[id] (arena.js), keyed by CONFIG.rooms id; kept to avoid a dangling ref
 let pitchModel=null;     // loaded pitch GLB scene (one mesh per theme variant)
@@ -238,29 +240,61 @@ function disposeRoom(id){
 // external/console caller doesn't hit a missing function.
 function loadRoomModel(){for(const id in CONFIG.rooms)ensureRoom(id);}
 
-/* --- rods ----------------------------------------------------------------- */
-function loadRodModels(onReady){
+/* --- rods (per-table livery, lazy) ----------------------------------------
+   Rods used to be one global asset loaded once. Now each TABLE may bring its own rod set
+   (CONFIG.tables[id].rods); tables without one share the stock assets/rods/ set. Sets are keyed
+   by rodSetKey (a table id, or '_shared'), lazy-loaded the first time a table needs them, cloned
+   per rod by makeRodModel, and kept resident (rod GLBs are tiny hardware meshes — no LRU needed,
+   and they're clone SOURCES so hard-disposing them while clones live would be unsafe anyway).
+   Per size, a table set that lacks a GLB falls back to the shared set, then to the primitive rod
+   in world.js buildRods. VISUAL ONLY — physics/RODDEFS are identical across tables. */
+function rodSetKey(tableId){const T=CONFIG.tables[tableId];return (T&&T.rods)?tableId:'_shared';}
+
+/* Load one rod set by KEY. '_shared' loads assets/rods/fuzeball_rod_<n>man.glb (old assets/ root
+   as a fallback). A table key loads from CONFIG.tables[key].rods.folder (per-size 404 -> leave the
+   size unset so makeRodModel falls back to the shared template). cb runs once the whole batch
+   settles; concurrent callers for the same set are queued. Idempotent once loaded. */
+function loadRodSet(key,cb){
+ const set=rodSets[key]||(rodSets[key]={});
+ if(set._done){if(cb)cb();return;}
+ if(rodSetLoading[key]){if(cb)rodSetLoading[key].push(cb);return;}
+ const cbs=rodSetLoading[key]=[];if(cb)cbs.push(cb);
  const loader=new THREE.GLTFLoader();
- const sizes=[1,2,3,5];let left=sizes.length;
- const done=()=>{if(--left===0)onReady();};
- // Rods are a shared asset (used by every table). Prefer the tidy assets/rods/ folder,
- // fall back to the old assets/ root location, then to the primitive rod.
- sizes.forEach(n=>{
-  const file='fuzeball_rod_'+n+'man.glb';
-  loader.load('assets/rods/'+file,
-   gltf=>{rodTemplates[n]=gltf.scene;done();},
-   undefined,
-   ()=>loader.load('assets/'+file,
-    gltf=>{rodTemplates[n]=gltf.scene;done();},
-    undefined,
-    ()=>{console.warn('rod_'+n+'man.glb missing, using primitive');done();}));
+ const rd=(key!=='_shared'&&CONFIG.tables[key])?CONFIG.tables[key].rods:null;
+ const folder=(rd&&rd.folder)||'assets/rods/';
+ const files=(rd&&rd.files)||{};
+ let left=ROD_SIZES.length;
+ const settle=()=>{if(--left>0)return;set._done=true;delete rodSetLoading[key];cbs.forEach(f=>f&&f());};
+ ROD_SIZES.forEach(n=>{
+  const file=files[n]||('fuzeball_rod_'+n+'man.glb');
+  loader.load(folder+file,g=>{set[n]=g.scene;settle();},undefined,()=>{
+   if(key!=='_shared'){settle();return;}                              // table override absent -> shared fallback in makeRodModel
+   loader.load('assets/'+file,g=>{set[n]=g.scene;settle();},undefined, // legacy assets/ root
+    ()=>{console.warn('rod_'+n+'man.glb missing, using primitive');settle();});
+  });
  });
 }
+// Boot: prime the SHARED set + the active table's set (may BE the shared set), then onReady so
+// buildRods can clone them.
+function loadRodModels(onReady){
+ const tid=(typeof cfg!=='undefined'&&CONFIG.tables[cfg.table])?cfg.table:'classic';
+ const keys=['_shared'];const tk=rodSetKey(tid);if(tk!=='_shared')keys.push(tk);
+ let left=keys.length;const done=()=>{if(--left===0)onReady();};
+ keys.forEach(k=>loadRodSet(k,done));
+}
+// Ensure a table's rod set is resident (used by applyTable on a table switch); cb on settle.
+function ensureTableRods(tableId,cb){
+ if(typeof loadRodSet!=='function'){if(cb)cb();return;}
+ loadRodSet(rodSetKey(tableId),cb);
+}
 
-/* Clone the loaded rod for one rod, tinting the team-coloured parts. Returns
-   null when that size has no GLB (buildRods then draws the primitive). */
-function makeRodModel(men,team){
-  const tpl=rodTemplates[men];if(!tpl)return null;
+/* Clone the right rod set's model for one rod, tinting the team-coloured parts. `tableId` picks
+   the set; a size the set lacks falls back to the shared set, else null (buildRods draws the
+   primitive). */
+function makeRodModel(men,team,tableId){
+  const key=(typeof rodSetKey==='function')?rodSetKey(tableId):'_shared';
+  const tpl=(rodSets[key]&&rodSets[key][men])||(rodSets._shared&&rodSets._shared[men]);
+  if(!tpl)return null;
   const g=tpl.clone(true);
   const clones=[];                              // {mat, isHandle} for applyColors / applyFinish
   g.traverse(c=>{
