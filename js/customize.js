@@ -30,11 +30,15 @@ function initCustomize(){
  const mc=$('czModels');mc.innerHTML='';
  CONFIG.playerModel.models.forEach(m=>{
   const d=document.createElement('div');d.className='czCard';d.dataset.id=m.id;d.title=m.blurb||m.name;
-  d.innerHTML='<div class="cIco">'+(m.ico||'🏃')+'</div><div class="cName">'+m.name+'</div>';
+  // The figure mark is the FALLBACK layer and is always in the DOM; mugImg lays the rendered
+  // portrait over it and stamps .hasMug once the file actually decodes (see mugImg in core.js).
+  // Figurines whose mugshot isn't rendered yet keep the neutral mark — no broken-image frame.
+  d.innerHTML='<div class="cIco">'+ICO.figure+'</div><div class="cName">'+m.name+'</div>';
+  mugImg(m,d,'czMug','hasMug');
   d.onclick=()=>czPickModel(m.id);mc.appendChild(d);
  });
  const lock=document.createElement('div');lock.className='czCard lock';
- lock.innerHTML='<div class="cIco">🔒</div><div class="cSoon">More<br>soon</div>';mc.appendChild(lock);
+ lock.innerHTML='<div class="cIco">'+ICO.lock+'</div><div class="cSoon">More<br>soon</div>';mc.appendChild(lock);
 
  const sw=$('czSwatch');sw.innerHTML='';
  CONFIG.playerModel.swatches.forEach(hex=>{
@@ -67,10 +71,10 @@ function initCustomize(){
  $('czSnap').onclick=pvSnapshot;
  $('czColor').oninput=e=>czSetCol(e.target.value);
  $('czRand').onclick=()=>czSetCol('#'+('00000'+Math.floor(Math.random()*0xffffff).toString(16)).slice(-6));
- $('czMetal').oninput=e=>{cfg.metalness=+e.target.value;czAfterFinish();};
- $('czRough').oninput=e=>{cfg.roughness=+e.target.value;czAfterFinish();};
- $('czGlow').oninput =e=>{cfg.glow=+e.target.value;czAfterFinish();};
- $('czScale').oninput=e=>{cfg.modelScale=+e.target.value;czAfterFinish();};
+  $('czMetal').oninput=e=>{cfg[PV.team===0?'redMetalness':'blueMetalness']=+e.target.value;czLeaveDefault();czAfterFinish();};
+  $('czRough').oninput=e=>{cfg[PV.team===0?'redRoughness':'blueRoughness']=+e.target.value;czLeaveDefault();czAfterFinish();};
+  $('czGlow').oninput =e=>{cfg[PV.team===0?'redGlow':'blueGlow']=+e.target.value;czLeaveDefault();czAfterFinish();};
+  $('czScale').oninput=e=>{cfg[PV.team===0?'redScale':'blueScale']=+e.target.value;czAfterFinish();};
  $('czYaw').oninput=e=>{const key=PV.team===0?'redYaw':'blueYaw';cfg[key]=+e.target.value;PV.yaw=cfg[key];
   PV.spin=false;$('czSpin').classList.remove('on');saveCfg();czSyncYaw();};
  addEventListener('resize',()=>{if(PV.on)pvResize();});
@@ -123,7 +127,7 @@ function setKitColor(team,hex){
  refreshKitUI();
 }
 function czSetCol(hex){setKitColor(PV.team,hex);}
-function czSetTeam(t){PV.team=t;pvApply();czSyncColor();}
+function czSetTeam(t){PV.team=t;pvApply();czSyncColor();czSyncFinish();}
 function czPickModel(id){
  const key=PV.team===0?'modelRed':'modelBlue';
  if(id===cfg[key])return;
@@ -132,10 +136,18 @@ function czPickModel(id){
  if(typeof reloadPlayerModel==='function')reloadPlayerModel();
  czSyncModels();refreshKitUI();
 }
+// Touching a finish slider means the user wants MANUAL values — drop the team out of
+// the 'Default' (authored-materials) mode so the slider actually reads on the model.
+function czLeaveDefault(){cfg[PV.team===0?'redFinishDefault':'blueFinishDefault']=false;}
 function czPickFinish(k){
- const f=CONFIG.playerModel.finishes[k];if(!f)return;
- cfg.metalness=f.metalness;cfg.roughness=f.roughness;cfg.glow=f.glow;
- czAfterFinish();
+  const f=CONFIG.playerModel.finishes[k];if(!f)return;
+  const p=PV.team===0?'red':'blue';
+  if(f.authored){cfg[p+'FinishDefault']=true;}
+  else{
+   cfg[p+'FinishDefault']=false;
+   cfg[p+'Metalness']=f.metalness;cfg[p+'Roughness']=f.roughness;cfg[p+'Glow']=f.glow;
+  }
+  czAfterFinish();
 }
 function czAfterFinish(){applyFinish();pvApply();saveCfg();czSyncFinish();refreshKitUI();}
 function czResetAll(){
@@ -143,7 +155,8 @@ function czResetAll(){
  cfg.modelBlue=CONFIG.playerModel.default;
  cfg.redColor='#ff4d5a';cfg.blueColor='#3d8bff';
  cfg.redYaw=-0.55;cfg.blueYaw=0.55;
- cfg.metalness=.15;cfg.roughness=.45;cfg.glow=0;cfg.modelScale=1;
+  cfg.redMetalness=cfg.blueMetalness=.15;cfg.redRoughness=cfg.blueRoughness=.45;cfg.redGlow=cfg.blueGlow=0;cfg.redScale=cfg.blueScale=1;
+  cfg.redFinishDefault=cfg.blueFinishDefault=false;
  PV.yaw=PV.team===0?-0.55:0.55;
  saveCfg();
  pvLoadModel();if(typeof reloadPlayerModel==='function')reloadPlayerModel();
@@ -171,16 +184,22 @@ function czSyncColor(){
  czSyncTeam();
 }
 function czSyncFinish(){
- $('czMetal').value=cfg.metalness;$('czRough').value=cfg.roughness;$('czGlow').value=cfg.glow;$('czScale').value=cfg.modelScale;
- $('czMetalV').textContent=Math.round(cfg.metalness*100)+'%';
- $('czRoughV').textContent=Math.round(cfg.roughness*100)+'%';
- $('czGlowV').textContent=(+cfg.glow).toFixed(2);
- $('czScaleV').textContent=Math.round(cfg.modelScale*100)+'%';
- const fins=CONFIG.playerModel.finishes;
- document.querySelectorAll('#czFinish .miniBtn').forEach(b=>{
-  const f=fins[b.dataset.fin];
-  b.classList.toggle('on',!!f&&Math.abs(f.metalness-cfg.metalness)<.001&&Math.abs(f.roughness-cfg.roughness)<.001&&Math.abs(f.glow-cfg.glow)<.001);
- });
+  const t=PV.team;
+  const mv=cfg[t===0?'redMetalness':'blueMetalness'],
+        rv=cfg[t===0?'redRoughness':'blueRoughness'],
+        gv=cfg[t===0?'redGlow':'blueGlow'],
+        sv=cfg[t===0?'redScale':'blueScale'];
+  $('czMetal').value=mv;$('czRough').value=rv;$('czGlow').value=gv;$('czScale').value=sv;
+  $('czMetalV').textContent=Math.round(mv*100)+'%';
+  $('czRoughV').textContent=Math.round(rv*100)+'%';
+  $('czGlowV').textContent=(+gv).toFixed(2);
+  $('czScaleV').textContent=Math.round(sv*100)+'%';
+  const fins=CONFIG.playerModel.finishes,dflt=tmDefault(t);
+  document.querySelectorAll('#czFinish .miniBtn').forEach(b=>{
+   const f=fins[b.dataset.fin];
+   if(f&&f.authored){b.classList.toggle('on',dflt);return;}
+   b.classList.toggle('on',!dflt&&!!f&&Math.abs(f.metalness-mv)<.001&&Math.abs(f.roughness-rv)<.001&&Math.abs(f.glow-gv)<.001);
+  });
 }
 function czSyncYaw(){
  const yaw=PV.team===0?cfg.redYaw:cfg.blueYaw;
@@ -236,8 +255,8 @@ function pvLoadModel(){
   if(PV.model){PV.root.remove(PV.model);PV.model=null;PV.mats=[];}
   const g=src.clone(true);
   let box=new THREE.Box3().setFromObject(g),size=new THREE.Vector3();box.getSize(size);
-  PV.baseScale=3.4/(size.y||1);
-  g.scale.setScalar(PV.baseScale*(cfg.modelScale||1));
+   PV.baseScale=3.4/(size.y||1);
+   g.scale.setScalar(PV.baseScale*tmScale(PV.team));
   box=new THREE.Box3().setFromObject(g);
   const ctr=new THREE.Vector3();box.getCenter(ctr);
   g.position.x-=ctr.x;g.position.z-=ctr.z;g.position.y-=box.min.y;
@@ -254,15 +273,13 @@ function pvLoadModel(){
 }
 
 function pvApply(){
- if(!PV.ready)return;
- const col=new THREE.Color(PV.team===0?cfg.redColor:cfg.blueColor);
- const mv=clamp(cfg.metalness,0,1),rv=clamp(cfg.roughness,0,1),gv=Math.max(0,cfg.glow);
- PV.mats.forEach(m=>{m.color.copy(col);m.metalness=mv;m.roughness=rv;
-  if(m.emissive){m.emissive.copy(col);m.emissiveIntensity=gv;}m.needsUpdate=true;});
- if(PV.rim)PV.rim.color.copy(col);
- if(PV.ringMesh)PV.ringMesh.material.color.copy(col);
- if(PV.platform)PV.platform.material.emissive.copy(col).multiplyScalar(.28);
- if(PV.model)PV.model.scale.setScalar(PV.baseScale*(cfg.modelScale||1));
+  if(!PV.ready)return;
+  const col=new THREE.Color(PV.team===0?cfg.redColor:cfg.blueColor);
+  PV.mats.forEach(m=>{m.color.copy(col);applyTeamFinish(m,PV.team,col,false);});
+  if(PV.rim)PV.rim.color.copy(col);
+  if(PV.ringMesh)PV.ringMesh.material.color.copy(col);
+  if(PV.platform)PV.platform.material.emissive.copy(col).multiplyScalar(.28);
+  if(PV.model)PV.model.scale.setScalar(PV.baseScale*tmScale(PV.team));
 }
 
 // Record the viewport for PRV rather than sizing a renderer — the shared context is only resized
@@ -318,7 +335,7 @@ function thumbLoad(cb){
   const place=src=>{
    const g=src.clone(true);
    let box=new THREE.Box3().setFromObject(g),size=new THREE.Vector3();box.getSize(size);
-   THB.baseScale[team]=3.4/(size.y||1);g.scale.setScalar(THB.baseScale[team]*(cfg.modelScale||1));
+    THB.baseScale[team]=3.4/(size.y||1);g.scale.setScalar(THB.baseScale[team]*tmScale(team));
    box=new THREE.Box3().setFromObject(g);const ctr=new THREE.Vector3();box.getCenter(ctr);
    g.position.x-=ctr.x;g.position.z-=ctr.z;g.position.y-=box.min.y;
    const tp=new Set(am.teamParts.map(s=>s.toLowerCase()));
@@ -339,11 +356,9 @@ function thumbRender(team){
  while(THB.root.children.length)THB.root.remove(THB.root.children[0]);
  THB.root.add(THB.model[team]);
  const col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor);
- const mv=clamp(cfg.metalness,0,1),rv=clamp(cfg.roughness,0,1),gv=Math.max(0,cfg.glow);
- THB.mats[team].forEach(m=>{m.color.copy(col);m.metalness=mv;m.roughness=rv;
-  if(m.emissive){m.emissive.copy(col);m.emissiveIntensity=gv;}m.needsUpdate=true;});
- THB.rim.color.copy(col);
- THB.model[team].scale.setScalar(THB.baseScale[team]*(cfg.modelScale||1));
+  THB.mats[team].forEach(m=>{m.color.copy(col);applyTeamFinish(m,team,col,false);});
+  THB.rim.color.copy(col);
+  THB.model[team].scale.setScalar(THB.baseScale[team]*tmScale(team));
  THB.root.rotation.y=team===0?cfg.redYaw:cfg.blueYaw;   // per-team configurable pose
  THB.cam.position.set(0,2.0,7.6);THB.cam.lookAt(0,1.65,0);
  return PRV.dataURL(THB.scene,THB.cam,THB.W,THB.H,THB.dpr);

@@ -316,17 +316,19 @@ function renderLgTape(op){
  const offA=lgOff(me.bld),defA=lgDef(me.bld),offB=lgOff(them.bld),defB=lgDef(them.bld);
  const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
  const rA=modelRender(me.model),rB=modelRender(them.model);
- const fig=(col,src,flip,name,icon)=>
+ // the caption used to be prefixed with the figurine's emoji ico — pointless beside an actual
+ // render of that same figurine, and it was '🤖' on half the roster and '🏃' on the rest.
+ const fig=(col,src,flip,name)=>
   '<div class="lgTapeFig" style="--tc:'+col+'">'+
    (src?'<div class="lgFigBox"><img src="'+src+'" class="lgFigImg'+(flip?' flip':'')+'" alt="'+name+'"></div>':'<div class="lgFigBox lgFigEmpty">?</div>')+
-   '<div class="lgFigCap">'+(icon||'')+' '+name+'</div>'+
+   '<div class="lgFigCap">'+name+'</div>'+
   '</div>';
  const teamCard=(col,name,off,def,figHtml)=>
   '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
  $('lgTapeBody').innerHTML=
-  teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?',mo?mo.ico:''))+
+  teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?'))+
   '<div class="lgTapeVs"><span>VS</span></div>'+
-  teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?',to?to.ico:''));
+  teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?'));
  $('lgTapeRound').textContent='ROUND '+(LG.round+1)+' / '+LG.divs[playerDiv()].fixtures.length;
 }
 function lgPlayMatch(){
@@ -463,32 +465,36 @@ function lgSEDivCard(d){
   });
   return '<div class="lgSEDiv">'+
    '<div class="lgSEDivHead">'+d.name+'</div>'+
-   '<div class="lgSEChamp">🏆 '+d.champ+'</div>'+
+   '<div class="lgSEChamp">'+ico('trophy','icoInline')+' '+d.champ+'</div>'+
    '<div class="lgSEHead"><span></span><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GF</span><span>GA</span><span>PTS</span></div>'+
    rows+'</div>';
 }
 function lgSEFate(se){
   const map={
-   champion:['champ','🏆 CHAMPIONS','#ffcf4d'],
+   champion:['champ',ico('trophy','icoInline')+'CHAMPIONS','#ffcf4d'],   // .lgSEFateLab's gap is the separator
    promoted:['pro','▲ PROMOTED','#7dff8a'],
    relegated:['rel','▼ RELEGATED','#ff4d5a'],
    stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
   };
   const m=map[se.playerFate];
   const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
-  return '<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'">'+m[1]+'<span class="lgSEPos">'+posTxt+'</span></div>';
+  // the label MUST be wrapped: .lgSEFate is a COLUMN flex container, so the trophy <span> and the
+  // bare ' CHAMPIONS' text node would each become their own flex item and stack on separate rows.
+  // (It only worked before because the emoji made the whole label one text node.)
+  return '<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+
+   '<span class="lgSEPos">'+posTxt+'</span></div>';
 }
 function lgSERewards(r,se){
   let h='<div class="lgSEPanelHead">SEASON REWARDS</div>'+
    '<div class="lgSERewGrid">'+
     '<div class="lgSERew"><span class="k">RECORD</span><span class="v">'+r.w+'–'+r.l+'</span><span class="sub">'+r.gf+' GF · '+r.ga+' GA</span></div>'+
-    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v gold">+'+r.earned+' ⚙</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
-    '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' ⚙</span><span class="sub">spend in squad</span></div>'+
+    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v gold">+'+r.earned+' '+ico('cog','icoInline')+'</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
+    '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' '+ico('cog','icoInline')+'</span><span class="sub">spend in squad</span></div>'+
     '<div class="lgSERew"><span class="k">TITLES</span><span class="v">'+r.titles+'×</span><span class="sub">Premier wins</span></div>'+
    '</div>';
   if(se.playerFate==='champion')
-    h+='<div class="lgSECup">🏆 CHAMPIONS CUP QUALIFIED — you enter the post-season knockout!</div>'+
-       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">⚔ ENTER CHAMPIONS CUP</button>';
+    h+='<div class="lgSECup">'+ico('trophy','icoInline')+' QUALIFIED FOR THE CHAMPIONS CUP</div>'+
+       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">ENTER CHAMPIONS CUP</button>';
   return '<div class="lgSEPanel">'+h+'</div>';
 }
 function lgSELoss(se){
@@ -578,15 +584,18 @@ function renderLgScout(ti){
  const form=lgTeamForm(ti);
  let fh='';for(const c of form)fh+='<span class="'+(c==='W'?'lgW':'lgL')+'">'+c+'</span>';
  const off=lgOff(t.bld),def=lgDef(t.bld);
- $('lgScoutRec').innerHTML='<span style="color:'+t.col+';font-weight:800">'+t.w+'-'+t.l+'</span>'+
-  ' · GF '+t.gf+' · GA '+t.ga+' · <span style="color:var(--gold);font-weight:800">'+t.p+'pts</span>'+
+ $('lgScoutRec').innerHTML='<span style="color:'+t.col+';font-weight:700">'+t.w+'-'+t.l+'</span>'+
+  ' · GF '+t.gf+' · GA '+t.ga+' · <span style="color:var(--gold);font-weight:700">'+t.p+'pts</span>'+
   '<span style="margin-left:12px">'+fh+'</span>';
  const m=CONFIG.playerModel.models.find(x=>x.id===t.model);
  $('lgScoutBody').innerHTML=
-  (m?'<div class="figName">'+m.ico+' '+m.name+'</div><div style="height:4px"></div>':'')+
+  (m?'<div class="figName"><span class="figMug">'+ico('figure','icoInline')+'</span>'+m.name+'</div><div style="height:4px"></div>':'')+
   '<div class="lgRateBar"><span class="def">DEF</span><div class="lgRate"><div class="def" style="width:'+(def/10*100|0)+'%"></div></div><span class="num">'+(def*10|0)/10+'</span></div>'+
    '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
   lgBuildHTML(t.bld,false);
+ // portrait goes on AFTER the innerHTML build — .figMug holds the fallback figure mark and
+ // mugImg overlays the render on top of it if this figurine has one (core.js).
+ if(m)mugImg(m,$('lgScoutBody').querySelector('.figMug'),'figMugImg','hasMug');
  $('lgScout').classList.remove('hidden');
 }
 function renderLgHist(){
@@ -599,7 +608,7 @@ function renderLgHist(){
    for(let i=LG.hist.length-1;i>=0;i--){
     const e=LG.hist[i];
     const pos=e.playerPos?e.playerPos+({1:'st',2:'nd',3:'rd'}[e.playerPos]||'th'):'—';
-    h+='<div class="row"><span>S'+e.season+(e.cup===playerName?' 🏆':'')+'</span><span>'+(e.playerDiv||'')+'</span><span>'+pos+'</span></div>';
+    h+='<div class="row"><span>S'+e.season+(e.cup===playerName?' '+ico('trophy','icoInline gold'):'')+'</span><span>'+(e.playerDiv||'')+'</span><span>'+pos+'</span></div>';
    }
  $('lgHist').innerHTML=h;
 }
@@ -658,7 +667,7 @@ function renderLgFix(){
  $('lgControlRow').classList.toggle('hidden',done);
  if(done){
   const isPlayer=dv.champ===T[pid].name;
-  $('lgFixture').innerHTML='🏆 <span style="color:'+(isPlayer?T[pid].col:'var(--gold)')+';font-size:18px;font-weight:900">'+(isPlayer?'YOU ARE THE CHAMPION':dv.champ+' TAKE THE TITLE')+'</span>';
+  $('lgFixture').innerHTML=ico('trophy','icoInline')+' <span style="color:'+(isPlayer?T[pid].col:'var(--gold)')+';font-size:18px">'+(isPlayer?'YOU ARE THE CHAMPION':dv.champ+' TAKE THE TITLE')+'</span>';
   $('lgRound').innerHTML='<div class="lgFixSm"><span></span><span class="lgVs">CHAMPIONS</span><span></span></div>';
   return;
  }
@@ -800,7 +809,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
    const place=src=>{
     const g=src.clone(true);
     let box=new THREE.Box3().setFromObject(g),size=new THREE.Vector3();box.getSize(size);
-    this.bs=3.4/(size.y||1);g.scale.setScalar(this.bs*(cfg.modelScale||1));
+    this.bs=3.4/(size.y||1);g.scale.setScalar(this.bs*tmScale(0));
     box=new THREE.Box3().setFromObject(g);const ctr=new THREE.Vector3();box.getCenter(ctr);
     g.position.x-=ctr.x;g.position.z-=ctr.z;g.position.y-=box.min.y;
     const tp=new Set(am.teamParts.map(s=>s.toLowerCase()));
@@ -824,9 +833,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
  },
  paint(col){
   const c=new THREE.Color(col);
-  const mv=clamp(cfg.metalness,0,1),rv=clamp(cfg.roughness,0,1),gv=Math.max(0,cfg.glow);
-  this.mats.forEach(m=>{m.color.copy(c);m.metalness=mv;m.roughness=rv;
-   if(m.emissive){m.emissive.copy(c);m.emissiveIntensity=gv;}m.needsUpdate=true;});
+  this.mats.forEach(m=>{m.color.copy(c);applyTeamFinish(m,0,c,false);});
   if(this.rim)this.rim.color.copy(c);
   if(this.ringM)this.ringM.material.color.copy(c);
   if(this.plat)this.plat.material.emissive.copy(c).multiplyScalar(.28);
@@ -860,7 +867,7 @@ function openSetup(slot){
  const models=$('lgSetupModels');models.innerHTML='';
  const mids=CONFIG.playerModel.models.filter(m=>m.src);
  mids.forEach(m=>{
-  const b=document.createElement('button');b.className='miniBtn';b.dataset.id=m.id;b.textContent=(m.ico||'🏃')+' '+m.name;
+  const b=document.createElement('button');b.className='miniBtn';b.dataset.id=m.id;b.textContent=m.name;
   b.onclick=()=>{
    models.querySelectorAll('.miniBtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');
    LSP.load(m.id,$('lgSetupColor').value);
@@ -980,16 +987,18 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
   const offA=lgOff(me.bld),defA=lgDef(me.bld),offB=lgOff(them.bld),defB=lgDef(them.bld);
   const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
   const rA=modelRender(me.model),rB=modelRender(them.model);
-  const fig=(col,src,flip,name,icon)=>
+  // same shape as renderLgTape's fig() — the figurine emoji prefix is gone from both (the caption
+  // sits directly under a render of that figurine, so the mark was never carrying anything).
+  const fig=(col,src,flip,name)=>
    '<div class="lgTapeFig" style="--tc:'+col+'">'+
     (src?'<div class="lgFigBox"><img src="'+src+'" class="lgFigImg'+(flip?' flip':'')+'" alt="'+name+'"></div>':'<div class="lgFigBox lgFigEmpty">?</div>')+
-    '<div class="lgFigCap">'+(icon||'')+' '+name+'</div></div>';
+    '<div class="lgFigCap">'+name+'</div></div>';
   const teamCard=(col,name,off,def,figHtml)=>
    '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
   $('lgTapeBody').innerHTML=
-   teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?',mo?mo.ico:''))+
+   teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?'))+
    '<div class="lgTapeVs"><span>VS</span></div>'+
-   teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?',to?to.ico:''));
+   teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?'));
   $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
 }
 function cupAdvance(winners){ // sim the rest of the bracket from `winners` to a single champion (stores ties)
@@ -1062,7 +1071,7 @@ function renderCup(){
   h+='</div>';
   if(cup.done){
     const won=cup.champion==='player',ch=cupEnt(cup.champion);
-    h+='<div class="cupResult '+(won?'win':'')+'">🏆 '+(won?'YOU ARE CHAMPION!':ch.name+' WIN THE CUP')+'</div>';
+    h+='<div class="cupResult '+(won?'win':'')+'">'+ico('trophy','icoInline')+' '+(won?'YOU ARE CHAMPION!':ch.name+' WIN THE CUP')+'</div>';
   }else{
     const tie=cupPlayerTie();
     if(tie){const opp=cupEnt(tie.a==='player'?tie.b:tie.a);

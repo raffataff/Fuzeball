@@ -14,6 +14,48 @@ const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleS
 const OPT_BTNS=[[0,'A'],[1,'B'],[2,'X'],[3,'Y'],[4,'LB'],[5,'RB'],[6,'LT'],[7,'RT'],
  [8,'BACK'],[9,'START'],[10,'L3'],[11,'R3'],[12,'▲'],[13,'▼'],[14,'◀'],[15,'▶']];
 let optPills=[], optRAF=0, optFrom='menu', optSwingPh=0, optSwing=null, optSwingPrev=false, optLiveSx=null;
+// Display-tab refresh detector (measured from optionsTick's own rAF cadence, which is uncapped even
+// when the game's fps cap is on) — see optionsTick.
+let optRefLast=0, optRefAcc=[], optRefShown=0;
+
+/* ---- Display / graphics ------------------------------------------------
+   Quality presets bundle the four heavy knobs so a casual player gets one-click choices; touching any
+   individual control flips the preset to 'custom'. Applied live via applyDisplay() (render scale +
+   shadows, world.js) and applyRoom()/refreshBallReflect() (reflections) — no reload. */
+const GFX_PRESETS={
+ low:{renderScale:0.5,shadows:false,reflections:false,fpsCap:30,reducedFx:true},
+ medium:{renderScale:0.75,shadows:true,reflections:false,fpsCap:60,reducedFx:true},
+ high:{renderScale:1,shadows:true,reflections:true,fpsCap:0,reducedFx:false}
+};
+function applyReducedFx(){document.body.classList.toggle('lowFx',!!cfg.reducedFx);}   // cheap-CSS mode (see .lowFx in styles.css)
+function applyGfxPreset(name){
+ const p=GFX_PRESETS[name];if(!p)return;
+ cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
+ cfg.gfxPreset=name;
+ applyDisplay();applyRoom();refreshBallReflect();applyReducedFx();
+ if($('setReflect'))$('setReflect').checked=cfg.reflections;   // keep the Match-Setup mirror in step
+ syncDisplayUI();saveCfg();
+}
+function syncDisplayUI(){                                     // push cfg → display controls
+ $('optPreset').value=cfg.gfxPreset||'custom';
+ $('optRScale').value=cfg.renderScale;
+ $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';
+ $('optShadows').checked=cfg.shadows!==false;
+ $('optReflect2').checked=!!cfg.reflections;
+ $('optReducedFx').checked=!!cfg.reducedFx;
+ $('optTrails').checked=cfg.trails!==false;
+ $('optParticles').checked=cfg.particles!==false;
+ $('optFpsCap').value=String(cfg.fpsCap||0);
+ $('optPhysQ').value=cfg.physQuality||'high';
+ $('optShowFps').checked=!!cfg.showFps;
+}
+function optSetTab(name){
+ const isC=name!=='display';
+ $('optTab_controls').classList.toggle('hidden',!isC);
+ $('optTab_display').classList.toggle('hidden',isC);
+ $('optTabBtnControls').classList.toggle('on',isC);
+ $('optTabBtnDisplay').classList.toggle('on',!isC);
+}
 
 /* ---- TC swing analyser -------------------------------------------------
    Simulates a struck ball's horizontal flight with the REAL match physics —
@@ -105,12 +147,21 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
  $('optTCFast').value=cfg.padTCFast;$('optTCSwerve').value=cfg.padTCSwerve;
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
- updateOptLabels();updateAxisLines();updateTCVis();
+ updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();
 }
 function optDot(id,x,y){const R=34;                           // move a well dot to the live stick position
  $(id).style.transform='translate(calc(-50% + '+(clamp(x,-1,1)*R)+'px), calc(-50% + '+(clamp(y,-1,1)*R)+'px))';}
 function optionsTick(){                                       // self-driven while the screen is open
  if($('options').classList.contains('hidden')){optRAF=0;return;}
+ // Refresh detector (Display tab): time this rAF against the last. This callback is NOT the game loop,
+ // so it isn't affected by the fps cap — it samples the true display cadence. Median of recent frames
+ // → Hz, so a one-off long frame can't skew it. Read-only: browsers don't let a page set refresh/vsync.
+ {const now=performance.now();
+  if(optRefLast){const d=now-optRefLast;if(d>1&&d<100){optRefAcc.push(d);if(optRefAcc.length>90)optRefAcc.shift();}}
+  optRefLast=now;
+  if(optRefAcc.length>=20){const s=[...optRefAcc].sort((a,b)=>a-b),med=s[s.length>>1],hz=Math.round(1000/med);
+   detectedHz=hz;   // refine the global used by the 'Match display' frame limit (catches a monitor change)
+   if(hz!==optRefShown){optRefShown=hz;$('optRefresh').textContent=hz+' Hz';}}}
  const pads=navigator.getGamepads?navigator.getGamepads():[];let gp=null;
  for(const p of pads){if(p){gp=p;break;}}
  const st=$('optPadStatus');
@@ -142,6 +193,7 @@ function optionsTick(){                                       // self-driven whi
 function openOptions(from){
  optFrom=from||'menu';
  (optFrom==='pause'?$('pause'):$('menu')).classList.add('hidden');
+ optRefLast=0;optRefAcc.length=0;   // fresh refresh sampling each open (drop the stale gap since last close)
  syncOptionsUI();tcSwingReset();
  $('options').classList.remove('hidden');Au.ui();
  if(!optRAF)optRAF=requestAnimationFrame(optionsTick);
@@ -171,6 +223,22 @@ function bindOptions(){
  $('optTCFast').oninput=e=>{cfg.padTCFast=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCSwerve').oninput=e=>{cfg.padTCSwerve=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCSpinInv').onchange=e=>{cfg.padTCSpinInvert=e.target.checked;saveCfg();};
+ // --- Display tab ---
+ $('optTabBtnControls').onclick=()=>{optSetTab('controls');Au.ui();};
+ $('optTabBtnDisplay').onclick=()=>{optSetTab('display');Au.ui();};
+ $('optPreset').onchange=e=>{if(e.target.value==='custom'){cfg.gfxPreset='custom';saveCfg();}else applyGfxPreset(e.target.value);};
+ $('optRScale').oninput=e=>{cfg.renderScale=+e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
+  $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};
+ $('optShadows').onchange=e=>{cfg.shadows=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
+ $('optReflect2').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
+  applyRoom();refreshBallReflect();if($('setReflect'))$('setReflect').checked=e.target.checked;saveCfg();};
+ $('optReducedFx').onchange=e=>{cfg.reducedFx=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyReducedFx();saveCfg();};
+ $('optTrails').onchange=e=>{cfg.trails=e.target.checked;saveCfg();};        // fx.js spawnTrail reads cfg.trails live
+ $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live
+ $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
+ $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset
+ $('optShowFps').onchange=e=>{cfg.showFps=e.target.checked;saveCfg();};
  $('optReset').onclick=()=>{Object.assign(cfg,OPT_DEFAULTS);saveCfg();syncOptionsUI();Au.ui();};
+ applyReducedFx();   // apply saved reduced-effects mode at boot (physics/render quality already applied in config/world)
  syncOptionsUI();
 }

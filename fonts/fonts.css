@@ -1,0 +1,17 @@
+/* Custom fonts - change font-family values in css/styles.css :root to swap fonts */
+
+@font-face {
+  font-family: 'SoccerLeague';
+  src: url('soccerLeague/SoccerLeague.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SoccerLeague';
+  src: url('soccerLeague/SoccerLeague-Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}

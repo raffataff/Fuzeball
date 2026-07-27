@@ -100,8 +100,8 @@ function memTex(n){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,shotLanes:false,sweetSpot:false,deadzones:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgDeadzones=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,shotLanes:false,sweetSpot:false,deadzones:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
@@ -189,7 +189,7 @@ function cycleKickLog(){
  dbgLogHdr.textContent=dbgLogRod?('KICK LOG · '+dbgRodName(dbgLogRod)+'   (L = next rod)'):'KICK LOG · off  (press L to pick a rod)';
  renderKickLog();
  dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
- banner('KICK LOG',dbgLogRod?dbgRodName(dbgLogRod):'OFF',1.0);Au.ui();
+ toast('KICK LOG',dbgLogRod?dbgRodName(dbgLogRod):'off',1.0);Au.ui();   // tier 3: dev chatter, not a goal
 }
 /* state-change / action trace (benched, held-forward escape, trap-shot, ACT:*). Channel = the kind's
    prefix before ':' when it has one, else 'act' — so the ACT:* trace dedupes against ITSELF (one line
@@ -275,6 +275,7 @@ function buildAIPanel(){
    {key:'trapZone',label:'Trap Zone',col:'#c77dff'},
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
+    {key:'makeWay',label:'Make Way',col:'#ffa1f0'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
     {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'}
@@ -484,6 +485,28 @@ function buildDebug(){
   dbgEvadeDead.push({mesh:m,rod:r,matDim:edDim,matHot:edHot});
  }
 
+ // makeWay (clearLane): the actual trigger region, on the rods that can actually use it —
+ // x = -nearBall..behind (dir-relative, the band where the ball is the MATE BEHIND US's to play),
+ // z = that mate's SLIDE BAND ± zPad (for a DEF the mate is the keeper, so this is the keeper's
+ // reach: a ball outside it is a corner/wall ball nobody behind us can clear, and the row plays it
+ // normally). Built only for rods in clearLane.roles. Hot pink while that rod's r.act==='lane'.
+ const CLD=AIC.clearLane;
+ const mwDim=dbgMat(0xffa1f0,.16),mwHot=dbgMat(0xffa1f0,.5);
+ const mwW=Math.max(.1,CLD.nearBall+CLD.behind);   // behind is negative
+ for(const r of rods){
+  if(CLD.roles&&CLD.roles.indexOf(r.role)<0)continue;
+  const dir=r.team===0?1:-1;
+  let mate=null;                                   // nearest same-team rod behind us = the handler
+  for(const o of rods){if(o===r||o.team!==r.team)continue;if((r.x-o.x)*dir<CLD.mateBack)continue;
+   if(!mate||Math.abs(o.x-r.x)<Math.abs(mate.x-r.x))mate=o;}
+  if(!mate)continue;
+  const zMin=mate.baseZ[0]-mate.maxOff-CLD.zPad,zMax=mate.baseZ[mate.baseZ.length-1]+mate.maxOff+CLD.zPad;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(mwW,0.05,zMax-zMin||0.1),mwDim);
+  m.position.set(r.x+(CLD.behind-mwW/2)*dir,0.06,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgMakeWay.push({mesh:m,rod:r,matDim:mwDim,matHot:mwHot});
+ }
+
  // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
  const serveM=dbgMat(0xc299ff,.22);
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
@@ -653,6 +676,13 @@ function updateAIVis(){
    ed.mesh.material=ed.matDim;
   }
 
+  // makeWay: static boxes; hot pink while that rod is clearing a teammate's lane
+  for(const mw of dbgMakeWay){
+   const vis=on&&dbgAIOpts.makeWay;
+   mw.mesh.visible=vis;if(!vis)continue;
+   mw.mesh.material=mw.rod.act==='lane'?mw.matHot:mw.matDim;
+  }
+
   // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward
   for(const ds of dbgDropSweep){
    const vis=on&&dbgAIOpts.dropSweep;
@@ -767,7 +797,7 @@ function toggleDebug(){
  if(dbgAIPanel)dbgAIPanel.style.display=dbgOn?'block':'none';
  if(dbgLogPanel)dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
  updateAIVis();
- banner('COLLISION DEBUG',dbgOn?'ON · red=wall green=goal yellow=player':'OFF',1.1);
+ toast('COLLISION DEBUG',dbgOn?'red=wall · green=goal · yellow=player':'off',1.1);
  Au.ui();
 }
 
@@ -775,9 +805,12 @@ function toggleDebug(){
 function debugUpdate(){
  if(!dbgOn){
   const show=S.freeRoam;
+  const fpsShow=show||cfg.showFps;   // player-facing FPS counter (Display tab) shows outside debug too
    $('camInfo').style.display=show?'block':'none';
    $('ballSpeed').style.display=show?'block':'none';
    $('ballVel').style.display=show?'block':'none';
+   $('fps').style.display=fpsShow?'block':'none';
+   if(fpsShow)updateFps(false);else dbgFpsLast=0;   // hidden: drop the clock so re-entry doesn't read one giant frame
    if(!show)return;
    updateCamInfo();
    updateBallSpeed();
@@ -788,9 +821,11 @@ function debugUpdate(){
   $('camInfo').style.display='block';
   $('ballSpeed').style.display='block';
   $('ballVel').style.display='block';
+  $('fps').style.display='block';
   updateCamInfo();
   updateBallSpeed();
   updateBallVel();
+  updateFps(true);                   // debug: append the once-a-second leak-watch line
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];
@@ -856,4 +891,43 @@ function updateBallVel(){
   if(!S.balls.length){$('ballVel').innerHTML='<span>VEL</span>no ball';return;}
   const v=S.balls[0].v;
   $('ballVel').innerHTML='<span>VEL X</span><b class="val">'+v.x.toFixed(1)+'</b><span>Z</span><b class="val">'+v.z.toFixed(1)+'</b>';
+}
+/* FPS readout: measured from a private performance.now() clock (not the loop's rdt, which is
+   capped at .05) so a real stall reads as a true dip. dbgFpsEma is a smoothed frame time in ms
+   (heavy smoothing so the number is readable); LOW is the worst frame seen in the last second,
+   republished once/sec — the 1%-low that catches hitches the average hides. dbgFpsLast is reset
+   to 0 while the readout is hidden so the first frame back doesn't log one giant gap as a stall. */
+let dbgFpsLast=0,dbgFpsEma=0,dbgFpsWorst=0,dbgFpsMinMs=0,dbgFpsWinT=0,dbgFpsDiag='';
+function updateFps(detail){
+  const now=performance.now();
+  if(dbgFpsLast){
+   const dt=now-dbgFpsLast;                                   // this frame, ms
+   dbgFpsEma=dbgFpsEma?dbgFpsEma+(dt-dbgFpsEma)*0.1:dt;       // smoothed frame time
+   if(dt>dbgFpsWorst)dbgFpsWorst=dt;                          // worst frame this window
+   if(now-dbgFpsWinT>1000){
+    dbgFpsMinMs=dbgFpsWorst;dbgFpsWorst=0;dbgFpsWinT=now;     // publish LOW once/sec
+    dbgFpsDiag=detail?fpsDiag():'';                           // refresh the leak-watch line once/sec (dev only)
+   }
+  }else dbgFpsWinT=now;
+  dbgFpsLast=now;
+  const fps=dbgFpsEma>0?1000/dbgFpsEma:0;
+  const low=dbgFpsMinMs>0?1000/dbgFpsMinMs:fps;
+  let html='<span>FPS</span><b class="val">'+fps.toFixed(0)+'</b>'
+   +'<span>MS</span><b class="val">'+dbgFpsEma.toFixed(1)+'</b>'
+   +'<span>LOW</span><b class="val">'+low.toFixed(0)+'</b>';
+  if(detail&&dbgFpsDiag)html+='<br>'+dbgFpsDiag;
+  $('fps').innerHTML=html;
+}
+/* Leak-watch line (debug overlay only). These counts should be FLAT during steady play. If NODES /
+   GEO / TEX / DRAW climb over a match, a 59→49-style decline is an accumulation — something spawned
+   and never freed. If they're flat while fps still sags, it's thermal throttling on the chip, not the
+   code. Recomputed once per second (scene.traverse is cheap at this cadence). */
+function fpsDiag(){
+ let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
+ const ri=(typeof renderer!=='undefined'&&renderer)?renderer.info:null;
+ const geo=ri?ri.memory.geometries:'?',tex=ri?ri.memory.textures:'?',calls=ri?ri.render.calls:'?';
+ const pm=(typeof performance!=='undefined')&&performance.memory;
+ const heap=pm?Math.round(pm.usedJSHeapSize/1048576)+'MB':'n/a';
+ return '<span>NODES</span><b class="val">'+nodes+'</b><span>GEO</span><b class="val">'+geo+'</b>'
+  +'<span>TEX</span><b class="val">'+tex+'</b><span>DRAW</span><b class="val">'+calls+'</b><span>HEAP</span><b class="val">'+heap+'</b>';
 }

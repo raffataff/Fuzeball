@@ -56,11 +56,11 @@ const CONFIG = {
 
  /* ---- simulation timing ---------------------------------------------- */
  sim:{
-  hz:60,        // fixed physics rate (steps/sec). The sim always advances in
+  hz:120,        // fixed physics rate (steps/sec). The sim always advances in
                  // constant 1/hz slices; the renderer interpolates between slices,
                  // so motion is smooth at any display refresh. Higher = crisper
                  // collisions at more CPU. 120 is a good balance.
-  maxSteps:8     // max fixed steps run in a single frame (spiral-of-death guard:
+  maxSteps:7     // max fixed steps run in a single frame (spiral-of-death guard:
                  // after a long stall we drop the backlog instead of freezing)
  },
 
@@ -387,11 +387,11 @@ ai:{
       // a trap that releases before the ball reaches the boot is not a trap, it is a block. front
       // deliberately overlaps overFoot — the kick gate is !r.act-gated so the normal swing cannot
       // steal a ball we are holding.
-      back:-6.0,
-      front:2.4,
+      back:-5.8,
+      front:1.4,
       maxVX:45,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
       maxSpeed:45,        // total ball speed cap for attempting/keeping a trap
-      alignZ:1.4,         // z-alignment (nearest man) needed to commit to the trap (matches the general align tolerances)
+      alignZ:1.1,         // z-alignment (nearest man) needed to commit to the trap (matches the general align tolerances)
       gkReach:6,          // GK-only: also enter the trap when the ball is within this far BEYOND
                         //   the keeper's z-slide band (early-detect a ball drifting back toward a
                         //   goal it can't yet slide onto). Outfield rods ignore this, use alignZ.
@@ -414,20 +414,31 @@ ai:{
       //     our own goal is refused (there is nothing to pin it against). ---
       minApproach:-2.5,
       maxApproach:26,     // …and a ball arriving faster than this cannot be pinned — block/clear it instead.
-      ownGoalGuard:5,    // never enter (or hold) a trap when the ball is within this x-distance of the
-                        //   rod's OWN goal line. GK band is x 1.5–8 from the line, so at 12 the keeper
-                        //   NEVER traps — it raises/evades/clears instead. Drop to ~5 to let the keeper
-                        //   trap at the outer edge of its band again (at the cost of some own goals).
+      // --- OWN-GOAL GUARD (directional). The catch tilts the foot BACKWARD (trap.angle is negative,
+      //     so the boot ends up ~sin(|angle|)·ARM ≈ 3u behind the rod, on the own-goal side) and the
+      //     trap contact resolves the ball along the foot→ball normal with holdRest 0 / holdGrip. When
+      //     the ball is BEHIND the feet that normal points GOALWARD, so the catch shoves the ball into
+      //     our own net — this is the keeper own-goal (a ball at rel −3.5, 3.5u behind the GK, i.e.
+      //     between keeper and net). When the ball is IN FRONT the catch tilts AWAY from it and the
+      //     normal points upfield, so it's safe even hard by our own goal. Hence two margins:
+      behindSafe:-0.6,    //   a ball with relReal below this is "behind the feet" → use the big margin below.
+                        //     Keep it near 0 (just inside the feet): a ball at/ahead of the boot is safe to trap.
+      ownGoalGuard:4,    //   FRONT margin: block a trap only when the ball is this close to our own goal line
+                        //     AND in front of the feet. Small — a ball ahead of the keeper is a fine catch.
+      ownGoalBehind:16,  //   BEHIND margin: block a trap when the ball is behind the feet and within this of our
+                        //     own goal. GK sits ~7.5u from its line, so at 16 the keeper NEVER traps a ball behind
+                        //     it (correct — that catch can only go into the net); the DEF (~22.5u out) still can.
+                        //     Lower toward the FRONT value to let the keeper trap behind again (at own-goal risk).
       settleT:0.35,       // CATCH length: hold still this long to kill the ball before starting to carry it.
       // --- CARRY phase: dribble the pinned ball sideways looking for a shooting lane. ---
-      holdT:2.3,          // max carry AFTER settleT. Ball is shot when this expires whatever the lane looks like.
+      holdT:3.3,          // max carry AFTER settleT. Ball is shot when this expires whatever the lane looks like.
                         //   settleT+holdT MUST stay under abortT and under deadball.stallT (3.6) or the
                         //   dead-ball redrop whistles a ball we are deliberately holding.
       lineClear:2.0,     // shoot as soon as shotEval's best lane clears the blockers by this much (units of z).
                         //   Big = fussy, carries for the full holdT most times. 0 = shoot the instant the carry starts.
       slideMax:7.0,      // CUMULATIVE cap: furthest (z) the carry may travel from where the ball was caught —
                         //   a shuffle, not a lap of the table. NOT the per-frame aim target (see carryLead).
-      carryLead:0.9,     // how far past the ball (z) the trapping man aims while dribbling. MUST stay well under
+      carryLead:1.2,     // how far past the ball (z) the trapping man aims while dribbling. MUST stay well under
                         //   the boot's z contact reach (footBox.z + BALL_R ≈ 3.25) or the man slides off the ball
                         //   and the "carry" just abandons it between two players. Bigger = firmer push, more
                         //   chance of shedding it; ~0 = shepherd it without pushing.
@@ -437,7 +448,7 @@ ai:{
                         //   what stops a trapShot being swung at a ball sitting between two players.
       carryMult:0.5,     // rod slide-speed multiplier while carrying. Slow enough that holdGrip can keep up
                         //   (slide faster than the boot can drag the ball and the trap just sheds it).
-      abortT:3.0          // give up after this long and fall back to the raise latch (kept under deadball.stallT 3.6)
+      abortT:3.4          // give up after this long and fall back to the raise latch (kept under deadball.stallT 3.6)
    },
    // --- trap-shot kick: a dedicated kick curve fired from the trap action, released from a
    //     ball already pinned under the boot. Gentle pull-back to get behind the ball, then a
@@ -515,6 +526,63 @@ ai:{
                         //   leaves a 0.8u buffer). Was 3.1, which left a passive band at rel −3.1..−0.8
                         //   where a stuck ball got NO action and the rod just shadowed it to the redrop.
    },
+   // --- lane-clear action (r.act='lane'): a TEAMMATE rod BEHIND us (nearer our own goal) has the
+   //     ball and is about to hit it forward — straight through our row. Standing in that lane is
+   //     a block on our OWN clearance, and it happens constantly between a keeper and its defence:
+   //     the ball sits in the 15u gap, the defence slides onto its z (man-selection tracks the ball
+   //     wherever it is) and then either lowers into the strike, or parks a half-lifted boot in the
+   //     kick path via safeRaise — whose band, rel −5.8..0.45, IS that gap. So this action runs
+   //     first and outranks safeRaise / trap / evade: all three want to play a ball that isn't ours
+   //     to play. Two moves, in order:
+   //       • SLIDE the men off the ball's z-lane (minimum-travel escape via clearOffset, direction
+   //         committed once so a shuffling ball can't make the row dither).
+   //       • LIFT once nothing is in back-swing reach — the clearance then passes UNDER the feet.
+   //         While the ball IS in reach a lift would sweep the foot backward through it into our
+   //         own goal, so the slide has to clear z first; it un-gates the lift on its own.
+   //     Handover is the whole design — it never holds a ball we could be playing: entry needs the
+   //     ball BEHIND us past `behind`, and it releases at `release`, which sits a lead ahead of the
+   //     overFoot zone (−0.8) so the men are back DOWN by the time a ball rolling in from behind
+   //     becomes ours to strike. A ball already STRUCK (closing faster than throughV)
+   //     instead holds the lane open until it is `passed` clear of us, so we can't drop onto our
+   //     own pass as it arrives.
+   //     SCOPE — deliberately narrow (see `roles` and `zPad`): only a DEFENCE makes way, and only
+   //     for a ball inside the keeper's own z-slide band. A ball out by a corner or pinned against
+   //     a side wall isn't a clearance the keeper can make, so the row plays it as normal.
+   //     on:false = old behaviour exactly. ---
+   clearLane:{
+      on:true,
+      roles:['DEF'],      // ONLY these rows ever make way. The case this exists for is the defence smothering
+                        //   its own keeper; a MID/ATT stepping aside mid-pitch just opens the field up for
+                        //   the opposition. Add 'MID' to extend it up the pitch.
+      zPad:0,             // the ball must also be inside the HANDLER's z-slide band (for a DEF that handler is
+                        //   always the keeper, since the GK is the only rod behind it), widened by this. Out
+                        //   near a corner or hard against a side wall the keeper can't slide onto the ball
+                        //   anyway, so there is no clearance to make way for — the row plays it as normal.
+                        //   Raise to make way for balls just outside the keeper's reach; 0 = exactly its band.
+      behind:-6.0,        // ball must be at least this far BEHIND us (dir-rel x) to enter. Inside this it is
+                        //   near enough to our own feet to be ours — never clear the lane for it.
+      nearBall:16,        // …and no further behind than this: only the row IMMEDIATELY in front of the
+                        //   handler makes way. Rods are 15 apart, so >16 would lift the whole team for a
+                        //   keeper's clearance and hand the midfield away.
+      mateBack:6.0,       // the handling mate must sit at least this far behind us in x (just excludes a
+                        //   rod level with us; real spacing is 15).
+      mateReach:14.0,     // …and within this x-distance of the ball, i.e. it can actually get to it.
+      laneMargin:1.0,     // extra z clearance beyond footBox.z + BALL_R when stepping out of the lane.
+                        //   Bigger = a wider corridor left open (and a bigger slide off our own spot).
+      lift:true,          // also LIFT the men (full raiseA) once nothing is in back-swing reach. false =
+                        //   slide out of the z-lane only, men stay down.
+      throughV:12,        // ball closing on us from behind faster than this = it has been struck; hold the
+                        //   lane open until it has PASSED rather than releasing when the mate lets go.
+      release:-5.9,       // hand back to the normal path once the ball reaches this (dir-rel x). Sits 1.5u
+                        //   ahead of `behind` so entry/exit can't ping-pong, and early enough that the men
+                        //   are down again by the time a slow ball rolls into the overFoot zone (−0.8).
+      passed:1.0,         // …but a struck ball (see throughV) holds the lane open until it is this far past
+                        //   us — dropping in front of our own clearance is the bug this action exists for.
+      abortT:3.4,         // safety valve: never sit out of the lane longer than this (kept under the
+                        //   dead-ball stallT 3.6 so a genuinely stuck ball gets whistled instead).
+      cd:0.35             // re-entry lockout after the action ends — stops lane and man-selection trading
+                        //   the rod back and forth every few sim steps (cf. evade.cd).
+   },
    // --- decision thresholds: a smart rod (iq roll) with the ball approaching in the
    //     inFront window WAITS for it to reach the overFoot sweet spot instead of
    //     poking at full stretch — meatier, better-aimed strike. ---
@@ -591,100 +659,132 @@ ai:{
   // Figurine registry. Add an entry + drop its .glb in assets/ and it shows
   // up in the Customize panel automatically. `teamParts` = material names that
   // get team-coloured; `scale` = uniform scale in table units.
+  //
+  // `mug` = the character-select portrait (see mugImg() in core.js + .czCard in customize.js).
+  // These are PREDECLARED for the whole roster even though only some are rendered so far —
+  // drop the PNG at the listed path and the card picks it up on next load with no code or
+  // config change. A missing file is not an error: the <img> onerror leaves the neutral
+  // ICO.figure mark showing underneath, so an un-rendered figurine degrades cleanly. The
+  // filename stem follows the existing assets/renders/render_<stem>_cycles.png convention,
+  // which does NOT always match the model id (womanAndroid → jennyBot, manrichie → richie).
   models:[
    // ROBOTS
-   {id:'cyborg',name:'Cyborg',ico:'🤖',blurb:'Chrome-plated all-rounder',
+   {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
       src:'assets/fuzeball_cyborg.glb',scale:0.8,
+      mug:'assets/renders/render_cyborg_mugshot.png',
       teamParts:['kit_cyborg'],
       hairParts:['kit_cyborg_hair'],
       explosionSrc:'assets/animations/cyborg_explosion.glb'
    },
-   {id:'deltaborg',name:'Deltaborg',ico:'🤖',blurb:'Ruthless and fast',
+   {id:'deltaborg',name:'Deltaborg',blurb:'Ruthless and fast',
       src:'assets/fuzeball_deltaborg.glb',scale:0.8,
+      mug:'assets/renders/render_deltaborg_mugshot.png',
       teamParts:['kit_deltaborg'],hairParts:[],
       explosionSrc:'assets/animations/deltaborg_explosion.glb'
    },
-   {id:'irnman',name:'Irnman',ico:'🤖',blurb:'Strong and relentless',
+   {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
       src:'assets/fuzeball_irnman.glb',scale:0.8,
+      mug:'assets/renders/render_irnman_mugshot.png',
       teamParts:['kit_irnman'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
-   {id:'mechaMan',name:'Mecha Man',ico:'🤖',blurb:'Logical and methodical',
+   {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
       src:'assets/fuzeball_mechaman.glb',scale:0.8,
+      mug:'assets/renders/render_mechaman_mugshot.png',   
       teamParts:['kit_mechaman'],hairParts:[],
       explosionSrc:'assets/animations/mechaman_explosion.glb'
    },
-   {id:'stormer',name:'Stormer',ico:'🤖',blurb:'Cold and endless',
+   {id:'stormer',name:'Stormer',blurb:'Cold and endless',
       src:'assets/fuzeball_stormer.glb',scale:0.8,
+      mug:'assets/renders/render_stormer_mugshot.png',   
       teamParts:['kit_stormer'],hairParts:[],
       explosionSrc:'assets/animations/stormer_explosion.glb'
    },
    // THINGS
-   {id:'rocko',name:'Rocko',ico:'',blurb:'Solid and unpredictable',
+   {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.8,
+      mug:'assets/renders/render_rocko_mugshot.png',   
       teamParts:['kit_rocko', 'kit_rocko_badge' ],hairParts:[],
       explosionSrc:'assets/animations/rocko_explosion.glb'
    },
    // MEN
-   /*{id:'manFlash',name:'Zack',ico:'',blurb:'Cocky but skilled',
+   /*{id:'manFlash',name:'Zack',blurb:'Cocky but skilled',
     src:'assets/fuzeball_manFlash.glb',scale:0.8,
     teamParts:['kit_flash']
    },*/
-   {id:'manJerry',name:'Jerry',ico:'',blurb:'Confident and cocky',
+   {id:'manJerry',name:'Jerry',blurb:'Confident and cocky',
       src:'assets/fuzeball_ManJerry.glb',scale:0.8,
+      mug:'assets/renders/render_jerry_mugshot.png',   
       teamParts:['kit_jerry'],hairParts:['kit_jerry_hair'],
       explosionSrc:'assets/animations/jerry_explosion.glb'
    },
-   {id:'manrichie',name:'Richie',ico:'',blurb:'Ambitious and skilled',
+   {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
       src:'assets/fuzeball_richie.glb',scale:0.8,
+      mug:'assets/renders/render_richie_mugshot.png',   
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
-  /* {id:'manStumpy',name:'Stumpy',ico:'',blurb:'Compact and aggressive',
+  /* {id:'manStumpy',name:'Stumpy',blurb:'Compact and aggressive',
      src:'assets/fuzeball_manStumpy.glb',scale:0.8,
      teamParts:['stumpy_body'],hairParts:['stumpy_hair'],
        explosionSrc:'assets/animations/stumpy_explosion.glb'
     },*/
    // WOMEN
-   {id:'womanMaria',name:'Maria',ico:'',blurb:'Determined and strong',
+   {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
       src:'assets/fuzeball_womanMaria.glb',scale:0.8,
+      mug:'assets/renders/render_maria_mugshot.png',   
       teamParts:['kit_maria2'],hairParts:['kit_maria2_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
    },
-   {id:'womanKimi',name:'Kimi',ico:'',blurb:'Fierce and funny',
+   {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
       src:'assets/fuzeball_womanKimi.glb',scale:0.8,
-      teamParts:['kit_Kimi'],hairParts:[ 'kit_kimi_hair' ],
+      mug:'assets/renders/render_kimi_mugshot.png',   
+      teamParts:['kit_Kimi'],hairParts:[ 'kit_Kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
-   {id:'womanSasha',name:'Sasha',ico:'',blurb:'Cunning and quick',
+   {id:'womanTalia',name:'Talia',blurb:'Fierce and funny',
+      src:'assets/fuzeball_womanTalia.glb',scale:0.8,
+      mug:'assets/renders/render_talia_mugshot.png',   
+      teamParts:['kit_talia'],hairParts:[ 'kit_talia_hair' ],
+      explosionSrc:'assets/animations/talia_explosion.glb'   
+      },      
+   {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSasha.glb',scale:0.8,
+      mug:'assets/renders/render_sasha_mugshot.png',   
       teamParts:['kit_sasha'],hairParts:['kit_sasha_hair'],
       explosionSrc:'assets/animations/sasha_explosion.glb'
     },
-   {id:'womanAndroid',name:'JennyBot',ico:'',blurb:'Quick and calculating',
+   {id:'womanAndroid',name:'JennyBot',blurb:'Quick and calculating',
       src:'assets/fuzeball_womanAndroid.glb',scale:0.8,
+      mug:'assets/renders/render_jennyBot_mugshot.png',
       teamParts:['woman_android'],hairParts:['woman_android_hair'],
       explosionSrc:'assets/animations/jennybot_explosion.glb'
    },
    // ALIENS
-   {id:'alienTamirok',name:'Tamirok',ico:'',blurb:'Intense and thoughtful',
+   {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
+      mug:'assets/renders/render_tamirok_mugshot.png',   
       teamParts:['kit_tamirok'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
-   {id:'alienGrimlot',name:'Grimlot',ico:'',blurb:'Wild and unpredictable',
+   {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
       src:'assets/fuzeball_alienGrimlot.glb',scale:0.8,
+      mug:'assets/renders/render_grimlot_mugshot.png',   
       teamParts:['kit_Grimlot'],hairParts:[],
       explosionSrc:'assets/animations/grimlot_explosion.glb'
       },
-   {id:'alienKatum',name:'Katum',ico:'',blurb:'Fierce and aggressive',
+   {id:'alienKatum',name:'Katum',blurb:'Fierce and aggressive',
       src:'assets/fuzeball_alienKatum.glb',scale:0.8,
+      mug:'assets/renders/render_katum_mugshot.png',   
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
       },
   ],
   // Surface finishes offered as one-tap presets (metalness / roughness / glow).
+  // `default` is special: authored=true means "use the material values exported with the
+  // model" — applyTeamFinish restores the snapshot taken when the GLB material was cloned.
   finishes:{
+   default: {authored:true},
    matte:   {metalness:.05,roughness:.90,glow:0},
    satin:   {metalness:.15,roughness:.45,glow:0},
    plastic: {metalness:.0,roughness:.18,glow:0},
@@ -882,7 +982,38 @@ ai:{
   firstDelay:[9,14], respawn:[11,17], // seconds until first spawn / after a pickup
   boost:10, freeze:8, big:10,          // effect durations (s)
   floatY:4, floatAmp:0.8, pickR:6,    // hover height, bob amplitude, pickup radius pad
-  area:{x:32,z:22}                    // spawn box (± these)
+  spin:2.4,                           // idle yaw spin (rad/s); a model's own `spin` overrides it
+  area:{x:32,z:22},                   // spawn box (± these)
+
+  /* ---- pickup LOOK ----------------------------------------------------
+     A type listed in `models` (and whose GLB loaded) floats as that model; anything else
+     falls back to the procedural `gem` octahedron, so a missing or broken file is only a
+     cosmetic downgrade — the pickup still spawns and still collects. GLBs are fetched ONCE
+     at boot, shader-warmed off-screen, and clone()d per spawn: nothing is fetched, built or
+     compiled mid-match. Collision is unchanged either way — it's a sphere test against
+     `pickR`, not the mesh. */
+  gem:{r:2.1, emissive:0.9, roughness:0.3},                    // fallback octahedron: radius, glow, roughness
+  ring:{on:true, inner:2.6, outer:3.4, y:-2.8, opacity:0.55},  // ground halo under the pickup (a model may opt out with ring:false)
+  models:{
+   on:true,                           // false = every pickup uses the procedural gem (the old look)
+   /* Per model:
+        src     — GLB path.
+        fit     — target size: the model is recentred and rescaled so its bounding-sphere radius
+                  is this many world units (the gem's is ~2.1). Makes the authored Blender scale
+                  irrelevant — drop a model in and it arrives the right size. 0 = keep as authored.
+        scale   — extra multiplier on top of `fit` (fine-tuning; 1 = none).
+        yaw/tilt— resting orientation, radians (yaw is added under the spin, so it survives it).
+        y       — vertical nudge inside the pickup, units (the hover height itself is floatY).
+        spin    — per-model idle spin (rad/s); omitted = the shared `spin` above.
+        glow    — emissive intensity baked into the template's materials at load. 0 = leave the
+                  GLB's own emissive alone. glowCol (hex) overrides the colour, else the model's
+                  authored emissive is kept, or the type's `col` is used if it has none.
+        ring    — false to drop the ground halo for this model.
+        shadow  — false to stop it casting a shadow. */
+   boost :{src:'assets/fuzeball_powerup_boost.glb', fit:2.4, scale:1, yaw:0, tilt:0, y:0, glow:0.5, shadow:true},
+   freeze:{src:'assets/fuzeball_powerup_frost.glb', fit:2.4, scale:1, yaw:0, tilt:0, y:0, glow:0.5, shadow:true}
+   // `big` has no entry yet -> keeps the gem. Add a GLB + one line here and it's wired.
+  }
  },
 
  /* ---- dead-ball recovery -------------------------------------------- */
@@ -965,20 +1096,22 @@ ai:{
   // sonic character (crackling fire, heavy cannon thud, glassy split, etc.).
   ballTypes:{
    classic:{
-      name:'⚽ CLASSIC',col:0xf2ede2,em:0x000000,
+      // NOTE: `name` is HUD copy — keep it emoji-free. The ball tag colour-codes the type from
+      // `trail` (see setBallTag in hud.js); OS colour emoji can't be tinted and render per-platform.
+      name:'CLASSIC',col:0xf2ede2,em:0x000000,
       mass:1.7,maxV:100,w:70,trail:'#ffffff',
       audio:{
        kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
-             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.45,beepSlide:-45},
+             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
        wall:{noiseDur:.045,noiseFreq:2300,noiseVol:.04,noiseVolScale:.002,noiseVolMax:.28},
        post:{noiseDur:.03,noiseFreq:3200,noiseVolScale:.5,freqs:[523,832,1290,1900],droop:.94,
              attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
       }
    },
-   fire:   {name:'🔥 FIREBALL',col:0xff6a1f,em:0xff2200,
+   fire:   {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
       mass:1,maxV:100,w:14,trail:'#ff8c3a',light:0xff5500,
       audio:{
-       kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.12,
+       kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
              beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.001,beepVolScale:.002,beepVolMax:.015,beepSlide:-80,attack:.08,decay:1.1,},
        wall:{noiseDur:.05,noiseFreq:2800,noiseVol:.06,noiseVolScale:.003,noiseVolMax:.12},
        post:{noiseDur:.04,noiseFreq:4000,noiseVolScale:.6,freqs:[587,932,1397,2100],droop:.93,
@@ -986,22 +1119,22 @@ ai:{
       }
    },
    cannon: {
-      name:'💣 CANNONBALL',col:0x000000,em:0x000000,
+      name:'CANNONBALL',col:0x000000,em:0x000000,
       mass:7,maxV:100,w:30,trail:'#000000',
       audio:{
        kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
-             beepFreq:80,beepDur:.2,beepType:'sine',beepVol:.12,beepVolScale:.005,beepVolMax:.55,beepSlide:-30},
+             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
        wall:{noiseDur:.06,noiseFreq:1200,noiseVol:.08,noiseVolScale:.003,noiseVolMax:.35},
        post:{noiseDur:.04,noiseFreq:2200,noiseVolScale:.4,freqs:[328,523,784,1100],droop:.95,
              attack:.004,decay:.32,vol:.2,volScale:.006,volMax:.6}
       }
    },
    split:  {
-      name:'👯 SPLIT BALL',col:0xa46bff,em:0x4a18b8,
+      name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
       mass:2.5,maxV:100,w:3,splits:true,trail:'#c39bff',
       audio:{
-       kick:{noiseDur:.05,noiseFreq:10000,noiseFreqScale:10,noiseVol:.05,noiseVolScale:.002,noiseVolMax:.02,
-             beepFreq:80,beepDur:.17,beepType:'sine',beepVol:.1,beepVolScale:.04,beepVolMax:.5,beepSlide:-55},
+       kick:{noiseDur:.05,noiseFreq:6000,noiseFreqScale:10,noiseVol:.05,noiseVolScale:.002,noiseVolMax:.02,
+             beepFreq:80,beepDur:.17,beepType:'sine',beepVol:.01,beepVolScale:.04,beepVolMax:.25,beepSlide:-55},
        wall:{noiseDur:.04,noiseFreq:3200,noiseVol:.03,noiseVolScale:.0015,noiseVolMax:.22},
        post:{noiseDur:.025,noiseFreq:3600,noiseVolScale:.55,freqs:[659,988,1480,2200],droop:.92,
              attack:.002,decay:.22,vol:.12,volScale:.003,volMax:.4}
@@ -1012,23 +1145,23 @@ ai:{
       // short timer (see stepBall) so the flight path weaves unpredictably — nasty to read, nasty to
       // trap. Energy-safe: spin only rotates the horizontal velocity, it never adds speed. No GLB mesh
       // slot, so it renders as its own glowing-cyan sphere (makeBallModel returns null → sphere fallback).
-      name:'🪁 KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
+      name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
       mass:1.2,maxV:100,w:12,trail:'#8fe8ff',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-kick spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:9,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
-             beepFreq:150,beepDur:.1,beepType:'sine',beepVol:.07,beepVolScale:.003,beepVolMax:.4,beepSlide:60},
+             beepFreq:100,beepDur:.1,beepType:'sine',beepVol:.07,beepVolScale:.03,beepVolMax:.24,beepSlide:60},
        wall:{noiseDur:.045,noiseFreq:2600,noiseVol:.04,noiseVolScale:.002,noiseVolMax:.24},
        post:{noiseDur:.03,noiseFreq:3400,noiseVolScale:.5,freqs:[622,988,1480,2200],droop:.93,
              attack:.003,decay:.26,vol:.13,volScale:.004,volMax:.48}
       }
    },
    golden: {
-      name:'⭐ GOLDEN BALL · COUNTS ×2',col:0xffc933,em:0x7a5200,
+      name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
       mass:3,maxV:90,w:3,value:2,trail:'#ffd75e',metal:.85,
       audio:{
        kick:{noiseDur:.055,noiseFreq:800,noiseFreqScale:7,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
-             beepFreq:110,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.48,beepSlide:-40},
+             beepFreq:110,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
        wall:{noiseDur:.04,noiseFreq:2100,noiseVol:.035,noiseVolScale:.0018,noiseVolMax:.26},
        post:{noiseDur:.028,noiseFreq:3000,noiseVolScale:.48,freqs:[587,880,1319,1760],droop:.93,
              attack:.003,decay:.26,vol:.15,volScale:.0045,volMax:.52}
@@ -1050,7 +1183,7 @@ ai:{
                     on a small ball, half the cost). Raise if a weak GPU ever dips.
         near/far  — cube camera clip range; must span the table + room.
         intensity — envMapIntensity on the ball (reflection strength). */
-  ballReflect:{on:true,res:128,every:2,near:1,far:700,intensity:1},
+  ballReflect:{on:false,res:32,every:2,near:1,far:700,intensity:1},
 
   /* ---- debug / toggles -------------------------------------------------- */
   debug:{
@@ -1059,10 +1192,12 @@ ai:{
   },
 
  /* ---- power-up types ------------------------------------------------- */
+ // `ico` is gone — the HUD draws inline SVG from FX_ICO (hud.js) so the mark tints to the team
+ // colour and renders identically on every platform. `col` is the pickup mesh/particle colour.
  puTypes:[
-   {key:'boost',ico:'⚡',label:'POWER HITS',col:0xfff04d},
-   {key:'freeze',ico:'❄️',label:'RIVALS FROZEN',col:0x7ae4ff},
-   {key:'big',ico:'🥅',label:'BIG GOAL',col:0x7dff8a}
+   {key:'boost',label:'POWER HITS',col:0xfff04d},
+   {key:'freeze',label:'RIVALS FROZEN',col:0x7ae4ff},
+   {key:'big',label:'BIG GOAL',col:0x7dff8a}
  ],
 
  /* ---- rooms / locations --------------------------------------------------
@@ -1146,7 +1281,17 @@ ai:{
  },
 
  /* ---- fx pools ------------------------------------------------------- */
- fx:{ trailSpeed:26, spriteCount:70, particleCount:500 }, // min speed to trail, sprite pool, particle pool
+ fx:{ trailSpeed:26, spriteCount:70, particleCount:300, // min speed to trail, sprite pool, particle pool
+   // lightPool: how many spare PointLights sit resident (visible, intensity 0) in the scene so a
+   // transient effect glow (fireball/knuckle ball, cannonball fuse, explosion, respawn swirl) can
+   // borrow one INSTEAD of scene.add-ing a fresh light. r128 bakes the scene's light COUNT into
+   // every material's shader, so adding/removing a light forces a whole-scene recompile — the
+   // hitch you see on a new ball type / explosion / swirl. A fixed pool keeps the count constant,
+   // so that recompile never happens. Overflow (more simultaneous effects than the pool) just
+   // drops the extra glow, never the count. Raise if effects look under-lit in a busy multiball;
+   // lower on a weak GPU (each resident light adds a little per-pixel cost even at intensity 0).
+   lightPool:6,
+   warmMatch:true }, // true = compile every fx a match can fire before kickoff (warmMatchAssets, fracture.js)
 
  /* ---- training mode --------------------------------------------------- */
  // Sandbox practice mode (js/training.js, TRAINING card on the main menu): free ball
@@ -1155,7 +1300,7 @@ ai:{
  // S.trn (null = off) + r.trnHidden, so the game never depends on training.js loading.
  training:{
   spawn:{x:0,z:0},                   // where the first ball drops on entering training
-  launch:{speed:60,angle:0,loft:0},  // launcher defaults: speed u/s · angle° (0 = toward the RIGHT goal +x, 90 = near side +z) · upward u/s
+  launch:{speed:60,angle:0,loft:10},  // launcher defaults: speed u/s · angle° (0 = toward the RIGHT goal +x, 90 = near side +z) · upward u/s
   speedMax:200,                      // launcher speed/loft clamp (keep ≤ ball maxV or the clamp eats it)
   clampMargin:2,                     // placed balls are clamped this far inside the walls/goal lines
   ringColor:0x2bff88                 // click-place ghost ring + panel accent
@@ -1193,7 +1338,7 @@ ai:{
    net:  {xMult:1.35, y:22, rise:6, sway:7},      // behind the beaten goal: x past the line (×gx), base height, climb over the shot, side-to-side drift
    crane:{xFrom:.62, xTo:1.02, yFrom:42, yTo:20, zFrom:46, zTo:30}, // corner crane: eased start→end placement (x values ×gx)
    drone:{y:62, dip:8, z:26, sway:8},             // sky drone: height, descent over the shot, base z, drift
-   ball: {back:8, up:5, minY:6.5, lookAhead:34, lookY:4} // ball cam: distance goal-side of the ball, height above it, height floor, how far up-pitch it gazes, gaze height
+   ball: {back:6, up:2, minY:1.5, lookAhead:34, lookY:4} // ball cam: distance goal-side of the ball, height above it, height floor, how far up-pitch it gazes, gaze height
   }
  },
 
@@ -1228,7 +1373,11 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,table:'class
  // 'pro' when missing so older saves (or first-time players) still play normally.
  diffRed:null,diffBlue:null,
  // Customize-panel settings: selected figurine + material finish + size.
- modelRed:'cyborg',modelBlue:'cyborg',redYaw:-0.55,blueYaw:0.55,metalness:.15,roughness:.45,glow:0,modelScale:1,
+  modelRed:'cyborg',modelBlue:'cyborg',redYaw:-0.55,blueYaw:0.55,
+  redMetalness:.15,redRoughness:.45,redGlow:0,redScale:1,
+  blueMetalness:.15,blueRoughness:.45,blueGlow:0,blueScale:1,
+  // true = 'Default' finish: keep the material values exported with the model (per team).
+  redFinishDefault:false,blueFinishDefault:false,
  // Controls / options screen. Sensitivities are MULTIPLIERS on the CONFIG bases
  // (CTRL.slideSpeed, CTRL.mouseSens); padAngleSens scales how far a given stick push tilts (reach).
  // padSlideAxis 'ly'=left-stick up/down · 'lx'=left/right. padAngleAxis 'ry'/'rx' likewise.
@@ -1244,18 +1393,52 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,table:'class
  mouseSens:1,kbdSens:1,
  // Per-screen panel arrangements from the ⊞ Layout editor (js/layout.js).
  // Map screen-id -> {p:{elId:{x,y,w,h}},h}; missing/empty = the default CSS flow.
- layouts:{}};
+ layouts:{},
+ // Display / graphics settings (Options → Display). renderScale multiplies the effective device
+ // pixel ratio (0.5 = render at half-res, upscaled — biggest fill-rate win on integrated GPUs);
+ // shadows toggles the dir-light shadow map pass; fpsCap 0=uncapped else the target the loop throttles
+ // to; showFps shows the on-screen FPS counter outside debug; gfxPreset is the last-picked preset name
+ // ('low'|'medium'|'high'|'custom' — 'custom' = the individual knobs were touched). reflections lives
+ // above (shared with Match Setup). Applied by applyDisplay() (world.js) + the loop's fps cap.
+ renderScale:1,shadows:true,fpsCap:0,showFps:false,gfxPreset:'high'};
 try{Object.assign(cfg,JSON.parse(localStorage.getItem('fuzeball')||'{}'));}catch(e){}
 if(cfg.model&&!cfg.modelRed){cfg.modelRed=cfg.model;cfg.modelBlue=cfg.model;delete cfg.model;saveCfg();}
 // Migrate legacy single `diff` into per-team fields when those are missing.
 if(!cfg.diffRed)cfg.diffRed=cfg.diff||'pro';
 if(!cfg.diffBlue)cfg.diffBlue=cfg.diff||'pro';
 cfg.diff=cfg.diffRed;
+// Migrate the legacy global material finish (metalness/roughness/glow/modelScale) into per-team
+// fields so each team can be finished independently. Old saves keep identical Red+Blue.
+if(typeof cfg.metalness==='number'){cfg.redMetalness=cfg.blueMetalness=cfg.metalness;delete cfg.metalness;}
+if(typeof cfg.roughness==='number'){cfg.redRoughness=cfg.blueRoughness=cfg.roughness;delete cfg.roughness;}
+if(typeof cfg.glow==='number'){cfg.redGlow=cfg.blueGlow=cfg.glow;delete cfg.glow;}
+if(typeof cfg.modelScale==='number'){cfg.redScale=cfg.blueScale=cfg.modelScale;delete cfg.modelScale;}
+if(typeof cfg.redMetalness!=='number')cfg.redMetalness=.15;
+if(typeof cfg.redRoughness!=='number')cfg.redRoughness=.45;
+if(typeof cfg.redGlow!=='number')cfg.redGlow=0;
+if(typeof cfg.redScale!=='number')cfg.redScale=1;
+if(typeof cfg.blueMetalness!=='number')cfg.blueMetalness=.15;
+if(typeof cfg.blueRoughness!=='number')cfg.blueRoughness=.45;
+if(typeof cfg.blueGlow!=='number')cfg.blueGlow=0;
+if(typeof cfg.blueScale!=='number')cfg.blueScale=1;
+if(typeof cfg.redFinishDefault!=='boolean')cfg.redFinishDefault=false;
+if(typeof cfg.blueFinishDefault!=='boolean')cfg.blueFinishDefault=false;
 // Migrate the old `theme` (a colour livery) into a `room` (a location). Themes were really just
 // a palette; rooms are the real axis. Unknown/old values fall back to 'open'.
 if(!cfg.room||!CONFIG.rooms[cfg.room]){cfg.room=(cfg.theme&&CONFIG.themeToRoom[cfg.theme])||'open';}
 if(typeof cfg.reflections!=='boolean')cfg.reflections=true;
 if(typeof cfg.replay!=='boolean')cfg.replay=true;   // old saves w/o the key keep replays on
+// Display settings: backfill for old saves so the Display tab reads sane values.
+if(typeof cfg.renderScale!=='number'||!(cfg.renderScale>0))cfg.renderScale=1;
+cfg.renderScale=clamp(cfg.renderScale,0.4,1);
+if(typeof cfg.shadows!=='boolean')cfg.shadows=true;
+if(cfg.fpsCap!=='match'&&typeof cfg.fpsCap!=='number')cfg.fpsCap=0;   // number, or 'match' (track detected refresh)
+if(typeof cfg.showFps!=='boolean')cfg.showFps=false;
+if(typeof cfg.gfxPreset!=='string')cfg.gfxPreset='high';
+if(typeof cfg.physQuality!=='string')cfg.physQuality='high';
+if(typeof cfg.reducedFx!=='boolean')cfg.reducedFx=false;
+if(typeof cfg.trails!=='boolean')cfg.trails=true;
+if(typeof cfg.particles!=='boolean')cfg.particles=true;
 // (legacy cfg.theme is left as-is — the pitch migration below still reads it; nothing else does)
 // Per-table chosen skin (livery). Map table-id -> skin-id; missing = the table's defSkin.
 if(!cfg.skins||typeof cfg.skins!=='object')cfg.skins={};
@@ -1269,5 +1452,55 @@ if(!cfg.pitch){
 // Clamp figurine yaws into the slider range (fixes an old saved blueYaw:10.0 default).
 cfg.redYaw=clamp(cfg.redYaw||0,-Math.PI,Math.PI);cfg.blueYaw=clamp(cfg.blueYaw||0,-Math.PI,Math.PI);
 function saveCfg(){try{localStorage.setItem('fuzeball',JSON.stringify(cfg));}catch(e){}}
+
+/* Physics quality (Options → Display · Performance). The adaptive substepper subdivides each sim step
+   so a fast ball/foot can't tunnel: sub = ceil(vmax·dt / subTravel), clamped [subMin, subMax]. Fast
+   play pins it at subMax and re-runs the full collision pass that many times — the CPU cost that drops
+   frames on weak hardware when the ball is quick. These presets raise the target travel-per-substep and
+   lower the ceiling to cut that work; even 'performance' keeps travel ≪ BALL_R (1.9u) so nothing tunnels
+   — the only trade is slightly coarser contact resolution on the very fastest shots. 'high' = the tuned
+   default (shipped feel). PHY aliases CONFIG.physics (same object), so physics.js reads these live. */
+const PHYS_Q={
+ high:{subTravel:0.20,subMax:7},
+ balanced:{subTravel:0.28,subMax:6},
+ performance:{subTravel:0.38,subMax:5}
+};
+function applyPhysQuality(){const q=PHYS_Q[cfg.physQuality]||PHYS_Q.high;CONFIG.physics.subTravel=q.subTravel;CONFIG.physics.subMax=q.subMax;}
+applyPhysQuality();   // apply saved quality at boot (before any physics runs)
 // Per-team figurine def (falls back to the first if the id is stale).
 function activeModel(team){const M=CONFIG.playerModel;return M.models.find(m=>m.id===cfg[team===0?'modelRed':'modelBlue'])||M.models[0];}
+// Per-team material finish: each team carries its OWN metalness / roughness / glow / scale so the
+// Customize panel can sculpt Red and Blue independently. Kept as tiny globals so world/league/
+// fracture/customize all read the same per-team values.
+function tmMetal(t){return clamp(cfg[t===0?'redMetalness':'blueMetalness'],0,1);}
+function tmRough(t){return clamp(cfg[t===0?'redRoughness':'blueRoughness'],0,1);}
+function tmGlow(t){return Math.max(0,cfg[t===0?'redGlow':'blueGlow']);}
+function tmScale(t){return cfg[t===0?'redScale':'blueScale']||1;}
+// 'Default' finish flag: the team keeps the material values exported with the model.
+function tmDefault(t){return !!cfg[t===0?'redFinishDefault':'blueFinishDefault'];}
+/* Snapshot a material's authored (as-loaded/as-created) finish ONCE, so the Default option can
+   restore it later no matter how many slider passes have overwritten it since. Must run before
+   the first mutation — applyTeamFinish calls it at the top, and every clone site goes through
+   applyTeamFinish before writing, so the first application is also the snapshot. */
+function matSaveOrig(m){
+ if(!m.userData)m.userData={};
+ if(!m.userData.fbOrig)m.userData.fbOrig={metalness:m.metalness,roughness:m.roughness,
+  emissive:m.emissive?m.emissive.getHex():null,emissiveIntensity:m.emissiveIntensity};
+ return m;}
+/* Apply one team's finish to one material. Default mode restores the authored snapshot;
+   slider mode writes the per-team metalness/roughness/glow. `col` (optional) is the team
+   colour written into emissive in slider mode; it also marks the emissive as managed HERE,
+   so Default mode restores the authored emissive colour too. Pass col=null for materials
+   whose emissive colour belongs to applyColors (the teamGlow tint) — those keep their team
+   tint in every mode. `isGlow` keeps the glow floors (roughness ≥.12, emissiveIntensity ≥.55). */
+function applyTeamFinish(m,t,col,isGlow){
+ matSaveOrig(m);
+ if(tmDefault(t)){const o=m.userData.fbOrig;
+  m.metalness=o.metalness;m.roughness=o.roughness;
+  if(m.emissive){if(col&&o.emissive!=null)m.emissive.setHex(o.emissive);m.emissiveIntensity=o.emissiveIntensity;}
+ }else{
+  const rv=tmRough(t),gv=tmGlow(t);
+  m.metalness=tmMetal(t);m.roughness=isGlow?Math.max(.12,rv):rv;
+  if(m.emissive){if(col)m.emissive.set(col);m.emissiveIntensity=isGlow?Math.max(.55,gv):gv;}
+ }
+ m.needsUpdate=true;}

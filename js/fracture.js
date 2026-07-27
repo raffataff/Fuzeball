@@ -72,7 +72,7 @@ function spawnFracture(r,mi){
   // z-axis never moves z, so r.offset+r.baseZ[mi] is the man's true current z
   // regardless of swing — that stays exactly where the man was slid to at the kill.
   const wp=new THREE.Vector3(r.x,ROD_H+PLAYER_H,r.offset+r.baseZ[mi]);
-  const s=activeModel(r.team).scale*(cfg.modelScale||1);
+  const s=activeModel(r.team).scale*tmScale(r.team);
   const ws=new THREE.Vector3(s,s,s);
   // Rotation is deliberately NOT taken from the rod's swing/raise angle at all —
   // only the static team-facing yaw the intact model uses (buildRods/
@@ -136,7 +136,7 @@ function spawnBallFracture(pos){
   const mixer=new THREE.AnimationMixer(inst);
   // one clip PER shard (see spawnFracture) — play them all or only shard 0 moves.
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopOnce);a.clampWhenFinished=true;a.play();}
-  const light=new THREE.PointLight(0xff7a1a,4,64);light.position.copy(pos);light.position.y+=2;scene.add(light);
+  const light=fxLightGet(0xff7a1a,64);if(light){light.intensity=4;light.position.copy(pos);light.position.y+=2;} // pooled — no light added, so no whole-scene recompile at the bang
   S.frac.push({obj:inst,mixer,mats,light,until:S.time+CONFIG.cannonball.fractureLife});
 }
 
@@ -165,7 +165,7 @@ function fractureUpdate(dt){
 function disposeFracture(i){
   const f=S.frac[i];
   scene.remove(f.obj);
-  if(f.light)scene.remove(f.light);  // ball debris only; player entries have no light
+  if(f.light)fxLightPut(f.light);    // ball debris only; return the pooled light (never scene.remove — that changes the count)
   for(const m of f.mats)m.dispose(); // geometry/textures are shared with the template — never dispose those
   S.frac.splice(i,1);
 }
@@ -242,8 +242,8 @@ function spawnRespawnSwirl(r,mi,reform){
   mixer.timeScale=ts;
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopRepeat);a.play();}
   let light=null;
-  if((C.respawnSwirlLight||0)>0){                       // optional soft team-tinted glow riding the column
-   light=new THREE.PointLight(col.getHex(),0,48);light.position.set(r.x,(C.respawnSwirlY||0)+5,z);scene.add(light);
+  if((C.respawnSwirlLight||0)>0){                       // optional soft team-tinted glow riding the column (pooled — intensity driven per-frame below)
+   light=fxLightGet(col.getHex(),48);if(light)light.position.set(r.x,(C.respawnSwirlY||0)+5,z);
   }
   // `until` = when the swirl DIES, which is respawnSwirlTail seconds PAST the reform
   // moment — that overlap is what keeps the particles going while the figurine fades in.
@@ -310,7 +310,7 @@ function respawnSwirlUpdate(dt){
 function disposeSwirl(i){
   const f=S.swirl[i];
   scene.remove(f.obj);
-  if(f.light)scene.remove(f.light);
+  if(f.light)fxLightPut(f.light);   // return the pooled glow (never scene.remove — that changes the light count)
   for(const m of f.mats)m.dispose();  // geometry/textures shared with the template — never dispose those
   S.swirl.splice(i,1);
 }
@@ -320,4 +320,45 @@ function disposeSwirl(i){
 function clearFractures(){
   while(S.frac.length)disposeFracture(S.frac.length-1);
   while(S.swirl.length)disposeSwirl(S.swirl.length-1);
+}
+
+/* ================= pre-kickoff warm =================
+   Compile every shader a match can fire BEFORE the whistle, so the first fireball / cannonball /
+   explosion / respawn swirl is never the frame that stalls on a compile. Called from flow.js
+   startMatch with the real match scene already assembled (table + room + both teams + the fx
+   light pool), so everything is warmed at the EXACT light count play runs at — this is what
+   covers a league/cup ROOM swap too (a room backdrop brings its own KHR lights, changing the
+   count from the menu's). Works hand-in-glove with the fx light pool: because the pool holds the
+   light count constant all match, whatever we compile here stays valid — no light ever gets added
+   to invalidate it. Gated by CONFIG.fx.warmMatch; cheap and idempotent, safe every startMatch. */
+let warmMeshHolder=null;const warmedBallTypes={};
+function warmBallMaterials(){
+  if(!renderer||!scene)return;
+  // Park one hidden instance of each ball type off-screen, ONCE. Kept resident (frustum-culled at
+  // y=-800, ~zero draw cost) rather than spawned-and-disposed so its compiled program is never
+  // released — a fresh ball of that type then reuses it with no compile at all. GLB clones share
+  // the cached material/geometry (no GPU dup); fallback-sphere types (knuckle) own a tiny mesh.
+  if(!warmMeshHolder){warmMeshHolder=new THREE.Group();warmMeshHolder.position.set(0,-800,0);scene.add(warmMeshHolder);}
+  for(const key in BALL_TYPES){
+   if(warmedBallTypes[key])continue;
+   let mesh=(CONFIG.debug&&CONFIG.debug.useBallModel)?makeBallModel(key):null;
+   if(!mesh){const t=BALL_TYPES[key];
+    mesh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,24,16),
+     new THREE.MeshStandardMaterial({color:t.col,emissive:t.em,emissiveIntensity:t.em?0.7:0,
+      roughness:t.metal?.25:.4,metalness:t.metal||.05}));}
+   // Match the real ball's envMap state (applyBallEnv) so the program we compile is the one a live
+   // ball uses — the null↔texture switch is itself a recompile, so warm it in the right state.
+   if(typeof ballReflectOn==='function'&&ballReflectOn()&&typeof ballCubeRT!=='undefined'&&ballCubeRT)
+    mesh.traverse(o=>{if(o.isMesh){o.material.envMap=ballCubeRT.texture;o.material.envMapIntensity=CONFIG.ballReflect.intensity;o.material.needsUpdate=true;}});
+   warmMeshHolder.add(mesh);warmedBallTypes[key]=1;
+  }
+}
+function warmMatchAssets(){
+  if(CONFIG.fx&&CONFIG.fx.warmMatch===false)return;
+  if(!renderer||!scene||!camera)return;
+  warmBallMaterials();
+  renderer.compile(scene,camera);            // one pass: compiles every scene material (incl. the parked ball types) at the live light count
+  for(const id in explosionTemplates)warmFractureTemplate(explosionTemplates[id]); // re-warm the shatters/swirl for THIS room's exact light set
+  warmFractureTemplate(ballExplosionTemplate);
+  warmFractureTemplate(respawnSwirlTemplate);
 }

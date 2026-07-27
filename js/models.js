@@ -49,6 +49,7 @@ function loadTableModel(){
    get the same treatment via roomOrder. The ACTIVE table's skin/room are always protected,
    so a cap of 1 is legal (and means "never hold anything you aren't looking at"). */
 const skinOrder=[],roomOrder=[];
+const skinLoadingCbs={};   // 'id/skinId' -> [pending cbs] while that skin's GLB fetch is in flight (so a 2nd caller queues instead of firing early)
 function skinKey(id,skinId){return id+'/'+skinId;}
 function touchSkin(id,skinId){const k=skinKey(id,skinId),i=skinOrder.indexOf(k);if(i>=0)skinOrder.splice(i,1);skinOrder.push(k);}
 function touchRoom(id){const i=roomOrder.indexOf(id);if(i>=0)roomOrder.splice(i,1);roomOrder.push(id);}
@@ -60,17 +61,35 @@ function touchRoom(id){const i=roomOrder.indexOf(id);if(i>=0)roomOrder.splice(i,
    arena-morph registries without disturbing the skin that's still on screen. */
 function loadSkin(id,skinId,cb){
  skinGroups[id]=skinGroups[id]||{};
- if(skinGroups[id][skinId]){touchSkin(id,skinId);if(cb)cb();return;}   // already loaded (cache)
+ const key=skinKey(id,skinId);
+ const existing=skinGroups[id][skinId];
+ // 'loaded' now means the sub-group actually HAS meshes — not merely that the placeholder group
+ // exists. loadSkin parents an empty group the instant a fetch starts (so applySkin keeps the
+ // primitives up meanwhile), and the old truthy-group check treated that empty placeholder as
+ // "done" and fired cb early — a caller gating kickoff on it would start a match with the skin
+ // still downloading (untextured table on a skipped intro). Truly-resident short-circuits here;
+ // an in-flight fetch QUEUES the cb so it fires when the GLB actually lands.
+ if(existing&&existing.children.length){touchSkin(id,skinId);if(cb)cb();return;}
+ if(skinLoadingCbs[key]){if(cb)skinLoadingCbs[key].push(cb);touchSkin(id,skinId);return;}
  const T=CONFIG.tables[id],S=T&&T.skins&&T.skins[skinId];
  if(!S){if(cb)cb();return;}
  if(!tableGroups[id]){tableGroups[id]=new THREE.Group();scene.add(tableGroups[id]);}
- const grp=new THREE.Group();grp.visible=false;
- tableGroups[id].add(grp);skinGroups[id][skinId]=grp;touchSkin(id,skinId);
- const key=skinKey(id,skinId);
+ const grp=existing||new THREE.Group();grp.visible=false;
+ if(!existing){tableGroups[id].add(grp);skinGroups[id][skinId]=grp;}
+ touchSkin(id,skinId);
+ const cbs=skinLoadingCbs[key]=cb?[cb]:[];
+ const flush=()=>{delete skinLoadingCbs[key];cbs.forEach(f=>f&&f());};
  const loader=new THREE.GLTFLoader();
  const hook=gltf=>{
   try{
    let hasFrame=false;
+   // Pre-scan: does this skin ship the new single-mesh-per-side goal_frame_l/goal_frame_r (the
+   // arena-table convention — see build_arena_table.py build_goal_frames)? Some GLBs (e.g. the
+   // classic alien-ship table) still carry the OLDER goal_post/goal_crossbar meshes too, added
+   // before the goal_frame_l/r convention existed — if both are present in the same skin the new
+   // goal_frame_* wins and the legacy posts/crossbar are hidden below so they don't double up.
+   let hasNewFrame=false;
+   gltf.scene.traverse(c=>{if(c.isMesh&&onm(c).startsWith('goal_frame'))hasNewFrame=true;});
    gltf.scene.traverse(c=>{
     if(!c.isMesh)return;
     c.castShadow=true;c.receiveShadow=true;
@@ -79,7 +98,8 @@ function loadSkin(id,skinId,cb){
     if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
     else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
     else if(n.startsWith('goal_net'))c.visible=false;                            // keep the built-in diamond net
-    else if(n.startsWith('goal_frame')||n.startsWith('goal_post'))hasFrame=true; // custom posts: hide the primitive front frame
+    else if(/^(goal_post|goal_crossbar)/.test(n)){hasFrame=true;if(hasNewFrame)c.visible=false;} // legacy posts/crossbar: still count as a custom frame, but superseded (hidden) if goal_frame_l/r is also present
+    else if(n.startsWith('goal_frame'))hasFrame=true;                            // custom posts: hide the primitive front frame
    });
    (skinHasFrame[id]=skinHasFrame[id]||{})[skinId]=hasFrame;
    grp.add(gltf.scene);gltf.scene.updateMatrixWorld(true);
@@ -87,13 +107,13 @@ function loadSkin(id,skinId,cb){
    if(T.collision==='bowl')registerArenaMorph(gltf.scene); // bowl shells open via SDF re-projection
    console.log(S.glb+' loaded ('+id+'/'+skinId+')');
   }catch(e){console.warn('skin GLB hookup failed',e);}
-  if(cb)cb();
+  flush();
  };
  const fail=()=>{
   tableGroups[id].remove(grp);delete skinGroups[id][skinId];    // no GLB -> fall back to primitives
   const oi=skinOrder.indexOf(key);if(oi>=0)skinOrder.splice(oi,1);
   console.warn('skin GLB missing for '+id+'/'+skinId+' ('+(T.folder||'')+S.glb+')');
-  if(cb)cb();
+  flush();
  };
  const primary=(T.folder||'')+S.glb;
  loader.load(primary,hook,undefined,()=>{S.glbFallback?loader.load(S.glbFallback,hook,undefined,fail):fail();});
@@ -166,7 +186,7 @@ function pruneTableAssets(keepSkin,keepRoom){pruneSkins(keepSkin);pruneRooms(kee
 function registerBigGoalMeshes(root){
  const bb=new THREE.Box3();let nGrow=0,nWall=0;
  root.traverse(c=>{
-  if(!c.isMesh)return;
+  if(!c.isMesh||c.visible===false)return;  // skip legacy goal_post/goal_crossbar meshes hidden above (superseded by goal_frame_l/r) — no point growing invisible geometry
   const n=onm(c),pn=c.parent?onm(c.parent):'';
   const grow=/^(goal_post|goal_crossbar|goal_frame)/.test(n)||/^(goal_post|goal_crossbar|goal_frame)/.test(pn),
         wall=n.startsWith('wall_end')||pn.startsWith('wall_end');
@@ -192,16 +212,18 @@ function registerBigGoalMeshes(root){
 /* Load ONE room's backdrop GLB into roomGroups[id]. Lazy + idempotent: a no-op if the room has no
    glb, it's already resident, or a fetch is in flight. cb runs on success, failure, and every
    no-op, so applyRoom can gate on it. */
-const roomLoading={};
+const roomLoading={};   // room id -> [pending cbs] while its backdrop GLB is in flight
 function ensureRoom(id,cb){
  const R=CONFIG.rooms&&CONFIG.rooms[id];
  if(!R||!R.glb){if(cb)cb();return;}
  if(roomGroups[id]){touchRoom(id);if(cb)cb();return;}
- if(roomLoading[id]){if(cb)cb();return;}            // in flight — applyRoom runs again on arrival
- roomLoading[id]=true;touchRoom(id);
+ // In flight: QUEUE the cb so it fires when the backdrop is truly resident, not immediately —
+ // a kickoff gate reading this must not proceed with the room still downloading (skipped intro).
+ if(roomLoading[id]){if(cb)roomLoading[id].push(cb);touchRoom(id);return;}
+ const cbs=roomLoading[id]=cb?[cb]:[];touchRoom(id);
+ const flush=()=>{delete roomLoading[id];cbs.forEach(f=>f&&f());};
  const url=(R.folder||'')+R.glb;
  new THREE.GLTFLoader().load(url,gltf=>{
-  delete roomLoading[id];
   try{
    const room=gltf.scene;
    const ls=R.lightScale||1;
@@ -218,12 +240,11 @@ function ensureRoom(id,cb){
    roomGroups[id]=room;
    console.log('room "'+id+'" loaded ('+R.glb+')');
   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
-  if(cb)cb();
+  flush();                                          // resident now → release every queued cb
  },undefined,()=>{
-  delete roomLoading[id];
   const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
   console.warn('room GLB missing for '+id+' ('+url+'), using shared backdrop');
-  if(cb)cb();
+  flush();                                          // GLB missing → shared backdrop; release queued cbs so a gate doesn't wait forever
  });
 }
 /* Free an evicted room backdrop + its baked GLB reflection map. Rooms are never cloned, so a hard
@@ -459,6 +480,76 @@ function makeBallModel(key){
     c.castShadow=true;c.receiveShadow=true;
   });
   return any?g:null;
+}
+
+/* --- power-up pickup models -------------------------------------------------
+   The floating pickup for a power-up type (CONFIG.powerups.models). Optional per type:
+   a type with no entry, or whose GLB is missing, falls back to the procedural octahedron
+   in powerups.js — the pickup still spawns and still collects, it just looks plainer.
+   Templates are loaded once at boot and clone()d per spawn, so a pickup popping in
+   mid-match costs one clone and nothing else. Everything that would otherwise touch a
+   MATERIAL at spawn time (glow, shadow flags) is baked into the template here instead:
+   a fresh material mid-match means a shader compile, i.e. a hitch at the exact moment
+   the pickup appears. */
+const puTemplates={};      // power-up key -> THREE.Group (recentred + fit-scaled). Cloned by makePUModel.
+function loadPowerupModels(onReady){
+ const M=CONFIG.powerups.models;
+ const keys=(M&&M.on)?Object.keys(M).filter(k=>k!=='on'&&M[k]&&M[k].src):[];
+ if(!keys.length){if(onReady)onReady();return;}
+ let left=keys.length;const done=()=>{if(--left<=0&&onReady)onReady();};
+ const loader=new THREE.GLTFLoader();
+ keys.forEach(k=>{
+  const d=M[k],ty=CONFIG.puTypes.find(x=>x.key===k);
+  loader.load(d.src,gltf=>{
+   try{
+    const wrap=new THREE.Group();wrap.add(gltf.scene);
+    // Recentre on the model's own middle (so the idle spin turns about it, not about whatever
+    // origin the artist happened to leave) and normalise the size: `fit` is the bounding-sphere
+    // radius we want in world units, which makes the authored Blender scale irrelevant.
+    const bb=new THREE.Box3().setFromObject(gltf.scene);
+    gltf.scene.position.sub(bb.getCenter(new THREE.Vector3()));
+    const rad=bb.getSize(new THREE.Vector3()).length()/2;
+    if(d.fit&&rad>1e-4)wrap.scale.setScalar(d.fit/rad);
+    // Strip any KHR punctual light the artist baked in. A pickup is added to the scene MID-MATCH,
+    // and r128 bakes the scene's light COUNT into every material's shader program — so one light
+    // riding in on the pickup would force a whole-scene recompile (a multi-hundred-ms freeze) the
+    // instant it pops in, and again when it's collected. Use `glow` for brightness instead; if a
+    // pickup ever genuinely needs to cast light, borrow one from the resident fx light pool
+    // (world.js fxLightGet) rather than adding one here.
+    const lights=[];wrap.traverse(o=>{if(o.isLight)lights.push(o);});
+    lights.forEach(l=>{if(l.parent)l.parent.remove(l);});
+    if(lights.length)console.warn('power-up GLB '+k+': stripped '+lights.length+' baked light(s) — see CONFIG.powerups.models glow');
+    wrap.traverse(o=>{
+     if(!o.isMesh)return;
+     o.castShadow=d.shadow!==false;o.receiveShadow=false;
+     if(!d.glow)return;
+     const ms=Array.isArray(o.material)?o.material:[o.material];
+     ms.forEach(m=>{
+      if(!m||!m.emissive)return;
+      // Keep an authored emissive colour; only fall back to the type's HUD colour when the
+      // material has none, so a hand-painted glow isn't overwritten by the swatch.
+      if(d.glowCol!==undefined)m.emissive.setHex(d.glowCol);
+      else if(!m.emissive.getHex())m.emissive.setHex((ty&&ty.col)||0xffffff);
+      m.emissiveIntensity=d.glow;m.needsUpdate=true;
+     });
+    });
+    puTemplates[k]=wrap;
+    console.log('power-up GLB loaded ('+k+' <- '+d.src+')');
+   }catch(e){console.warn('power-up GLB hookup failed for '+k,e);}
+   done();
+  },undefined,()=>{console.warn('power-up GLB missing for '+k+' ('+d.src+'), using the procedural gem');done();});
+ });
+}
+// One pickup instance, or null when that type has no loaded model (caller draws the gem).
+function makePUModel(key){const t=puTemplates[key];return t?t.clone(true):null;}
+/* Off-screen shader precompile. A pickup joins the scene mid-match, so without this its first
+   frame compiles there — same reasoning (and same shape) as warmFractureTemplate. */
+function warmPowerupShaders(){
+ if(!renderer||!scene||!camera)return;
+ for(const k in puTemplates){
+  const o=puTemplates[k].clone(true);o.position.set(0,-500,0);
+  scene.add(o);renderer.compile(scene,camera);scene.remove(o);
+ }
 }
 
 /* --- pitch model ------------------------------------------------------------ */

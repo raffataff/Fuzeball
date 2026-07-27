@@ -80,6 +80,44 @@ function nearestFootZ(r,bz){
  for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const z=r.baseZ[i]+r.offset;if(fz===null||Math.abs(bz-z)<Math.abs(bz-fz))fz=z;}
  return fz;
 }
+// Is any live foot sitting within cz of the lane z lz? The z-slice half of inFootRange, split out
+// because clearLane supplies its own (wider) corridor width and does its own x test.
+function inLaneZ(r,lz,cz){
+ for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;if(Math.abs(lz-(r.baseZ[i]+r.offset))<cz)return true;}
+ return false;
+}
+// The teammate rod BEHIND this one (nearer our own goal) that is about to play ball b forward
+// THROUGH us — i.e. the ball sits on our side of it and it's close enough in x to reach it. If one
+// exists, anything we do in the ball's z-lane blocks our own clearance; clearLane acts on that.
+// Nearest such mate wins (the one whose boot the ball is actually at). Null = play the ball normally.
+// Three gates, in cost order:
+//  • ROLE (clearLane.roles) — only a defence makes way. A MID/ATT stepping aside mid-pitch isn't
+//    clearing a keeper's line, it's just opening the field for the opposition.
+//  • GEOMETRY — behind us, on our side of the mate, within mateReach, and no OPPOSING rod nearer the
+//    ball in x. That last test is possession, done geometrically rather than via S.lastTouch: only
+//    rods near the ball in x can touch it at all, so it's both stricter and never stale (a redrop, a
+//    deflection or the other ball in a multi-ball point can all leave lastTouch lying).
+//  • Z-BAND — the ball must be inside the MATE's own z-slide range (for a DEF that mate is always
+//    the keeper) + zPad. Out by a corner or against a side wall the keeper cannot slide onto the
+//    ball, so there is no clearance to make way FOR and the row plays it as it normally would.
+function laneMate(r,b){
+ const CL=AIC.clearLane,dir=r.team===0?1:-1,bx=b.m.position.x;
+ if(CL.roles&&CL.roles.indexOf(r.role)<0)return null;
+ let m=null,md=1e9;
+ for(const o of rods){
+  if(o===r||o.team!==r.team)continue;
+  if((r.x-o.x)*dir<CL.mateBack)continue;                 // must sit behind us, not level or ahead
+  if((bx-o.x)*dir<-AIC.footRangeBack)continue;           // ball must be on OUR side of it (within its own back-reach)
+  const d=Math.abs(bx-o.x);
+  if(d>CL.mateReach)continue;
+  if(d<md){md=d;m=o;}
+ }
+ if(!m)return null;
+ for(const o of rods){if(o.team===r.team)continue;if(Math.abs(bx-o.x)<md)return null;}   // an opponent is closer — not ours to clear for
+ const bz=b.m.position.z;                                 // …and the mate can actually slide onto it
+ if(bz<m.baseZ[0]-m.maxOff-CL.zPad||bz>m.baseZ[m.baseZ.length-1]+m.maxOff+CL.zPad)return null;
+ return m;
+}
 // Pick the slide-away direction for an evade ONCE and COMMIT it (cached on r.evadeDir, cleared when
 // the action ends / the post-kick latch rearms / on kickRod). Recomputing per frame let the sign
 // flip as the ball drifted across the foot line, which is the dithering that reads as "the rod
@@ -224,8 +262,35 @@ function shotEval(team,bx,bz){
    }
    if(!isActiveRod(r)){
     if(dbgLogRod===r)dbgRod(r,'BENCH');
-    if(r.behindFlag)continue;
-    r.raise=false;continue;
+    // Lane-holding only means "don't aim/kick" — raise must stay LIVE even on the bench,
+    // or a rod that hasn't entered the active pair yet (e.g. every rod right after a serve,
+    // where resetRodRotation just wiped every latch) sits down in the ball's path and takes
+    // a teammate's kick in the back. Mirrors the active-rod raise latch below, minus the
+    // swing actions (trap/safeRaise), which only ever run for an active rod anyway.
+    let bb=null,bd2=1e9;
+    for(const b of S.balls){if(b.scored)continue;const d=Math.abs(b.m.position.x-r.x);if(d<bd2){bd2=d;bb=b;}}
+    if(!bb){r.raise=false;r.behindFlag=false;continue;}
+    const dir2=r.team===0?1:-1;
+    const relReal2=(bb.m.position.x-r.x)*dir2;
+    // A benched rod still must not stand in a teammate's kick lane. It holds its lane in z (that's
+    // what benched MEANS — the hand isn't on it), so it gets the LIFT half of clearLane only: the
+    // clearance passes under the feet instead of into them. Same back-swing guard as the action.
+    if(AIC.clearLane.on&&AIC.clearLane.lift&&relReal2<AIC.clearLane.behind&&relReal2>-AIC.clearLane.nearBall
+       &&bb.m.position.y<AIC.lowY&&!inFootRange(r,bb)&&laneMate(r,bb)){
+     r.raise=true;r.behindFlag=false;continue;
+    }
+    if(inFootRange(r,bb,AIC.underFootBack)){
+     r.raise=false;r.behindFlag=false;                 // ball right at the feet — never swing back through it
+    }else{
+     if(!r.behindFlag && relReal2<AIC.raiseBehind) r.behindFlag=true;
+     if(r.behindFlag){
+      r.raise=true;
+      if(relReal2>(AIC.overFootOffset-AIC.overFoot) && relReal2<(AIC.overFootOffset+AIC.overFoot)) r.behindFlag=false;
+     }else{
+      r.raise=relReal2<AIC.raiseBehind;
+     }
+    }
+    continue;
   }   // a resting hand: hold its lane, block passively
    const D=r.team===0?Dred:Dblue;
    let best=null,bd=1e9;
@@ -286,6 +351,7 @@ function shotEval(team,bx,bz){
   const bp=best.m.position;
   const relReal=(bp.x-r.x)*dir;           // real ahead/behind for reach decisions
   const speed=best.v.length();
+  const approach=best.v.x*dir;            // >0 = ball closing on this rod's front face (read by clearLane/trap/evade)
   const slow=speed<AIC.slowSpeed;
   // ---- alignment vs the man actually closest to the real ball z (not the predicted target).
   //      Computed up-front so the raise latch, drop check, and kick check all share it.
@@ -330,6 +396,47 @@ function shotEval(team,bx,bz){
    }else{
     r.raise=relReal<AIC.raiseBehind;
    }
+  }
+  // ---- lane-clear action (r.act='lane') — MAKE WAY for the rod behind us. A teammate nearer our
+  //      own goal has the ball and is about to hit it forward through our row; whatever we do in
+  //      that z-lane is a block on our own clearance. This is the keeper-smothered-by-its-own-
+  //      defence case: the ball sits in the 15u GK↔DEF gap, man-selection slides the DEF onto the
+  //      ball's z (it tracks the ball wherever it is, in front or behind), and then either the men
+  //      lower into the strike, or safeRaise — whose band, rel −5.8..0.45, IS that gap — parks a
+  //      half-lifted boot (angle −0.8 puts it ~4.5u back at y≈3.1, i.e. squarely in the kick path).
+  //      So this runs BEFORE safeRaise/trap/evade and outranks all three: they each want to play a
+  //      ball that isn't ours to play. It slides the men out of the corridor and lifts them once
+  //      the back-swing can't clip the ball (footStuck) — a lift while the ball is in reach sweeps
+  //      the foot BACKWARD through it into our own goal, so the slide has to clear z first, which
+  //      un-gates the lift by itself.
+  //      Handover — the thing that must not break: we only ever hold a ball BEHIND us, and release
+  //      at CL.release (1.5u of hysteresis off the entry threshold, and early enough that the men
+  //      are down again before a slow ball reaches the overFoot zone). A ball already STRUCK
+  //      (approach > throughV) instead holds the lane open until it is CL.passed clear of us, so
+  //      the row can't drop onto the very clearance it just made way for. ----
+  const CL=AIC.clearLane;
+  if(r.act==='lane'){
+   r.actT+=dt;
+   const struck=approach>CL.throughV;
+   if(relReal>(struck?CL.passed:CL.release)||bp.y>AIC.lowY||r.actT>CL.abortT||(!struck&&!laneMate(r,best))){
+    r.act=null;r.laneDir=0;r.laneCd=CL.cd;
+   }
+  }else if(CL.on&&!r.act&&(r.laneCd||0)<=0&&bp.y<AIC.lowY&&relReal<CL.behind&&relReal>-CL.nearBall&&laneMate(r,best)){
+   r.act='lane';r.actT=0;r.laneDir=0;
+  }
+  if(r.act==='lane'){
+   const cz=FOOT_BOX.z+BALL_R+CL.laneMargin,blocked=inLaneZ(r,bp.z,cz);
+   r.raise=CL.lift&&!footStuck;            // lift only when the back-swing can't clip the ball; the slide clears z, then this opens
+   r.behindFlag=false;                     // the action owns the angle — no latch to release
+   if(blocked){
+    if(!r.laneDir){const o0=clearOffset(r,bp.z,cz,0);r.laneDir=(o0!=null&&o0>=r.offset)?1:-1;} // committed once, like evadeDir
+    let o=clearOffset(r,bp.z,cz,r.laneDir);
+    if(o==null)o=clearOffset(r,bp.z,cz,0);  // no room that way — nearest clear either side
+    if(o!=null)r.target=o;
+   }else r.target=r.offset;                 // already out of the corridor: hold, don't drift off our spot
+   r.aiMan=-1;                              // free the man-index hysteresis for the re-pick on handover
+   if(dbgLogRod===r)dbgRod(r,'ACT:lane','rel='+relReal.toFixed(1)+' appr='+approach.toFixed(1)+' tgt='+r.target.toFixed(1)+' blk='+(blocked?1:0)+' lift='+(r.raise?1:0));
+   continue;                                // we own target + man: no re-aim, no kick
   }
   const TR=AIC.trap, SR=AIC.safeRaise;
   // ---- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
@@ -379,17 +486,21 @@ function shotEval(team,bx,bz){
   //        the foot FORWARD, which clears the ball upfield — the safe direction). ----
   const ownGx=dir>0?-F.L/2:F.L/2;
   const goalDist=Math.abs(bp.x-ownGx);
-  const approach=best.v.x*dir;              // >0 = ball closing on this rod's front face
+  // Directional own-goal guard: the catch tilts the foot BACKWARD, so a ball BEHIND the feet is
+  // pushed toward our own goal by the contact (the keeper own-goal). Use the big margin when the
+  // ball is behind, the small one when it's in front (where the catch tilts safely away from it).
+  const ogGuard=relReal<TR.behindSafe?TR.ownGoalBehind:TR.ownGoalGuard;
   if(r.act==='trap'){
    r.actT+=dt;
    // Exit once the ball escapes the catch band, speeds up, lifts, drifts too near our own goal, or
    // we've held too long. NOTE: deliberately NO footStuck abort here — a trap's whole JOB is to hold
    // a ball AT the feet, and since entry requires alignment (⇒ inFootRange ⇒ footStuck), a footStuck
    // abort killed the trap one frame after it began (why traps were never seen). The forward `front`
-   // bound + ownGoalGuard are the own-goal guards instead.
-   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<TR.ownGoalGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;}
+   // bound + the directional own-goal guard are the own-goal guards instead — the latter also aborts
+   // a trap whose ball has DRIFTED behind the feet toward our net since it was caught.
+   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<ogGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;}
   }else if(TR.on&&r.aiIQ&&!r.act&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ
-           &&approach>TR.minApproach&&approach<TR.maxApproach&&goalDist>TR.ownGoalGuard){
+           &&approach>TR.minApproach&&approach<TR.maxApproach&&goalDist>ogGuard){
    // Entry commits to ONE man — the live man nearest the ball in z — and remembers where the ball
    // was caught. Holding the man fixed for the whole trap is what stops the man-index hysteresis
    // re-picking a neighbour mid-carry and dragging the boot off the ball it is dribbling.

@@ -2,14 +2,41 @@
 /* ================= FX ================= */
 function flash(){const f=$('flash');f.style.transition='none';f.style.opacity=.85;
  requestAnimationFrame(()=>{f.style.transition='opacity .5s';f.style.opacity=0;});}
-let bannerTO=null;
-function banner(main,sub,dur){
+/* ---- notification channels -------------------------------------------------
+   THREE weights, deliberately not interchangeable. Everything used to funnel through banner(),
+   so toggling the kick log got the same 66px screen-wide treatment as scoring — a dev toggle and
+   a match-deciding goal must not read alike.
+     banner(main,sub,dur,col)  tier 1 · stop-the-world: kickoff, goal, sudden death, full time.
+     notice(main,dur,col)      tier 2 · a live event the player already SAW — one line, top of
+                               screen, no explanatory subtitle narrating the visuals.
+     toast(main,sub,dur)       tier 3 · system/dev chatter — small, bottom-left, out of the way.
+   `col` accents the underline rule / left bar; pass the team or ball colour so the message is
+   colour-coded to whoever it belongs to instead of the old team-neutral blue glow. */
+let bannerTO=null,noticeTO=null,toastTO=null;
+function banner(main,sub,dur,col){
  const b=$('banner');
- b.innerHTML=main+(sub?'<span id="bannerSub">'+sub+'</span>':'');
+ b.style.setProperty('--bc',col||'#dbe6ff');
+ // main is wrapped so the accent rule (#bannerMain::after) sits under the HEADLINE — hung off
+ // #banner it would land under the sub chip instead whenever a sub is present.
+ b.innerHTML='<span id="bannerMain">'+main+'</span>'+(sub?'<span id="bannerSub">'+sub+'</span>':'');
  b.classList.remove('show');void b.offsetWidth;b.classList.add('show');
  clearTimeout(bannerTO);bannerTO=setTimeout(()=>b.classList.remove('show'),(dur||1.6)*1000);
 }
+function notice(main,dur,col){
+ const n=$('notice');if(!n)return;
+ n.style.setProperty('--nc',col||'#9db2d8');
+ n.textContent=main;
+ n.classList.remove('show');void n.offsetWidth;n.classList.add('show');
+ clearTimeout(noticeTO);noticeTO=setTimeout(()=>n.classList.remove('show'),(dur||1.3)*1000);
+}
+function toast(main,sub,dur){
+ const t=$('toast');if(!t)return;
+ t.innerHTML='<b>'+main+'</b>'+(sub?'<span>'+sub+'</span>':'');
+ t.classList.remove('show');void t.offsetWidth;t.classList.add('show');
+ clearTimeout(toastTO);toastTO=setTimeout(()=>t.classList.remove('show'),(dur||1.6)*1000);
+}
 function spawnTrail(b){
+ if(!cfg.trails)return;                    // Options → Display · Effects
  for(const s of sprites){if(s.visible)continue;
   s.visible=true;s.position.copy(b.m.position);
   s.userData.life=.38;
@@ -18,6 +45,7 @@ function spawnTrail(b){
   return;}
 }
 function burst(pos,c1,c2,n,speed){
+ if(!cfg.particles)return;                 // Options → Display · Effects
  let placed=0;
  const arr=pGeo.attributes.position.array,col=pGeo.attributes.color.array;
  for(let i=0;i<pCount&&placed<n;i++){
@@ -35,6 +63,7 @@ function burst(pos,c1,c2,n,speed){
  pGeo.attributes.position.needsUpdate=true;pGeo.attributes.color.needsUpdate=true;
 }
 function burstRing(pos,c1,c2,n,speed){
+ if(!cfg.particles)return;                 // Options → Display · Effects
  let placed=0;
  const arr=pGeo.attributes.position.array,col=pGeo.attributes.color.array;
  for(let i=0;i<pCount&&placed<n;i++){
@@ -52,6 +81,7 @@ function burstRing(pos,c1,c2,n,speed){
  pGeo.attributes.position.needsUpdate=true;pGeo.attributes.color.needsUpdate=true;
 }
 function burstUp(pos,c1,c2,n,speed){
+ if(!cfg.particles)return;                 // Options → Display · Effects
  let placed=0;
  const arr=pGeo.attributes.position.array,col=pGeo.attributes.color.array;
  for(let i=0;i<pCount&&placed<n;i++){
@@ -144,7 +174,7 @@ function fxUpdate(rdt){
  goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
  if(crowdMesh)crowdMesh.rotation.y+=rdt*.01;
- if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*2.4;
+ if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);
  let fb=null;
  for(const b of S.balls)if(b.m.position.y>7&&b.v.y<0&&!b.scored){fb=b;break;}
  if(fb){dropRing.visible=true;

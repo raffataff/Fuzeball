@@ -181,10 +181,10 @@ function toggleFreeRoam(){
  if(S.freeRoam){
   const e=new THREE.Euler().setFromQuaternion(camera.quaternion,'YXZ');
   S.camYaw=e.y;S.camPitch=e.x;
-  banner('FREE ROAM','WASD move · Q/E up/down · Shift sprint · Esc exit',1.8);
+  toast('FREE ROAM','WASD move · Q/E up/down · Shift sprint · Esc exit',1.8);
  }else{
   document.exitPointerLock();
-  banner('FREE ROAM','OFF',0.9);
+  toast('FREE ROAM','off',0.9);
  }
  Au.ui();
 }

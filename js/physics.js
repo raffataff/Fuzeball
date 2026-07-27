@@ -166,6 +166,10 @@ function stepBall(b,h){
    roof instead of dropping in — so it can never score over the top; it settles and re-drops. */
 function goalFrameCollide(b,h){
  const p=b.m.position,v=b.v,pr=PHY.postRad+BALL_R,e=1+PHY.postRest,GH=F.goalH,GD=F.goalDepth;
+ // Early-out: posts/crossbar sit at x=±L/2 and the net roof only reaches back to ±(L/2+GD), so a ball
+ // more than a post-radius inside either line can't touch any of it. Skips the whole per-substep loop
+ // for midfield play — pure cost cut, no behaviour change (the guard band ≫ one substep of travel).
+ if(Math.abs(p.x)<F.L/2-pr)return;
  for(let sx=-1;sx<=1;sx+=2){
   const gh=F.goalHalf*(S.eff[sx>0?0:1].big>S.time?PHY.bigGoalMult:1),gx=sx*F.L/2;
   // uprights: vertical cylinders at (gx, ±gh), y∈[0,goalH]
@@ -279,7 +283,7 @@ function collideRod(b,r){
      const vx=b.v.x,vz=b.v.z,cs=Math.cos(KICK.splitAng),sn=Math.sin(KICK.splitAng);
      nb.v.set(vx*cs-vz*sn,b.v.y,vx*sn+vz*cs);
      b.v.set(vx*cs+vz*sn,b.v.y,-vx*sn+vz*cs);
-     banner('👯 SPLIT!','TWO BALLS IN PLAY',1.4);Au.power();
+     notice('SPLIT',1.2,BALL_TYPES.split.trail);Au.power();
     }
    }
   }
@@ -335,7 +339,7 @@ function collideRod(b,r){
     const vx=b.v.x,vz=b.v.z,cs=Math.cos(KICK.splitAng),sn=Math.sin(KICK.splitAng);
     nb.v.set(vx*cs-vz*sn,b.v.y,vx*sn+vz*cs);
     b.v.set(vx*cs+vz*sn,b.v.y,-vx*sn+vz*cs);
-    banner('👯 SPLIT!','TWO BALLS IN PLAY',1.4);Au.power();
+    notice('SPLIT',1.2,BALL_TYPES.split.trail);Au.power();
    }
   }
  }

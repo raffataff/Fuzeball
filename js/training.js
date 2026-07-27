@@ -19,7 +19,7 @@ function trnSpawnBall(key,x,z){
  b.m.position.set(trnClampX(x),BALL_R,trnClampZ(z));b.v.set(0,0,0);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null;
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
- $('ballTag').textContent=b.t.name;
+ setBallTag(b.key);
  TRN.lastSpot={x:b.m.position.x,z:b.m.position.z};
  return b;
 }
@@ -82,7 +82,7 @@ function trnEnsureRing(){
 function trnRingVis(v){if(trnRing)trnRing.visible=v;}
 function trnSetPlacing(v){
  TRN.placing=v;
- if(trnBuilt){const bt=$('trnPick');bt.classList.toggle('on',v);bt.textContent=v?'📍 CLICK TABLE — ON':'📍 Click-place (G)';}
+ if(trnBuilt){const bt=$('trnPick');bt.classList.toggle('on',v);bt.textContent=v?'CLICK TABLE — ON':'Click-place (G)';}
  cvs.style.cursor=v?'crosshair':'';
  trnRingVis(false);
 }
@@ -135,20 +135,23 @@ function buildTrnPanel(){
  const p=document.createElement('div');p.id='trnPanel';p.className='hidden';
  let typeOpts='';for(const k in BALL_TYPES)typeOpts+='<option value="'+k+'">'+BALL_TYPES[k].name+'</option>';
  p.innerHTML=
-  '<h3>🎯 TRAINING <button class="trnMin" id="trnMin" title="collapse (T hides the panel)">—</button></h3>'+
+  // emoji dropped throughout this panel — ⏸/⏭/📍/🚀/🎯 all have EMOJI presentation by default on
+  // Windows, so they came out full-colour against a monochrome gold dev panel. ✕/↻/— are
+  // text-presentation glyphs and render monochrome everywhere, so they stay.
+  '<h3>TRAINING <button class="trnMin" id="trnMin" title="collapse (T hides the panel)">—</button></h3>'+
   '<div class="trnBody">'+
   '<div class="trnSect">Sim</div>'+
-  '<div class="trnBtns"><button class="trnBtn" id="trnFreeze">⏸ Freeze (P)</button><button class="trnBtn" id="trnStep">⏭ Step (O)</button></div>'+
-  '<div class="trnBtns"><button class="trnBtn wide" id="trnRedrop">☂ Re-drop ball</button></div>'+
+  '<div class="trnBtns"><button class="trnBtn" id="trnFreeze">Freeze (P)</button><button class="trnBtn" id="trnStep">Step (O)</button></div>'+
+  '<div class="trnBtns"><button class="trnBtn wide" id="trnRedrop">Re-drop ball</button></div>'+
   '<div class="trnSect">Ball</div>'+
   '<div class="trnRow"><label>Type</label><select id="trnType">'+typeOpts+'</select></div>'+
   '<div class="trnBtns"><button class="trnBtn" id="trnSpawn">+ New ball</button><button class="trnBtn" id="trnClear">✕ Clear</button></div>'+
   '<div class="trnRow"><label>X</label><input type="number" id="trnX" step="1" value="0"><label>Z</label><input type="number" id="trnZ" step="1" value="0"><button class="trnBtn" id="trnSet">Set</button></div>'+
-  '<div class="trnBtns"><button class="trnBtn wide" id="trnPick">📍 Click-place (G)</button></div>'+
+  '<div class="trnBtns"><button class="trnBtn wide" id="trnPick">Click-place (G)</button></div>'+
   '<div class="trnSect">Launcher</div>'+
   '<div class="trnRow"><label>Speed</label><input type="number" id="trnSpeed" step="5" value="'+TRNC.launch.speed+'"><label>Loft</label><input type="number" id="trnLoft" step="5" value="'+TRNC.launch.loft+'"></div>'+
   '<div class="trnRow"><label>Angle°</label><input type="number" id="trnAngle" step="5" value="'+TRNC.launch.angle+'"><span class="trnHint">0° → right goal · 90° → near side</span></div>'+
-  '<div class="trnBtns"><button class="trnBtn" id="trnLaunch">🚀 Launch</button><button class="trnBtn" id="trnRelaunch">↻ Reset + launch</button></div>'+
+  '<div class="trnBtns"><button class="trnBtn" id="trnLaunch">Launch</button><button class="trnBtn" id="trnRelaunch">↻ Reset + launch</button></div>'+
   '<div class="trnSect">Spots</div>'+
   '<div class="trnRow"><label>Save</label><span class="trnSlots" id="trnSave"></span></div>'+
   '<div class="trnRow"><label>Load</label><span class="trnSlots" id="trnLoad"></span></div>'+
@@ -182,7 +185,7 @@ function buildTrnPanel(){
  $('trnRedrop').onclick=()=>{if(S.balls.length)for(const b of S.balls.slice())redropBall(b);else trnSpawnBall(TRN.ballType,trnSpot().x,trnSpot().z);Au.ui();};
  $('trnType').onchange=e=>{TRN.ballType=e.target.value;};
  $('trnSpawn').onclick=()=>{trnSpawnBall(TRN.ballType,trnSpot().x,trnSpot().z);Au.ui();};
- $('trnClear').onclick=()=>{clearBalls();$('ballTag').textContent='—';Au.ui();};
+ $('trnClear').onclick=()=>{clearBalls();setBallTag(null);Au.ui();};
  $('trnSet').onclick=()=>trnPlace(+$('trnX').value||0,+$('trnZ').value||0);
  $('trnPick').onclick=()=>trnSetPlacing(!TRN.placing);
  $('trnLaunch').onclick=()=>trnLaunch();
@@ -217,7 +220,7 @@ function trainingEnter(){
  $('hint').innerHTML='T — panel · P — freeze · O — step · G — click-place<br>SPACE / click — kick · SHIFT / R-click — raise · V — camera · C — debug';
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
- banner('TRAINING','PLACE · LAUNCH · TUNE — NO SCORING',1.8);
+ toast('TRAINING','place · launch · tune — no scoring',2.2);   // tier 3: sandbox chrome, not a match event
 }
 /* Goal in training (routed from onGoal): fx + optional score tick, then the ball resets
    to the last placed spot so a shot is instantly repeatable. Never ends the match. */
@@ -226,7 +229,7 @@ function trainingGoal(team,b){
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
  goalFx(team,b);
  removeBall(b);
- banner(teamName(team)+' GOAL','BALL RESET',1.1);
+ notice(teamName(team)+' GOAL',1.1,teamCol(team));
  if(!S.balls.length){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
 }
 /* The last live ball left play without a goal (cannonball detonation etc) — respawn at the
@@ -244,7 +247,7 @@ function trainingExit(){
 function trainingTick(){
  if(!trnBuilt)return;
  const b=trnBall(),el=$('trnInfo');
- el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  ⏸ FROZEN':'')):'no ball';
+ el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  · FROZEN':'')):'no ball';
  trnAngTick();
 }
 /* Held-rod angle, under the ball metrics. ANG is the world rotation (what you see on the

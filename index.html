@@ -14,6 +14,7 @@
 <!-- Self-hosted fonts for offline/Steam builds. 404s harmlessly until tools/fetch-vendor.ps1
      is run; once present it overrides the Google link above (same family names). -->
 <link rel="stylesheet" href="vendor/fonts.css">
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -44,17 +45,24 @@
     <span class="nm r" id="sbRN">TEAM 1</span><span class="sc r" id="sbRS">0</span>
     <span class="colon">:</span>
     <span class="sc b" id="sbBS">0</span><span class="nm b" id="sbBN">TEAM 2</span>
+    <!-- Active-effect rails. Absolutely positioned against #sb so a tab physically grows out of
+         the score it belongs to (red extends left, blue right) instead of floating in a corner
+         with no spatial link to what it affects. Populated by fxRailSync() in hud.js. -->
+    <div class="fxRail" id="fxRail0"></div>
+    <div class="fxRail" id="fxRail1"></div>
   </div>
   <div id="matchTime">00:00</div>
-  <div id="fxchips"></div>
-  <div id="ballTag">⚽ CLASSIC</div>
+  <div id="notice"></div>
+  <div id="ballTag"></div>
   <div id="chips"></div>
   <div id="hint">◀ ▶ / Q E — switch rod &nbsp;·&nbsp; ▲ ▼ / mouse — slide<br>SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera</div>
   <div id="banner"></div>
+  <div id="toast"></div>
   <div id="count"></div>
   <div id="camInfo"></div>
   <div id="ballSpeed"></div>
   <div id="ballVel"></div>
+  <div id="fps"></div>
 </div>
 
 <!-- Goal instant replay chrome (js/replay.js): letterbox bars slide in, a pulsing
@@ -65,16 +73,19 @@
 </div>
 
 <div id="menu" class="screen introHide">
-  <button id="btnOptions" class="optGear" title="Options">⚙</button>
+  <button id="btnOptions" class="optGear" title="Options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></button>
   <button id="menuEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.18</div>
+  <div class="tagline">v0.1.195</div>
   <div class="modeRow">
-    <div class="modeCard red" id="btnRed"><div class="ico">🔴</div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
-    <div class="modeCard blue" id="btnBlue"><div class="ico">🔵</div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
-    <div class="modeCard ai" id="btnAI"><div class="ico">🤖</div><div class="big">AI SHOWDOWN</div><div class="sub">Sit back &amp; spectate</div></div>
-    <div class="modeCard league" id="btnLeague"><div class="ico">🏆</div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
-    <div class="modeCard training" id="btnTraining"><div class="ico">🎯</div><div class="big">TRAINING</div><div class="sub">Sandbox · place balls · practice</div></div>
+    <!-- Mode-card marks are inline SVG on currentColor (see ICO in core.js for the same set used
+         from JS) so each card carries its accent colour at REST, not only on hover — the old
+         🔴/🔵/🤖/🏆/🎯 emoji couldn't be tinted and rendered differently on every platform. -->
+    <div class="modeCard red" id="btnRed"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
+    <div class="modeCard blue" id="btnBlue"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
+    <div class="modeCard ai" id="btnAI"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="19" height="17" rx="2"/><path d="M12 3.5v17" stroke-dasharray="2 2.2"/><circle cx="7.2" cy="12" r="2.2"/><circle cx="16.8" cy="12" r="2.2"/></svg></div><div class="big">AI SHOWDOWN</div><div class="sub">Sit back &amp; spectate</div></div>
+    <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
+    <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Sandbox · place balls · practice</div></div>
   </div>
   <div class="panelWrap">
     <div class="panel" id="menuSetupPanel">
@@ -137,7 +148,7 @@
       <div class="czStageBar">
         <button class="miniBtn" id="czSpin">⟳ SPIN</button>
         <button class="miniBtn" id="czView">⌖ RESET VIEW</button>
-        <button class="miniBtn" id="czSnap">📷 SNAPSHOT</button>
+        <button class="miniBtn" id="czSnap">SNAPSHOT</button>
       </div>
       <div class="czDrag">drag to rotate · scroll to zoom</div>
     </div>
@@ -153,7 +164,7 @@
         <div class="czRow">
           <input type="color" id="czColor">
           <span class="czHex" id="czHex">#ffffff</span>
-          <button class="miniBtn" id="czRand">🎲 RANDOM</button>
+          <button class="miniBtn" id="czRand">RANDOM</button>
         </div>
       </div>
       <div class="czSect">
@@ -261,7 +272,7 @@
       </div>
     </div>
     <div class="panel" id="lgSquadPanel">
-      <h3>Squad · <span class="lgUPWrap"><span id="lgUP">0</span> ⚙ parts</span></h3>
+      <h3>Squad · <span class="lgUPWrap"><span id="lgUP">0</span> parts</span></h3>
       <div id="lgSquad"></div>
     </div>
     <div class="panel hidden lgScout" id="lgScout">
@@ -272,7 +283,7 @@
     
   </div>
   <div class="btnRow">
-    <button class="btn gold hidden" id="lgCup">🏆 Champions Cup</button>
+    <button class="btn gold hidden" id="lgCup">Champions Cup</button>
     <button class="btn ghost" id="lgNew">Reset League</button>
     <button class="btn ghost" id="lgBack">◀ Main Menu</button>
   </div>
@@ -280,7 +291,12 @@
 
 <div id="options" class="screen hidden">
   <h2 class="lgTitle">OPTIONS</h2>
-  <div class="tagline" style="margin-bottom:18px">Controller · Mouse · Keyboard</div>
+  <div class="tagline" style="margin-bottom:18px">Controller · Mouse · Keyboard · Display</div>
+  <div class="optTabs">
+    <button class="optTabBtn on" id="optTabBtnControls" data-tab="controls">Controls</button>
+    <button class="optTabBtn" id="optTabBtnDisplay" data-tab="display">Display</button>
+  </div>
+  <div class="optTab" id="optTab_controls">
   <div class="optWrap">
     <div class="panel optPanel">
       <h3>Controller</h3>
@@ -337,6 +353,36 @@
       <div class="optHint">Move the sticks and press buttons — the highlighted axis is the one bound above. In Total Control mode, hold your swerve on the right stick and press A to swing: the tester reads the shot back — flight curve, spin, total bend and drift at goal range.</div>
     </div>
   </div>
+  </div><!-- /optTab_controls -->
+  <div class="optTab hidden" id="optTab_display">
+    <div class="optWrap">
+      <div class="panel optPanel">
+        <h3>Graphics</h3>
+        <div class="row"><label>Preset</label><select id="optPreset"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="custom">Custom</option></select></div>
+        <div class="optDiv"></div>
+        <div class="czSlide"><label>Resolution</label><input type="range" id="optRScale" min="0.5" max="1" step="0.05"><span class="czVal" id="optRScaleV"></span></div>
+        <div class="row"><label>Shadows</label><input type="checkbox" id="optShadows"></div>
+        <div class="row"><label>Reflections</label><input type="checkbox" id="optReflect2"></div>
+        <div class="optHint">Resolution renders the game at a fraction of your screen and upscales it — the biggest speed-up on laptops and integrated graphics. Shadows and reflections are the next heaviest effects. Lower any of these if the frame rate dips.</div>
+      </div>
+      <div class="panel optPanel">
+        <h3>Effects</h3>
+        <div class="row"><label>Ball trails</label><input type="checkbox" id="optTrails"></div>
+        <div class="row"><label>Particles</label><input type="checkbox" id="optParticles"></div>
+        <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
+        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
+      </div>
+      <div class="panel optPanel">
+        <h3>Performance</h3>
+        <div class="row"><label>Frame rate limit</label><select id="optFpsCap"><option value="0">Uncapped</option><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="match">Match display</option></select></div>
+        <div class="row"><label>Physics quality</label><select id="optPhysQ"><option value="high">High</option><option value="balanced">Balanced</option><option value="performance">Performance</option></select></div>
+        <div class="row"><label>Show FPS counter</label><input type="checkbox" id="optShowFps"></div>
+        <div class="optDiv"></div>
+        <div class="optStat"><span class="optStatV" id="optRefresh">—</span><span class="optStatL">display refresh detected</span></div>
+        <div class="optHint">A frame cap can steady the rate and reduce heat (which helps sustained performance on laptops). Refresh rate and V-Sync are controlled by your monitor and browser — they can't be changed here, only detected.</div>
+      </div>
+    </div>
+  </div>
   <div class="btnRow">
     <button class="btn" id="optDone">◀ Done</button>
     <button class="btn ghost" id="optReset">Reset defaults</button>
@@ -390,7 +436,7 @@
   <div id="cupBracket"></div>
   <div class="btnRow">
     <button class="btn gold" id="cupPlay">▶ Play Tie</button>
-    <button class="btn hidden" id="cupDone">🏆 View Trophy</button>
+    <button class="btn hidden" id="cupDone">View Trophy</button>
     <button class="btn ghost" id="cupBack">◀ League</button>
   </div>
   <div class="cupControlWrap">

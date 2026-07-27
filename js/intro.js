@@ -61,6 +61,7 @@ function introGameReady(){introReady=true;}
  }
  function skip(){
   if((performance.now()-t0)/1000<.3||revealing)return;
+  if(typeof startLoading==='function')startLoading(); // skipping cuts the intro short — start the asset chain NOW instead of waiting on its full-length timer (idempotent)
   ov.classList.add('fast');
   if(!detonated)detonate();
   if(!slammed){slammed=true;lw.classList.add('slam');}

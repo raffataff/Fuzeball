@@ -6,9 +6,32 @@
    and rod lerped between its previous and current sim slice by 'alpha' (the
    leftover sub-slice time), so on-screen motion is buttery-smooth at any refresh.
    Wall-clock stuff (countdown, match clock, fx, camera, hud) stays per-frame. */
-let lastT=performance.now(), physAcc=0;
+let lastT=performance.now(), physAcc=0, lastFrameT=0;
+/* Detected display refresh (Hz), for the 'Match display' frame-rate limit. Probed once at startup on
+   its OWN rAF chain — separate from loop(), so the game's own frame cap can't throttle the measurement.
+   rAF fires at the display's refresh regardless, so ~80 samples at menu-idle give a clean median. The
+   Options screen refines it live (optionsTick) in case the window moves to another monitor. */
+let detectedHz=0;
+(function probeRefresh(){
+ let last=0,acc=[],n=0;
+ function step(t){
+  if(last){const d=t-last;if(d>1&&d<100)acc.push(d);}
+  last=t;
+  if(++n<80){requestAnimationFrame(step);return;}
+  acc.sort((a,b)=>a-b);detectedHz=Math.round(1000/(acc[acc.length>>1]||16.7));
+ }
+ requestAnimationFrame(step);
+})();
 function loop(t){
  requestAnimationFrame(loop);
+ // Frame-rate limit (Options → Display · cfg.fpsCap): skip rAF ticks that arrive sooner than the target
+ // interval. cfg.fpsCap is a number, or 'match' to track the detected refresh. The return is BEFORE
+ // lastT is touched, so rdt still spans the real gap and the fixed-step sim stays correct — the cap only
+ // renders less often (less GPU work → cooler and steadier on weak hardware). Browser rAF is vsync-locked,
+ // so the effective cap quantises to refresh divisors (e.g. a 30 cap on a 60Hz panel renders every other frame).
+ const cap=cfg.fpsCap==='match'?detectedHz:cfg.fpsCap;
+ if(cap>0&&t-lastFrameT<1000/cap-0.5)return;
+ lastFrameT=t;
  const rdt=Math.min(.05,(t-lastT)/1000);lastT=t;
  Au.tick(rdt);
  gamepadUpdate(rdt);   // poll controller once per rendered frame (in-match play + pause)
@@ -29,7 +52,7 @@ function loop(t){
   /* --- fixed-rate simulation (slow-mo just consumes sim-time slower) --- */
   physAcc+=rdt*S.timeScale;
   // training freeze: hold the sim (render keeps running so placement/camera stay live);
-  // each queued step (⏭ / O) releases exactly ONE fixed slice.
+  // each queued step (Step button / O) releases exactly ONE fixed slice.
   if(S.trn&&S.trn.freeze){if(S.trn.stepQ>0){S.trn.stepQ--;physAcc=FIXED;}else physAcc=0;}
   for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
@@ -83,7 +106,10 @@ bindUI();
 // timeout — builds the world and starts the loop; the other becomes a no-op. Every
 // build step falls back to primitives when its GLB is absent, so a force-start can't
 // leave a broken scene (worst case: primitive rods/players until a late GLB is picked up).
-let booted=false;
+let booted=false;const bootWaiters=[];
+// Run cb once the world exists (boot() has run: rods built, table/room/colours applied); fires
+// immediately if that already happened. The match-start gate uses this to wait for core assets.
+function whenBooted(cb){if(booted){cb();return;}bootWaiters.push(cb);}
 function applyLogo(){
  var el=document.querySelector('.logo');if(!el)return;
  var L=CONFIG.logo;
@@ -104,13 +130,21 @@ function boot(){
  // texture/shader counts read low here); the delayed snapshot is the real
  // menu-idle cost. Call memLog('x') from the console any time for a fresh read.
  if(typeof memLog==='function'){memLog('boot');setTimeout(()=>memLog('boot+3s'),3000);}
+ while(bootWaiters.length)bootWaiters.shift()();   // release anyone waiting on the world (match-start gate)
 }
 // requestIdleCallback w/ a setTimeout fallback (Safari has no native rIC) — used to nudge
 // remaining heavy one-off work (shader precompile) off the browser's busiest ticks.
 const ric=window.requestIdleCallback||function(fn,o){return setTimeout(fn,(o&&o.timeout)||50);};
+let loadStarted=false;
 function startLoading(){
+ if(loadStarted)return;loadStarted=true;  // idempotent: fired by the intro-skip, the timer below, OR the match-start gate — whichever comes first
  loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
  loadPitchModel(()=>{applyPitchModel();}); // pitch GLB (one mesh per theme variant); falls back to jpg
+ // Floating power-up pickups. Off the boot chain on purpose (nothing waits on them — a pickup is
+ // ~10s into a match at the earliest, and a missing GLB just falls back to the procedural gem),
+ // but loaded NOW rather than on demand so the fetch+parse never lands mid-rally. The warm is
+ // idle-nudged for the same reason the fracture one is.
+ loadPowerupModels(()=>{ric(warmPowerupShaders,{timeout:1200});});
  loadBallModel(()=>{                     // ball GLB with material slots
   loadPlayerModel(()=>{
    loadExplosionModels(()=>{             // shared cannonball + swirl GLBs only (per-figurine shatters lazy-load)
@@ -122,6 +156,23 @@ function startLoading(){
     });
    });
   });
+ });
+}
+// Guarantee every asset a fully-textured match needs is resident, THEN run cb. Resolves
+// SYNCHRONOUSLY when everything's already cached (the usual case → no visible wait); otherwise it
+// kicks the load chain off now — this is what rescues a SKIPPED intro, where the timed startLoading
+// hasn't fired yet — and waits for the world to build + the selected table skin, room backdrop and
+// both figurines to land. Can't hang: the 8s boot failsafe caps the wait and every loader falls
+// back to primitives on a missing/slow GLB. applyTable/applyRoom/loadPlayerModel each call their cb
+// synchronously when their asset is cached (loadSkin / ensureRoom / modelCache short-circuits).
+function ensureMatchAssets(cb){
+ startLoading();
+ whenBooted(()=>{
+  let a=false,b=false,c=false;
+  const done=()=>{if(a&&b&&c&&cb){const f=cb;cb=null;f();}};
+  applyTable(()=>{a=true;done();});      // active table skin resident
+  applyRoom(()=>{b=true;done();});       // active room backdrop resident
+  loadPlayerModel(()=>{c=true;done();}); // both team figurines resident
  });
 }
 // The fuse-flight (bezier bend + trail + sparks every frame) is the intro's busiest visual

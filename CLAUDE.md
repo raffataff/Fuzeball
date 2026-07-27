@@ -293,7 +293,323 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#rodAngle`). The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-27
+- **Power-up pickups render from GLB models** (`CONFIG.powerups`, `js/models.js`, `js/powerups.js`,
+  `js/fx.js`, `js/state.js`, `js/main.js`). The floating pickup was a procedural octahedron + halo
+  ring built fresh every spawn; `boost` and `freeze` now float their own models
+  (`assets/fuzeball_powerup_boost.glb` / `fuzeball_powerup_frost.glb`). `big` has no GLB yet and
+  keeps the octahedron — which is the fallback for ANY type with no `models` entry or a GLB that
+  404s, so a missing file is only a cosmetic downgrade (the pickup still spawns and still collects;
+  collection is a sphere test against `pickR`, never the mesh).
+  - **Config.** `CONFIG.powerups` gained `spin` (idle yaw, was hardcoded 2.4 in TWO places —
+    `powerupUpdate` and `fxUpdate`), `gem{r,emissive,roughness}` and `ring{on,inner,outer,y,opacity}`
+    (the old hardcoded fallback look), and `models{on, <key>:{src,fit,scale,yaw,tilt,y,spin,glow,
+    glowCol,ring,shadow}}`. `models.on:false` restores the old look everywhere.
+    **`fit` is the one to reach for first**: the model is recentred on its own bbox and rescaled so
+    its bounding-sphere radius is `fit` world units (gem ≈ 2.1), so the authored Blender scale is
+    irrelevant — drop a GLB in, add a line, it arrives the right size and spins about its middle
+    rather than about whatever origin the artist left. `scale` is a multiplier on top; `fit:0` keeps
+    the authored size.
+  - **Everything that touches a MATERIAL is baked into the TEMPLATE at load** (`glow`/`glowCol`
+    emissive, `shadow` flags) and the templates are shader-warmed off-screen at boot
+    (`warmPowerupShaders`, idle-nudged, mirrors `warmFractureTemplate`). A per-spawn material edit
+    would be a fresh material → a shader compile at the exact frame the pickup pops in.
+  - **Baked KHR lights are STRIPPED from the template on load.** A pickup joins the scene mid-match,
+    and r128 bakes the scene's light COUNT into every material's program — one light riding in on
+    the GLB would force a whole-scene recompile on spawn AND on collection. See MEMORY / the
+    2026-07-24 fx-light-pool entry; use `glow`, or borrow from `fxLightGet`.
+  - **`disposePU` only frees PROCEDURAL parts now** (stamped `userData.puOwn` at build time). A GLB
+    pickup is a `clone(true)` sharing geometry+materials with the resident template, so the old
+    blanket traverse-and-dispose would have blanked every future pickup of that type after the first
+    collection. New `makePUVisual(t)` builds the group (model or gem, + optional ring); the model
+    sits one level under the spinning group so its resting `yaw`/`tilt` survive the spin.
+  - Loaded via `loadPowerupModels` in `startLoading`, deliberately OFF the boot chain (nothing waits
+    on it — the earliest pickup is ~10s into a match) but at boot rather than on demand, so the
+    fetch+parse never lands mid-rally. `S.pu.spin` carries the active model's spin rate.
+  Verified by re-read (sandbox wouldn't boot).
+- **Trap own-goal fix: the CATCH shoved a ball behind the keeper into its own net** (`js/ai.js`,
+  `CONFIG.ai.trap.behindSafe`/`ownGoalBehind`). Logged: `ACT:trap/catch rel=-3.5 tdz=1.37 spd=35`
+  — a GK caught a ball 3.5u BEHIND it (between keeper and net) and knocked it in. Mechanism:
+  `trap.angle` is a BACKWARD tilt (−0.5), so the catching foot ends up ~`sin(0.5)·ARM ≈ 3u` behind
+  the rod, on the own-goal side; the trap contact resolves the ball along the foot→ball normal with
+  `holdRest:0`/`holdGrip:0.55`, and for a ball behind the feet that normal points GOALWARD, so the
+  catch drags the ball into the net. The old `ownGoalGuard` was DIRECTIONLESS (raw x-distance to own
+  goal) and at 4 far too small to protect a keeper sitting ~7.5u from its line. The guard is now
+  **directional**: `ogGuard = relReal<behindSafe ? ownGoalBehind : ownGoalGuard`. A ball BEHIND the
+  feet (`relReal<behindSafe` −0.6) uses the big `ownGoalBehind` (16) — the GK never traps a ball
+  behind it (a backward catch there can only go in the net), the DEF (~22.5u out) still can. A ball
+  IN FRONT keeps the small `ownGoalGuard` (4): the catch tilts AWAY from it, normal points upfield,
+  safe even hard by our own goal. Applied to BOTH the entry gate and the live abort, so a trap whose
+  ball drifts behind the feet after being caught now releases instead of scoring on us. The keeper can
+  still trap/hold a ball in front of it to start a counter. Verified by re-read (sandbox wouldn't boot).
+- **NOTE — files changed by owner since the trap rewrite** (read fresh before editing): trap tuning
+  is now `angle:-0.5`, `back:-5.8`, `front:1.4`, `alignZ:1.1`, `holdT:3.3`, `carryLead:1.2`,
+  `abortT:3.4`, `ownGoalGuard:4`; a new **lane-clear action** (`r.act='lane'`, 2026-07-26 below) now
+  runs BEFORE safeRaise/trap/evade; `footTrapZ` 1.0→0.8.
+
+### 2026-07-26
+- **Lane-clear action (`r.act='lane'`) — a rod MAKES WAY for the teammate behind it**
+  (`CONFIG.ai.clearLane`, `js/ai.js`, `js/rods.js`, `js/world.js`, `js/debug.js`). Fixes "the DEF
+  parks in front of the keeper and blocks its clearance". The ball sits in the 15u GK↔DEF gap and
+  the defence smothers it, because **every aiming path tracks the ball's z whether it's in front of
+  the rod or behind it** — man-selection slides a DEF man onto a ball it cannot legally strike, and
+  then one of two things puts a boot in the kick path:
+  - the men LOWER (raise is only latched by `raiseBehind` −7.5, so a ball that never went deeper
+    than that — deflected in, or carried forward by the keeper — leaves the row down), or
+  - **`safeRaise` fires**, and its band is `rel −5.8..0.45` — i.e. it IS the keeper↔defence gap. It
+    sets `r.raise=false`/`behindFlag=false` every frame (so no latch is ever built), eases to
+    `angle −0.8`, which puts the boot ~4.5u BEHIND the rod at y≈3.1 — a half-lifted foot sitting
+    exactly where the keeper's ball is about to travel — and man-selection keeps running underneath
+    it (safeRaise doesn't `continue`), so the row slides ONTO the ball's z while it hovers. That is
+    the "raising behind as they do" in the report.
+  New action runs BEFORE safeRaise/trap/evade and outranks all three, since each of them wants to
+  play a ball that isn't this rod's to play. Entry: ball low, `behind`(−3.5) > rel > `−nearBall`
+  (−16), and `laneMate(r,ball)` finds a teammate rod behind us with the ball on our side of it.
+  While held it **slides the men out of the corridor** (`clearOffset` minimum-travel escape, width
+  `footBox.z+BALL_R+laneMargin`, direction committed once in `r.laneDir` for the same anti-dither
+  reason as `evadeDir`) and **lifts** (`CL.lift`, full `raiseA`) — but only when `!footStuck`, since
+  a lift with the ball in back-swing reach sweeps the foot backward through it into our own goal.
+  The slide clears z first, which un-gates the lift by itself. `continue`s, so no re-aim, no kick.
+  - **Scope is deliberately narrow — three gates in `laneMate`, all of them load-bearing:**
+    `roles:['DEF']` (a MID/ATT stepping aside mid-pitch isn't clearing a keeper's line, it's just
+    opening the field for the opposition); `nearBall` 16 (rods are 15 apart, so only the row
+    immediately in front of the handler makes way — without it every rod within `mateReach` lifts
+    and the midfield is handed away); and a **Z-BAND test — the ball must be inside the MATE's own
+    z-slide range** (`baseZ[0]−maxOff … baseZ[n−1]+maxOff`, ± `zPad`). For a DEF the mate is always
+    the keeper, since the GK is the only rod behind it. Out by a corner or hard against a side wall
+    the keeper cannot slide onto the ball, so there is no clearance to make way FOR and the row
+    reacts exactly as it did before. Because the z test lives in `laneMate`, it gates the HOLD as
+    well as entry: a ball drifting out of the keeper's band ends the action (unless it's already
+    been struck, which is the `throughV` branch).
+  - **Handover is the part that must not break** (the ask was "the DEF must still be able to take
+    over"). It only ever holds a ball BEHIND us, and releases at `release` (−2.0 — deliberately a
+    lead ahead of the overFoot zone's −0.8 so the men are DOWN again by the time a slow ball
+    becomes strikeable; the 1.5u gap to `behind` is the anti-ping-pong hysteresis, backed by
+    `cd` 0.35). A ball already STRUCK (`approach > throughV` 12) instead holds the lane open until
+    it is `passed` (3.0) clear of us — otherwise the row exits the moment the mate lets go and
+    drops straight onto the clearance it just made way for.
+  - **Possession is tested GEOMETRICALLY, not via `S.lastTouch`**: `laneMate` requires that no
+    OPPOSING rod is nearer the ball in x than the mate is. Only rods near the ball in x can touch it
+    at all, so this is both stricter and never stale (a redrop, a deflection, or the other ball in a
+    multi-ball point can all leave `lastTouch` lying). Stops a defence politely clearing a lane for
+    an opponent standing in our own six-yard box.
+  - **Benched rods get the LIFT only** (in the `!isActiveRod` branch): a resting hand holds its lane
+    in z by design, but it must not stand in the kick path, so the clearance passes under its feet.
+  - `approach` (`best.v.x*dir`) hoisted next to `relReal`/`speed`; the trap block reads the hoisted
+    one. New rod fields `laneDir`/`laneCd` (declared in `buildRods`, cleared in `kickRod` +
+    `resetRodRotation`, `laneCd` ticked in `updateRods` beside `evadeCd`). New helpers `inLaneZ`
+    (z-slice of `inFootRange` at a caller-supplied corridor width) and `laneMate`.
+  - Debug: **Make Way** AI panel layer (pink `#ffa1f0`) — floor box drawn ONLY on rods in `roles`,
+    spanning the real trigger region (`−nearBall..behind` in x by the handler's slide band ± `zPad`
+    in z), hot while that rod's `r.act==='lane'`; plus an `ACT:lane` kick-log line carrying
+    `rel/appr/tgt/blk/lift`. `on:false` restores the old behaviour exactly.
+  Verified by re-read (sandbox wouldn't boot).
+
+### 2026-07-25
+- **HUD de-genericised: notification TIERS + scoreboard-anchored effect rails + emoji purge**
+  (`js/fx.js`, `js/hud.js`, `js/config.js`, `js/state.js`, `js/balls.js`, `js/physics.js`,
+  `js/powerups.js`, `js/flow.js`, `js/training.js`, `js/debug.js`, `js/input.js`,
+  `js/sweetspot.js`, `index.html`, `css/styles.css`). Everything below is about the HUD reading
+  hand-made rather than generated — the ambition note at the top of this file.
+  - **Three notification channels, was one.** `banner()` was the ONLY channel, so toggling the
+    kick log got the identical 74px screen-wide treatment as scoring a goal. Now:
+    **`banner(main,sub,dur,col)`** tier 1, stop-the-world (kickoff / goal / sudden death);
+    **`notice(main,dur,col)`** tier 2, a live event the player already SAW — one line at
+    `top:108px`, out of the play area, no subtitle narrating the visuals (special ball, split,
+    dead ball, out of play, player down, power-up collected, training goal);
+    **`toast(main,sub,dur)`** tier 3, system/dev chatter, small + bottom-left (kick log,
+    collision debug, free roam, sweet spot, training entry). All three live in `fx.js` next to
+    each other. `col` accents the rule/left-bar — pass a TEAM or BALL colour.
+  - **Banner restyle.** Dropped `text-shadow:0 0 30px rgba(120,180,255,.9)` — a team-neutral blue
+    glow that washed the glyph edges AND collided with `--c1` (so a red goal and a blue goal read
+    the same). Replaced by a hard `0 4px 0` drop shadow plus a solid 5px rule under the headline
+    in `--bc` (the scoring team's colour, `teamCol(team)`). The rule hangs off **`#bannerMain`**,
+    not `#banner` — banner() wraps `main` in that span, or with a sub present the rule would land
+    under the sub chip. Entrance is a left-to-right `clip-path` wipe (`bnrIn`) unskewing
+    −15°→−7°, not the old symmetric `scale(.6)→scale(1)` pop (reads as a web modal). `#bannerSub`
+    is a solid tag chip now instead of `.4em`-tracked caps.
+  - **`font-weight:900` on Russo One was SYNTHETIC bolding** — the family ships ONE weight (400),
+    so the browser was smearing the outlines; that's why the HUD looked slightly mushy. Dropped to
+    400 on `#banner`, `#count`, `#sb .nm`, `#sb .sc`, `.chip`, `.fxTab`. Rajdhani ships 500/600/700
+    — don't ask it for 800 either. **The menu/panel CSS still has Russo One at 800 in several
+    places (`.modeCard .big`, `.panel h3`, `.ctl b`, `.rodOpt`) — same fix applies, not done yet.**
+  - **Effect rails replace `#fxchips`.** The old `.pwr` cards floated top-right with no spatial
+    link to what they affected. Two rails (`#fxRail0`/`#fxRail1`) are now absolutely positioned
+    children **of `#sb`**, so a tab grows out of the score it belongs to — red extends left of the
+    red score, blue right of the blue. Skewed hard-edged slabs (`skewX(-9deg)`, content un-skewed
+    via `.fxTab>b`), deliberately NOT another 14px glass card: different silhouette = different
+    class of information. **The tab IS the timer** — its own fill (`.fxTab i`) drains toward the
+    inner edge via `transform-origin`, so it visibly empties back into the scoreboard, then
+    retracts. That retires the separate `.pwrbar` and all three idle loops (`pwrBob`, `pwrArrow`,
+    the radial sheen) — motion is spent on enter/exit/state only. Also retired: the `ATK ▶` arrow
+    and the team NAME in the card (position + colour already carry that; it was three channels for
+    one fact).
+  - **`fxRailSync` does per-tab DOM diffing** (`fxTabs` Map keyed `team+effectKey`), replacing the
+    `fxSigCache` whole-container `innerHTML` rebuild. The rebuild restarted EVERY card's entrance
+    animation whenever any other effect started or expired — invisible with static cards, constant
+    flicker with animated ones. The drain animation is re-armed only when `dataset.end` moves (a
+    re-collect extending the effect), never on the 10Hz tick. **`clearFxRail()` must be called
+    wherever the HUD is torn down** — wired into `startMatch`, `endMatch`, `gotoMenu`; without it
+    a tab whose exit animation is running on a hidden HUD orphans its Map entry and the next match
+    thinks that effect is still live.
+  - **Emoji purged from HUD/banner/win-screen strings.** OS colour emoji render differently per
+    platform, ignore the palette, can't be tinted, and are the single loudest generated-UI tell.
+    Gone from `BALL_TYPES.*.name` (`'⚽ CLASSIC'`→`'CLASSIC'` etc.), `puTypes[].ico` (field
+    DELETED), `FX_EFFECTS[].ico`, the `💣`/`👯` banners, the `💥` cannonball fuse, and the
+    `⚔`/`⚙`/`🛡` win-screen lines. Replacements: **`FX_ICO`** (hud.js) is three inline SVGs on
+    `currentColor` so the mark tints to the team colour; **`setBallTag(key,fuse)`** (hud.js) draws
+    a colour swatch in the ball's own `trail` colour + the name, and is the ONLY writer of
+    `#ballTag` now (it signature-gates because the cannonball fuse path calls it every frame).
+    **Keep `BALL_TYPES.*.name` emoji-free — it's HUD copy.** STILL EMOJI, deliberately out of
+    scope: `CONFIG.playerModel.models[].ico` (`'🤖'` on every robot, `'🏃'` fallback) as used by
+    `customize.js` and `league.js` — menu screens, not the HUD.
+  - Copy pass: subtitles that narrated what the player just watched are gone (`SPECIAL BALL
+    DROPPING`, `TWO BALLS IN PLAY`, `ONE PLAYER TAKEN OUT`, `BALL RETURNS`, `RE-DROP`, `GOOD
+    LUCK`). `HYPE` lost `'THE CROWD ERUPTS'` (described the scene, not the shot — that's the tell
+    to avoid when adding lines).
+  Verified by re-read (sandbox wouldn't boot). NOT yet done from the same review: the uniform
+  10–14px radius + glass treatment on every HUD element (score plate, chips, ballTag, debug
+  panels all share one silhouette), and swapping Russo One for a bought/condensed display face —
+  Russo One is heavily used in free jam UI and is itself a recognisability problem.
+- **Menu-side pass: shared SVG icon set + every remaining synthetic weight** (`js/core.js`,
+  `js/config.js`, `js/customize.js`, `js/league.js`, `js/training.js`, `js/main.js`, `index.html`,
+  `css/styles.css`). Same two problems as the HUD pass, applied to the screens outside the match.
+  - **`ICO` + `ico(key,cls)` now live in `core.js`** (first file loaded, so everything can reach
+    it): seven inline SVGs — `rod` / `duel` / `trophy` / `target` / `cog` / `figure` / `lock` —
+    drawn on `currentColor` and **sized by CSS, never by a font-size on a glyph**. `ico()` emits a
+    `<span class="ico …">`; `.icoInline` is the 1em run-of-text size. Static markup (mode cards,
+    the options gear) inlines the same SVG directly rather than calling the helper, since it's in
+    `index.html` before any script runs.
+  - **Mode cards carry their accent colour AT REST now** — `.modeCard.red .ico{color:var(--c0)}`
+    and friends. Previously the card was uniformly grey until you hovered it, because a 🔴/🔵/🤖/
+    🏆/🎯 emoji can't be tinted. The play cards use the `rod` mark (bar + three men), which is at
+    least about foosball; AI Showdown uses `duel` (a pitch with a man each side).
+  - **`CONFIG.playerModel.models[].ico` is DELETED** (was `'🤖'` on five robots, `''` on the other
+    eleven, with a `'🏃'` fallback at each read site — so most of the roster showed a running-man
+    emoji). Readers updated: `customize.js` `initCustomize` uses one shared `ICO.figure` for every
+    card (they ARE all humanoid figurines — the emoji split implied a distinction that isn't
+    real), the lock card uses `ICO.lock`; `league.js` `renderLgScout` uses `ico('figure')`, and
+    **both** versus-tape `fig()` helpers (league `renderLgTape` AND cup `cupRenderTape` — they're
+    separate copies, easy to fix only one) dropped their `icon` parameter entirely, since the
+    caption sits directly under a render of that figurine.
+  - Remaining emoji swapped for `ico('trophy')` / `ico('cog')` where the mark carries meaning
+    (champion lines, cup qualification, parts currency, season history) and dropped to plain text
+    where it didn't (SNAPSHOT, RANDOM, Champions Cup, Controls/Display tabs, View Trophy, and the
+    whole training panel). **`⏸`/`⏭`/`📍`/`🚀`/`🎯` have emoji presentation by default on
+    Windows** — they were rendering full-colour inside a monochrome gold dev panel. `✕`, `↻`, `▲`,
+    `▼`, `⊞`, `—` and the `★`/`✓`/`✗` kick-log markers are TEXT-presentation and render monochrome
+    everywhere, so they all stay.
+  - **Every remaining synthetic weight is gone.** All `'Russo One'` rules are 400 (the family's
+    only weight); Rajdhani-inherited ones capped at 700 (it ships 500/600/700). The subtle one:
+    **`.panel h3` and `#trnPanel h3` declared no `font-weight` at all**, so they inherited the UA's
+    bold default — identical smear to an explicit 800, and invisible to a grep for `font-weight`.
+    Any future Russo One heading must state its weight rather than inherit it. `.lgSEDivHead` was
+    at 600, also synthetic. `.lgSEFate .lgSEPos` inherits Russo One from its parent, so it's 400
+    rather than 700.
+  Verified by re-read (sandbox wouldn't boot). Checked for identifier collisions on the new
+  top-level `ICO`/`ico` (none — `hud.js` has `FX_ICO`, which is separate and HUD-only).
+- **Figurine mugshots on the player-select card** (`js/core.js`, `js/config.js`, `js/customize.js`,
+  `js/league.js`, `css/styles.css`). Replaces the shared `ICO.figure` mark on `.czCard` with the
+  rendered portrait when one exists.
+  - **`CONFIG.playerModel.models[].mug`** — path to the portrait. **Predeclared for the WHOLE
+    roster** (only cyborg / deltaborg / irnman are rendered as of this entry): drop the PNG at the
+    listed path and the card picks it up on the next load, no code or config edit. Cost of that
+    choice is a 404 per un-rendered figurine the first time the Customize panel opens; it goes away
+    as they land. **The filename stem follows the existing `render_<stem>_cycles.png` habit, which
+    does NOT always match the model id** — `womanAndroid` → `jennyBot`, `manrichie` → `richie`,
+    `manJerry` → `jerry`, `mechaMan` → `mechaman`, `womanMaria` → `maria`. Check the stem when
+    adding a figurine or the portrait silently won't appear.
+  - **`mugImg(model,host,cls,onCls)`** (core.js, next to `ico()`): builds the `<img>`, inserts it
+    over whatever fallback mark is already in `host`, and stamps `onCls` **on load, not up front**.
+    That ordering is the point — a miss (`onerror` → `im.remove()`) leaves the icon layout exactly
+    as it was, so there's no broken-image frame and no layout jump. `loading='lazy'` keeps 16
+    portraits off the boot path since the panel is `display:none` until opened.
+  - `.czCard.hasMug` is a portrait state: image absolutely positioned over the (hidden) icon, name
+    in a gradient bar along the bottom. **`object-position` is deliberately centred** — the renders
+    are square, head-and-shoulders and already tightly framed, so a pull like `50% 14%` would crop
+    the top of the skull off; the centred origin only matters if a future render isn't 1:1. The
+    cards carry a radial backdrop because the mugshots are **transparent PNGs** and would otherwise
+    float on the flat card fill.
+  - Also wired into `renderLgScout` (`.figMug`, a 22px round thumbnail in place of the figure
+    icon) — attached AFTER the `innerHTML` build, since that string is assembled wholesale. The
+    versus-tape is deliberately NOT using it: it already shows a full `modelRender`, which is
+    better than a mugshot.
+- **Season-end screen review + `lgSEFate` flex-item fix** (`js/league.js`, `css/styles.css`).
+  - **BUG the icon swap introduced, worth remembering as a pattern:** `.lgSEFate` is
+    `display:inline-flex; flex-direction:column`, and its label was the single text node
+    `'🏆 CHAMPIONS'` — ONE anonymous flex item. Replacing the emoji with `ico('trophy')` made it a
+    `<span>` plus a separate text node, i.e. TWO items, which a column container stacks on
+    separate rows (trophy above the word). Fixed by wrapping the label in **`.lgSEFateLab`**
+    (`inline-flex`, `gap:.32em` — the gap is now the separator, so the label string has no leading
+    space). **Any `ico()` inserted into a flex/grid container needs a wrapper**; swept the other
+    insertion sites and the rest are block containers (`.lgSEChamp`, `.lgSECup`, `.cupResult`,
+    `.figName`), a span that is itself the flex item (`.lgSERew .v`), or already gapped
+    (`.lgFixture`).
+  - `.lgSEStat .pips b.lost` / `b.gain` were `animation:… infinite` — a permanently throbbing pip
+    inside a stat TABLE fights reading and reads as filler (same call as retiring the `.pwr` idle
+    loops). Now bounded to **3 iterations**: the motion points at what changed, then settles and
+    the COLOUR carries the state from there.
+  - `.lgSESub` tracking .32em → .16em; the cup-qualified line lost its em-dash explanatory clause
+    and exclamation mark (`'CHAMPIONS CUP QUALIFIED — you enter the post-season knockout!'` →
+    `'QUALIFIED FOR THE CHAMPIONS CUP'`).
+  NOT changed, flagged: `.lgSEDiv` is a fixed `height:400px` with no overflow rule — fits 10 rows
+  at the current `.lgSERow` metrics with ~60px spare, so a bigger division would spill. And
+  `.lgSEDiv`/`.lgSEPanel`/`.lgSERew` are all the same 12–16px-radius glass card, so the whole
+  screen is one silhouette — the same uniformity noted for the HUD.
+
 ### 2026-07-24
+- **Match-start now GATES on assets being resident (fixes "no textures when I skip the loading
+  screen")** (`js/main.js`, `js/flow.js`, `js/intro.js`, `js/models.js`, `css/styles.css`). The intro
+  is purely a splash — it loads NOTHING; `startLoading` runs on a `setTimeout(loadDelay)` sized to the
+  FULL intro. Skipping the intro (`intro.js` `skip()`, any key/click) reveals the menu but leaves that
+  timer pending, so an immediate Play force-booted from primitives (`startMatch`'s `!rods.length` →
+  `boot()` with no GLBs) and nothing rebuilt the men when the GLBs landed later → a match stuck with
+  primitive rods/players/table. Three layers:
+  - **Loading starts on skip.** `startLoading` is now idempotent (`loadStarted` guard) and `skip()`
+    calls it immediately — the cut-short intro no longer has a fuse animation to protect, so there's
+    no reason to wait. The `loadDelay` timer stays as the un-skipped path; the 8s `boot` failsafe stays.
+  - **`startMatch` is a GATE → `startMatchNow`.** `main.js` `ensureMatchAssets(cb)` runs cb only once
+    the world is built (`whenBooted` — a `bootWaiters` queue flushed at the end of `boot()`) AND the
+    SELECTED table skin + room backdrop + both figurines are resident (`applyTable`/`applyRoom`/
+    `loadPlayerModel`, each of which fires its cb synchronously when cached). Resolves synchronously in
+    the normal case (no visible wait); otherwise a gold `#matchLoad` spinner shows until ready, then
+    `go()` does `rebuildRodMen()`+`applyColors()` (mirrors league `start()`) and calls `startMatchNow`.
+    League/cup skip the gate (`S.lg` set — they already ran the same three ensures via their own
+    `check()`), so they pass straight through. Can't hang: 8s boot failsafe + every loader falls back
+    to primitives. `matchLoading` guards against double-clicks.
+  - **`loadSkin`/`ensureRoom` no longer report ready EARLY** (`models.js`). `loadSkin` stamped
+    `skinGroups[id][skinId]` with an EMPTY placeholder group the instant a fetch started, and its
+    "already loaded" test was truthy-group — so a 2nd caller (the gate) got its cb fired with the skin
+    still downloading. `ensureRoom`'s in-flight branch likewise fired the cb immediately ("applyRoom
+    runs again on arrival"). Both now QUEUE cbs while a fetch is in flight (`skinLoadingCbs` /
+    `roomLoading` are cb ARRAYS now, flushed on load/fail) and `loadSkin`'s resident test is
+    `children.length>0` (truly has meshes). So the gate waits for the real GLB, not the placeholder.
+    `applySkin`/`disposeTableSkin` already keyed off `children.length`, so no other caller changes.
+  Verified by re-read (sandbox wouldn't boot).
+- **FX lights no longer freeze the match — resident fx light POOL (fixes hitches on a new ball type,
+  explosions, and the respawn swirl)** (`js/world.js`, `js/balls.js`, `js/fracture.js`, `js/flow.js`,
+  `js/config.js`). r128 bakes the scene's light COUNT into every material's shader program, so
+  `scene.add`/`remove` of a `PointLight` mid-match forced a whole-scene recompile on the next render — a
+  multi-hundred-ms stall. The game created/destroyed a light at exactly the reported moments: a
+  fireball/knuckle glow (`t.light`) + the cannonball fuse (`warnLight`) in `makeBall`; the ball-
+  explosion light in `spawnBallFracture`; the respawn-swirl light in `spawnRespawnSwirl`. (The existing
+  off-screen mesh warm couldn't help — the recompile is caused by the LIGHT, at the menu's light count.)
+  - **`buildFxLightPool()`** (`world.js`, called in `initThree`) creates `CONFIG.fx.lightPool` (5)
+    `PointLight`s resident in the scene forever — `visible=true` so they're COUNTED, `intensity=0` so
+    they contribute nothing (the same trick the 2 `goalLights` already use). `fxLightGet(color,dist)`
+    borrows one (sets colour/distance, caller drives intensity) or returns null when exhausted (effect
+    just loses its glow — the count, and the no-recompile guarantee, is untouched); `fxLightPut(l)`
+    releases it (intensity 0). **NEVER `scene.remove` a pooled light** — that changes the count.
+  - Rewired: `balls.js` `makeBall` (`t.light`, `warnLight`) + `removeBall` (release, not remove);
+    `fracture.js` `spawnBallFracture`/`disposeFracture` + `spawnRespawnSwirl`/`disposeSwirl`. All
+    readers were already null-guarded, so a null borrow is safe.
+  - **Pre-kickoff warm `warmMatchAssets()`** (`fracture.js`, called from `startMatch`/`startMatchNow`
+    before the countdown, gated by `CONFIG.fx.warmMatch`): parks one hidden instance of every ball type
+    off-screen (kept resident so its compiled program is never released) and `renderer.compile`s the
+    whole scene + re-warms the shatter/swirl/figurine templates at THIS match's exact light count — so a
+    league/cup ROOM swap (its backdrop brings its own lights) is covered too. The one-off compile lands
+    under the intro banner. Boot-time `warmFractureShaders` still runs.
+  See MEMORY: never add/remove a scene PointLight mid-match. Verified by re-read (sandbox wouldn't boot).
 - **League/cup shatter GLBs now warm in the LOBBY, not at kickoff** (`js/league.js` — new
   `primeMatchExplosions(idA,idB)` helper + calls in `openLeague` and `renderCup`). Fixes the
   first-cannonball-kill stall in league games. `startMatch` already primes both teams' explosion
@@ -1209,7 +1525,7 @@ below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#ro
   computation straight from `r.angle`/`r.offset`/`r.baseZ[mi]`, mirroring the same
   `fx=r.x+sin(angle)*ARM, fy=ROD_H-cos(angle)*ARM` pattern `collideRod`/`cannonballUpdate`
   already use for the foot position — always exactly current, no scene-graph dependency.
-  Scale is likewise computed directly from `activeModel(team).scale*cfg.modelScale` instead
+  Scale is likewise computed directly from `activeModel(team).scale*tmScale(team)` instead
   of `getWorldScale()`. `js/fracture.js`.
 
 ### 2026-07-09

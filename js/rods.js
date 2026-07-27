@@ -44,6 +44,7 @@ function kickRod(r, style){
  r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;    // fresh post-kick held-evade budget + escape direction for this swing
  r.trapMan=-1;r.trapDir=0;                         // a swing ends any trap carry (the ball is being released)
+ r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
  if(S.stats)S.stats.kicks[r.team]++;
 }
@@ -51,7 +52,7 @@ function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
    r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
-  r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;
+  r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.laneDir=0;r.laneCd=0;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
  }
@@ -123,6 +124,7 @@ function updateRods(dt){
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);
   r.evadeCd=Math.max(0,(r.evadeCd||0)-dt);   // evade re-entry lockout (CONFIG.ai.evade.cd)
+  r.laneCd=Math.max(0,(r.laneCd||0)-dt);     // lane-clear re-entry lockout (CONFIG.ai.clearLane.cd)
   r.pivot.rotation.z=r.angle;
   r.pivot.position.z=r.offset;
   const fadeT=CONFIG.cannonball.respawnFade;

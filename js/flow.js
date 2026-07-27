@@ -1,6 +1,31 @@
 'use strict';
 /* ================= game flow ================= */
+let matchLoading=false;
+/* Match-start GATE. Every quick / AI / rematch / training start funnels through here so a match can
+   NEVER kick off before the assets it needs are resident — the "textures missing when I skip the
+   loading screen" bug (skipping the intro reveals the menu, but the timed asset load hadn't run yet).
+   ensureMatchAssets (main.js) resolves synchronously when everything's cached (the normal case → no
+   visible delay); when it isn't (a skipped intro, or a table/room/figurine the player just picked),
+   we show a brief LOADING overlay and start the instant it's ready. League/cup matches already gate
+   their own assets (applyTable/applyRoom/loadPlayerModel) before calling in, so they pass straight
+   through (S.lg set). */
 function startMatch(mode,rodLockRole){
+ if(S.lg||typeof ensureMatchAssets!=='function'){startMatchNow(mode,rodLockRole);return;}
+ if(matchLoading)return;                     // a start is already pending — swallow repeat clicks
+ matchLoading=true;let sync=false;
+ const go=()=>{sync=true;matchLoading=false;showMatchLoading(false);
+  if(rods.length){rebuildRodMen();applyColors();}  // refresh the men to the now-resident figurines + kit colours (mirrors league start())
+  startMatchNow(mode,rodLockRole);};
+ ensureMatchAssets(go);
+ if(!sync)showMatchLoading(true);            // assets weren't ready synchronously → show the loader until go() fires
+}
+function showMatchLoading(on){
+ let el=$('matchLoad');
+ if(!el){if(!on)return;el=document.createElement('div');el.id='matchLoad';
+  el.innerHTML='<div class="mlBox"><div class="mlSpin"></div><span>LOADING</span></div>';document.body.appendChild(el);}
+ el.classList.toggle('show',!!on);
+}
+function startMatchNow(mode,rodLockRole){
  // The menu is clickable BEFORE main.js's boot() has run (intro skipped by a key/click, the
  // reduced-motion path, or the intro's holdMax expiring while GLBs are still loading). Starting
  // then gave a match with rods===[] → S.ctrlRods empty → every canvas move/click threw on
@@ -50,12 +75,19 @@ function startMatch(mode,rodLockRole){
  $('menu').classList.add('hidden');$('league').classList.add('hidden');$('pause').classList.add('hidden');$('win').classList.add('hidden');
  $('hud').classList.remove('hidden');
  $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
- $('ballTag').textContent=BALL_TYPES.classic.name;
+ setBallTag('classic');clearFxRail();   // rail must not carry tabs over from the previous match
   updateScoreUI();updateChips();
+  // Pre-kickoff shader warm (fracture.js): compile every fx a match can fire — each ball type's
+  // material + the shatter/swirl templates — at THIS match's exact light count, before the whistle.
+  // Runs here (after table/room/colours are applied, before the countdown) so the first fireball /
+  // explosion / swirl never compiles mid-rally. The one-off hitch lands during the intro banner.
+  if(typeof warmMatchAssets==='function')warmMatchAssets();
   if(mode==='training'){trainingEnter();return;}   // sandbox: no countdown/serve — training.js owns the phase from here
-  const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'GOOD LUCK');
+  // 'GOOD LUCK' was filler under a headline that already states the format — a normal match gets
+  // no tag chip at all now; league/cup/spectate get one because it's information you can't infer.
+  const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'');
   const _lim=gameTimeLimit();
-  banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7);
+  banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7,'var(--gold)');
  startCount(MATCH.countIn);
 }
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;$('count').style.display='block';$('count').textContent='';}
@@ -70,8 +102,10 @@ function onGoal(team,b){
  removeBall(b);
  if(S.suddenDeath){endMatch(team);return;}          // golden goal: first strike after a level time-up wins
  if(S.score[team]>=goalTarget()){endMatch(team);return;}
- banner(teamName(team)+' GOAL!',
-  val>1?'GOLDEN BALL — COUNTS ×2':HYPE[Math.floor(Math.random()*HYPE.length)],1.9);
+ // accented in the SCORING team's colour — the old fixed blue glow made every goal look the same
+ // and clashed with --c1, so a blue goal and a red goal read identically.
+ banner(teamName(team)+' GOAL',
+  val>1?'GOLDEN BALL · ×2':HYPE[Math.floor(Math.random()*HYPE.length)],1.9,teamCol(team));
  if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
   replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay + footage length)
 }
@@ -88,18 +122,18 @@ function checkMatchClock(){
  if(rem<=MATCH.warnT){const s=Math.ceil(rem);if(s>=1&&s!==S.clockBeep){S.clockBeep=s;Au.beep(1200,.08,'square',.16);}}
  if(rem>0)return;
  if(S.score[0]!==S.score[1]){Au.whistle(2);endMatch(S.score[0]>S.score[1]?0:1);}
- else{S.suddenDeath=true;Au.whistle();banner('SUDDEN DEATH','NEXT GOAL WINS',2.2);}
+ else{S.suddenDeath=true;Au.whistle();banner('SUDDEN DEATH','NEXT GOAL WINS',2.2,'var(--gold)');}
 }
 function outOfBounds(b){
  if(S.trn){redropBall(b);Au.whistle();return;}   // training: keep the ball live, no goal-hold
  removeBall(b);Au.whistle();
- if(!S.balls.length&&S.phase==='play'){resetRodRotation();banner('OUT!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
+ if(!S.balls.length&&S.phase==='play'){resetRodRotation();notice('OUT OF PLAY',1.1);S.phase='goal';S.goalT=MATCH.outHold;}
 }
 function endMatch(w){
  S.phase='win';
  Au.goal();Au.whistle(3);
  flash();S.shake=1;
- clearBalls();clearPU();replayAbort();
+ clearBalls();clearPU();replayAbort();clearFxRail();
   const wasLg=!!S.lg;
   if(wasLg){(S.lg.cup?cupRecord:lgRecord)(w);} // record + sim the rest while the bridge is live
  $('winTitle').textContent=teamName(w)+' WINS!';
@@ -111,9 +145,9 @@ function endMatch(w){
   '<span class="l">'+st.kicks[0]+'</span><span class="m">Kicks</span><span class="r">'+st.kicks[1]+'</span>'+
   '<span class="m" style="grid-column:1/4;text-align:center">Top ball speed: '+Math.round(st.topSpeed*.35)+' km/h</span>'+
     (wasLg?(S.lg.cup
-      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">⚔ '+S.lg.banner+'</span>' // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
-      :'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">⚙ +'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
-       (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">🛡 Clean sheet bonus +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':'')):'');
+      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+S.lg.banner+'</span>' // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
+      :'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">+'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
+       (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">Clean sheet · +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':'')):'');
  $('btnWinContinue').classList.toggle('hidden',!wasLg); // league: Continue → lobby
  $('btnRematch').classList.toggle('hidden',wasLg);      // league: no rematches
  $('win').classList.remove('hidden');
@@ -133,7 +167,7 @@ function gotoMenu(){
    applyTable();applyRoom();
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
-  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();
+  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();
   // No match live — free every shatter GLB except the two figurines the menu now shows (kept warm
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);

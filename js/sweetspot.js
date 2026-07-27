@@ -30,7 +30,7 @@ function buildSweetGuide(){
 function toggleSweetGuide(){
  buildSweetGuide();
  ssOn=!ssOn;ssGroup.visible=ssOn;
- if(typeof banner==='function')banner('SWEET SPOT',ssOn?'ON':'OFF',0.8);
+ if(typeof toast==='function')toast('SWEET SPOT',ssOn?'on':'off',0.8);
  if(typeof Au!=='undefined'&&Au.ui)Au.ui();
 }
 function sweetGuideUpdate(){

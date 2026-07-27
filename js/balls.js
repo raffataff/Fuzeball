@@ -24,7 +24,11 @@ function makeBall(key){
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
    prev:new THREE.Vector3(),cur:new THREE.Vector3()};
-  if(t.light){b.light=new THREE.PointLight(t.light,1.1,34);scene.add(b.light);}
+  // Glow lights (fire/knuckle) BORROW from the resident fx light pool (world.js) rather than
+  // scene.add-ing a fresh light — a new light would change the scene's light count and force a
+  // whole-scene shader recompile (the hitch on "a different ball type is served"). b.light may be
+  // null if the pool is exhausted; every reader is already null-guarded. Constant 1.1 intensity.
+  if(t.light){b.light=fxLightGet(t.light,34);if(b.light)b.light.intensity=1.1;}
   applyBallEnv(b);   // local cube-map reflection envMap (no-op when cfg.reflections off) — set at birth so the null→tex shader recompile is here, not mid-rally
   if(key==='cannon'){
    // per-instance outline shell (own geo/mat — never shared with other ball
@@ -35,8 +39,7 @@ function makeBall(key){
     opacity:0,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false});
    b.warnShell=new THREE.Mesh(shellGeo,shellMat);
    m.add(b.warnShell);
-   b.warnLight=new THREE.PointLight(CONFIG.cannonball.warnColor,0,22);
-   scene.add(b.warnLight);
+   b.warnLight=fxLightGet(CONFIG.cannonball.warnColor,22);   // pooled (see above); intensity driven by cannonballWarn, null-guarded there
   }
   S.balls.push(b);return b;
 }
@@ -68,11 +71,10 @@ function cannonballWarn(b){
     b.warnLight.position.copy(b.m.position);
     b.warnLight.intensity=(0.3+CB.warnLightMax*k)*flash+0.2*k;
   }
-  const tag=$('ballTag');
-  if(tag)tag.textContent=BALL_TYPES.cannon.name+'  💥 '+Math.ceil(b.cannonTimer)+'s';
+  setBallTag('cannon',Math.ceil(b.cannonTimer)+'s');
 }
-function removeBall(b){scene.remove(b.m);if(b.light)scene.remove(b.light);
- if(b.warnLight)scene.remove(b.warnLight);
+function removeBall(b){scene.remove(b.m);if(b.light)fxLightPut(b.light);   // release the pooled glow (NOT scene.remove — that would change the light count)
+ if(b.warnLight)fxLightPut(b.warnLight);
  if(b.warnShell){b.warnShell.geometry.dispose();b.warnShell.material.dispose();}
  // only the generated-sphere fallback owns its geo/mat; GLB-clone balls share the cached
  // template resources, so disposing them would break every future ball of that type.
@@ -96,8 +98,10 @@ function serve(){
   b.spin=rand(-SRV.spin,SRV.spin);
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
- if(key!=='classic')banner(BALL_TYPES[key].name,'SPECIAL BALL DROPPING',1.6);
- $('ballTag').textContent=BALL_TYPES[key].name;
+ // tier 2: the ball drops in front of you — the old 'SPECIAL BALL DROPPING' subtitle under a
+ // 66px centre banner narrated something already on screen, and blocked the table while doing it.
+ if(key!=='classic')notice(BALL_TYPES[key].name,1.5,BALL_TYPES[key].trail);
+ setBallTag(key);
  S.phase='play';S.lastTouch=-1;
 }
 
@@ -111,7 +115,7 @@ function cannonballUpdate(dt){
    }
    if(b.cannonTimer<=0){
      const bp=b.m.position.clone();   // capture the detonation spot BEFORE removeBall frees the mesh
-     const tag=$('ballTag');if(tag)tag.textContent=BALL_TYPES.cannon.name;
+     setBallTag('cannon');
      removeBall(b);
     cannonExplodeFx(bp);             // 3D shard debris + particle blast + light + boom (replaces the old Au.power beep)
     let nearestRod=-1,nearestMan=-1,nearestDist=Infinity;
@@ -133,11 +137,11 @@ function cannonballUpdate(dt){
      const r=rods[nearestRod];
      r.removedUntil[nearestMan]=S.time+CONFIG.cannonball.removeDuration;
      spawnFracture(r,nearestMan);
-     banner('💣 REMOVED!','ONE PLAYER TAKEN OUT',1.5);
+     notice('PLAYER DOWN',1.4,'#ff8c3a');
     }
     if(!S.balls.length&&S.phase==='play'){
      if(S.trn){trainingBallGone();}      // training sandbox: respawn at the last spot, never enter the goal-hold
-     else{resetRodRotation();banner('💣 EXPLOSION!','BALL RETURNS',1.2);S.phase='goal';S.goalT=MATCH.outHold;}
+     else{resetRodRotation();notice('BALL DESTROYED',1.2,'#ff8c3a');S.phase='goal';S.goalT=MATCH.outHold;}
     }
     break;
    }

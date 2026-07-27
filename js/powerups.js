@@ -1,19 +1,44 @@
 'use strict';
 /* ================= power-ups ================= */
-// tear a power-up mesh out of the scene AND free its GPU resources — spawnPU builds fresh
-// geometry+materials every spawn, so without this they leak for the whole session.
+// Tear a power-up out of the scene AND free the GPU resources spawnPU built for it. Only the
+// PROCEDURAL parts (gem + halo ring) are freed — they're fresh geometry/materials every spawn and
+// would otherwise leak for the session. A GLB pickup is a clone() sharing its geometry and
+// materials with the resident template (models.js puTemplates), so disposing those would blank
+// every future pickup of that type; own parts are stamped puOwn at build time to tell them apart.
 function disposePU(){const o=S.pu.obj;if(!o)return;scene.remove(o);
- o.traverse(c=>{if(c.isMesh){c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();}});
- S.pu.obj=null;}
+ o.traverse(c=>{if(!c.isMesh||!c.userData.puOwn)return;
+  c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();});
+ S.pu.obj=null;S.pu.spin=0;}
 function clearPU(){disposePU();S.pu.timer=rand(PWR.firstDelay[0],PWR.firstDelay[1]);}
+// The visual for one pickup: the type's GLB when it has one and it loaded, else the procedural
+// octahedron. Either way it's parented to a group whose y-rotation is the idle spin, so the model's
+// own resting yaw (md.yaw) lives one level down and survives it.
+function makePUVisual(t){
+ const M=PWR.models,md=(M&&M.on)?M[t.key]:null;
+ const g=new THREE.Group();
+ const mdl=(md&&typeof makePUModel==='function')?makePUModel(t.key):null;
+ if(mdl){
+  mdl.rotation.set(md.tilt||0,md.yaw||0,0);
+  if(md.scale&&md.scale!==1)mdl.scale.multiplyScalar(md.scale);   // fit-scale is already baked into the template
+  mdl.position.y=md.y||0;
+  g.add(mdl);
+ }else{
+  const G=PWR.gem,gem=new THREE.Mesh(new THREE.OctahedronGeometry(G.r),
+   new THREE.MeshStandardMaterial({color:t.col,emissive:t.col,emissiveIntensity:G.emissive,roughness:G.roughness}));
+  gem.userData.puOwn=true;g.add(gem);
+ }
+ const R=PWR.ring;
+ if(R.on&&!(md&&md.ring===false)){
+  const ring=new THREE.Mesh(new THREE.RingGeometry(R.inner,R.outer,24),
+   new THREE.MeshBasicMaterial({color:t.col,transparent:true,opacity:R.opacity,side:THREE.DoubleSide}));
+  ring.rotation.x=-Math.PI/2;ring.position.y=R.y;ring.userData.puOwn=true;g.add(ring);
+ }
+ S.pu.spin=(md&&md.spin)||PWR.spin;
+ return g;
+}
 function spawnPU(){
  const t=PU_TYPES[Math.floor(Math.random()*PU_TYPES.length)];
- const g=new THREE.Group();
- g.add(new THREE.Mesh(new THREE.OctahedronGeometry(2.1),
-  new THREE.MeshStandardMaterial({color:t.col,emissive:t.col,emissiveIntensity:.9,roughness:.3})));
- const ring=new THREE.Mesh(new THREE.RingGeometry(2.6,3.4,24),
-  new THREE.MeshBasicMaterial({color:t.col,transparent:true,opacity:.55,side:THREE.DoubleSide}));
- ring.rotation.x=-Math.PI/2;ring.position.y=-2.8;g.add(ring);
+ const g=makePUVisual(t);
  g.position.set(rand(-PWR.area.x,PWR.area.x),PWR.floatY,rand(-PWR.area.z,PWR.area.z));
  if(ARENA_ON)arenaClampSpawn(g.position);
  S.pu.type=t;S.pu.obj=g;scene.add(g);
@@ -25,7 +50,10 @@ function collectPU(){
  if(t.key==='boost')S.eff[team].boost=S.time+PWR.boost;
  if(t.key==='freeze')S.eff[1-team].frozen=S.time+PWR.freeze;
  if(t.key==='big')S.eff[team].big=S.time+PWR.big;
- banner(t.ico+' '+t.label,t.key==='freeze'?nm+' FROZE THE RIVALS':nm+' ACTIVATED',1.6);
+ // No banner: the rail tab sliding out of this team's score IS the notification (hud.js
+ // fxRailSync). Freeze is the exception — its tab appears on the RIVAL's side, so the team that
+ // actually collected it would otherwise get no feedback at all.
+ notice(nm+' · '+t.label,1.2,team===0?'var(--c0)':'var(--c1)');
  Au.power();
  burst(S.pu.obj.position,new THREE.Color(t.col),new THREE.Color(0xffffff),60,40);
  disposePU();S.pu.timer=rand(PWR.respawn[0],PWR.respawn[1]);
@@ -35,7 +63,7 @@ function powerupUpdate(dt){
  if(!cfg.power)return;
  if(!S.pu.obj){S.pu.timer-=dt;if(S.pu.timer<=0)spawnPU();return;}
  const o=S.pu.obj;
- o.rotation.y+=dt*2.4;o.position.y=PWR.floatY+Math.sin(S.time*3)*PWR.floatAmp;
+ o.rotation.y+=dt*(S.pu.spin||PWR.spin);o.position.y=PWR.floatY+Math.sin(S.time*3)*PWR.floatAmp;
  for(const b of S.balls){
   if(b.m.position.distanceTo(o.position)<BALL_R+PWR.pickR){collectPU();break;}
  }
@@ -88,7 +116,7 @@ function deadBallUpdate(dt){
   if(b.stuckT<=DEAD.stallT)allStuck=false;
  }
  if(allStuck){ // every live ball wedged (also the single-ball case) -> whistle + re-drop all
-  Au.whistle();resetRodRotation();banner('DEAD BALL','RE-DROP',1.1);
+  Au.whistle();resetRodRotation();notice('DEAD BALL',1.1);
   for(const b of S.balls)redropBall(b);
   return;
  }

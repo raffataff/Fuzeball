@@ -8,6 +8,7 @@ let renderer,scene,camera,dirLight,hemiLight;
 let activeRoom=null,roomEnvCache={},pmremGen=null,curLeds=CONFIG.leds;
 const teamMat=[null,null],teamGlow=[null,null];
 let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
+const fxLightPool=[];   // resident spare PointLights (see buildFxLightPool) — effect glows borrow from here so the scene's light count never changes
 // primLedMat = the PROCEDURAL led material built in buildTable. ledMat is repointed at whichever
 // skin GLB is showing (applySkin), so disposing an evicted skin would leave ledMat dangling on a
 // freed material — disposeTableSkin falls back to this one. Never disposed.
@@ -147,9 +148,36 @@ function initThree(){
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
-  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildBallReflect();
+  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildFxLightPool();buildBallReflect();
   scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  applyDisplay();   // apply saved Display settings (render scale / shadows) at boot
+}
+
+/* Display settings (Options → Display), applied live. Two levers here:
+   • renderScale multiplies the effective device pixel ratio — the renderer draws fewer internal
+     pixels and the canvas is upscaled to fill the screen. Integrated GPUs are fill-rate bound, so
+     this is close to a linear fps gain and the single biggest knob on weak hardware.
+   • shadows toggles the directional light's shadow-map PASS (the per-frame cost), not just whether
+     surfaces receive it. Flipping shadowMap.enabled changes material shader defines, so every
+     material needs a one-time recompile on the change — done here, and ONLY when it actually
+     changes (tracked in _dispShadows), so re-applying render scale alone never triggers it.
+   Reflections + fps-cap live elsewhere (refreshBallReflect / the main loop). */
+let _dispShadows=true;   // matches initThree's shadowMap.enabled=true starting state
+function applyDisplay(){
+ if(!renderer)return;
+ const rs=clamp(cfg.renderScale||1,0.4,1);
+ renderer.setPixelRatio(Math.min(devicePixelRatio,2)*rs);
+ renderer.setSize(innerWidth,innerHeight);
+ const sh=cfg.shadows!==false;
+ if(sh!==_dispShadows){
+  renderer.shadowMap.enabled=sh;
+  if(dirLight)dirLight.castShadow=sh;
+  renderer.shadowMap.needsUpdate=true;
+  scene.traverse(o=>{const m=o.material;if(!m)return;
+   (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
+  _dispShadows=sh;
+ }
 }
 
 /* Reflection env-maps (PMREM). scene.environment feeds EVERY MeshStandardMaterial — balls
@@ -360,7 +388,7 @@ function makePlayer(team){
    return g;
   }
   const g=playerModel[team].clone(true);
-  g.scale.setScalar(activeModel(team).scale*(cfg.modelScale||1));
+  g.scale.setScalar(activeModel(team).scale*tmScale(team));
   g.traverse(child=>{
    if(!child.isMesh)return;
    const name=child.material.name.toLowerCase();
@@ -394,7 +422,7 @@ function buildRods(){
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,aiMan:-1,
-    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,
+    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,laneDir:0,laneCd:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
      removedUntil:[]};
     rods.push(r);
@@ -480,6 +508,31 @@ function buildFxPools(){
  indicator=new THREE.Mesh(new THREE.ConeGeometry(1.7,3.4,4),new THREE.MeshBasicMaterial({color:0xffffff}));
  indicator.rotation.x=Math.PI;indicator.visible=false;scene.add(indicator);
 }
+
+/* ===== fx light pool =====
+   r128 compiles the scene's light COUNT into every material's shader program, so adding OR
+   removing a light (a fireball's glow, the cannonball fuse, an explosion, a respawn swirl)
+   forces a whole-scene shader recompile on the next render — a multi-hundred-ms hitch on a
+   populated table. To kill it we keep a fixed set of PointLights permanently in the scene
+   (visible so they're COUNTED, intensity 0 so they contribute nothing) and let effects borrow
+   one instead of scene.add-ing a fresh light. The count is then constant for the whole session,
+   so those recompiles never fire. Sized by CONFIG.fx.lightPool; the 2 goalLights already work
+   this exact way, so this is the same trick, generalised. */
+function buildFxLightPool(){
+ const n=(CONFIG.fx&&CONFIG.fx.lightPool)||0;
+ for(let i=0;i<n;i++){const l=new THREE.PointLight(0xffffff,0,40);l.visible=true;l._fxFree=true;scene.add(l);fxLightPool.push(l);}
+}
+/* Borrow a resident fx light: sets its colour + falloff distance, leaves intensity at 0 for the
+   caller to drive, and returns it — or null when the pool is exhausted (the effect then plays
+   without its extra glow; the light COUNT, and thus the no-recompile guarantee, is unaffected). */
+function fxLightGet(color,dist){
+ for(const l of fxLightPool){if(!l._fxFree)continue;
+  l._fxFree=false;l.color.set(color);l.distance=dist||40;l.intensity=0;return l;}
+ return null;
+}
+/* Return a borrowed light to the pool (intensity 0, marked free). NEVER scene.remove it —
+   removing it would change the light count and reintroduce the recompile this pool prevents. */
+function fxLightPut(l){if(!l)return;l.intensity=0;l._fxFree=true;}
 
 function applyPitchModel(){
   if(!pitchModel)return;
@@ -616,21 +669,13 @@ function applyColors(){
 /* Surface finish (metalness / roughness / emissive glow) from the Customize
    panel, pushed onto every live team material so the game mirrors the preview. */
 function applyFinish(){
- const mv=clamp(cfg.metalness,0,1),rv=clamp(cfg.roughness,0,1),gv=Math.max(0,cfg.glow);
- for(let t=0;t<2;t++){
-  const col=t===0?cfg.redColor:cfg.blueColor;
-  teamMat[t].metalness=mv;teamMat[t].roughness=rv;teamMat[t].emissive.set(col);teamMat[t].emissiveIntensity=gv;teamMat[t].needsUpdate=true;
-  teamGlow[t].metalness=mv;teamGlow[t].roughness=Math.max(.12,rv);teamGlow[t].emissiveIntensity=Math.max(.55,gv);teamGlow[t].needsUpdate=true;
-  for(const mat of Object.values(playerTeamMats[t])){
-   mat.metalness=mv;mat.roughness=rv;
-   if(mat.emissive){mat.emissive.set(col);mat.emissiveIntensity=gv;}
-   mat.needsUpdate=true;
+  for(let t=0;t<2;t++){
+    const col=t===0?cfg.redColor:cfg.blueColor;
+    applyTeamFinish(teamMat[t],t,col,false);
+    applyTeamFinish(teamGlow[t],t,null,true);
+    for(const mat of Object.values(playerTeamMats[t]))applyTeamFinish(mat,t,col,false);
   }
- }
- for(const c of rodCustomMats){const col=c.team===0?cfg.redColor:cfg.blueColor;
-  c.mat.metalness=mv;c.mat.roughness=c.isGlow?Math.max(.12,rv):rv;
-  if(c.mat.emissive){c.mat.emissive.set(col);c.mat.emissiveIntensity=c.isGlow?Math.max(.55,gv):gv;}
-  c.mat.needsUpdate=true;}
+  for(const c of rodCustomMats)applyTeamFinish(c.mat,c.team,c.isGlow?null:(c.team===0?cfg.redColor:cfg.blueColor),c.isGlow);
 }
 
 /* Swap the men meshes on already-built rods for the current model (used when
