@@ -181,31 +181,145 @@ function pickActiveRods(dt){
   }
  }
 function isActiveRod(r){const a=S.active[r.team];return!a||!a.length||a.indexOf(r)>=0;}
-// Gap-aware shot evaluation. From the ball at (bx,bz), sample target z's across the opponent
-// goal mouth and score each lane by its clearance to the nearest BLOCKING opposing man — any
-// live man on a rod between the ball and the goal (the keeper is just the last one). clr =
-// z-distance from the straight ball→(goalX,tz) line to that man, minus blockR (his block
-// half-width): >0 means the shot misses everyone by that margin. The widest-clearance lane is
-// 'best' (ties break toward centre). Returns lanes[] + best + origin for the debug overlay.
-function shotEval(team,bx,bz){
- const dir=team===0?1:-1,goalX=dir>0?F.L/2:-F.L/2,GA=AIC.gapAim;
- const span=F.goalHalf*AIC.aimGoalZ;
- const obs=[];
+// Every live opposing man sitting BETWEEN the ball at bx and a target x — the blockers for any
+// straight line drawn between the two. Split out of shotEval so the pass scan can reuse it (its
+// target is a teammate rod, not the goal) and so a multi-sample scan builds the list ONCE: the set
+// depends only on the two x's, never on the target z, and rebuilding it per lane was the whole cost.
+function laneObs(team,bx,tx){
+ const dir=team===0?1:-1,GA=AIC.gapAim,obs=[];
  for(const r2 of rods){
   if(r2.team===team)continue;                                     // only opponents block
-  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-goalX)*dir>0)continue;      // must sit between ball and goal
+  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>0)continue;         // must sit between ball and target
   for(let i=0;i<r2.baseZ.length;i++){if(r2.removedUntil[i]&&r2.removedUntil[i]>S.time)continue;obs.push({x:r2.x,z:r2.baseZ[i]+r2.offset});}
  }
- const n=GA.samples,lanes=[],denom=(goalX-bx)||1e-3;
+ return obs;
+}
+// How far the straight line (bx,bz)→(tx,tz) misses the nearest blocker in z, minus that man's block
+// half-width. >0 = the ball gets through by that margin; <0 = it's covered.
+function lineClr(obs,bx,bz,tx,tz){
+ let clr=1e9;const denom=(tx-bx)||1e-3;
+ for(const o of obs){const t=(o.x-bx)/denom,lz=bz+(tz-bz)*t,d=Math.abs(lz-o.z)-AIC.gapAim.blockR;if(d<clr)clr=d;}
+ return clr;
+}
+// Gap-aware shot evaluation. From the ball at (bx,bz), sample target z's across the opponent
+// goal mouth and score each lane by its clearance to the nearest BLOCKING opposing man — any
+// live man on a rod between the ball and the goal (the keeper is just the last one). The widest-
+// clearance lane is 'best' (ties break toward centre). Returns lanes[] + best + origin for the
+// debug overlay. `obs` may be supplied by a caller scanning many z's from one ball position
+// (dribTarget) — it's identical for every z, so passing it in avoids rebuilding it per sample.
+function shotEval(team,bx,bz,obs){
+ const dir=team===0?1:-1,goalX=dir>0?F.L/2:-F.L/2,GA=AIC.gapAim;
+ const span=F.goalHalf*AIC.aimGoalZ;
+ if(!obs)obs=laneObs(team,bx,goalX);
+ const n=GA.samples,lanes=[];
  for(let s=0;s<n;s++){
   const tz=n>1?-span+2*span*(s/(n-1)):0;
-  let clr=1e9;
-  for(const o of obs){const t=(o.x-bx)/denom,lz=bz+(tz-bz)*t,d=Math.abs(lz-o.z)-GA.blockR;if(d<clr)clr=d;}
-  lanes.push({tz,clr});
+  lanes.push({tz,clr:lineClr(obs,bx,bz,goalX,tz)});
  }
  let best=lanes[0];
  for(const l of lanes){if(l.clr>best.clr+1e-3||(Math.abs(l.clr-best.clr)<=1e-3&&Math.abs(l.tz)<Math.abs(best.tz)))best=l;}
  return {lanes,best,goalX,ox:bx,oz:bz};
+}
+// ---- dribble support -------------------------------------------------------------------------
+// The z-gap past the opposing row DIRECTLY IN FRONT of the ball — "can I play forward from here at
+// all". Only the nearest opposing rod ahead is considered, because it's the binding constraint: get
+// past it and the next row is a different problem, one its own handler will face. Cheap by design
+// (one rod, ≤5 men) so the sampled scan below can afford it.
+function fwdClr(team,bx,bz){
+ const dir=team===0?1:-1,GA=AIC.gapAim;
+ let row=null,rd=1e9;
+ for(const o of rods){
+  if(o.team===team)continue;
+  const ahead=(o.x-bx)*dir;
+  if(ahead<=GA.minAhead)continue;
+  if(ahead<rd){rd=ahead;row=o;}
+ }
+ if(!row)return 1e3;                                   // nothing between us and the goal
+ let d=1e9;
+ for(let i=0;i<row.baseZ.length;i++){if(!manLive(row,i))continue;d=Math.min(d,Math.abs(bz-(row.baseZ[i]+row.offset)));}
+ return (d===1e9?1e3:d)-GA.blockR;
+}
+// "How good is my way forward if the ball were at (bx,bz)?" — the ONE number the dribble is trying
+// to maximise, and the reason a defender can use this action at all.
+//   • ATT — the goal is the next thing in front, so the way forward IS a shooting lane: shotEval,
+//     which already counts every opposing man between the ball and the mouth (their DEF, then the
+//     keeper). Bounded by fwdClr too, so a man planted right in front still reads as blocked.
+//   • everyone else — scoring from deep is not the question and shotEval would answer it with a
+//     uniformly awful number for every candidate z (11 opposing men across 80 units), which is
+//     noise, not a gradient. The real question for a DEF or MID is whether it can work the ball
+//     PAST THE ROW IN FRONT to its own next line — exactly fwdClr.
+function outletClr(r,bx,bz,obs){
+ const fwd=fwdClr(r.team,bx,bz);
+ if(r.role!=='ATT')return fwd;
+ return Math.min(fwd,shotEval(r.team,bx,bz,obs).best.clr);
+}
+// WHERE the dribble should take the ball. Scores candidate ball-z positions across the dribbling
+// man's own reachable range: the outlet from there, PLUS a bonus for being nearer the centre of the
+// pitch, MINUS the distance travelled to get there. The centre term is what fixes the winger who
+// blasts the end wall: out wide every angle is a narrow diagonal, so clearance alone can't tell a
+// bad position from a slightly less bad one and the rod shuffles in place. From a decent central
+// spot the outlet term dominates again and the target lands near where the ball already is (which
+// is why entry also requires minGain — no point sliding it about for nothing).
+function dribTarget(r,bx,bz,obs){
+ const DR=AIC.dribble;
+ const mi=(r.dribMan>=0&&r.dribMan<r.baseZ.length&&manLive(r,r.dribMan))?r.dribMan:0;
+ const lo=Math.max(-F.W/2+BALL_R+1,r.baseZ[mi]-r.maxOff,bz-DR.range);
+ const hi=Math.min(F.W/2-BALL_R-1,r.baseZ[mi]+r.maxOff,bz+DR.range);
+ if(hi<=lo)return bz;
+ const n=Math.max(2,DR.samples|0);
+ let bestZ=bz,bestS=-1e9;
+ for(let i=0;i<n;i++){
+  const z=lo+(hi-lo)*(i/(n-1));
+  const s=outletClr(r,bx,z,obs)+DR.centrePull*(Math.abs(bz)-Math.abs(z))-DR.travelCost*Math.abs(z-bz);
+  if(s>bestS){bestS=s;bestZ=z;}
+ }
+ return bestZ;
+}
+// Is an opponent close enough to take the ball off us? Normalised box test (x by pressX, z by
+// pressZ) so one number reads as "inside the pressure box". A carry without this walks into a
+// tackle every time — the release IS the decision to beat the press.
+function dribPressed(r,bx,bz){
+ const DR=AIC.dribble;
+ for(const o of rods){
+  if(o.team===r.team)continue;
+  const dx=Math.abs(o.x-bx);if(dx>DR.pressX)continue;
+  for(let i=0;i<o.baseZ.length;i++){if(!manLive(o,i))continue;if(Math.abs(bz-(o.baseZ[i]+o.offset))<DR.pressZ)return true;}
+ }
+ return false;
+}
+// Best PASS available from the ball at (bx,bz): every live man of every teammate rod ahead of us,
+// scored on whether the ball can even reach him (clear) plus how good HIS shot would be once it
+// does (onward), minus a mild preference for the nearer option. Returns null when nothing beats
+// pass.minClear. Deliberately geometric — it asks what the receiving row could DO, not who is
+// "open" in the abstract, so a pass square into a covered man never scores.
+function passEval(r,bx,bz){
+ const P=AIC.dribble.pass,dir=r.team===0?1:-1;
+ let best=null;
+ for(const o of rods){
+  if(o===r||o.team!==r.team)continue;
+  const ahead=(o.x-r.x)*dir;
+  if(ahead<P.minAhead||ahead>P.maxAhead)continue;
+  const obs=laneObs(r.team,bx,o.x);
+  for(let i=0;i<o.baseZ.length;i++){
+   if(!manLive(o,i))continue;
+   const tz=o.baseZ[i]+o.offset;
+   const clr=lineClr(obs,bx,bz,o.x,tz);
+   if(clr<P.minClear)continue;
+   const onward=shotEval(r.team,o.x,tz).best.clr;
+   const score=clr*P.wClear+onward*P.wOnward-ahead*P.wDist;
+   if(!best||score>best.score)best={rod:o,man:i,x:o.x,z:tz,clr,onward,score};
+  }
+ }
+ return best;
+}
+// Cached wrapper — the scan above is the priciest thing the AI does (rods × men × a shotEval each),
+// so it runs on a cadence (pass.every) and every reader in a frame shares the result.
+function passPick(r,bx,bz){
+ const P=AIC.dribble.pass;
+ if(!P.on)return null;
+ if((r.passEvT||0)>0)return r.passEv;
+ r.passEvT=P.every;
+ return r.passEv=passEval(r,bx,bz);
 }
  function aiUpdate(dt){
   recordBalls();               // snapshot every ball's true state this step so rods can read it delayed
@@ -352,6 +466,10 @@ function shotEval(team,bx,bz){
   const relReal=(bp.x-r.x)*dir;           // real ahead/behind for reach decisions
   const speed=best.v.length();
   const approach=best.v.x*dir;            // >0 = ball closing on this rod's front face (read by clearLane/trap/evade)
+  // x-distance from the ball to THIS rod's OWN goal line. Hoisted here (it used to sit with the trap
+  // guards) because the dribble block guards on it too and is evaluated in the same pass.
+  const ownGx=dir>0?-F.L/2:F.L/2;
+  const goalDist=Math.abs(bp.x-ownGx);
   const slow=speed<AIC.slowSpeed;
   // ---- alignment vs the man actually closest to the real ball z (not the predicted target).
   //      Computed up-front so the raise latch, drop check, and kick check all share it.
@@ -481,15 +599,31 @@ function shotEval(team,bx,bz){
   //        slid away from it instead.) maxApproach refuses a ball arriving too fast to pin at all.
   //        The old own-goal rationale for minApproach applied to the −0.9 back-tilt, which shovelled
   //        a dead ball goal-ward; trap.angle is a shallow pin now, so it no longer holds.
-  //      • goalDist — x-distance from the ball to THIS rod's own goal line. Inside TR.ownGoalGuard
+  //      • goalDist — x-distance from the ball to THIS rod's own goal line (declared up with
+  //        relReal/approach now, since the dribble block guards on it too). Inside TR.ownGoalGuard
   //        no trap is entered, and a live trap ABORTS (the abort drops the rod, and the drop sweeps
   //        the foot FORWARD, which clears the ball upfield — the safe direction). ----
-  const ownGx=dir>0?-F.L/2:F.L/2;
-  const goalDist=Math.abs(bp.x-ownGx);
   // Directional own-goal guard: the catch tilts the foot BACKWARD, so a ball BEHIND the feet is
   // pushed toward our own goal by the contact (the keeper own-goal). Use the big margin when the
   // ball is behind, the small one when it's in front (where the catch tilts safely away from it).
   const ogGuard=relReal<TR.behindSafe?TR.ownGoalBehind:TR.ownGoalGuard;
+  /* DEFER TO THE DRIBBLE. The trap block sits above the dribble block in this file but must lose to
+     it, because their windows overlap (trap.back −5.8..front 1.4 vs dribble.back −2.2..front 3.0)
+     and for a ball already settled at the feet the dribble is the better action: it works from the
+     RESTING posture the ball is actually sitting at rather than rotating a pin angle over it, it
+     scores a POSITION rather than only a lane, it reads the press, and it can pass. Without this an
+     attacker's ball at the boot was always grabbed by the trap first, carried at most slideMax 7u
+     hunting a lane, and scooped — which is most of why wingers still ended up firing across goal.
+     Everything the test refuses (any defensive catch, a ball not yet settled, a rod on dribble
+     cooldown, the GK) is trapped exactly as before.
+     Note the (dribEvT<=0) term: it mirrors the dribble's own scan cadence, so the deferral lasts
+     exactly as long as the dribble's FIRST REFUSAL. Scan, decline (good shot already on, or nothing
+     to gain by carrying), and the very next frame dribFirst is false and the trap picks the ball up
+     as it always did — no ball falls between the two actions. */
+  const dribFirst=AIC.dribble.on&&AIC.dribble.roles.indexOf(r.role)>=0&&(r.dribCd||0)<=0&&(r.dribEvT||0)<=0
+                  &&relReal>AIC.dribble.back&&relReal<AIC.dribble.front&&dz<AIC.dribble.alignZ
+                  &&speed<AIC.dribble.maxSpeed&&goalDist>AIC.dribble.ownGoalGuard
+                  &&approach>AIC.dribble.minApproach&&approach<AIC.dribble.maxApproach;
   if(r.act==='trap'){
    r.actT+=dt;
    // Exit once the ball escapes the catch band, speeds up, lifts, drifts too near our own goal, or
@@ -499,7 +633,7 @@ function shotEval(team,bx,bz){
    // bound + the directional own-goal guard are the own-goal guards instead — the latter also aborts
    // a trap whose ball has DRIFTED behind the feet toward our net since it was caught.
    if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<ogGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;}
-  }else if(TR.on&&r.aiIQ&&!r.act&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ
+  }else if(TR.on&&r.aiIQ&&!r.act&&!dribFirst&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ
            &&approach>TR.minApproach&&approach<TR.maxApproach&&goalDist>ogGuard){
    // Entry commits to ONE man — the live man nearest the ball in z — and remembers where the ball
    // was caught. Holding the man fixed for the whole trap is what stops the man-index hysteresis
@@ -566,6 +700,104 @@ function shotEval(team,bx,bz){
     if(dbgLogRod===r)dbgRod(r,'ACT:trap'+(r.actT>TR.settleT?'/carry':'/catch'),
      'rel='+relReal.toFixed(1)+' tdz='+tdz.toFixed(2)+' spd='+speed.toFixed(0)+' t='+r.actT.toFixed(2)+' dir='+r.trapDir+' clr='+(r.aimEv?r.aimEv.best.clr.toFixed(1):'-'));
     continue;                               // we own target + man for the whole trap — no re-aim, no kick gate
+   }
+  }
+  // ---- dribble action (r.act='dribble') — the ball is at the feet of a row that is DOWN AT REST
+  //      and there's no way forward (or we're out wide, where every angle is a bad diagonal), so
+  //      SLIDE THE BALL to a better line instead of hitting it into the row opposite.
+  //      NOT A TRAP, and the distinction is load-bearing: this action touches nothing in updateRods,
+  //      so the rod keeps the ordinary rest angle and the men stay down. That is both what the ball
+  //      at a resting boot actually needs, and the one case the trap could never serve — its pin
+  //      angle sits the foot box above a ball on the floor and shoves it away rather than settling
+  //      it. All this does is override the CONTACT (holdGrip 0.30, a nudge with slip, vs the trap's
+  //      0.55 weld) and own r.target/r.aiMan while it works. It `continue`s and canKick is
+  //      !r.act-gated, so nothing below re-aims or hits the ball we're working.
+  //      Released by the way forward opening, arriving at the committed target, being closed down,
+  //      or time — and the release is an ORDINARY swing (the ball is sitting in the normal strike
+  //      zone with the men down, so the normal kick is exactly right) or a PASS.
+  //      DEF is in `roles`: for a non-attacker the outlet score IS "can I get the ball past the
+  //      opposing attack row", so a defender works it sideways for a gap rather than belting it
+  //      into them. ownGoalGuard keeps that out of our own box. It sits BELOW the trap in the file
+  //      but ABOVE it in priority — see `dribFirst` in the trap's entry. ----
+  const DR=AIC.dribble;
+  if(r.act==='dribble'){
+   r.actT+=dt;
+   const dmC=(r.dribMan>=0&&r.dribMan<r.baseZ.length&&manLive(r,r.dribMan))?r.dribMan:-1;
+   const ddzC=dmC<0?1e9:Math.abs(bp.z-(r.baseZ[dmC]+r.offset));
+   // Contact lost / ball escaped the window / sped up / lifted / drifted too near our own goal /
+   // out of time → hand straight back to the normal path with NO shot. Swinging at a ball that is
+   // no longer at the boot is the phantom-trapshot bug (2026-07-22) wearing a new coat.
+   if(dmC<0||ddzC>DR.holdZ||relReal<=DR.back||relReal>=DR.front||speed>DR.maxSpeed||bp.y>AIC.lowY
+      ||goalDist<DR.ownGoalGuard||r.actT>DR.abortT){
+    if(dbgLogRod===r)dbgRod(r,'DRIB-END','ddz='+(dmC<0?'-':ddzC.toFixed(2))+' rel='+relReal.toFixed(1)+' spd='+speed.toFixed(0)+' t='+r.actT.toFixed(2));
+    r.act=null;r.dribMan=-1;r.dribCd=DR.cd;
+   }
+  }else if(DR.on&&(!DR.iqGate||r.aiIQ)&&!r.act&&(r.dribCd||0)<=0&&r.kickT<0&&DR.roles.indexOf(r.role)>=0
+           &&bp.y<AIC.lowY&&relReal>DR.back&&relReal<DR.front&&dz<DR.alignZ&&speed<DR.maxSpeed
+           &&approach>DR.minApproach&&approach<DR.maxApproach&&goalDist>DR.ownGoalGuard&&(r.dribEvT||0)<=0){
+   r.dribEvT=DR.reEval;                     // cadence gate: the sampled scan below is the pricey part
+   const obs=laneObs(r.team,bp.x,dir>0?F.L/2:-F.L/2);
+   if(outletClr(r,bp.x,bp.z,obs)<DR.coveredClr||Math.abs(bp.z)>DR.wideZ){   // no way forward, or out wide
+    let dmi=-1,dd=1e9;
+    for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const d2=Math.abs(bp.z-(r.baseZ[i]+r.offset));if(d2<dd){dd=d2;dmi=i;}}
+    if(dmi>=0){
+     r.dribMan=dmi;                          // set BEFORE dribTarget — it scans that man's own reach
+     const tz=dribTarget(r,bp.x,bp.z,obs);
+     if(Math.abs(tz-bp.z)>DR.minGain){r.act='dribble';r.actT=0;r.dribZ0=bp.z;r.dribZ=tz;}
+     else r.dribMan=-1;                      // nothing to gain by moving it — let the normal path play it
+    }
+   }
+  }
+  if(r.act==='dribble'){
+   // Men DOWN and no angle override anywhere: updateRods has no dribble branch, so clearing these
+   // two drops the rod onto its ordinary rest ease. This IS the posture the action works from.
+   r.raise=false;r.behindFlag=false;
+   const dm=(r.dribMan>=0&&r.dribMan<r.baseZ.length&&manLive(r,r.dribMan))?r.dribMan:0;
+   const ddz=Math.abs(bp.z-(r.baseZ[dm]+r.offset));
+   const dev=shotEval(r.team,bp.x,bp.z);r.aimEv=dev;   // live goal lanes — feeds the release aim + debug
+   const outNow=outletClr(r,bp.x,bp.z);                // …and the way-forward score this action tracks
+   if((r.dribEvT||0)<=0){                              // re-aim as the opposing row shifts
+    r.dribEvT=DR.reEval;
+    const tz=dribTarget(r,bp.x,bp.z);
+    if(Math.abs(tz-r.dribZ)>DR.retargetDead)r.dribZ=tz;
+   }
+   const open=outNow>=DR.lineClear, arrived=Math.abs(bp.z-r.dribZ)<DR.arrive;
+   const timeUp=r.actT>DR.holdT, pressed=dribPressed(r,bp.x,bp.z);
+   const want=open||arrived||timeUp||pressed;      // …we'd like to play it now
+   let dshot=false;
+   // Release needs the ball genuinely strikeable — the NORMAL alignment test, not the looser
+   // control tolerance the dribble runs on, so a sloppy touch can't produce a swing at nothing.
+   // When we want to play it but aren't squared up yet, the branch below stops pushing and aims
+   // straight at the ball, so alignment converges instead of the action timing out mid-push.
+   if(want&&aligned&&ddz<DR.holdZ&&r.kickT<0&&r.cd<=0){
+    /* RELEASE with an ORDINARY swing: the ball is at the feet with the men down, which is exactly
+       what the normal kick curve is for (no scoop, no windup dragging the ball back). Or a PASS if
+       a teammate has a better outlet — it must beat the shot by pass.bias, so this can't decay into
+       a side that never shoots. */
+    const pk=open?null:passPick(r,bp.x,bp.z);
+    const wantPass=!!pk&&DR.pass.on&&DR.pass.roles.indexOf(r.role)>=0
+                   &&pk.score>dev.best.clr*DR.pass.shotBias+DR.pass.bias;
+    if(dbgLogRod===r)dbgRod(r,wantPass?'DRIB-PASS':'DRIB-HIT',
+     (open?'way forward open':arrived?'arrived':pressed?'closed down':'time up')
+     +' out='+outNow.toFixed(1)+' moved='+(bp.z-r.dribZ0).toFixed(1)
+     +(wantPass?' → '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1):''));
+    if(wantPass)kickRod(r,'pass',{x:pk.x,z:pk.z});
+    else kickRod(r);
+    r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
+    r.dribMan=-1;r.dribCd=DR.cd;dshot=true;
+   }else{
+    /* WORK IT: aim the man a short lead PAST the ball toward the target, capped by the cumulative
+       travel budget from where control was taken. The lead must stay well under the boot's z reach
+       or the man simply walks off the ball instead of pushing it. `want` with no alignment = SQUARE
+       UP instead (lead 0, i.e. aim dead at the ball) so the strike can land next frame. */
+    const step=want?0:clamp(r.dribZ-bp.z,-DR.carryLead,DR.carryLead);
+    const cz=clamp(bp.z+step,r.dribZ0-DR.slideMax,r.dribZ0+DR.slideMax);
+    r.target=clamp(cz-r.baseZ[dm],-r.maxOff,r.maxOff);
+   }
+   if(!dshot){
+    r.aiMan=dm;
+    if(dbgLogRod===r)dbgRod(r,'ACT:dribble','rel='+relReal.toFixed(1)+' ddz='+ddz.toFixed(2)+' tgt='+r.dribZ.toFixed(1)+' out='+outNow.toFixed(1)+' t='+r.actT.toFixed(2));
+    continue;                                // we own target + man while we work — no re-aim, no kick
    }
   }
   // ---- evade action (r.act='evade'): a slow ball is stuck directly BEHIND a man (inFootRange)
@@ -658,8 +890,12 @@ function shotEval(team,bx,bz){
   //      NO open lane (best clearance below openMargin) keeps possession instead of blasting
   //      into traffic, up to gapAim.holdMax, then fires anyway. Defenders/keepers never hold —
   //      they clear. Resets the moment a lane opens, the ball speeds up, or it leaves the feet. ----
+  //      dribble.noPoke widens that to the inFront window for a dribbling role: a covered rod
+  //      poking at full stretch is what fires the ball straight back into the row opposite, and the
+  //      ball has to be ALLOWED to arrive at the feet before the dribble action can ever take it.
   let holdShot=false;
-  if(GA.gap&&r.aiIQ&&r.aimEv&&overFoot&&slow&&(r.role==='ATT'||r.role==='MID')&&r.aimEv.best.clr<GA.openMargin){
+  const holdReach=overFoot||(DR.on&&DR.noPoke&&inFront&&DR.roles.indexOf(r.role)>=0);
+  if(GA.gap&&r.aiIQ&&r.aimEv&&holdReach&&slow&&(r.role==='ATT'||r.role==='MID')&&r.aimEv.best.clr<GA.openMargin){
    r.shotHoldT=(r.shotHoldT||0)+dt;holdShot=r.shotHoldT<GA.holdMax;
   }else r.shotHoldT=0;
   // Swing at anything we can actually hit — this is what makes the AI clear balls at its feet.
@@ -670,7 +906,20 @@ function shotEval(team,bx,bz){
   const canKick=r.kickT<0 && r.cd<=0 && !r.act && (overFoot||inFront) && aligned && bp.y<AIC.lowY && !wait && !holdShot;
   if(dbgLogRod===r)dbgKickGate(r,{fired:canKick,overFoot,inFront,aligned,low:bp.y<AIC.lowY,wait,holdShot,rel:relReal,dz,speed,act:r.act});
   if(canKick){
-   kickRod(r);
+   /* A covered shot with a teammate ahead who has a better one becomes a PASS instead of a hopeful
+      strike into the row opposite. This is the half of the passing idea that works WITHOUT a
+      dribble — it fires on the ordinary swing, so build-up play still happens when there was never
+      time (or room) to take the ball down. Wider role list than the dribble on purpose: a DEFENDER
+      passing forward rather than hoofing it is exactly the behaviour we want; it's only CARRYING
+      the ball in its own half it shouldn't do. */
+   const PS=DR.pass;
+   let aimAt=null,pk=null;
+   if(PS.on&&PS.onKick&&r.aiIQ&&PS.roles.indexOf(r.role)>=0&&r.aimEv&&r.aimEv.best.clr<PS.onKickClr){
+    pk=passPick(r,bp.x,bp.z);
+    if(pk&&pk.clr>=PS.minClear)aimAt={x:pk.x,z:pk.z};
+   }
+   if(aimAt&&dbgLogRod===r)dbgRod(r,'PASS','→ '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1)+' shotClr='+r.aimEv.best.clr.toFixed(1));
+   kickRod(r,aimAt?'pass':null,aimAt);
    r.cd=D.cd*stCd(r)*(slow?rand(AIC.cdSlow[0],AIC.cdSlow[1]):rand(AIC.cdFast[0],AIC.cdFast[1])); // rea stat trims recovery
   }
  }

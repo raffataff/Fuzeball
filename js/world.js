@@ -295,26 +295,23 @@ function buildTable(){
   [-1,1].forEach(sz=>{const p=new THREE.Mesh(postG,frameM);p.position.set(0,GH/2,sz*GHW);p.castShadow=true;gf.add(p);});
   const bar=new THREE.Mesh(new THREE.CylinderGeometry(PR,PR,GHW*2,16),frameM);   // crossbar (along z)
   bar.rotation.x=Math.PI/2;bar.position.set(0,GH,0);bar.castShadow=true;gf.add(bar);
-  const bx=sx*GD,GT=GH;                                        // net back-plane depth/height (no back posts — the net hangs free inside the wall gap)
   // net: team-tinted white diamond mesh; ONE material per goal (recoloured in applyColors). The roof is a
   // SOLID collider in physics (goalFrameCollide) so a shot over the bar lands on top instead of scoring.
   const netM=new THREE.MeshStandardMaterial({color:i?cfg.blueColor:cfg.redColor,map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
   netMats.push(netM);
-   const V=(x,y,z)=>new THREE.Vector3(x,y,z);
-  const backW=GHW*.98,BX=bx*.98,FBL=V(0,0,-GHW),FBR=V(0,0,GHW),FTL=V(0,GH,-GHW),FTR=V(0,GH,GHW),
-        BBL=V(BX,0,-backW),BBR=V(BX,0,backW),BTL=V(BX,GT,-backW),BTR=V(BX,GT,backW);
-  const nets=[];   // collect panels so bigGoalUpdate can taper the net BACK narrower than its mouth
-  [[BBL,BBR,BTR,BTL],[FTL,FTR,BTR,BTL],[FBL,BBL,BTL,FTL],[FBR,FTR,BTR,BBR],[FBL,FBR,BBR,BBL]] // back, roof, sides, floor
-   .forEach(q=>{const nm=netQuad(q[0],q[1],q[2],q[3],netM);nm.userData.base=Float32Array.from(nm.geometry.attributes.position.array);g.add(nm);nets.push(nm);});
-  g.userData.net=nets;
+  g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
   const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
  tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh);  // procedural fallback (hidden when a skin GLB is shown)
 }
 
-/* procedural goal net: white diamond mesh on a transparent canvas so the net reads from any camera
-   without an image asset. netQuad builds an arbitrary 4-corner panel (so the roof can slope) and
-   tiles the net into square cells via UVs scaled by edge length; the shared CanvasTexture wraps. */
+/* ---- procedural goal net ---------------------------------------------------------------------
+   White diamond mesh on a transparent canvas, so the net reads from any camera with no image asset.
+   The cage is ONE cross-section (netProfile, in the y/z plane) swept from the goal line to the rear
+   plane, plus a cap across the back — which is what lets the top side creases be ROUNDED
+   (CONFIG.goalNet.bevel) to echo the frame's post/crossbar joint. Every swept panel merges into a
+   single geometry with u walked along the profile, so the net tiles in square cells and flows
+   continuously round the bevel with no seam, in 2 draw calls per goal instead of 5. */
 function makeNetTex(){
  const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
  x.clearRect(0,0,64,64);x.strokeStyle='rgba(255,255,255,.85)';x.lineWidth=1.5;
@@ -322,13 +319,49 @@ function makeNetTex(){
   x.beginPath();x.moveTo(k,64);x.lineTo(k+64,0);x.stroke();}
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
-function netQuad(a,b,c,d,mat){
- const cell=1.6,ru=Math.max(1,Math.round(a.distanceTo(b)/cell)),rv=Math.max(1,Math.round(a.distanceTo(d)/cell));
+/* the cage outline as [z,y] pairs, walked from the floor's −z corner up and over to the +z one; the
+   floor closes the loop. hw/gh = half-width/height at this station, so the same call serves the mouth
+   and the narrower rear plane. r/n (bevel radius + arc segments) are fixed by the CALLER so both
+   profiles come back with matching point counts — the sweep pairs them index-for-index. */
+function netProfile(hw,gh,r,n){
+ const p=[[-hw,0]];
+ if(r<=1e-4)p.push([-hw,gh],[hw,gh]);                          // r=0 → the original hard corner
+ else{p.push([-hw,gh-r]);                                      // up the −z wall to where the round starts
+  for(let k=1;k<=n;k++){const t=k/n*Math.PI/2;p.push([-(hw-r)-r*Math.cos(t),gh-r+r*Math.sin(t)]);}
+  for(let k=n;k>=1;k--){const t=k/n*Math.PI/2;p.push([(hw-r)+r*Math.cos(t),gh-r+r*Math.sin(t)]);}
+  p.push([hw,gh-r]);}                                          // …and back down the +z wall
+ p.push([hw,0]);return p;
+}
+/* one merged net panel. `base` is the untouched vertex array bigGoalUpdate tapers against. */
+function netGeo(pos,uv,idx,mat){
  const geo=new THREE.BufferGeometry();
- geo.setAttribute('position',new THREE.Float32BufferAttribute([a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,d.x,d.y,d.z],3));
- geo.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,ru,0,ru,rv,0,rv],2));
- geo.setIndex([0,1,2,0,2,3]);geo.computeVertexNormals();
- return new THREE.Mesh(geo,mat);
+ geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+ geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+ geo.setIndex(idx);geo.computeVertexNormals();
+ const m=new THREE.Mesh(geo,mat);m.userData.base=Float32Array.from(pos);return m;
+}
+/* sweeps the profile from the goal line (local x=0) to the rear plane at bx*backInset, adds both
+   meshes to g and returns them. Local coords: the group already sits on the goal line. */
+function buildGoalNet(g,bx,ghw,gh,mat){
+ const GN=CONFIG.goalNet,cell=GN.cell,r=clamp(GN.bevel.r,0,Math.min(ghw,gh)*.5),n=Math.max(1,GN.bevel.segs|0),
+       BX=bx*GN.backInset,bw=ghw*GN.backInset,                 // rear plane: same inset on depth and width
+       fp=netProfile(ghw,gh,r,n),bp=netProfile(bw,gh,r,n),P=fp.length;
+ // shell: one quad per profile segment (the last wraps round to close the floor). u accumulates the
+ // real profile length so the mesh doesn't stretch on the short bevel facets; v is a SHARED constant
+ // sweep depth, so adjacent panels can't disagree along the seam they share.
+ const pos=[],uv=[],idx=[],rv=Math.abs(BX)/cell;let u=0,o=0;
+ for(let k=0;k<P;k++){const j=(k+1)%P,a=fp[k],b=fp[j],c=bp[j],d=bp[k],
+   u2=u+Math.hypot(b[0]-a[0],b[1]-a[1])/cell;
+  pos.push(0,a[1],a[0], 0,b[1],b[0], BX,c[1],c[0], BX,d[1],d[0]);
+  uv.push(u,0, u2,0, u2,rv, u,rv);idx.push(o,o+1,o+2,o,o+2,o+3);o+=4;u=u2;}
+ const shell=netGeo(pos,uv,idx,mat);g.add(shell);
+ // back cap: the rear profile is convex, so a fan off its first point triangulates it. Planar UVs
+ // (straight off z/y) keep its cells the same size as the shell's.
+ const cp=[],cu=[],ci=[];
+ for(let k=0;k<P;k++){cp.push(BX,bp[k][1],bp[k][0]);cu.push(bp[k][0]/cell,bp[k][1]/cell);}
+ for(let k=1;k<P-1;k++)ci.push(0,k,k+1);
+ const cap=netGeo(cp,cu,ci,mat);g.add(cap);
+ return [shell,cap];
 }
 
 function buildCrowd(){
@@ -423,6 +456,7 @@ function buildRods(){
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,aiMan:-1,
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,laneDir:0,laneCd:0,
+     dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
      removedUntil:[]};
     rods.push(r);

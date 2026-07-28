@@ -84,14 +84,27 @@ function redropBall(b){
  syncBall(b);
  replayCut();   // the teleport would streak across a replay — drop the stale footage
 }
-// How fast the dead-ball stuck-timer should tick at world position p. Returns >1 inside one of
-// the active table's deadzones (corner pockets etc. — where a pinned ball can't be reached, so
-// waiting the full stallT is pure dead air), 1 everywhere else. Zones are corners: BOTH
-// |x|>xMin AND |z|>zMin (all four corners at once). Per-zone `mult` overrides DEAD.zoneMult.
+// The lanes of pitch BETWEEN the rows that no rod can swing at — a hand-listed set of x ranges in
+// CONFIG.deadball.rodGaps.lanes. Table-independent (RODDEFS is shared across every table), so unlike
+// the corner pockets these don't hang off activeTable.
+function rodGaps(){const G=DEAD.rodGaps;return G&&G.on?G.lanes:[];}
+// How fast the dead-ball stuck-timer should tick at world position p. Returns >1 where a pinned ball
+// can't be reached by any rod (so waiting the full stallT is pure dead air), 1 everywhere else. Three
+// cases, in descending hopelessness: the GOAL ROOF, the active table's deadzones (corner pockets,
+// tested as BOTH |x|>xMin AND |z|>zMin so one entry covers all four corners; per-zone `mult` overrides
+// DEAD.zoneMult), and the between-row lanes above.
 function deadzoneMult(p){
- const zs=activeTable&&activeTable.deadzones;if(!zs)return 1;
  const ax=Math.abs(p.x),az=Math.abs(p.z);
- for(const z of zs)if(ax>z.xMin&&az>z.zMin)return z.mult||DEAD.zoneMult;
+ // Goal roof: goalFrameCollide keeps a SOLID top over the goal box so an over-the-bar lob lands on it
+ // instead of scoring — but nothing can then reach the ball. Box mirrors that collider exactly (incl.
+ // the per-goal big-goal widen, hence the S.eff read) so the two can't drift apart. p.y is b.cur's,
+ // and a ball resting there sits at goalH+BALL_R, comfortably above the goalH floor of the test.
+ if(DEAD.roofMult>1&&p.y>F.goalH&&ax>F.L/2&&ax<F.L/2+F.goalDepth&&
+    az<F.goalHalf*(S.eff[p.x>0?0:1].big>S.time?PHY.bigGoalMult:1))return DEAD.roofMult;
+ const zs=activeTable&&activeTable.deadzones;
+ if(zs)for(const z of zs)if(ax>z.xMin&&az>z.zMin)return z.mult||DEAD.zoneMult;  // pockets outrank lanes
+ const gp=rodGaps();
+ for(let i=0;i<gp.length;i++)if(p.x>gp[i].x0&&p.x<gp[i].x1)return gp[i].mult||DEAD.rodGaps.mult;
  return 1;
 }
 function deadBallUpdate(dt){

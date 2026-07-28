@@ -232,19 +232,20 @@ function collideRod(b,r){
      // (ball·n − foot·n), so logging both halves shows whether a contact was driven by the swing
      // or by the ball's own arrival speed. Zero cost when the tracer is off (dbgLogRod is null).
      const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
-     const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
+     const ks=kickStyleCfg(r);
      const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-     /* TRAP CONTACT. While ai.js holds r.act==='trap' the boot is a dead, sticky surface instead of
-        the normal passive touch (kick.rest 0.01 / kick.grip 0.08). rest→0 kills the ball's speed
+     /* HOLD CONTACT. While ai.js has a ball-holding action live (trap = catch a loose ball,
+        dribble = carry one that's already at the feet) the boot is a dead, sticky surface instead
+        of the normal passive touch (kick.rest 0.01 / kick.grip 0.08). rest→0 kills the ball's speed
         relative to the foot; the big grip is the CARRY — b.v is lerped hard toward the contact
         point's own velocity, whose z component is the rod's slide (r.vz), so the ball travels with
         the man being dribbled sideways. Without this a "trap" is just a soft bounce: the ball parks
         near the boot and the rod slides out from under it. No sweet-spot bonus and no aim-assist on
-        a trap contact either — both exist to make a STRIKE better, and applying them here would
-        re-launch the ball we are trying to hold. */
-     const trapping=r.act==='trap'&&r.kickT<0;
-     const TRP=AIC.trap;
-     const rest=trapping?TRP.holdRest:(pow?ks.restPower:ks.rest);
+        a held contact either — both exist to make a STRIKE better, and applying them here would
+        re-launch the ball we are trying to hold. holdCfg (rods.js) returns the live action's block,
+        or null when there isn't one / a swing is in flight. */
+     const HLD=holdCfg(r),trapping=!!HLD;
+     const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
     // sweet spot: ball struck in the narrow z-centre of the foot AND a tight forward x band
     //   (dir-relative off the rod, same reference the AI's overFoot zone uses). lz is the ball's
     //   z offset from the foot; relR is how far ahead of the rod it contacts.
@@ -255,7 +256,7 @@ function collideRod(b,r){
     jm*=stHit(r);
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-    const g=trapping?clamp(TRP.holdGrip,0,1):stGrip(r);
+    const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
@@ -310,16 +311,15 @@ function collideRod(b,r){
   p.x+=nx*(R-d);p.y+=ny*(R-d);p.z+=nz*(R-d);
   if(vn<0){
     const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;   // tracer only — see the foot-box pass
-    const ks=r.kickStyle==='trapShot'?AIC.trapShot:KICK;
+    const ks=kickStyleCfg(r);
     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-    const trapping=r.act==='trap'&&r.kickT<0;   // dead + sticky while holding — see the foot-box pass
-    const TRP=AIC.trap;
-    const rest=trapping?TRP.holdRest:(pow?ks.restPower:ks.rest);
+    const HLD=holdCfg(r),trapping=!!HLD;        // dead + sticky while trapping/dribbling — see the foot-box pass
+    const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-    const g=trapping?clamp(TRP.holdGrip,0,1):stGrip(r);
+    const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);

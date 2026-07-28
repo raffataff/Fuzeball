@@ -293,6 +293,183 @@ visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readou
 below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#rodAngle`). The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
 
+### 2026-07-28
+- **Between-row LANES are dead zones now** (`CONFIG.deadball.rodGaps`, `js/powerups.js` `rodGaps()`
+  + `deadzoneMult`, `js/debug.js`). A rod's men only strike a band of x around their bar — a good way
+  ahead on the swing, barely anything behind — so between two rows there's a strip of pitch neither
+  can play. A ball that stops in one sat there for the full `stallT` with both teams looking at it.
+  - **`rodGaps.lanes` is a HAND-LISTED array of `{x0,x1}` x-ranges, one per gap** (optional per-lane
+    `mult`), full pitch width. First cut derived them from RODDEFS × a forward/back reach pair, which
+    was clever and wrong for the job: the owner wants to tune each strip by eye, and two knobs that
+    move all seven lanes at once is the opposite of that. **Don't re-derive it.** Rods sit 15 apart at
+    ±7.5/±22.5/±37.5/±52.5, so each lane lives inside one 15u gap; each entry carries a comment naming
+    its two rows. Only x matters — rods slide the full width in z.
+  - Widths differ by ROW ORIENTATION, worth knowing when retuning: two rows FACING each other both
+    swing into the gap and leave ~2u; two rows of the SAME team leave ~5u (one strikes forward into
+    it, the other only back-sweeps); two facing AWAY leave the most, since neither can swing in at all
+    — those (`±15`) are set to 6u, deliberately tighter than the ~9u the geometry alone implies.
+  - Worth recording since it drove the first attempt: the foot can physically reach ~7.6 ahead and ~7
+    BEHIND at full swing (from `arm`/`footBox`/`footBoxOff` vs a ball at y=BALL_R), but nothing ever
+    SWINGS at a ball outside the AI's windows (`inFrontMax` 6.3 / `underFootBack` 2.9), so the useful
+    reach is the smaller pair. The lanes are set by feel between the two.
+  - `mult:2`, deliberately gentler than the pocket/roof 3 — a lane ball can still be nudged by a
+    raise-and-drop, a corner pocket is hopeless.
+  - **Corner pockets are tested BEFORE lanes** so a table defining an overlapping pocket keeps its
+    stronger mult. They don't currently overlap (outermost lane ends at 46, pockets start at 47).
+  - Debug: the **Dead Zones** layer (`C`, red) draws each lane as the SAME flat plate as the corner
+    pockets, straight off `rodGaps()` — the overlay is literally the list the timer reads.
+    `on:false` = old behaviour.
+  - **`dzY` (0.35) is now the shared plate height for the whole layer, and it is NOT cosmetic.** At
+    the corner pockets' original 0.05 the lanes were INVISIBLE: a table skin's GLB field sits a hair
+    above y=0 and buries a decal that thin. It only showed up on the lanes because the corner plates
+    sit out past the slide range where the pitch mesh doesn't cover them. Raise `dzY` if a new skin
+    hides the layer again.
+    Also note `updateAIVis`'s vis test needs its `!!` — `dz.band` is an OBJECT, so without it
+    `mesh.visible` gets assigned a truthy object rather than a boolean.
+  Verified by re-read (sandbox wouldn't boot). NOT tuned against live play — `reachFwd`/`reachBack`
+  are the dials; raise them to shrink every lane at once.
+- **A ball settled ON TOP OF THE GOAL now runs the fast dead-ball timer** (`CONFIG.deadball.roofMult`,
+  `js/powerups.js` `deadzoneMult`, `js/debug.js`). `goalFrameCollide` keeps a SOLID net roof over each
+  goal box so an over-the-bar lob can't drop in and score — but the ball then sits somewhere no rod can
+  reach, which is exactly the corner-pocket case `zoneMult` already existed for, and it reads worse
+  because it's in plain sight. Full `stallT` (3.6s) of nothing; now ~1.2s at the default `roofMult:3`.
+  - **It went in `deadzoneMult`, not as a new test in `deadBallUpdate`** — that function is already
+    "how fast should the stuck timer tick HERE", the displacement-box machinery around it is
+    position-agnostic, and a ball resting on the roof boxes in exactly like one in a pocket. So this is
+    one extra clause, no new state, no second timer.
+  - **The box mirrors `goalFrameCollide`'s roof test exactly**, including the per-goal big-goal widen
+    (`S.eff[p.x>0?0:1].big` — `S.eff[0]` widens the RIGHT goal, same as physics). If the roof collider
+    ever moves, this must move with it or a ball will rest on a roof the timer doesn't know about.
+    `p.y>goalH` is the y gate: a ball resting up there sits at `goalH+BALL_R`, and anything in FLIGHT
+    above the box is moving, so the displacement box resets `stuckT` regardless.
+  - **`deadzoneMult` no longer early-returns on a table with no `deadzones`** — the roof is
+    table-independent (the classic, arena and circuit shells all get the same analytic goal frame), so
+    the `!zs` bail moved BELOW the roof clause. Worth knowing if you add another global dead region.
+  - Debug: the existing **Dead Zones** layer (`C`, red) gained a plate at `y=goalH` over each goal box.
+    Its hot test calls `deadzoneMult` rather than restating the box, so the overlay can't drift from the
+    timer it explains. Drawn at the stock mouth width, so under 'big goal' the live zone is wider than
+    the plate. Built only when `roofMult>1` (build-time read, like the rest of the layer).
+  - `roofMult:1` restores the old behaviour exactly. Verified by re-read (sandbox wouldn't boot).
+- **Goal net is a SWEPT CROSS-SECTION now, with rounded top side creases** (`CONFIG.goalNet`,
+  `js/world.js` — `netProfile`/`netGeo`/`buildGoalNet` replace `netQuad`). The net's shoulders met the
+  roof at a bare 90° while the frame beside them has a rounded post/crossbar joint; the two read as
+  different objects. The net was five hard-coded quads (`FBL`/`FTR`/`BTL`… corner vectors), so there
+  was nowhere to put a fillet — hence the rewrite rather than a patch.
+  - **The shape is DATA now.** `netProfile(hw,gh,r,n)` returns the cage outline as `[z,y]` pairs walked
+    from the floor's −z corner up, over the roof and back down to +z; the floor closes the loop. The
+    two top creases are a quarter-arc of radius `r` about `(±(hw−r), gh−r)`. `buildGoalNet` calls it
+    TWICE — once at the mouth (`goalHalf`, `goalH`), once at the rear plane — and sweeps quads between
+    the two, pairing them **index-for-index**, which is why `r` and `segs` are resolved by the CALLER
+    and passed in: computing them per-station would let the two profiles come back with different
+    point counts on a clamp boundary and the sweep would shear.
+  - **`r=0` reproduces the old geometry exactly** (P=4: side, roof, side, floor) — that branch exists
+    so the bevel is a true off-switch, not an approximation of one.
+  - **2 draw calls per goal, was 5.** All swept panels merge into one geometry, the back cap into
+    another (the rear profile is convex, so a fan off point 0 triangulates it). Verts are NOT shared
+    between quads — each carries its own UV origin, and that also keeps normals flat per face as
+    before. `bigGoalUpdate`'s taper is untouched: it walks any `userData.base` array generically by
+    local x/z, which `netGeo` still stamps.
+  - **UV detail that matters if you retune:** `u` accumulates the REAL profile length (`/cell`) rather
+    than resetting per panel, so the net flows continuously round the bevel with no seam AND the short
+    arc facets don't get a stretched full cell each (the old `Math.max(1,round(len/cell))` would have
+    given every ~0.7u facet a whole cell). `v` is a single shared sweep depth for the same reason —
+    per-panel depth would let two panels disagree along the edge they share.
+  - **Cosmetic only.** `goalFrameCollide` is analytic (flat roof plane at `goalH`, posts at
+    `goalHalf`), so nothing about physics changes — but a ball resting on the roof within `r` of the
+    side now floats slightly off the visual net. Invisible at `r:1.8` against `goalHalf:11`; it's the
+    thing to watch if you push `r` hard.
+  - Tuning: `CONFIG.goalNet.bevel.r` (1.8, auto-clamped to half the mouth half-width / half the goal
+    height) and `.segs` (4; 1 = a flat chamfer). `cell` (1.6) and `backInset` (0.98) were hardcoded
+    magic numbers inside `netQuad`/the corner vectors and are now knobs too.
+  Verified by re-read (sandbox wouldn't boot).
+- **Dribble action (`r.act='dribble'`) + PASSING** (`CONFIG.ai.dribble` incl. nested `pass`,
+  `CONFIG.ai.passShot`, `js/ai.js`, `js/rods.js`, `js/physics.js`, `js/stats.js`, `js/world.js`,
+  `js/debug.js`). Fixes two things that made attacking play read as pinball: **the ball ping-ponging
+  between two rods**, and **wingers hammering the end wall instead of moving central or laying it off**.
+  - **Why it happened.** `canKick` fires at ANY reachable ball (`overFoot||inFront`) whether or not a
+    shot is on, so a covered rod pokes it straight back into the row opposite. And `gapAim` only picks
+    WHERE IN THE MOUTH to aim **from wherever the ball already is** — nothing ever asked "would I have
+    a better shot if the BALL were more central?". Out wide every lane is a narrow diagonal, so the
+    widest is still bad, and `aimAssist` bends the strike into it. `holdShot` kept possession for up to
+    2.5s but never MOVED, so a covered winger stood still and then fired anyway. The trap's CARRY was
+    the only thing that repositioned a held ball, and its window (`back −5.8..front 1.4`) never overlaps
+    `inFront` (2..6.3), so a ball arriving from the front was poked before it could ever be a candidate.
+  - **IT IS EXPLICITLY NOT A TRAP** (owner call, and the mechanics follow from it). **No angle.** The
+    action appears nowhere in `updateRods`' angle chain, so the rod keeps the ORDINARY REST angle and
+    the men stay DOWN — which is the posture the ball is actually sitting at when this comes up ("the
+    ball is at their feet when they are lowered, and good control should let them slide to a better
+    line"). It is also the one case the trap could never serve: at `trap.angle −0.5` the foot box
+    centre sits ~3u behind the rod and off the floor, so a ball resting at a lowered boot gets shoved
+    away rather than settled. All the action overrides is the CONTACT — `holdGrip 0.30`, a nudge with
+    visible slip, against the trap's 0.55 weld and a passive touch's ~0.08 — plus `r.target`/`r.aiMan`
+    while it works. It ends with an **ORDINARY swing** (`kickRod(r)`), not a scoop: the ball is already
+    in the normal strike zone with the men down, so the normal curve is the right one.
+  - **Roles `['ATT','MID','DEF']`.** DEF is in deliberately — a defender's job here is to work the ball
+    past the opposing ATTACK row instead of belting it into them. `ownGoalGuard:14` is what keeps that
+    honest (the DEF row sits ~22.5 from its own line, so it can work the ball; nothing dribbles in the
+    six-yard box). GK never dribbles.
+  - **`outletClr` is what makes one action serve both ends of the pitch** — "how good is my way forward
+    if the ball were at z". For an **ATT** that's `min(fwdClr, shotEval)`: the goal is the next thing in
+    front, so the way forward IS a shooting lane. For **everyone else** it's `fwdClr` alone — the z-gap
+    past the nearest opposing ROW. Using `shotEval` from deep would answer with a uniformly awful number
+    for every candidate z (11 opposing men across 80 units): noise, not a gradient, so the scan would
+    have been driven entirely by `centrePull` and a defender would just walk the ball to the middle.
+  - **Target choice is the winger fix**: `dribTarget` scores candidate ball-z's across the dribbling
+    man's own reach by `outletClr` **+ `centrePull`·(how much closer to centre) − `travelCost`·(distance)`.
+    From wide, nothing scores well so the centre term decides and the winger cuts infield; from a decent
+    central spot the outlet term dominates and the target lands where the ball already is — which
+    `minGain` then reads as "nothing to gain", and the rod just plays it.
+  - **THE WINDOW IS GEOMETRY, NOT TASTE.** Derived at the REST angle (a=0), which is this action's
+    posture — contrast `trap.back/front`, derived at its −0.5 pin. At rest the box centre is `+0.40`
+    dir-relative and `y=1.85`, i.e. *already dead level with a ball centre at 1.9* (that's why no pin
+    angle is needed or wanted), with x half-reach 2.90 → contact possible for `rel ∈ −2.50..+3.30`,
+    hence `back −2.2 / front 3.0` ≈ `overFoot`. An earlier cut used `front:4.4` and would have had the
+    rod sliding about beside a ball ~4u away that it was not touching, until `abortT`.
+  - **Priority: dribble BEATS trap**, even though its block sits below trap's in the file. Their windows
+    overlap and for a ball already settled at the feet the dribble is better (works from the resting
+    posture the ball is in, scores a POSITION not just a lane, can pass). `dribFirst` in the trap's
+    entry does the deferral, and includes `(dribEvT<=0)` so it lasts exactly as long as the dribble's
+    FIRST REFUSAL: scan, decline, and the next frame trap picks the ball up as it always did. **No ball
+    falls between the two actions** — that gap is the thing to check if you retune either window.
+  - **Release squares up.** When a release is wanted (`want`) but the ball isn't `aligned`, the carry
+    lead drops to 0 and the man aims dead at the ball, so alignment converges instead of the action
+    running to `abortT` mid-push. The release itself uses the NORMAL `aligned` test, not the looser
+    `alignZ 2.2` the control runs on — pushing a ball sideways needs less precision than striking it.
+  - **Passing.** `passEval` scores every live man of each teammate rod ahead on `clr` (can the ball even
+    reach him — `lineClr` against `laneObs`) + `onward` (`shotEval` from HIS position) − distance. Fires
+    from two places: the dribble's release, and — via `pass.onKick` — a NORMAL swing whose lane is
+    covered, so build-up happens even when there was no time to take the ball down. Executed as
+    `kickRod(r,'pass',{x,z})`; `aimAssist` bends at the RECEIVER instead of the goal with its own larger
+    bend/cone and a much lower `assistMinVX` (a pass is slower than a shot, so the shot's gate of 20
+    would have skipped it entirely). Note the 1-2-5-3 interleaving means **a same-team pass lane never
+    contains our own men** — exactly one opposing rod sits between any two same-team rods.
+  - **`noPoke`** widens `holdShot` to the `inFront` window for a dribbling role with a covered shot: the
+    full-stretch poke is what fires the ball back up the table, and the ball has to be ALLOWED to reach
+    the feet before the dribble can take it.
+  - **`pressX` has a minimum useful value.** The release-under-pressure test was first written at 9 and
+    was PERMANENTLY FALSE: rods are 15 apart and this window keeps the ball within ~3 of its own rod, so
+    the ball is never closer than ~12 to an opposing rod. 13 is the smallest number that means anything.
+    Worth remembering for any future "is an opponent near the ball in x" test.
+  - Plumbing: `kickStyleCfg(r)` and `holdCfg(r)` (rods.js) replace the scattered
+    `kickStyle==='trapShot'?…` / `act==='trap'&&kickT<0` tests — a new kick style or holding action is
+    now a config block plus one line. `kickRod` gained an `aimAt` param (cleared per swing, and on swing
+    completion in `updateRods`, so no stale aim target can leak into a later contact). `shotEval` gained
+    an optional precomputed `obs` (identical for every sampled z), which is what makes the 9-sample
+    `dribTarget` scan affordable; both it and the pass scan are cadence-gated (`reEval` / `pass.every`).
+  - Debug: **Dribble** AI panel layer (violet `#7a5cff`) — trigger band per eligible rod, hot while
+    dribbling, plus a live disc at the committed target z and a line to the pass receiver. Kick-log
+    lines `ACT:dribble`, `DRIB-HIT`/`DRIB-PASS` (carrying which reason fired), `DRIB-END`, `PASS`.
+  - `dribble.on:false` / `pass.on:false` restore the old behaviour exactly.
+  - **Crash fixed during this work, worth knowing the shape of:** `goalDist`/`ownGx` were declared in
+    the trap preamble and I removed them intending to hoist them above the dribble block, then took a
+    different approach (`dribFirst`) and never re-added them — `ReferenceError: goalDist is not defined`
+    on the first AI frame. They now live with `relReal`/`speed`/`approach`, which is where any value
+    read by more than one action block belongs.
+  Verified by re-read (sandbox wouldn't boot). NOT tuned against live play yet — `centrePull` (0.45) is
+  strong enough that a wide man will essentially always cut in; drop it toward 0.2 if that reads as
+  over-eager. `pass.bias` (0.9) is the shoot-vs-pass dial, and `holdGrip` (0.30) is how sticky the
+  control feels — raise it if the ball squirts away as they slide, drop it if the ball looks glued on.
+
 ### 2026-07-27
 - **Power-up pickups render from GLB models** (`CONFIG.powerups`, `js/models.js`, `js/powerups.js`,
   `js/fx.js`, `js/state.js`, `js/main.js`). The floating pickup was a procedural octahedron + halo

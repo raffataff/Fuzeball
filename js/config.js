@@ -67,6 +67,26 @@ const CONFIG = {
  /* ---- table geometry ------------------------------------------------- */
  table:{ L:120, W:68, wallH:10, goalHalf:11, goalH:10.2, goalDepth:9 },
 
+ /* ---- procedural goal net shape ---------------------------------------
+    The net (world.js buildGoalNet) is ONE cross-section swept from the goal line
+    back to the rear plane, so its silhouette is data rather than five hard-coded
+    quads. `bevel` rounds the two TOP SIDE CREASES — where the roof meets each side
+    panel — so the net's shoulders echo the frame's rounded post/crossbar joint
+    instead of meeting at a bare 90°.
+      r     how far the round bites into the roof (in z) and down the side (in y),
+            in world units. 0 = the old hard corner. Auto-clamped to half the mouth
+            half-width and half the goal height, so it can't invert on a tight goal.
+      segs  arc segments per crease. 1 = a flat chamfer, 3-5 reads round; the net
+            texture hides faceting long before more triangles are worth it.
+    COSMETIC ONLY — physics keeps its flat roof plane at goalH (goalFrameCollide),
+    so with a large r a ball resting on the roof floats just off the visual net
+    within r of the side. Keep r well under goalHalf and it's invisible.
+      cell        net square size in world units (UV tiling; smaller = finer mesh).
+      backInset   rear plane width AND depth as a fraction of the mouth — keeps the
+                  net inside the wall gap behind the goal.
+    ---------------------------------------------------------------------- */
+ goalNet:{ bevel:{ r:1.8, segs:4 }, cell:1.6, backInset:0.98 },
+
  /* ---- table registry ---------------------------------------------------- */
  // Each entry is ONE selectable table SHAPE. `folder` is its asset folder;
  // `collision` picks the physics shell — 'flat' = the classic box walls in
@@ -161,7 +181,7 @@ const CONFIG = {
                       // vertical walls meeting the flat floor, classic-table style. Raise it (keep
                       // ≤5.5) for a rounded Rocket-League bowl where the ball rides up the wall;
                       // above ~5.5 the ball hugging the wall sits too high for feet at max rod slide.
-   postR:8,           // smooth-union radius where the crease/walls blend into the goal mouth
+   postR:4,           // smooth-union radius where the crease/walls blend into the goal mouth
    mouthIn:8,         // how far the goal cavity punches inward past the goal line (opens the mouth)
    bigGoalReach:20,   // big-goal widen: x-distance IN FRONT of the goal line over which the mouth
                       //   widen fades to 0 (behind the line it's full). ~cornerR+mouthIn covers the
@@ -243,7 +263,7 @@ physics:{
 kick:{
    // swing-angle curve keyframes (see updateRods): time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.055,  strikeA:1.2,     // strike ramp end / peak forward angle
+   strike:0.055,  strikeA:1.1,     // strike ramp end / peak forward angle
    hold:0.25,                     // hold peak until this time
    drop:0.32,                     // fully returned by this time
    raiseA:-1.6, raiseLerp:18, dropLerp:6, // lift-men angle + settle rates
@@ -389,8 +409,8 @@ ai:{
       // steal a ball we are holding.
       back:-5.8,
       front:1.4,
-      maxVX:45,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
-      maxSpeed:45,        // total ball speed cap for attempting/keeping a trap
+      maxVX:55,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
+      maxSpeed:55,        // total ball speed cap for attempting/keeping a trap
       alignZ:1.1,         // z-alignment (nearest man) needed to commit to the trap (matches the general align tolerances)
       gkReach:6,          // GK-only: also enter the trap when the ball is within this far BEYOND
                         //   the keeper's z-slide band (early-detect a ball drifting back toward a
@@ -473,6 +493,159 @@ ai:{
                                     //   used the passive `rest` instead of restPower.
       restPower:0.8,                // big pop in the power window — the reward for controlling the ball
       rest:0                      // heftier passive touch outside the window
+   },
+   // --- dribble action (r.act='dribble') — a rod with the ball AT ITS FEET, MEN DOWN AT REST, and
+   //     no way forward SLIDES the ball to a better line instead of hitting it into the row opposite.
+   //     This is the fix for the two things that made play read as a pinball table:
+   //       • the ball ping-ponging between two rods, because the kick gate fires at ANY ball in
+   //         reach (overFoot||inFront) whether or not there is anywhere to hit it;
+   //       • players hammering the end wall / the man in front of them, because the aim logic only
+   //         ever chose WHERE TO AIM FROM WHERE THE BALL ALREADY IS — nothing asked "would I have a
+   //         better line if the BALL were somewhere else?".
+   //
+   //     THIS IS NOT A TRAP, and the difference is the whole design:
+   //       • NO ANGLE. The trap rotates the rod to a pin posture and holds the ball under a tilted
+   //         boot. The dribble touches NOTHING in updateRods — the rod stays at the ordinary REST
+   //         angle, men down. That is precisely the situation the owner described: the ball is at
+   //         the feet of a lowered row, and good CONTROL should let the row slide it to a better
+   //         line. A ball at a resting boot is also the one thing the trap could never hold (its
+   //         pin angle sits the box too high and shoves the ball away), which is why this needed to
+   //         be its own action rather than a wider trap window.
+   //       • The contact is a NUDGE, not a pin: holdGrip 0.30 against the trap's 0.55 (and the
+   //         passive touch's ~0.08). The ball is dragged along by the boot with visible slip — it
+   //         is being dribbled, not carried welded to the foot.
+   //       • It ends with an ORDINARY kick or a pass, not a scoop. The ball is already sitting in
+   //         the normal strike zone with the men down, so the normal swing is exactly right.
+   //     Debug: 'Dribble' layer in the AI panel (violet) — trigger band, carry target, pass line.
+   //     on:false restores the old behaviour exactly. ---
+   dribble:{
+      on:true,
+      roles:['ATT','MID','DEF'],  // DEF included deliberately: a defender's job here is to work the
+                        //   ball past the opposing ATTACK row rather than belt it into them (see
+                        //   outletClr in ai.js — for a non-attacker the score IS "can I get past the
+                        //   row in front"). ownGoalGuard below is what keeps that honest. NOT 'GK'.
+      iqGate:true,        // only rods whose iq roll passed this beat try it (DIFFS.iq × the iq stat).
+                        //   false = every eligible rod dribbles, which reads as uniformly clever.
+      // CONTROL WINDOW (dir-relative x off the rod). These are NOT free numbers — outside them the
+      // boot cannot touch the ball at all, and the rod would slide about next to a ball it isn't
+      // moving until abortT. Derivation AT THE REST ANGLE (a=0), which is the posture this action
+      // uses — contrast trap.back/front, which are derived at its −0.5 pin:
+      //   foot base   fy = ROD_H − ARM = 1.20,  fx = 0 off the rod
+      //   box centre  bcx = fx + offy·cos(a) = +0.40 (dir-relative),  bcy = 1.20 + 0.65 = 1.85
+      //               …i.e. dead level with a ball centre at BALL_R 1.9. A resting boot is already
+      //               at ball height; that is why no pin angle is needed or wanted.
+      //   world x half-reach = |footBox.x·sin(a)| + |footBox.y·cos(a)| + BALL_R·footBoxReach = 2.90
+      // …so contact is possible for rel ∈ −2.50 .. +3.30. Stay inside it.
+      back:-2.2,
+      front:3.5,          // this window is very nearly overFoot (−0.8..3.6) on purpose: these are
+                        //   exactly the balls the rod would otherwise have hit straight forward.
+      alignZ:2.2,        // z-distance (nearest man) within which the ball counts as CONTROLLABLE.
+                        //   Looser than the strike tolerances (alignSlow 1.2) because pushing a ball
+                        //   sideways needs less precision than striking it — but keep it under the
+                        //   boot's z reach (footBox.z + BALL_R ≈ 3.25). The RELEASE still waits for
+                        //   the normal `aligned` test, so a sloppy contact can't produce a shot.
+      maxSpeed:48,        // ball must be slower than this to be brought under control at all
+      minApproach:-8,     // dir-relative closing-speed window. A ball running AWAY faster than
+      maxApproach:22,     //   |minApproach| is gone; one arriving faster than maxApproach won't settle.
+      ownGoalGuard:14,    // never start (or keep) a dribble within this x-distance of our OWN goal line.
+                        //   Sized so the DEF row (~22.5 out) CAN work the ball, but nothing dribbles
+                        //   in the six-yard box. Raise it if defenders lose the ball somewhere fatal.
+      // CONTACT OVERRIDE while r.act==='dribble' (read by collideRod, both passes, via holdCfg).
+      // Same mechanism as trap.holdRest/holdGrip, deliberately much lighter — see the note above.
+      holdRest:0,         // absorbing, so the ball doesn't rebound off the boot as we work it
+      holdGrip:0.50,      // fraction of the FOOT's velocity lerped into the ball per contact. 0.55 (the
+                        //   trap) reads as welded; ~0.08 (a passive touch) means the rod slides out
+                        //   from under it. 0.30 drags it along with visible slip = a dribble.
+      holdZ:2.9,          // z-distance from the dribbling man above which contact is LOST and the action
+                        //   released (just under the boot's real z reach, ≈3.25)
+      carryLead:1.2,      // how far past the ball (z) the man aims each frame while pushing it. Must stay
+                        //   well under that z reach or the man simply walks off the ball.
+      carryMult:0.8,      // rod slide-speed multiplier while dribbling. Higher than the trap's 0.5 — this
+                        //   is a player moving the ball to a better line, not shepherding it.
+      slideMax:16,        // CUMULATIVE z travel cap from where control was taken. The man's own maxOff
+                        //   caps it harder on a 5-man rod (±6.2) than on a 3-man ATT (±11.5).
+      // TARGET SCORING (see dribTarget in ai.js). score = outletClr + centrePull·(how much closer to
+      // centre) − travelCost·(distance to get there), where outletClr is "how good is my way forward
+      // if the ball were here" — the goal-mouth lanes for an ATT, and for everyone else the z-gap past
+      // the opposing row directly in front.
+      samples:5,          // candidate ball-z positions scanned across the man's reachable range
+      range:16,           // …spanning at most this far either side of the ball
+      centrePull:0.45,    // weight on getting central. THIS is the winger fix — raise it and wide players
+                        //   cut inside harder; 0 = pure gap-hunting (they'll shuffle in place out wide).
+      travelCost:0.10,    // penalty per unit travelled — stops a marginal gain triggering a long walk
+      minGain:2.5,        // don't enter at all unless the best target is at least this far from the ball.
+                        //   Below it there's nothing to gain and the rod should just play it.
+      retargetDead:1.5,   // re-evaluated target must move more than this to be adopted (anti-dither)
+      reEval:0.25,        // seconds between target re-evaluations (also gates the entry scan — the cost
+                        //   control on the sampled scan, which is the expensive part)
+      // RELEASE. Whichever fires first: the way forward opens, we arrive, we're closed down, time's up.
+      coveredClr:1.6,     // entry gate: only dribble when the CURRENT outletClr is below this, i.e. there
+                        //   genuinely isn't a way forward. Bigger = dribbles even from decent positions.
+      wideZ:14,           // …or when the ball is at least this far off centre in z, whatever the gaps say.
+                        //   The wall-blasting winger: the lane can read 'open' and still be a bad angle.
+      lineClear:2.4,      // release and PLAY IT as soon as outletClr from the ball's live position clears
+                        //   by this much. Should sit above coveredClr or entry and exit fight.
+      arrive:1.2,         // …or once the ball is within this of the committed target z
+      holdT:2.2,          // …or after this long dribbling (must stay under deadball.stallT 3.6)
+      pressX:13,          // CLOSED DOWN: an opposing man within this x AND pressZ z of the ball forces an
+      pressZ:3.2,         //   immediate release — don't keep working it while the row in front lines up
+                        //   on us. MIND THE SCALE: rods are 15 apart and this window keeps the ball
+                        //   within ~3 of our OWN rod, so the ball is never closer than ~12 to an
+                        //   opposing rod. Anything under ~12 here makes the test permanently FALSE
+                        //   (that's what 9 did); 13 means "the ball has been worked to the front of
+                        //   my window and a man over there is squared up on it".
+      abortT:2.8,         // hard safety valve on the whole action (also under stallT)
+      cd:1.2,             // re-entry lockout after any dribble ends — stops dribble/kick trading the rod
+      noPoke:true,        // ALSO suppress the full-stretch inFront poke for a dribbling role with no way
+                        //   forward, so the ball is allowed to arrive at the feet where this action can
+                        //   take it. This is the direct fix for the back-and-forth ping-pong; false =
+                        //   old behaviour (hit anything in reach, dribble only what survives that).
+      // --- PASS. Instead of shooting a covered shot, give it to a teammate rod ahead who has a
+      //     better one. Scored per live man of each rod ahead: the lane from the ball TO him
+      //     (clear — can the pass even get there) plus the shot he'd have on receiving it
+      //     (onward), minus distance. Executed as a soft `passShot` kick with aim-assist bent at
+      //     the receiver instead of the goal (see aimAssist in stats.js). ---
+      pass:{
+         on:true,
+         roles:['DEF','MID','ATT'],  // who may pass. WIDER than the dribble roles on purpose — a defender
+                              //   passing forward instead of hoofing it into the row opposite is
+                              //   exactly what we want; it's only CARRYING the ball it shouldn't do.
+         minAhead:10,         // receiver must be at least this far ahead in x (rods are 15 apart, so this
+                              //   means the next row up, never a square ball across our own line)
+         maxAhead:34,         // …and at most this far (beyond ~2 rows it's a hopeful punt, not a pass)
+         minClear:1.8,        // the lane to him must clear the opposing men by this much or it's not on
+         wClear:1.0,          // scoring weights: can the pass GET there…
+         wOnward:0.9,         //   …vs how good HIS shot would be once it arrives
+         wDist:0.05,          //   …minus a mild preference for the nearer option
+         bias:0.9,            // a pass must beat the current shot's clearance by this margin to be chosen.
+                              //   Raise it to make the AI shoot-first, drop toward 0 for a passing side.
+         shotBias:1.0,        // multiplier on the shot's clearance in that comparison (>1 = shoot-happy)
+         onKick:true,         // ALSO redirect a NORMAL kick into a pass when the shot is covered — so
+                              //   build-up play happens even when no dribble was needed/possible.
+         onKickClr:1.2,       // …only when the best lane clears by less than this (a covered shot)
+         every:0.2,           // seconds between pass evaluations per rod (cached on r.passEv; the scan is
+                              //   the priciest thing in the AI, so don't run it per step)
+         assist:0.16,         // aim-assist bend (rad) toward the receiver. Bigger than the shot assist
+                              //   (assistMax .10): a pass is a deliberate, aimed action.
+         assistCone:1.1,      // …applied only if the ball is already leaving within this angle of him
+         assistMinVX:5        // …and moving forward at least this fast (a pass is slower than a shot, so
+                              //   the shot gate of 20 would skip it entirely)
+      }
+   },
+   // --- pass kick: a deliberately SOFT release used by the dribble/pass decision. Same curve shape
+   //     as trapShot but roughly half the angular rate, because a pass only has to travel ~15 units
+   //     to the next row — a full-power strike arrives faster than the receiving rod can react and
+   //     just rebounds off it, which is the problem passing exists to solve. RATE is again the number
+   //     that matters: 1.2 rad over 0.12s ≈ 10 rad/s against a normal swing's ~21.8. ---
+   passShot:{
+      on:true,
+      windup:0.08,  windupA:-0.35,  // token pull-back — the ball is already at the boot
+      strike:0.20,  strikeA:0.85,   // gentle forward sweep (1.2 rad over 0.12s ≈ 10 rad/s)
+      hold:0.28,                    // hold peak
+      drop:0.42,                    // return to neutral
+      powFrom:0.08, powTo:0.20,     // window covers the contact (a pinned ball contacts immediately)
+      restPower:0.35,               // modest pop — weight of pass, not a shot
+      rest:0
    },
    // --- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
    //     thresholds. A slow, sideways ball loiters in this x-band behind the rod but isn't far
@@ -622,7 +795,7 @@ ai:{
       on:true,
       engage:5.5,         // line-block only while the ball is at least this far in FRONT (dir-rel x); inside
                         //   this the ball is in kicking range and the drop/clear path owns it
-      lineBias:0.9,       // 1 = sit exactly on the ball→own-goal-centre line; 0 = track ball z (old behaviour)
+      lineBias:0.5,       // 1 = sit exactly on the ball→own-goal-centre line; 0 = track ball z (old behaviour)
       dumbBias:0.45       // a low-iq rod commits only this fraction toward the line (leaves gaps → skill spread)
    },
    alignSlow:1.2, alignFast:1.25,             // z-alignment tolerance — kept just INSIDE the foot's true z-reach
@@ -642,7 +815,7 @@ ai:{
    slowSpeed:35,                              // ball speed under this counts as a dead-ball (be eager)
    cdSlow:[1,2.5], cdFast:[0.5,1.5],       // cooldown random range (× DIFFS.cd). Slow-ball cd raised so a missed
                                                 //   swing at a dead ball can't re-fire twice a second.
-   errEvery:[0.7,3.],                        // how often a fresh wandering aim-error target is rolled (s)
+   errEvery:[1.7,4.],                        // how often a fresh wandering aim-error target is rolled (s)
    
    // --- two-hands + anti-jitter -----------------------------------------
    hands:3,                                   // rods per team that may actively move at once (like 2 human hands)
@@ -700,6 +873,7 @@ ai:{
       teamParts:['kit_stormer'],hairParts:[],
       explosionSrc:'assets/animations/stormer_explosion.glb'
    },
+
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.8,
@@ -707,15 +881,12 @@ ai:{
       teamParts:['kit_rocko', 'kit_rocko_badge' ],hairParts:[],
       explosionSrc:'assets/animations/rocko_explosion.glb'
    },
+
    // MEN
-   /*{id:'manFlash',name:'Zack',blurb:'Cocky but skilled',
-    src:'assets/fuzeball_manFlash.glb',scale:0.8,
-    teamParts:['kit_flash']
-   },*/
    {id:'manJerry',name:'Jerry',blurb:'Confident and cocky',
       src:'assets/fuzeball_ManJerry.glb',scale:0.8,
       mug:'assets/renders/render_jerry_mugshot.png',   
-      teamParts:['kit_jerry'],hairParts:['kit_jerry_hair'],
+      teamParts:['kit_jerry_new'],hairParts:['kit_jerry_hair_new'],
       explosionSrc:'assets/animations/jerry_explosion.glb'
    },
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
@@ -724,11 +895,7 @@ ai:{
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
-  /* {id:'manStumpy',name:'Stumpy',blurb:'Compact and aggressive',
-     src:'assets/fuzeball_manStumpy.glb',scale:0.8,
-     teamParts:['stumpy_body'],hairParts:['stumpy_hair'],
-       explosionSrc:'assets/animations/stumpy_explosion.glb'
-    },*/
+  
    // WOMEN
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
       src:'assets/fuzeball_womanMaria.glb',scale:0.8,
@@ -742,11 +909,17 @@ ai:{
       teamParts:['kit_Kimi'],hairParts:[ 'kit_Kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
-   {id:'womanTalia',name:'Talia',blurb:'Fierce and funny',
+   {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
       src:'assets/fuzeball_womanTalia.glb',scale:0.8,
       mug:'assets/renders/render_talia_mugshot.png',   
       teamParts:['kit_talia'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
+      },
+   {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
+      src:'assets/fuzeball_womanTanya.glb',scale:0.8,
+      mug:'assets/renders/render_tanya_mugshot.png',   
+      teamParts:['kit_tanya'],hairParts:[ 'kit_tanya_hair' ],
+      explosionSrc:'assets/animations/tanya_explosion.glb'   
       },      
    {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSasha.glb',scale:0.8,
@@ -754,12 +927,18 @@ ai:{
       teamParts:['kit_sasha'],hairParts:['kit_sasha_hair'],
       explosionSrc:'assets/animations/sasha_explosion.glb'
     },
-   {id:'womanAndroid',name:'JennyBot',blurb:'Quick and calculating',
+   {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
+      src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
+      mug:'assets/renders/render_zaneesh_mugshot.png',   
+      teamParts:['kit_zaneesh'],hairParts:['kit_zaneesh_hair'],
+      explosionSrc:'assets/animations/zaneesh_explosion.glb'
+    }, 
+   /*{id:'womanAndroid',name:'JennyBot',blurb:'Quick and calculating',
       src:'assets/fuzeball_womanAndroid.glb',scale:0.8,
       mug:'assets/renders/render_jennyBot_mugshot.png',
       teamParts:['woman_android'],hairParts:['woman_android_hair'],
       explosionSrc:'assets/animations/jennybot_explosion.glb'
-   },
+   },*/
    // ALIENS
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
@@ -1023,11 +1202,45 @@ ai:{
    // player is holding / spinning against a wall). Speed alone missed those, and resting on a foot
    // reset the old timer every frame (collideRod's S.still=0), delaying the whistle.
    moveEps:2,          // ball must roam a horizontal box wider than this (units) to count as "in play"
-   stallT:3.6,         // every ball boxed-in this long → whistle + re-drop them all
+   stallT:4.6,         // every ball boxed-in this long → whistle + re-drop them all
    wedgeT:2.2,         // multi-ball: one ball boxed-in this long → re-drop just it
    zoneMult:3,       // inside a table deadzone (CONFIG.tables[*].deadzones) the stuck-timer ticks
                        // this ×faster → the wait drops from stallT/wedgeT to ~stallT/zoneMult
                        // (2.6/2.4≈1.1s). 1 = no speed-up; higher = quicker re-drop in the pockets.
+   roofMult:3,       // same speed-up for a ball settled ON TOP OF THE GOAL. physics.js keeps a SOLID
+                       // net roof over the goal box (so a lob over the bar can't score), which means a
+                       // ball that comes to rest up there is unreachable by every rod — the same pure
+                       // dead air as a corner pocket, and it LOOKS more stuck because it's in plain
+                       // sight. Tested against the same box physics uses (behind the goal line, within
+                       // goalDepth, inside the live mouth width, above goalH), so it tracks the big-goal
+                       // widen automatically. 1 = no speed-up (wait the full stallT as before).
+   // Dead STRIPS between the rows. A rod's men only strike a band of x around their bar — a good way
+   // AHEAD on the swing, barely anything behind — so between two rows there's a lane of pitch neither
+   // can play, and a ball that stops in one sits there for the full stallT while both teams look at
+   // it. Same "unreachable, so stop waiting" case as a corner pocket, just in open play.
+   //   ONE ENTRY PER GAP, as a plain x range in world units — nothing derives these, so widen, narrow,
+   //   shift or delete any of them freely and the timer + the debug overlay both follow. Rods sit at
+   //   ±7.5 / ±22.5 / ±37.5 / ±52.5, so each lane lives inside a 15u gap; the comment on each says
+   //   which two rows it falls between. Lanes run the FULL pitch width (rods slide the whole way in z,
+   //   so the dead part is purely about x). Per-lane `mult` overrides the shared one below.
+   //   The three widths differ for a reason worth keeping in mind while tuning: two rows FACING each
+   //   other both swing into the gap and leave almost nothing; two rows of the SAME team leave a
+   //   medium lane (one strikes forward into it, the other only back-sweeps); two rows facing AWAY
+   //   leave the widest, since neither can swing into it at all.
+   rodGaps:{
+    on:true,
+    mult:2,   // timer speed-up inside a lane. Deliberately gentler than zoneMult — a corner pocket is
+                // hopeless, whereas a lane ball can still be nudged by a rod's raise-and-drop.
+    lanes:[
+     {x0:-46, x1:-44},   // red GK −52.5  ↔ red DEF −37.5   · same team
+     {x0:-31, x1:-29},   // red DEF −37.5 ↔ blue ATT −22.5  · facing each other
+     {x0:-17, x1:-13},   // blue ATT −22.5 ↔ red MID −7.5   · facing away
+     {x0:-1,  x1:1},     // red MID −7.5  ↔ blue MID 7.5    · facing each other
+     {x0:13,  x1:17},    // blue MID 7.5  ↔ red ATT 22.5    · facing away
+     {x0:29,  x1:31},    // red ATT 22.5  ↔ blue DEF 37.5   · facing each other
+     {x0:44,  x1:46}     // blue DEF 37.5 ↔ blue GK 52.5    · same team
+    ]
+   },
    redrop:{y:30,z:16,vel:30,  // fresh drop box + launch speed (x removed — now uses zones)
     zones:[                   // 3 face-off zones where both teams contest
      {x:-30,spread:5},       // def vs att  (between DEF -37.5 & ATT -22.5)

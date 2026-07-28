@@ -100,8 +100,8 @@ function memTex(n){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,shotLanes:false,sweetSpot:false,deadzones:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDeadzones=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
@@ -276,6 +276,7 @@ function buildAIPanel(){
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
     {key:'makeWay',label:'Make Way',col:'#ffa1f0'},
+    {key:'dribble',label:'Dribble',col:'#7a5cff'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
     {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'}
@@ -507,6 +508,28 @@ function buildDebug(){
   dbgMakeWay.push({mesh:m,rod:r,matDim:mwDim,matHot:mwHot});
  }
 
+ // dribble: the trigger band (x = dribble.back..front dir-relative — i.e. the STRIKE zone, which is
+ // the point: these are balls the rod would otherwise have poked forward — by the rod's full slide
+ // range in z), built only for rods in dribble.roles. Hot violet while that rod's r.act==='dribble'.
+ // Plus, per rod, a carry-TARGET disc at the committed r.dribZ and a line to the chosen pass
+ // receiver — both live, so the layer shows the decision as well as the region.
+ const DRD=AIC.dribble;
+ const drDim=dbgMat(0x7a5cff,.15),drHot=dbgMat(0x7a5cff,.5);
+ const drMark=dbgMat(0x7a5cff,.95),drPass=dbgMat(0x7a5cff,.9);
+ const drW=Math.max(.1,DRD.front-DRD.back);
+ for(const r of rods){
+  if(DRD.roles&&DRD.roles.indexOf(r.role)<0)continue;
+  const dir=r.team===0?1:-1;
+  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(drW,0.05,zMax-zMin||0.1),drDim);
+  m.position.set(r.x+(DRD.back+DRD.front)/2*dir,0.07,(zMin+zMax)/2);
+  m.visible=false;dbgAIGroup.add(m);
+  const mk=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.08,14),drMark);mk.visible=false;dbgAIGroup.add(mk);
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+  const ln=new THREE.Line(geo,drPass);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);
+  dbgDribble.push({mesh:m,mark:mk,line:ln,rod:r,matDim:drDim,matHot:drHot});
+ }
+
  // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
  const serveM=dbgMat(0xc299ff,.22);
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
@@ -526,15 +549,38 @@ function buildDebug(){
  // spanning xMin..F.L/2 by zMin..F.W/2. Static; goes hot red while a live ball sits inside a
  // pocket. updateAIVis hides boxes whose zone isn't in the CURRENT table (handles table swaps).
  const dzDim=dbgMat(0xff4d4d,.16),dzHot=dbgMat(0xff4d4d,.55);
+ // ONE height for every flat plate on this layer. Must clear the ACTIVE TABLE SKIN's field surface:
+ // a GLB pitch can sit a hair above y=0, which buries a decal at 0.05 — invisible mid-pitch (where
+ // the lanes are) while the corner plates, out past the slide range, still peek. Raise if a new skin
+ // hides them; it's a decal, so any small value still reads as flat on the floor.
+ const dzY=0.35;
  const dzList=(activeTable&&activeTable.deadzones)||[];
  for(const z of dzList){
   const w=F.L/2-z.xMin,d=F.W/2-z.zMin;
   for(const sx of [-1,1])for(const sz of [-1,1]){
    const m=new THREE.Mesh(new THREE.BoxGeometry(w,0.05,d),dzDim);
-   m.position.set(sx*(z.xMin+F.L/2)/2,0.05,sz*(z.zMin+F.W/2)/2);
+   m.position.set(sx*(z.xMin+F.L/2)/2,dzY,sz*(z.zMin+F.W/2)/2);
    m.visible=false;dbgAIGroup.add(m);
    dbgDeadzones.push({mesh:m,zone:z,sx,sz,matDim:dzDim,matHot:dzHot});
   }
+ }
+ // …plus the GOAL ROOF, on the same layer: goalFrameCollide keeps a solid top over each goal box, so
+ // a ball settled up there is unreachable too (CONFIG.deadball.roofMult). Plate at y=goalH over the
+ // box; drawn at the stock mouth width, so under 'big goal' the live zone is wider than the plate.
+ if(DEAD.roofMult>1)for(const sx of [-1,1]){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(F.goalDepth,0.05,F.goalHalf*2),dzDim);
+  m.position.set(sx*(F.L/2+F.goalDepth/2),F.goalH,0);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgDeadzones.push({mesh:m,zone:null,roof:true,sx,sz:0,matDim:dzDim,matHot:dzHot});
+ }
+ // …and the between-row lanes (CONFIG.deadball.rodGaps.lanes — strips neither adjacent row can swing
+ // at). Same flat plate as the corner pockets, full pitch width, straight off the config list so the
+ // overlay is literally what the timer reads.
+ for(const ln of rodGaps()){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(ln.x1-ln.x0,0.05,F.W),dzDim);
+  m.position.set((ln.x0+ln.x1)/2,dzY,0);
+  m.visible=false;dbgAIGroup.add(m);
+  dbgDeadzones.push({mesh:m,zone:null,band:ln,sx:0,sz:0,matDim:dzDim,matHot:dzHot});
  }
 
  // lowY: translucent horizontal plane at y = lowY (AI only kicks below this)
@@ -626,15 +672,20 @@ function updateAIVis(){
    for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
    for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
 
-   // deadzones: static corner pockets; only for the active table (hide any built for another
-   // table); hot red while a live ball actually sits inside that corner (matches deadzoneMult).
+   // deadzones: static corner pockets (only for the active table — hide any built for another) plus
+   // the two goal roofs and the between-row lanes, which are table-independent. Hot red while a live
+   // ball is actually inside. The roof test defers to deadzoneMult itself rather than restating its
+   // box, so the overlay can't drift from the timer it's meant to explain.
    {const cur=(activeTable&&activeTable.deadzones)||[];
    for(const dz of dbgDeadzones){
-    const vis=on&&dbgAIOpts.deadzones&&cur.indexOf(dz.zone)>=0;
+    const vis=!!(on&&dbgAIOpts.deadzones&&(dz.roof||dz.band||cur.indexOf(dz.zone)>=0));  // !! — dz.band is an ARRAY
     dz.mesh.visible=vis;if(!vis)continue;
     let hot=false;
     for(const b of S.balls){const p=b.m.position;
-     if(Math.sign(p.x)===dz.sx&&Math.sign(p.z)===dz.sz&&Math.abs(p.x)>dz.zone.xMin&&Math.abs(p.z)>dz.zone.zMin){hot=true;break;}}
+     const hit=dz.roof?(Math.sign(p.x)===dz.sx&&p.y>F.goalH&&deadzoneMult(p)>1)
+       :dz.band?(p.x>dz.band.x0&&p.x<dz.band.x1)
+       :(Math.sign(p.x)===dz.sx&&Math.sign(p.z)===dz.sz&&Math.abs(p.x)>dz.zone.xMin&&Math.abs(p.z)>dz.zone.zMin);
+     if(hit){hot=true;break;}}
     dz.mesh.material=hot?dz.matHot:dz.matDim;
    }}
 
@@ -681,6 +732,25 @@ function updateAIVis(){
    const vis=on&&dbgAIOpts.makeWay;
    mw.mesh.visible=vis;if(!vis)continue;
    mw.mesh.material=mw.rod.act==='lane'?mw.matHot:mw.matDim;
+  }
+
+  // dribble: static trigger band (hot violet while carrying) + the live decision — a disc at the
+  // committed carry target r.dribZ, and a line to the pass receiver the rod would pick right now.
+  for(const dr of dbgDribble){
+   const vis=on&&dbgAIOpts.dribble,r=dr.rod,carrying=r.act==='dribble';
+   dr.mesh.visible=vis;
+   if(!vis){dr.mark.visible=false;dr.line.visible=false;continue;}
+   dr.mesh.material=carrying?dr.matHot:dr.matDim;
+   dr.mark.visible=carrying;
+   if(carrying)dr.mark.position.set(r.x,0.09,r.dribZ);
+   const pk=r.passEv;                                   // last cached pass pick (dribble.pass.every)
+   const showP=carrying&&!!pk;
+   dr.line.visible=showP;
+   if(showP){
+    const pa=dr.line.geometry.attributes.position.array,mi=r.dribMan>=0?r.dribMan:0;
+    pa[0]=r.x;pa[1]=0.18;pa[2]=r.baseZ[mi]+r.offset;pa[3]=pk.x;pa[4]=0.18;pa[5]=pk.z;
+    dr.line.geometry.attributes.position.needsUpdate=true;
+   }
   }
 
   // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward

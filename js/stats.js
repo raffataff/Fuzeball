@@ -44,15 +44,24 @@ function aimAssist(b,r){
  // Decoupled from a hard accuracy gate: every rod gets a BASELINE bend (assistBase) so aiming
  // happens even with no build, and accuracy scales it up toward assistMax (and fades it toward 0
  // below base). Accuracy still matters — it just no longer switches aiming fully off at base.
+ // A PASS (r.passTo, set by kickRod for that one swing) retargets the whole thing: the aim point
+ // is a teammate rather than the goal mouth, and it gets its own — larger — bend, cone and speed
+ // gate from CONFIG.ai.dribble.pass. A pass is a deliberate, aimed action and travels slower than
+ // a shot, so the shot's assistMinVX (20) would skip it entirely.
+ const PS=CONFIG.ai.dribble.pass,pass=r.passTo||null;
  const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
- const a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);if(a<=0)return;
+ let a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
+ if(pass)a=Math.max(a,PS.assist);
+ if(a<=0)return;
  const dir=r.team===0?1:-1,v=b.v,p=b.m.position;
- if(v.x*dir<STC.assistMinVX)return;
- // aim at the rod's chosen gap when gap-aiming this frame, else the goal-mouth centre (z=0)
- const tz=(r.aimEv&&CONFIG.ai.gapAim.gap)?r.aimEv.best.tz:0;
- const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(tz-p.z,(dir*F.L/2-p.x)*dir);
+ if(v.x*dir<(pass?PS.assistMinVX:STC.assistMinVX))return;
+ // aim at the receiver on a pass; else the rod's chosen gap when gap-aiming this frame, else the
+ // goal-mouth centre (z=0). tx is the goal line in the non-pass case, exactly as before.
+ const tx=pass?pass.x:dir*F.L/2;
+ const tz=pass?pass.z:((r.aimEv&&CONFIG.ai.gapAim.gap)?r.aimEv.best.tz:0);
+ const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(tz-p.z,(tx-p.x)*dir);
  let da=want-cur;if(da>Math.PI)da-=2*Math.PI;else if(da<-Math.PI)da+=2*Math.PI;
- if(Math.abs(da)>STC.assistCone)return;
+ if(Math.abs(da)>(pass?PS.assistCone:STC.assistCone))return;
  const th=clamp(da,-a,a)*dir,cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
  v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
 }
