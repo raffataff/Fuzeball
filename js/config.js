@@ -570,10 +570,10 @@ ai:{
       // the opposing row directly in front.
       samples:5,          // candidate ball-z positions scanned across the man's reachable range
       range:16,           // …spanning at most this far either side of the ball
-      centrePull:0.45,    // weight on getting central. THIS is the winger fix — raise it and wide players
+      centrePull:0.65,    // weight on getting central. THIS is the winger fix — raise it and wide players
                         //   cut inside harder; 0 = pure gap-hunting (they'll shuffle in place out wide).
       travelCost:0.10,    // penalty per unit travelled — stops a marginal gain triggering a long walk
-      minGain:2.5,        // don't enter at all unless the best target is at least this far from the ball.
+      minGain:1.5,        // don't enter at all unless the best target is at least this far from the ball.
                         //   Below it there's nothing to gain and the rod should just play it.
       retargetDead:1.5,   // re-evaluated target must move more than this to be adopted (anti-dither)
       reEval:0.25,        // seconds between target re-evaluations (also gates the entry scan — the cost
@@ -746,7 +746,7 @@ ai:{
                         //   slide out of the z-lane only, men stay down.
       throughV:12,        // ball closing on us from behind faster than this = it has been struck; hold the
                         //   lane open until it has PASSED rather than releasing when the mate lets go.
-      release:-5.9,       // hand back to the normal path once the ball reaches this (dir-rel x). Sits 1.5u
+      release:-5.8,       // hand back to the normal path once the ball reaches this (dir-rel x). Sits 1.5u
                         //   ahead of `behind` so entry/exit can't ping-pong, and early enough that the men
                         //   are down again by the time a slow ball rolls into the overFoot zone (−0.8).
       passed:1.0,         // …but a struck ball (see throughV) holds the lane open until it is this far past
@@ -795,7 +795,7 @@ ai:{
       on:true,
       engage:5.5,         // line-block only while the ball is at least this far in FRONT (dir-rel x); inside
                         //   this the ball is in kicking range and the drop/clear path owns it
-      lineBias:0.5,       // 1 = sit exactly on the ball→own-goal-centre line; 0 = track ball z (old behaviour)
+      lineBias:1,       // 1 = sit exactly on the ball→own-goal-centre line; 0 = track ball z (old behaviour)
       dumbBias:0.45       // a low-iq rod commits only this fraction toward the line (leaves gaps → skill spread)
    },
    alignSlow:1.2, alignFast:1.25,             // z-alignment tolerance — kept just INSIDE the foot's true z-reach
