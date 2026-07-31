@@ -8,7 +8,7 @@
 // There is deliberately no `renderer` here any more — see the PRV block for why.
 const PV={on:false,ready:false,loadedId:null,team:0,spin:true,
  yaw:.5,pitch:0,dist:8,dragging:false,px:0,py:0,
- w:0,h:0,dpr:1,scene:null,camera:null,root:null,model:null,mats:[],
+ w:0,h:0,dpr:1,scene:null,camera:null,root:null,model:null,mats:[],hairMats:[],
  rim:null,platform:null,ringMesh:null,cache:{},cacheOrder:[],baseScale:1};
 
 /* Record a figurine template into the shared preview cache (PV.cache — used by the studio,
@@ -82,17 +82,18 @@ function initCustomize(){
 }
 
 /* ---- open / close ---- */
+/* Teardown hangs off the SCREEN, not off the Done button: Esc (input.js → backScreen) leaves
+   this screen without ever calling closeCustomize, and a turntable left running would keep
+   rendering through the shared preview context behind the menu. */
+SCREENS.customize.onHide=()=>{PV.on=false;refreshKitUI();};
 function openCustomize(team){
  if(team===0||team===1){PV.team=team;PV.yaw=team===0?cfg.redYaw:cfg.blueYaw;}
  try{Au.ui();}catch(e){}
- $('menu').classList.add('hidden');$('customize').classList.remove('hidden');
+ showScreen('customize');
  czSyncUI();
  requestAnimationFrame(()=>{pvInit();pvLoadModel();pvResize();PV.on=true;pvTick();});
 }
-function closeCustomize(){
- PV.on=false;refreshKitUI();
- $('customize').classList.add('hidden');$('menu').classList.remove('hidden');
-}
+function closeCustomize(){showScreen('menu');}   // onHide above does the stop/refresh
 
 /* Live kit summary in the menu's two-column Teams & Kits panel: figurine
    thumbnails, model caption, palette selection + team-tinted accents. */
@@ -252,7 +253,7 @@ function pvLoadModel(){
  const am=activeModel(PV.team);
  if(PV.loadedId===am.id&&PV.model)return;
  const show=src=>{
-  if(PV.model){PV.root.remove(PV.model);PV.model=null;PV.mats=[];}
+  if(PV.model){PV.root.remove(PV.model);PV.model=null;PV.mats=[];PV.hairMats=[];}
   const g=src.clone(true);
   let box=new THREE.Box3().setFromObject(g),size=new THREE.Vector3();box.getSize(size);
    PV.baseScale=3.4/(size.y||1);
@@ -261,8 +262,11 @@ function pvLoadModel(){
   const ctr=new THREE.Vector3();box.getCenter(ctr);
   g.position.x-=ctr.x;g.position.z-=ctr.z;g.position.y-=box.min.y;
   const teamParts=new Set(am.teamParts.map(s=>s.toLowerCase()));
+  const hairParts=new Set((am.hairParts||[]).map(s=>s.toLowerCase()));
+  const sw=CONFIG.playerModel.hairSwatches;
   g.traverse(ch=>{if(!ch.isMesh)return;const nm=ch.material.name.toLowerCase();
-   const cm=ch.material.clone();ch.material=cm;if(teamParts.has(nm))PV.mats.push(cm);});
+   const cm=ch.material.clone();ch.material=cm;if(teamParts.has(nm))PV.mats.push(cm);
+   else if(hairParts.has(nm)){PV.hairMats.push(cm);cm.color.set(sw[Math.floor(Math.random()*sw.length)]);}});
   PV.model=g;PV.loadedId=am.id;PV.root.add(g);pvApply();
  };
  if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);show(PV.cache[am.id]);return;}

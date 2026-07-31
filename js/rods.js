@@ -1,6 +1,7 @@
 'use strict';
 /* ================= rods ================= */
-function isUserRod(r){return S.userTeam>=0&&S.ctrlRods.length>0&&S.ctrlRods[S.ctrl]===r;}
+/* isUserRod/seatOf now live in js/seats.js — a rod is "the user's" when ANY seat is holding it,
+   not just when it matches one global index. */
 
 /* A figurine's meshes share materials across all men (teamMat / playerTeamMats).
    To fade a single man in on respawn we must give it its OWN material instances,
@@ -134,14 +135,17 @@ function updateRods(dt){
    r.angle=KICK.padAngleLerp>0?lerp(r.angle,r.padAngleTarget,Math.min(1,KICK.padAngleLerp*dt)):r.padAngleTarget;
   }else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
-   let ms=(isUserRod(r)?KICK.userSpeed*S.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
+   // Total Control's slide multiplier is per SEAT now (each pad has its own triggers), so it's
+   // read off whichever seat holds this rod rather than from one global.
+   const uSeat=seatOf(r);
+   let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
    // Carrying a held ball (trap or dribble) is a deliberate shuffle, not a slide: the boot can only
    // drag the ball as fast as the block's holdGrip transfers velocity to it, so a full-speed slide
    // just sheds it. holdCfg returns null mid-swing, so a release always slides at full speed.
    {const H=holdCfg(r);if(H)ms*=H.carryMult;}
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
-  if(isUserRod(r)){                                   // human hand: instant/responsive, speed-capped only
+  if(uSeat){                                          // human hand: instant/responsive, speed-capped only
    r.offset+=clamp(r.target-r.offset,-ms*dt,ms*dt);
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
    const want=clamp((r.target-r.offset)/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped

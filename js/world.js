@@ -18,7 +18,7 @@ let primLedMat=null;
 let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
 // glbGoalSplit: a single baked frame mesh that spans BOTH goals (e.g. an arena frame exported as one
 // object) can't scale per-side, so it's morphed vertex-wise — each vert widens by its own goal's mult.
-let rods=[],indicator,dropRing;
+let rods=[],indicators=[],dropRing;   // indicators: one held-rod marker per seat (fx.js drives them)
 let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
 let rodsDressedFor=null; // rod-set key the rods currently wear (reskinRods skips a no-op switch)
 let sprites=[],spriteTex,particles,pGeo,pData=[];
@@ -539,8 +539,16 @@ function buildFxPools(){
  particles.frustumCulled=false;scene.add(particles);
  dropRing=new THREE.Mesh(new THREE.RingGeometry(2,3.4,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,side:THREE.DoubleSide}));
  dropRing.rotation.x=-Math.PI/2;dropRing.position.y=.15;scene.add(dropRing);
- indicator=new THREE.Mesh(new THREE.ConeGeometry(1.7,3.4,4),new THREE.MeshBasicMaterial({color:0xffffff}));
- indicator.rotation.x=Math.PI;indicator.visible=false;scene.add(indicator);
+ // Held-rod markers — ONE PER SEAT (CONFIG.seats.max), so every human can find their own rod.
+ // Pre-allocated and resident like the fx light pool: a marker is only ever shown/hidden, never
+ // added to or removed from the scene. Geometry is shared (same cone); each needs its own
+ // material because each carries a different SEAT colour.
+ const indGeo=new THREE.ConeGeometry(1.7,3.4,4);
+ indicators=[];
+ for(let i=0;i<CONFIG.seats.max;i++){
+  const m=new THREE.Mesh(indGeo,new THREE.MeshBasicMaterial({color:0xffffff}));
+  m.rotation.x=Math.PI;m.visible=false;scene.add(m);indicators.push(m);
+ }
 }
 
 /* ===== fx light pool =====

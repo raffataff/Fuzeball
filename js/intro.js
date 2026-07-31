@@ -11,8 +11,8 @@ function introGameReady(){introReady=true;}
 (function(){
  const IN=CONFIG.intro,ov=$('intro');if(!ov)return;
  ov.dataset.live='1';                 // tells the loader failsafe we're in charge
- const menu=$('menu');
- const off=()=>{ov.remove();menu.classList.remove('introHide');};
+ const home=$('home');   // the landing screen — what the intro reveals, and what the logo morph aims at
+ const off=()=>{ov.remove();home.classList.remove('introHide');};
  if(!IN.on||matchMedia('(prefers-reduced-motion: reduce)').matches){off();return;}
  const stage=$('introStage'),cv=$('introFx'),ctx=cv.getContext('2d');
  const lw=$('introLogoWrap'),logo=$('introLogo'),gR=$('introGR'),gB=$('introGB'),
@@ -47,16 +47,16 @@ function introGameReady(){introReady=true;}
  function reveal(){
   if(revealing)return;revealing=true;
   loadEl.classList.remove('on');skipEl.classList.add('off');tag.classList.add('off');shine.classList.add('off');
-  /* morph the intro logo onto the menu logo's spot (measure BEFORE un-hiding) */
-  const tEl=menu.querySelector('.logo'),tr=tEl?tEl.getBoundingClientRect():null,lr=logo.getBoundingClientRect();
+  /* morph the intro logo onto the landing screen's logo spot (measure BEFORE un-hiding) */
+  const tEl=home.querySelector('.logo'),tr=tEl?tEl.getBoundingClientRect():null,lr=logo.getBoundingClientRect();
   if(tr&&tr.width>0&&lr.width>0){
    const s=tr.width/lr.width,dx=(tr.left+tr.width/2)-(lr.left+lr.width/2),dy=(tr.top+tr.height/2)-(lr.top+lr.height/2);
    lw.style.transform='translate(calc(-50% + '+dx.toFixed(1)+'px),calc(-50% + '+dy.toFixed(1)+'px)) scale('+s.toFixed(4)+')';
   }
   ov.classList.add('out');
-  menu.classList.remove('introHide');menu.classList.add('introIn');
+  home.classList.remove('introHide');home.classList.add('introIn');
   setTimeout(()=>{done=true;if(ov.parentNode)ov.remove();},900);
-  setTimeout(()=>menu.classList.remove('introIn'),2100); // stop entrance anims re-firing when the menu is re-shown later
+  setTimeout(()=>home.classList.remove('introIn'),2100); // stop entrance anims re-firing when home is re-shown later
   removeEventListener('keydown',skip);
  }
  function skip(){

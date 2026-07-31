@@ -35,8 +35,13 @@ function startMatchNow(mode,rodLockRole){
   if(!rods.length)return;   // main.js not parsed yet — swallow the click rather than start a rodless match
  }
  Au.init();Au.ui();
- S.mode=mode;S.userTeam=(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
- S.rodLockRole=rodLockRole||null;
+ // 'roster' = the Kick Off lobby's line-up (S.roster, js/roster.js). userTeam is the PRIMARY
+ // seat's team — it drives the camera/HUD tint and the handle-side flip, not per-player state —
+ // so with an empty roster it falls to -1 and the match is an AI-vs-AI spectate, same as 'ai'.
+ S.mode=mode;
+ S.userTeam=mode==='roster'?(S.roster.length?S.roster[0].team:-1)
+  :(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
+ S.rodLockRole=mode==='roster'?null:(rodLockRole||null);
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
@@ -62,17 +67,27 @@ function startMatchNow(mode,rodLockRole){
    else{const hs=mine?1:-1,C=rodCollar(r.maxOff);
     r.handle.position.z=hs*(C+CONFIG.rods.handleLen/2);
     r.collar.position.z=-hs*(C+CONFIG.rods.collarLen/2);}});
-  S.ctrlRods=S.userTeam<0?[]:rods.filter(r=>r.team===S.userTeam).sort((a,b)=>a.x-b.x);
- if(rodLockRole&&S.ctrlRods.length>1){
-  const lr=S.ctrlRods.find(r=>r.role===rodLockRole)||S.ctrlRods[0];
-  S.ctrlRods=[lr];
-  $('hint').innerHTML='▲ ▼ / mouse — slide<br>SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera';
- }else{
-  $('hint').innerHTML='◀ ▶ / Q E — switch rod &nbsp;·&nbsp; ▲ ▼ / mouse — slide<br>SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera';
- }
- S.ctrl=0;
- if(S.ctrlRods.length){const mi=S.ctrlRods.findIndex(r=>r.role==='MID');if(mi>=0)S.ctrl=mi;}
- $('menu').classList.add('hidden');$('league').classList.add('hidden');$('pause').classList.add('hidden');$('win').classList.add('hidden');
+  // SEATS (js/seats.js). The roster's specs become live seats here; every other entry point
+  // (league, training, the AI showdown) gets the single solo seat that holds every device, which
+  // is byte-identical to the old S.ctrl/S.ctrlRods singleton.
+  S.seats=mode==='roster'?S.roster.map(p=>makeSeat(p.team,p.devs,p.lockRole))
+   :S.userTeam<0?[]:[soloSeat(S.userTeam,rodLockRole)];
+  seatBindRods();
+  // The camera persists between matches, so a shot that was fine last game (a red-only end cam)
+  // may not be offerable now that blue has a player too — step off it rather than start there.
+  if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
+ // Rod-switch keys only make sense when somebody can actually switch (a locked seat has one rod).
+ $('hint').innerHTML=(S.seats.some(s=>s.rods.length>1)
+  ?'◀ ▶ / Q E — switch rod &nbsp;·&nbsp; ▲ ▼ / mouse — slide<br>'
+  :'▲ ▼ / mouse — slide<br>')
+  +'SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera';
+ // Remember where this match was launched from so quitting returns THERE: a quick match started
+ // on Kick Off goes back to Kick Off (rematch is one click), training started on home goes back
+ // to home. League/cup have their own return paths (lgReturn/cupReturn re-open the lobby with
+ // fresh content), so a bare quit out of one is sent home rather than to a stale lobby.
+ S.fromScreen=S.lg?'home':screenId();
+ hideScreens();                                                        // every registered screen down (js/screens.js)
+ $('pause').classList.add('hidden');$('win').classList.add('hidden');  // overlays aren't registered, so they're torn down by hand
  $('hud').classList.remove('hidden');
  $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
  setBallTag('classic');clearFxRail();   // rail must not carry tabs over from the previous match
@@ -172,8 +187,7 @@ function gotoMenu(){
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);
  S.lg=null;S.teamStats=null; // drop any league-match bridge (abandoned matches aren't recorded)
- $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');$('league').classList.add('hidden');
- $('menu').classList.remove('hidden');
- indicator.visible=false;dropRing.visible=false;$('count').style.display='none';
- layApply('menu'); // re-clamp the custom panel arrangement to the current window (js/layout.js)
+ $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');  // overlays — not in the screen registry
+ showScreen(S.fromScreen||'menu');   // back to the launching screen (see startMatchNow); also re-clamps a saved panel arrangement
+ indicators.forEach(m=>{m.visible=false;});dropRing.visible=false;$('count').style.display='none';
 }

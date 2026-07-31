@@ -182,13 +182,19 @@ function fxUpdate(rdt){
   dropRing.material.opacity=.35+Math.sin(S.time*12)*.25;
   const sc=1+fb.m.position.y*.05;dropRing.scale.set(sc,sc,1);}
  else dropRing.visible=false;
- if(S.userTeam>=0&&S.ctrlRods.length&&(S.phase==='play'||S.phase==='count'||S.phase==='pause')){
-  const r=S.ctrlRods[S.ctrl];
-  indicator.visible=true;
-  indicator.position.set(r.x,ROD_H+9+Math.sin(S.time*5)*.8,r.offset);
-  indicator.material.color.set(S.userTeam===0?cfg.redColor:cfg.blueColor);
-  indicator.rotation.y+=rdt*2;
- }else indicator.visible=false;
+ // Held-rod markers, one per seat, tinted by SEAT colour (seats.js) — two players on the same
+ // team share a kit colour, so the tint is the only thing telling their markers apart. The bob
+ // is phase-offset per seat as well, so two markers never rise and fall in lockstep.
+ const showInd=(S.phase==='play'||S.phase==='count'||S.phase==='pause');
+ for(let i=0;i<indicators.length;i++){
+  const m=indicators[i],s=showInd?S.seats[i]:null,r=s?seatRod(s):null;
+  if(!r){m.visible=false;continue;}
+  m.visible=true;
+  m.position.set(r.x,ROD_H+9+Math.sin(S.time*5+i*1.7)*.8,r.offset);
+  const c=seatCol(s);                                   // parsing a hex string per frame is the
+  if(m.userData.col!==c){m.userData.col=c;m.material.color.set(c);}  // only real cost here — cache it
+  m.rotation.y+=rdt*2;
+ }
  bigGoalUpdate(rdt);
 }
 /* Big-goal widen. goalFrames[i].scale.z is the already-lerped mouth multiplier (1..bigGoalMult)
@@ -228,6 +234,22 @@ function bigGoalUpdate(rdt){
  }
  if(typeof arenaMorphUpdate==='function')arenaMorphUpdate();        // curved arena shell (baked GLB) opens via SDF re-projection
 }
+/* Which team the camera may favour: the team holding EVERY human seat, or -1 when that's
+   ambiguous — players on both sides, or nobody. Shared-screen co-op has one camera, so with
+   humans at both ends the only fair answer is a neutral one. */
+function camTeamSide(){
+ if(!S.seats.length)return-1;
+ const t=S.seats[0].team;
+ for(let i=1;i<S.seats.length;i++)if(S.seats[i].team!==t)return-1;
+ return t;
+}
+function camModeOK(i){return camTeamSide()>=0||CAM.soloOnly.indexOf(i)<0;}
+/* V / pad-Y step. Skips shots that aren't offerable right now instead of landing on them and
+   leaving the player to press again. */
+function cycleCam(d){
+ const n=CAM.modes.length;
+ for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui();return;}}
+}
 function cameraUpdate(rdt){
  if(S.freeRoam){
   camera.rotation.order='YXZ';
@@ -249,14 +271,18 @@ function cameraUpdate(rdt){
  let bx=0;
  if(S.balls.length){for(const b of S.balls)bx+=b.m.position.x;bx/=S.balls.length;}
  const m=CAM.modes[S.camMode];
+ // End-anchored shots flip to the viewing team's end (see CONFIG.camera.sideModes). Only x and
+ // lookX mirror — height, depth and look-height are the same shot either way. The ball-follow
+ // offset is a WORLD offset and is deliberately not mirrored.
+ const mir=(camTeamSide()===1&&CAM.sideModes.indexOf(S.camMode)>=0)?-1:1;
  const fx=(S.camMode===1||S.camMode===3||S.camMode===4)?0:bx*CAM.follow;
  const k=Math.min(1,rdt*CAM.lerp);
- camera.position.x=lerp(camera.position.x,m[0]+fx,k);
+ camera.position.x=lerp(camera.position.x,m[0]*mir+fx,k);
  camera.position.y=lerp(camera.position.y,m[1],k);
  camera.position.z=lerp(camera.position.z,m[2],k);
  if(S.shake>0){S.shake=Math.max(0,S.shake-rdt*CAM.shakeDecay);
   camera.position.x+=rand(-1,1)*S.shake*CAM.shakeX;
   camera.position.y+=rand(-1,1)*S.shake*CAM.shakeY;}
- S.camLookX=lerp(S.camLookX,m[3]+bx*CAM.lookFollow,k);
+ S.camLookX=lerp(S.camLookX,m[3]*mir+bx*CAM.lookFollow,k);
  camera.lookAt(S.camLookX,m[4],m[5]);
 }

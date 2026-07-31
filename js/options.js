@@ -190,18 +190,24 @@ function optionsTick(){                                       // self-driven whi
  }
  optRAF=requestAnimationFrame(optionsTick);
 }
+/* Options is reachable from more than one place, so its back-target is written per open rather
+   than declared in the registry. The PAUSE route stays off the router entirely: #pause is an
+   overlay sitting on a LIVE match, so routing to it would leave the router's current screen
+   pointing at a menu that isn't coming back until gotoMenu. */
+SCREENS.options.onHide=()=>{if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}};
 function openOptions(from){
  optFrom=from||'menu';
- (optFrom==='pause'?$('pause'):$('menu')).classList.add('hidden');
  optRefLast=0;optRefAcc.length=0;   // fresh refresh sampling each open (drop the stale gap since last close)
  syncOptionsUI();tcSwingReset();
- $('options').classList.remove('hidden');Au.ui();
+ if(optFrom==='pause'){$('pause').classList.add('hidden');$('options').classList.remove('hidden');}
+ else{SCREENS.options.back=optFrom;showScreen('options');}
+ Au.ui();
  if(!optRAF)optRAF=requestAnimationFrame(optionsTick);
 }
 function closeOptions(){
- $('options').classList.add('hidden');
- if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}
- (optFrom==='pause'?$('pause'):$('menu')).classList.remove('hidden');Au.ui();
+ if(optFrom==='pause'){$('options').classList.add('hidden');if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}$('pause').classList.remove('hidden');}
+ else showScreen(SCREENS.options.back||'menu');   // onHide above kills the rAF
+ Au.ui();
 }
 function bindOptions(){
  buildOptBtns();

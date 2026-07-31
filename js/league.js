@@ -262,30 +262,28 @@ function lgOrder(){const a=LG.teams.map((t,i)=>({i,t}));a.sort((x,y)=>y.t.p-x.t.
 function lgOrderDiv(tier){const a=LG.teams.map((t,i)=>({i,t})).filter(e=>e.t.div===tier);a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round];return R?R.find(f=>f[0]===LG.playerId||f[1]===LG.playerId):null;}
 /* ---- figurine render image map ---- */
-const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanZaneesh:1,womanTanya:1,womanTalia:1,manStumpy:1,alienTamirok:1,alienGrimlot:1,rocko:1,womanSasha:1,alienKatum:1};
+const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanZaneesh:1,womanTanya:1,womanTalia:1,manStumpy:1,alienTamirok:1,alienGrimlot:1,rocko:1,alienKatum:1,alienKodus:1,alienZargon:1};
 function modelRender(id){
  if(!RENDER_MAP[id])return null;
   const base=id
   ==='cyborg'?'cyborg':id
   ==='deltaborg'?'deltaborg':id 
-  ==='alienGrimlot'?'grimlot':id
   ==='irnman'?'irnman':id
-  ==='womanAndroid'?'jennyBot':id
+  ==='mechaMan'?'mechaman':id
+  ==='stormer'?'stormer':id
+  ==='rocko'?'rocko':id
   ==='manJerry'?'jerry':id
+  ==='manrichie'?'richie':id
   ==='womanKimi'?'kimi':id
   ==='womanMaria'?'maria':id
   ==='womanZaneesh'?'zaneesh':id
   ==='womanTanya'?'tanya':id
   ==='womanTalia'?'talia':id
-  ==='mechaMan'?'mechaman':id
-  ==='manrichie'?'richie':id
-  ==='stormer'?'stormer':id
+  ==='alienGrimlot'?'grimlot':id
   ==='alienTamirok'?'tamirok':id
- // ==='manStumpy'?'stumpy':id
-  ==='rocko'?'rocko':id
-  ==='womanSasha'?'sasha':id
   ==='alienKatum'?'katum':id
-  
+  ==='alienKodus'?'kodus':id
+  ==='alienZargon'?'zargon':id
   ;
  return 'assets/renders/render_'+base+'_cycles.png';
 }
@@ -618,7 +616,7 @@ function renderLgHist(){
 /* ---- lobby UI ---- */
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
-  $('menu').classList.add('hidden');$('lgSlots').classList.add('hidden');$('league').classList.remove('hidden');
+  showScreen('league');   // hides menu/lgSlots + applies the saved panel arrangement (js/screens.js → layApply)
   if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
   const pd=playerDiv(),dv=LG.divs[pd];
  if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal();S.lgChampDone=true;}
@@ -628,7 +626,6 @@ function openLeague(reveal){
   renderLgScout(op);
   primeMatchExplosions(LG.teams[LG.playerId].model,LG.teams[op].model); // warm both shatters now, while in the lobby
  }
- layApply('league'); // custom panel arrangement, if one is saved (js/layout.js)
 }
 function renderLeague(reveal){
  const pd=playerDiv(),dv=LG.divs[pd];
@@ -775,8 +772,7 @@ function renderSlots(){
  });
 }
 function openSlots(){
- $('menu').classList.add('hidden');
- $('lgSlots').classList.remove('hidden');
+ showScreen('lgSlots');
  renderSlots();
 }
 /* ---- setup form ---- */
@@ -844,8 +840,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
  }
 };
 function openSetup(slot){
- $('lgSlots').classList.add('hidden');
- $('lgSetup').classList.remove('hidden');
+ showScreen('lgSetup');
  $('lgSetupLgName').value='LEAGUE '+(slot+1);
  $('lgSetupName').value=cfg.redName||'RED';
  $('lgSetupLgName').maxLength=$('lgSetupName').maxLength=CONFIG.control.nameMaxLength;
@@ -879,7 +874,7 @@ function openSetup(slot){
  });
  const cur=cfg.modelRed;models.querySelectorAll('.miniBtn').forEach(b=>{if(b.dataset.id===cur)b.classList.add('on');});
  $('lgSetupColor').oninput=e=>{$('lgSetupHex').textContent=e.target.value;LSP.paint(e.target.value);};
- $('lgSetupCancel').onclick=()=>{$('lgSetup').classList.add('hidden');$('lgSlots').classList.remove('hidden');};
+ $('lgSetupCancel').onclick=()=>showScreen('lgSlots');
  $('lgSetupCreate').onclick=()=>{
   const selModel=models.querySelector('.miniBtn.on');
   const opts={
@@ -1086,17 +1081,18 @@ function renderCup(){
   $('cupDone').classList.toggle('hidden',!cup.done);
 }
 function openCup(){
-  $('menu').classList.add('hidden');$('league').classList.add('hidden');$('lgSeasonEnd').classList.add('hidden');
-  $('lgForfeit').classList.add('hidden');$('pause').classList.add('hidden');
-  $('win').classList.add('hidden');$('hud').classList.add('hidden'); // arriving from a finished tie's win screen
-  $('championsCup').classList.remove('hidden');
+  // overlays + the HUD aren't in the screen registry — arriving from a finished tie's win screen
+  // means they can all still be up, so they're taken down by hand before routing.
+  $('lgSeasonEnd').classList.add('hidden');$('lgForfeit').classList.add('hidden');
+  $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');
+  showScreen('championsCup');
   renderCup();
 }
 function cupReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg)
 /* ---- bind ---- */
 function bindLeague(){
   $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
-  $('lgBack').onclick=()=>{$('league').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
+  $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
   $('lgNew').onclick=()=>{lgNewSeason(!!LG&&!!LG.divs[playerDiv()].champ);renderLeague();const fx=lgPlayerFixture();if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}Au.ui();};
    $('lgPlay').onclick=lgPlayMatch;
    $('lgGameTime').onchange=e=>{if(LG){LG.gameTime=+e.target.value;saveLG();}Au.ui();}; // league-wide time limit, changeable per round from the lobby
@@ -1106,6 +1102,6 @@ function bindLeague(){
    $('lgSEContinue').onclick=lgReturn;
    $('cupPlay').onclick=cupPlayTie;
    $('cupBack').onclick=cupReturn;
-   $('lgSlotsBack').onclick=()=>{$('lgSlots').classList.add('hidden');$('menu').classList.remove('hidden');Au.ui();};
+   $('lgSlotsBack').onclick=()=>{showScreen('home');Au.ui();};
 }
 bindLeague();

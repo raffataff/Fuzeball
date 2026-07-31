@@ -20,17 +20,47 @@ function setBallTag(key,fuse){
  if(!t){el.innerHTML='<i style="background:#3b4a66"></i><span>NO BALL</span>';return;}
  el.innerHTML='<i style="background:'+t.trail+'"></i><span>'+t.name+'</span>'+(fuse?'<b>'+fuse+'</b>':'');
 }
+/* Rod selector. One row per SEAT — with a single seat this is byte-identical to the old output;
+   with two the rows are prefixed P1/P2 so each player can find their own. A chip for a rod
+   another seat is holding is marked .taken (setSeatCtrl would skip it anyway).
+
+   COMPACT MODE past `CHIP_FULL_MAX` seats. The full form is a label plus one chip PER ROD per
+   seat, so at 4-a-side it's 40 chips — three wrapped rows eating the bottom of the play area.
+   Worse, it's 40 chips of mostly dead affordance: once a side's four seats hold its four rods
+   there is nowhere to switch TO, and every off-rod chip is permanently .taken. So above the
+   threshold each seat collapses to a single chip showing the rod it actually holds, which is the
+   thing you look down to check. Clicking still cycles (setSeatCtrl skips held rods), so nothing
+   is lost. Solo and 2-player are under the threshold and render exactly as before. */
+const CHIP_FULL_MAX=2;
 function updateChips(){
  const c=$('chips');c.innerHTML='';
- if(S.userTeam<0)return;
- const tc=S.userTeam===0?cfg.redColor:cfg.blueColor;
- S.ctrlRods.forEach((r,i)=>{
-  const d=document.createElement('div');
-  d.className='chip'+(i===S.ctrl?' on':'');
-  d.style.setProperty('--tc',tc);
-  d.textContent=(i+1)+' · '+r.role;
-  d.onclick=()=>setCtrl(i);
-  c.appendChild(d);
+ if(!S.seats.length)return;
+ const multi=S.seats.length>1,compact=S.seats.length>CHIP_FULL_MAX;
+ c.classList.toggle('compact',compact);
+ S.seats.forEach((s,si)=>{
+  const tc=seatCol(s);   // SEAT colour, not team — P1 and P2 on one side must not read alike
+  if(compact){
+   const r=seatRod(s);if(!r)return;
+   const d=document.createElement('div');
+   d.className='chip on';d.style.setProperty('--tc',tc);
+   d.textContent='P'+(si+1)+' · '+r.role;
+   d.onclick=()=>seatStep(s,1);   // no per-rod chips to click, so the chip itself cycles
+   c.appendChild(d);
+   return;
+  }
+  if(multi){
+   const lab=document.createElement('div');
+   lab.className='chip lab';lab.style.setProperty('--tc',tc);lab.textContent='P'+(si+1);
+   c.appendChild(lab);
+  }
+  s.rods.forEach((r,i)=>{
+   const d=document.createElement('div');
+   d.className='chip'+(i===s.ctrl?' on':'')+(rodTaken(r,s)?' taken':'');
+   d.style.setProperty('--tc',tc);
+   d.textContent=(i+1)+' · '+r.role;
+   d.onclick=()=>setSeatCtrl(s,i,1);
+   c.appendChild(d);
+  });
  });
 }
 /* ===== active-effect rails =====================================================================

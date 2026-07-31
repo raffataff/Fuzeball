@@ -27,7 +27,6 @@ function bindUI(){
  $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;$('setAmbience').checked=cfg.ambience;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
  $('nameRed').maxLength=$('nameBlue').maxLength=CONFIG.control.nameMaxLength;
- $('mcRed').textContent='PLAY '+cfg.redName;$('mcBlue').textContent='PLAY '+cfg.blueName;
  $('setDiffRed').onchange=e=>{cfg.diffRed=e.target.value;cfg.diff=cfg.diffRed;saveCfg();};
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
@@ -50,11 +49,21 @@ function bindUI(){
  $('setAuto').onchange=e=>{cfg.auto=e.target.checked;saveCfg();};
  $('setSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);saveCfg();};
  $('setAmbience').onchange=e=>{cfg.ambience=e.target.checked;saveCfg();};
- $('nameRed').oninput=e=>{cfg.redName=(e.target.value||'RED').toUpperCase();$('mcRed').textContent='PLAY '+cfg.redName;refreshKitUI();saveCfg();};
- $('nameBlue').oninput=e=>{cfg.blueName=(e.target.value||'BLUE').toUpperCase();$('mcBlue').textContent='PLAY '+cfg.blueName;refreshKitUI();saveCfg();};
- wireRodCard('btnRed','redRods','red');
- wireRodCard('btnBlue','blueRods','blue');
- $('btnAI').onclick=()=>startMatch('ai');
+ // the roster header picks the name up on its own next tick (rosSig diff) — no call needed here
+ $('nameRed').oninput=e=>{cfg.redName=(e.target.value||'RED').toUpperCase();refreshKitUI();saveCfg();};
+ $('nameBlue').oninput=e=>{cfg.blueName=(e.target.value||'BLUE').toUpperCase();refreshKitUI();saveCfg();};
+ // landing screen (#home) → the rest of the game. LEAGUE/TRAINING bind themselves in their own
+ // files; these two are the routes that have no module of their own. Au.init() rides the FIRST
+ // user gesture on this screen — WebAudio needs one, and Kick Off/Options are the two cards that
+ // don't already call it (league.js's btnLeague does).
+ $('btnKickOff').onclick=()=>{Au.init();Au.ui();showScreen('menu');};
+ $('btnHomeOptions').onclick=()=>{Au.init();openOptions('home');};
+ $('menuBack').onclick=()=>{showScreen('home');Au.ui();};
+ $('menuTabBtnTeam').onclick=()=>{menuSetTab('team');Au.ui();};
+ $('menuTabBtnRules').onclick=()=>{menuSetTab('rules');Au.ui();};
+ menuSetTab('team');
+ // The three mode cards (PLAY RED / PLAY BLUE / AI SHOWDOWN) and their rod rows are gone —
+ // the roster replaces all of them: side, rod and who's AI are now per-seat (js/roster.js).
  $('btnResume').onclick=()=>togglePause();
  $('btnRestart').onclick=()=>startMatch(S.mode,S.rodLockRole);
  $('btnPauseMenu').onclick=()=>{
@@ -74,15 +83,17 @@ function bindUI(){
  refreshKitUI();
  bindOptions();
 }
-function wireRodCard(cardId,rowId,mode){
- var card=$(cardId),row=$(rowId),opts=row.querySelectorAll('.rodOpt');
- opts.forEach(function(o){o.onclick=function(e){
-  e.stopPropagation();
-  opts.forEach(function(x){x.classList.toggle('on',x===o);});
-  startMatch(mode,o.dataset.role||null);
- };});
- card.onclick=function(){
-  var sel=row.querySelector('.rodOpt.on');
-  startMatch(mode,sel?sel.dataset.role||null:null);
- };
+/* Kick Off tabs. Each tab owns its own .panelWrap and its own ⊞ button, so the ⊞ for the tab
+   you're NOT looking at is hidden — two edit buttons stacked in the same corner would be a
+   coin toss as to which region you were about to rearrange. layApply is re-run on reveal
+   because a wrap inside a display:none tab measures 0 wide and can't be laid out. */
+function menuSetTab(t){
+ const team=t!=='rules';
+ $('menuTab_team').classList.toggle('hidden',!team);
+ $('menuTab_rules').classList.toggle('hidden',team);
+ $('menuTabBtnTeam').classList.toggle('on',team);
+ $('menuTabBtnRules').classList.toggle('on',!team);
+ $('menuEditLayout').classList.toggle('hidden',!team);
+ $('menuRulesEditLayout').classList.toggle('hidden',team);
+ if(typeof layApply==='function')layApply(team?'menu':'menuRules');
 }

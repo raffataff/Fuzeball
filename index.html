@@ -72,65 +72,114 @@
   <div class="repBar bot"><span id="repSkip">any key / click — skip</span></div>
 </div>
 
-<div id="menu" class="screen introHide">
+<!-- LANDING SCREEN. First thing after the intro cinematic, and the screen the intro's logo morph
+     targets (css: #home.introHide / #home.introIn). Four routes, nothing else — a first-time
+     player shouldn't meet the whole match-setup surface before choosing a mode. KICK OFF opens
+     #menu below; LEAGUE/TRAINING keep their original button ids so league.js/training.js bind
+     to them unchanged, they just live on this screen now. -->
+<div id="home" class="screen introHide">
+  <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
+  <div class="tagline">v0.1.21</div>
+  <div class="modeRow homeRow">
+    <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
+    <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season &middot; upgrades &middot; glory</div></div>
+    <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Sandbox &middot; place balls &middot; practice</div></div>
+    <div class="modeCard opts" id="btnHomeOptions"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></div><div class="big">OPTIONS</div><div class="sub">Controls &middot; audio &middot; display</div></div>
+  </div>
+  <div class="foot">Table football, taken far too seriously</div>
+</div>
+
+<!-- KICK OFF — the quick-match lobby. Keeps id="menu" deliberately: cfg.layouts.menu saves, the
+     .panelWrap CSS and every back-target in customize/options still resolve, so the landing page
+     went in without touching any of them. This screen's guts become the multi-player roster. -->
+<div id="menu" class="screen hidden">
+  <button id="menuBack" class="optGear backBtn" title="Back">◀</button>
   <button id="btnOptions" class="optGear" title="Options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></button>
   <button id="menuEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
-  <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.205</div>
-  <div class="modeRow">
-    
-    <div class="modeCard red" id="btnRed"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big" id="mcRed">PLAY Team 1</div><div class="sub">Take Team 1's handles</div><div class="rodRow" id="redRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
-    <div class="modeCard blue" id="btnBlue"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big" id="mcBlue">PLAY Team 2</div><div class="sub">Take Team 2's handles</div><div class="rodRow" id="blueRods"><button class="rodOpt on" data-role="">ALL</button><button class="rodOpt" data-role="GK">GK</button><button class="rodOpt" data-role="DEF">DEF</button><button class="rodOpt" data-role="MID">MID</button><button class="rodOpt" data-role="ATT">ATT</button></div></div>
-    <div class="modeCard ai" id="btnAI"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="19" height="17" rx="2"/><path d="M12 3.5v17" stroke-dasharray="2 2.2"/><circle cx="7.2" cy="12" r="2.2"/><circle cx="16.8" cy="12" r="2.2"/></svg></div><div class="big">AI SHOWDOWN</div><div class="sub">Sit back &amp; spectate</div></div>
-    <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season · upgrades · glory</div></div>
-    <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Sandbox · place balls · practice</div></div>
+  <button id="menuRulesEditLayout" class="optGear lyGearBtn hidden" title="Arrange panels">⊞</button>
+  <h2 class="scrTitle">KICK OFF</h2>
+  <div class="tagline">Choose a side &middot; set the rules &middot; play</div>
+  <div class="rosBar">
+    <span class="rosHint">Press <b>SPACE</b> or a controller's <b>A</b> to take a side &middot; <b>B</b> or <b>✕</b> to leave</span>
+    <button class="btn" id="btnStart">START MATCH</button>
   </div>
+  <!-- Two tabs, each with its OWN .panelWrap and its own ⊞ button, so they're arranged and saved
+       independently (SCREENS.menu.lay is an array — see js/layout.js). Match Setup is a tab rather
+       than another column because it's tall: sat under a team panel holding four players it would
+       be shoved off the bottom of the screen. -->
+  <div class="scrTabs">
+    <button class="scrTabBtn on" id="menuTabBtnTeam">Team Select</button>
+    <button class="scrTabBtn" id="menuTabBtnRules">Match Setup</button>
+  </div>
+  <div class="scrTab" id="menuTab_team">
   <div class="panelWrap">
+    <!-- Default reading order: Team 1's kit on the LEFT, who's playing in the MIDDLE, Team 2's
+         kit on the RIGHT. All three are plain .panel elements so the ⊞ editor moves and resizes
+         them; that's what the stable ids are for (SCREENS.menu.lay, js/screens.js). -->
+    <div class="panel kitPanel" id="menuKitPanel0">
+      <h3>Team 1 &middot; Kit</h3>
+      <div class="kitCol">
+        <input type="text" id="nameRed" class="kitName" maxlength="20" value="RED">
+        <div class="kitFig" id="kitFig0" title="Click to customize"><span class="kitCap" id="kitCap0">Cyborg</span></div>
+        <div class="kitPal" id="kitPal0"></div>
+      </div>
+    </div>
+    <!-- ROSTER (js/roster.js). Seat cards + join chips are built in JS; only the shell is here.
+         A side with no seats shows its AI difficulty instead; the dropdown that SETS it lives in
+         the Match Setup tab, so there's one writer for that value. -->
+    <div class="panel" id="menuTeamPanel">
+      <h3>Team Select</h3>
+      <div class="rosCols">
+        <div class="rosCol red">
+          <div class="rosHead"><span class="rosName" id="rosName0">RED</span><span class="rosTag" id="rosTag0"></span></div>
+          <div class="rosSeats" id="rosSeats0"></div>
+        </div>
+        <div class="rosCol blue">
+          <div class="rosHead"><span class="rosName" id="rosName1">BLUE</span><span class="rosTag" id="rosTag1"></span></div>
+          <div class="rosSeats" id="rosSeats1"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel kitPanel" id="menuKitPanel1">
+      <h3>Team 2 &middot; Kit</h3>
+      <div class="kitCol">
+        <input type="text" id="nameBlue" class="kitName" maxlength="20" value="BLUE">
+        <div class="kitFig" id="kitFig1" title="Click to customize"><span class="kitCap" id="kitCap1">Cyborg</span></div>
+        <div class="kitPal" id="kitPal1"></div>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div class="scrTab hidden" id="menuTab_rules">
+  <div class="panelWrap">
+    <!-- Split three ways so this tab is worth arranging (and one panel doesn't float alone in a
+         1200px wrap). Every control id is unchanged — only the grouping moved. menuSetupPanel
+         keeps its id so existing cfg.layouts saves still resolve it. -->
     <div class="panel" id="menuSetupPanel">
-      <h3>Match Setup</h3>
+      <h3>Match Rules</h3>
       <div class="row"><label><span class="lblR">Team 1</span> AI</label><select id="setDiffRed"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label><span class="lblB">Team 2</span> AI</label><select id="setDiffBlue"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
       <div class="row"><label>Goals to win</label><select id="setGoals"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
       <div class="row"><label>Game time</label><select id="setGameTime"><option value="0" selected>Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option></select></div>
-       <div class="row"><label>Location</label><select id="setRoom"></select></div>
-       <div class="row"><label>Reflections</label><input type="checkbox" id="setReflect" checked></div>
-       <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
-       <div class="row"><label>Skin</label><select id="setSkin"></select></div>
-       <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
       <div class="row"><label>Special balls</label><input type="checkbox" id="setSpecial" checked></div>
       <div class="row"><label>Power-ups</label><input type="checkbox" id="setPower" checked></div>
       <div class="row"><label>Goal replays</label><input type="checkbox" id="setReplay" checked></div>
       <div class="row"><label>Auto rod switch</label><input type="checkbox" id="setAuto" checked></div>
+    </div>
+    <div class="panel" id="menuTablePanel">
+      <h3>Table &amp; Venue</h3>
+      <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
+      <div class="row"><label>Skin</label><select id="setSkin"></select></div>
+      <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
+      <div class="row"><label>Location</label><select id="setRoom"></select></div>
+      <div class="row"><label>Reflections</label><input type="checkbox" id="setReflect" checked></div>
+    </div>
+    <div class="panel" id="menuAudioPanel">
+      <h3>Audio</h3>
       <div class="row"><label>Sound</label><input type="checkbox" id="setSound" checked></div>
       <div class="row"><label>Ambience</label><input type="checkbox" id="setAmbience" checked></div>
     </div>
-    <div class="panel kitPanel" id="menuKitPanel">
-      <h3>Teams &amp; Kits</h3>
-      <div class="kitCols">
-        <div class="kitCol">
-          <input type="text" id="nameRed" class="kitName" maxlength="20" value="RED">
-          <div class="kitFig" id="kitFig0" title="Click to customize"><span class="kitCap" id="kitCap0">Cyborg</span></div>
-          <div class="kitPal" id="kitPal0"></div>
-        </div>
-        <div class="kitCol">
-          <input type="text" id="nameBlue" class="kitName" maxlength="20" value="BLUE">
-          <div class="kitFig" id="kitFig1" title="Click to customize"><span class="kitCap" id="kitCap1">Cyborg</span></div>
-          <div class="kitPal" id="kitPal1"></div>
-        </div>
-      </div>
-    </div>
-    <div class="panel" id="menuCtlPanel">
-      <h3>Controls</h3>
-      <div class="ctl">
-        <b>◀ ▶ / Q E</b><span>switch rod</span>
-        <b>▲ ▼ / MOUSE</b><span>slide players</span>
-        <b>SPACE / CLICK</b><span>kick</span>
-        <b>SHIFT / R-CLICK</b><span>raise players</span>
-        <b>1 – 4</b><span>select rod</span>
-        <b>V</b><span>camera view</span>
-        <b>ESC</b><span>pause</span>
-      </div>
-    </div>
+  </div>
   </div>
   <div class="foot">First to score wins the crowd · special balls drop from above</div>
 </div>
@@ -350,6 +399,37 @@
       <div class="optBtns" id="optBtns"></div>
       <div class="optHint">Move the sticks and press buttons — the highlighted axis is the one bound above. In Total Control mode, hold your swerve on the right stick and press A to swing: the tester reads the shot back — flight curve, spin, total bend and drift at goal range.</div>
     </div>
+    <!-- Reference card. Moved off the Kick Off screen (it's a thing you look up once, not a thing
+         you set per match) and given the pad column it never had. Two .ctl grids so the keyboard
+         and pad bindings line up as separate lists rather than one interleaved column. -->
+    <div class="panel optPanel" id="optCtlRefPanel">
+      <h3>Reference</h3>
+      <h4 class="optSubH">Keyboard &amp; mouse</h4>
+      <div class="ctl">
+        <b>◀ ▶ / Q E</b><span>switch rod</span>
+        <b>▲ ▼ / MOUSE</b><span>slide players</span>
+        <b>SPACE / CLICK</b><span>kick</span>
+        <b>SHIFT / R-CLICK</b><span>raise players</span>
+        <b>1 – 4</b><span>select rod</span>
+        <b>WHEEL</b><span>switch rod</span>
+        <b>B</b><span>sweet-spot guide</span>
+        <b>V</b><span>camera view</span>
+        <b>ESC</b><span>pause</span>
+      </div>
+      <div class="optDiv"></div>
+      <h4 class="optSubH">Controller</h4>
+      <div class="ctl">
+        <b>L-STICK / D-PAD</b><span>slide players</span>
+        <b>A</b><span>kick</span>
+        <b>X</b><span>raise players</span>
+        <b>LB / RB</b><span>switch rod</span>
+        <b>R-STICK</b><span>rod angle</span>
+        <b>B</b><span>sweet-spot guide</span>
+        <b>Y</b><span>camera view</span>
+        <b>START</b><span>pause</span>
+      </div>
+      <div class="optHint" id="optCtlRefTC">In <b>Total Control</b> the triggers become the slide-speed modifier — LT for fine steps, RT for fast — so kick is A only and raise is X only, and the free right-stick axis bends the shot.</div>
+    </div>
   </div>
   </div><!-- /optTab_controls -->
   <div class="optTab hidden" id="optTab_display">
@@ -457,9 +537,9 @@
  var boot=[
   {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
-  'js/core.js','js/config.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
-  'js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/options.js','js/league.js','js/layout.js',
+  'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
+  'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/training.js','js/main.js'
  ];
  function loadOne(item,done){
@@ -483,7 +563,7 @@
  // opaque intro cover + un-hide the menu so the game can't hang behind it.
  setTimeout(function(){
   var i=document.getElementById('intro');
-  if(i&&!i.dataset.live){i.style.display='none';var m=document.getElementById('menu');if(m)m.classList.remove('introHide');}
+  if(i&&!i.dataset.live){i.style.display='none';var m=document.getElementById('home');if(m)m.classList.remove('introHide');}
  },12000);
 })();
 </script>

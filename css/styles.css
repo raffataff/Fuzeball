@@ -14,6 +14,63 @@ img.logo{display:block;max-width:460px;width:clamp(200px,40vw,460px);height:auto
 .modeCard.red:hover{border-color:var(--c0);box-shadow:0 0 28px color-mix(in srgb,var(--c0) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--c0) 18%,transparent)}
 .modeCard.blue:hover{border-color:var(--c1);box-shadow:0 0 28px color-mix(in srgb,var(--c1) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--c1) 18%,transparent)}
 .modeCard.ai:hover{border-color:#a06bff;box-shadow:0 0 28px rgba(160,107,255,.55),inset 0 0 22px rgba(160,107,255,.18)}
+/* ---- landing screen (#home) ----------------------------------------------------------------
+   Four routes across one row. The stock .modeCard min-width of 280px only fits three, so the
+   home row narrows the cards and lets them wrap to 2×2 rather than squeezing — four cards is
+   the whole screen here, so they're given a bigger mark and headline to carry it. */
+.homeRow{max-width:1040px;flex-wrap:wrap;margin-bottom:26px}
+.homeRow .modeCard{min-width:212px;max-width:242px;padding:24px 14px}
+.homeRow .modeCard .ico{height:44px;margin-bottom:14px}
+.homeRow .modeCard .ico svg{width:44px;height:44px}
+.homeRow .modeCard .big{font-size:23px}
+.modeCard.kickoff .ico{color:var(--c0)}
+.modeCard.kickoff:hover{border-color:var(--c0);box-shadow:0 0 28px color-mix(in srgb,var(--c0) 55%,transparent),inset 0 0 22px color-mix(in srgb,var(--c0) 18%,transparent)}
+.modeCard.opts .ico{color:#8fa3c8}
+.modeCard.opts:hover{border-color:#8fa3c8;box-shadow:0 0 28px rgba(143,163,200,.42),inset 0 0 22px rgba(143,163,200,.14)}
+/* Generic screen heading. Same silhouette as .lgTitle but STEEL, not gold — gold is the
+   league's brand colour and a gold "KICK OFF" reads as league chrome. Reuse this on any
+   screen that isn't league/cup. */
+.scrTitle{font-family:var(--font-ui);font-weight:400;font-size:clamp(24px,3.4vw,36px);letter-spacing:.12em;background:linear-gradient(180deg,#fff 20%,#8fa3c8 85%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 16px rgba(90,140,255,.28))}
+/* ---- Kick Off roster (js/roster.js) ---------------------------------------------------------
+   Two team columns either side of a VS. A column tinted by its live kit colour (--tc, written
+   per element in JS since cfg.redColor/blueColor are user-set) so which side you're joining is
+   readable at a glance without labels doing the work. */
+/* Both sides live in ONE arrangeable panel (#menuTeamPanel) as two columns — the panel supplies
+   the card chrome, so a column only carries its team accent down the inside edge. */
+#menuTeamPanel{flex:2 1 0;min-width:400px;max-width:600px}   /* the middle column carries two lists of seat cards */
+.rosCols{display:flex;gap:14px;align-items:flex-start}
+.rosCol{flex:1 1 0;min-width:0;padding-left:10px;border-left:2px solid var(--edge)}
+.rosCol.red{border-left-color:color-mix(in srgb,var(--c0) 60%,transparent)}
+.rosCol.blue{border-left-color:color-mix(in srgb,var(--c1) 60%,transparent)}
+@media(max-width:900px){.rosCols{flex-direction:column}}
+.rosHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--edge)}
+.rosName{font-family:var(--font-ui);font-weight:400;font-size:19px;letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rosTag{font-family:var(--font-ui);font-size:10px;letter-spacing:.16em;color:#8fa3c8;white-space:nowrap}
+.rosTag.ai{color:#7f93ba;opacity:.75}
+/* Kick Off now holds FOUR seat cards a side (CONFIG.seats.perTeam), so the panel row can outgrow
+   a short viewport. `.screen` is a centred flex column with NO overflow rule, and a centred flex
+   container clips overflow at BOTH ends — the title and the START bar above the wrap would be the
+   first things cut. `safe center` falls back to flex-start the instant the content doesn't fit, so
+   nothing is ever lost off the top; short content still centres exactly as before. */
+#menu{overflow-y:auto;justify-content:safe center}
+.rosSeats{display:flex;flex-direction:column;gap:8px;min-height:96px}
+.rosSeat{background:rgba(8,10,18,.55);border:1px solid color-mix(in srgb,var(--tc,#5a8cff) 40%,transparent);border-radius:10px;padding:8px 10px;box-shadow:inset 0 0 18px color-mix(in srgb,var(--tc,#5a8cff) 10%,transparent)}
+.rosSeatTop{display:flex;align-items:center;gap:8px}
+.rosP{font-family:var(--font-ui);font-size:12px;letter-spacing:.1em;color:var(--tc,#fff)}
+.rosDevs{flex:1 1 auto;font-size:12px;letter-spacing:.06em;color:#93a5c6;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rosMini{pointer-events:auto;cursor:pointer;width:22px;height:22px;flex:0 0 auto;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#8fa3c8;font-size:12px;line-height:1;transition:all .12s}
+.rosMini:hover{border-color:var(--tc,#5a8cff);color:#fff}
+.rosSeat .rodRow{margin-top:8px}
+.rosAdd{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;border:1px dashed var(--edge);border-radius:10px}
+.rosAddLab{font-family:var(--font-ui);font-size:10px;letter-spacing:.14em;color:#5d6f92}
+.rosDevBtn{pointer-events:auto;cursor:pointer;font-family:var(--font-ui);font-size:10px;letter-spacing:.08em;padding:5px 9px;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#8fa3c8;transition:all .12s;text-transform:uppercase}
+.rosDevBtn:hover{transform:translateY(-1px);border-color:var(--tc,#5a8cff);color:#fff;box-shadow:0 0 12px color-mix(in srgb,var(--tc,#5a8cff) 35%,transparent)}
+/* taking a device off another player — dimmed + dashed so it reads as "borrow", not "free" */
+.rosDevBtn.take{opacity:.55;border-style:dashed}
+.rosDevBtn.take:hover{opacity:1}
+.rosBar{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;margin:0 0 16px}
+.rosHint{font-size:13px;letter-spacing:.06em;color:#7f93ba}
+.rosHint b{font-family:var(--font-ui);font-weight:400;font-size:11px;letter-spacing:.06em;background:#182238;border:1px solid var(--edge);border-bottom:2px solid rgba(255,255,255,.1);border-radius:5px;padding:2px 6px;color:#bcd0f2}
 /* ===== icon marks ==============================================================================
    Inline SVG replaces the OS colour emoji this UI used to lean on. Everything below sizes the
    glyph from CSS and inherits `currentColor`, which is the whole point: a mode card can now tint
@@ -27,7 +84,9 @@ img.logo{display:block;max-width:460px;width:clamp(200px,40vw,460px);height:auto
 .modeCard .ico svg{width:34px;height:34px}
 .modeCard.red .ico{color:var(--c0)} .modeCard.blue .ico{color:var(--c1)}
 .modeCard.ai .ico{color:#a06bff} .modeCard.league .ico{color:var(--gold)} .modeCard.training .ico{color:#2bff88}
-.panelWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;min-width:1200px;max-width:1640px;padding:16px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
+/* flex-wrap matters now that Kick Off carries FIVE panels (two roster columns + rules/kit/
+   controls): past the max-width they drop to a second row instead of squeezing every panel thin. */
+.panelWrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;align-items:stretch;min-width:1200px;max-width:1640px;padding:16px;margin:0 auto;background:rgba(8,10,18,.6);border:1px solid var(--edge);border-radius:18px;box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.4);background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:16px 16px}
 .panel{flex:1 1 0;max-width:320px;min-height:260px;background:linear-gradient(180deg,var(--glass) 0%,rgba(12,16,28,.95) 100%);border:1px solid var(--edge);border-top:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 20px;pointer-events:auto;box-shadow:inset 0 2px 8px rgba(0,0,0,.5),0 8px 28px rgba(0,0,0,.35)}
 /* h3 declares NO weight, so it was picking up the UA's bold default — same synthetic smear as an
    explicit 800. Every Russo One heading needs the weight stated, not inherited. */
@@ -44,6 +103,10 @@ input[type=text]{width:110px;text-transform:uppercase}
 .rodOpt{pointer-events:auto;cursor:pointer;font-family:var(--font-ui);font-size:9.5px;font-weight:400;letter-spacing:.06em;padding:4px 7px;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#7f93ba;transition:all .12s;text-transform:uppercase}
 .rodOpt:hover{transform:translateY(-1px);border-color:#5a8cff;color:#e8ecf5}
 .rodOpt.on{color:#fff;border-color:var(--tc,#5a8cff);background:#1a2848;box-shadow:0 0 10px color-mix(in srgb,var(--tc,#5a8cff) 40%,transparent)}
+/* A role a TEAMMATE has locked. Dashed + dimmed, matching .rosDevBtn.take / .chip.taken — the
+   established "someone else has this" language. Only reachable with 2+ players on a side. */
+.rodOpt.taken{opacity:.35;cursor:not-allowed;border-style:dashed}
+.rodOpt.taken:hover{transform:none;border-color:var(--edge);color:#7f93ba}
 .ctl{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:14px;align-content:center}
 .ctl b{font-family:var(--font-ui);font-size:10px;font-weight:400;background:#182238;border:1px solid var(--edge);border-bottom:2px solid rgba(255,255,255,.1);border-radius:5px;padding:3px 7px;text-align:center;color:#bcd0f2;white-space:nowrap;letter-spacing:.04em;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);display:block}
 .ctl span{color:#93a5c6;font-size:12px;letter-spacing:.03em;text-align:center;display:block}
@@ -67,9 +130,24 @@ input[type=text]{width:110px;text-transform:uppercase}
 @keyframes mtWarn{from{transform:translateX(-50%) scale(1);text-shadow:none}to{transform:translateX(-50%) scale(1.14);text-shadow:0 0 14px rgba(255,90,90,.95)}}
 #matchTime.sd{color:#ffcf4d;font-size:14px;border-bottom-color:rgba(255,207,77,.8);text-shadow:0 0 10px rgba(255,207,77,.8);animation:mtSD .7s ease-in-out infinite alternate}
 @keyframes mtSD{from{transform:translateX(-50%) scale(1);box-shadow:0 6px 30px rgba(0,0,0,.45)}to{transform:translateX(-50%) scale(1.06);box-shadow:0 0 26px rgba(255,207,77,.75)}}
-#chips{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+/* WRAPS, and it has to: the row is one label + one chip per rod PER SEAT, so 4-a-side is up to
+   40 chips. Unwrapped they ran off both edges of the screen. Bounded to 88vw and centred, so a
+   solo match (4 chips) is visually identical to before — the wrap only ever engages at high
+   player counts. Reverse-wrapped so the row grows UPWARD from the bottom edge it's pinned to. */
+#chips{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap-reverse;justify-content:center;gap:8px;max-width:88vw}
 .chip{pointer-events:auto;cursor:pointer;font-family:var(--font-ui);font-size:12px;font-weight:400;letter-spacing:.12em;padding:7px 15px;border-radius:10px;background:var(--glass);border:1px solid var(--edge);color:#8fa3c8;transition:all .15s}
 .chip.on{color:#fff;border-color:var(--tc,#fff);box-shadow:0 0 18px color-mix(in srgb,var(--tc,#fff) 55%,transparent);transform:translateY(-3px)}
+/* multi-seat rod selector (js/hud.js updateChips): a per-player label, and rods another player
+   is already holding. Both are inert with a single seat — no P-label is emitted and nothing is
+   ever .taken — so solo play looks exactly as before. */
+.chip.lab{cursor:default;pointer-events:none;color:var(--tc,#fff);border-color:color-mix(in srgb,var(--tc,#fff) 45%,transparent);background:transparent;padding:7px 10px}
+.chip.taken{opacity:.4;cursor:not-allowed;border-style:dashed}
+/* COMPACT rod selector (>CHIP_FULL_MAX seats): one chip per player showing the rod they hold, so
+   4-a-side doesn't paper the bottom of the screen with 40 chips. Every chip is .on here — they're
+   all live rods — so the lift that marks "this is yours" in the full row carries no information
+   and is dropped; the seat colour does the identifying. */
+#chips.compact .chip.on{transform:none}
+#chips.compact .chip{padding:6px 12px;letter-spacing:.1em}
 /* ===== active-effect rails =====================================================================
    Tabs grow OUT of #sb — red extends left of the red score, blue right of the blue score — so a
    power-up is spatially tied to the team it acts on. Skewed hard-edged slabs, not another 14px
@@ -183,8 +261,9 @@ body.replayOn #hud{opacity:0;transition:opacity .3s}
 .czOpen:hover{box-shadow:0 0 22px rgba(160,107,255,.55);border-color:#a06bff}
 .panel .czOpen{width:100%;margin-top:14px}
 /* menu kit columns (team 1 left / team 2 right) */
-.kitPanel{min-width:500px}
-.kitCols{display:flex;gap:16px}
+/* One kit panel PER TEAM now (menuKitPanel0 / 1) — the old 500px min was sized for both teams
+   side by side inside a single panel and would force a huge column for one. */
+.kitPanel{min-width:236px;max-width:300px}
 .kitCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
 .kitName{width:100%!important;text-align:center;letter-spacing:.06em;--tc:#5a8cff}
 .kitName:focus{border-color:var(--tc)}
@@ -411,12 +490,25 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .optGear{position:absolute;top:20px;right:24px;z-index:5;width:46px;height:46px;border-radius:12px;background:var(--glass);border:1px solid var(--edge);color:#bcd0f2;font-size:22px;line-height:1;cursor:pointer;pointer-events:auto;transition:transform .2s,border-color .15s,box-shadow .15s,color .15s;display:flex;align-items:center;justify-content:center}
 .optGear svg{width:22px;height:22px}   /* the cog is SVG now; .lyGearBtn keeps its ⊞ text glyph (monochrome everywhere) */
 .optGear:hover{transform:rotate(45deg);border-color:var(--gold);color:#fff;box-shadow:0 0 16px color-mix(in srgb,var(--gold) 45%,transparent)}
-.optTabs{display:flex;gap:10px;justify-content:center;margin:0 auto 6px;flex-wrap:wrap}
-.optTabBtn{font-family:var(--font-ui);font-size:14px;letter-spacing:.04em;color:#bcd0f2;background:var(--glass);border:1px solid var(--edge);border-radius:11px;padding:9px 20px;cursor:pointer;pointer-events:auto;transition:color .15s,border-color .15s,box-shadow .15s,background .15s}
+/* Screen tabs. `.scrTab*` are the generic names — `.optTabs` etc. are the Options screen's
+   original class names kept as aliases so that screen didn't have to change. Use .scrTab* on
+   anything new. */
+.optTabs,.scrTabs{display:flex;gap:10px;justify-content:center;margin:0 auto 6px;flex-wrap:wrap}
+/* width:100% is load-bearing, not cosmetic. A .screen is a CENTRED flex column, so a plain block
+   child is shrink-to-fit — its width would come from its content, which for a .lyCustom wrap is
+   absolutely-positioned panels contributing NOTHING. The wrap's own width:100% would then resolve
+   against a collapsed box. Spanning the screen gives it a real basis to measure against. */
+.scrTab{width:100%}
+.scrTab.hidden{display:none}
+.optTabBtn,.scrTabBtn{font-family:var(--font-ui);font-size:14px;letter-spacing:.04em;color:#bcd0f2;background:var(--glass);border:1px solid var(--edge);border-radius:11px;padding:9px 20px;cursor:pointer;pointer-events:auto;transition:color .15s,border-color .15s,box-shadow .15s,background .15s}
 .optTabBtn:hover{color:#fff;border-color:var(--gold)}
 .optTabBtn.on{color:#fff;border-color:var(--gold);background:color-mix(in srgb,var(--gold) 16%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--gold) 32%,transparent)}
 .optTab.hidden{display:none}
-.optWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1040px;width:100%;padding:16px;margin:0 auto;flex-wrap:wrap}
+/* Generic screen tabs use the steel accent, not the league's gold (see .scrTitle) */
+.scrTabBtn:hover{color:#fff;border-color:#5a8cff}
+.scrTabBtn.on{color:#fff;border-color:#5a8cff;background:rgba(90,140,255,.16);box-shadow:0 0 14px rgba(90,140,255,.32)}
+.optSubH{font-family:var(--font-ui);font-weight:400;font-size:11px;letter-spacing:.18em;color:#7f93ba;text-transform:uppercase;margin:0 0 8px}
+.optWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1820px;width:100%;padding:16px;margin:0 auto;flex-wrap:wrap}
 .optPanel{flex:1 1 0;min-width:272px;max-width:350px;min-height:auto}
 .optDiv{height:1px;background:var(--edge);margin:13px 0}
 .optHint{font-size:12px;color:#7f93ba;line-height:1.5;margin-top:12px;letter-spacing:.02em}
@@ -568,14 +660,21 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 /* .lyCustom = a saved arrangement is applied: panels go absolute inside the wrap,
    the .lgSide columns dissolve (display:contents) so every panel positions against
    the wrap itself. .lyEditing = live edit mode on top of that. */
-.lyCustom{position:relative;align-content:flex-start;width:100%}
+/* min-width:0 lets the wrap shrink-wrap to its panels — .panelWrap's 1200px floor is for the
+   FLOW layout and would otherwise stop a custom arrangement hugging its content. max-width is
+   deliberately NOT overridden: layApply measures the wrap's allowed width from it. */
+.lyCustom{position:relative;align-content:flex-start;width:100%;min-width:0}
 /* a custom arrangement can be taller than the screen — anchor to the top and scroll
    (league is already like this; this matters for the main menu) */
 .lyScroll{justify-content:flex-start;overflow-y:auto}
 /* the ⊞ corner buttons: same square chrome as the Options gear */
 .lyGearBtn{font-size:20px}
 .lyGearBtn:hover{transform:scale(1.12)}
-#menuEditLayout{top:74px}
+/* Back sits opposite the gear stack (top-LEFT) so a screen's two corners read as
+   "leave" vs "configure". Overrides .optGear's rotate-on-hover, which reads as a cog thing. */
+.backBtn{right:auto;left:24px;font-size:20px;padding-right:2px}
+.backBtn:hover{transform:translateX(-3px);border-color:#5a8cff;color:#fff;box-shadow:0 0 16px rgba(90,140,255,.45)}
+#menuEditLayout,#menuRulesEditLayout{top:74px}   /* one per Kick Off tab; only the live tab's is shown */
 #lgEditLayout{position:fixed}
 .lyCustom .lgSide{display:contents}
 .lyCustom .panel{position:absolute!important;flex:none!important;margin:0!important;width:auto;max-width:none!important;min-width:0!important;min-height:0!important;max-height:none!important;overflow:auto}
@@ -591,18 +690,19 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #introSkip.on{opacity:.55}
 #introSkip.off{opacity:0}
 #intro.fast *{animation-duration:.22s!important;animation-delay:0s!important;transition-duration:.3s!important;transition-delay:0s!important}
-/* menu entrance (driven by intro.js) */
-#menu.introHide{visibility:hidden}
-#menu.introIn img.logo{animation:inFade .35s .5s both}
-#menu.introIn .tagline{animation:inRise .5s .34s both}
-#menu.introIn .modeRow .modeCard{animation:inRise .55s both}
-#menu.introIn .modeRow .modeCard:nth-child(1){animation-delay:.14s}
-#menu.introIn .modeRow .modeCard:nth-child(2){animation-delay:.22s}
-#menu.introIn .modeRow .modeCard:nth-child(3){animation-delay:.30s}
-#menu.introIn .modeRow .modeCard:nth-child(4){animation-delay:.38s}
-#menu.introIn .modeRow .modeCard:nth-child(5){animation-delay:.46s}
-#menu.introIn .panelWrap{animation:inRise .6s .32s both}
-#menu.introIn .foot,#menu.introIn .optGear{animation:inFade .6s .55s both}
+/* Landing-screen entrance (driven by intro.js). introHide is `visibility` and NOT `display:none`
+   on purpose — reveal() measures this screen's .logo to aim the intro logo's morph, and a
+   display:none element has no rect to measure. #home is the screen live at boot, so it is the
+   one element that starts WITHOUT .hidden. */
+#home.introHide{visibility:hidden}
+#home.introIn img.logo{animation:inFade .35s .5s both}
+#home.introIn .tagline{animation:inRise .5s .34s both}
+#home.introIn .modeRow .modeCard{animation:inRise .55s both}
+#home.introIn .modeRow .modeCard:nth-child(1){animation-delay:.14s}
+#home.introIn .modeRow .modeCard:nth-child(2){animation-delay:.22s}
+#home.introIn .modeRow .modeCard:nth-child(3){animation-delay:.30s}
+#home.introIn .modeRow .modeCard:nth-child(4){animation-delay:.38s}
+#home.introIn .foot{animation:inFade .6s .55s both}
 @keyframes inRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @keyframes inFade{from{opacity:0}to{opacity:1}}
 /* ===== training mode ===== */

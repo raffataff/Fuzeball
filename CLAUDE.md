@@ -19,10 +19,15 @@ all game code is local.
 
 ### File map (`js/`, loaded in this order — see the script tags in `index.html`)
 
-`core.js` (helpers `$`,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · `audio.js`
-(`Au`) · `state.js` (`S`,`freshStats`,`HYPE`) · `world.js` (three.js init/build/theme) ·
+`core.js` (helpers `$`,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · `screens.js`
+(`SCREENS` registry + `showScreen`/`backScreen`/`hideScreens` — every screen you navigate to,
+and the layout editor's source of truth) · `audio.js`
+(`Au`) · `state.js` (`S`,`freshStats`,`HYPE`) · **`seats.js`** (`S.seats` — every human at the
+table: team + claimed devices + held rod; `seatOf`/`seatRod`/`isUserRod`/`setSeatCtrl`) ·
+`world.js` (three.js init/build/theme) ·
 `balls.js` · `rods.js` · `physics.js` · `ai.js` · `input.js` · `powerups.js` (+ dead-ball) ·
-`flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `main.js`.
+`flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
+Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `main.js`.
 
 These are **plain (non-module) scripts** sharing one global scope on purpose — top-level
 `const`/`let` in one file are visible in later files. This is what lets them work from
@@ -95,8 +100,10 @@ CONFIG. `cfg`/`saveCfg` (the persisted in-menu settings) also live here.
   `men[]`, `baseZ[]`, `maxOff`, `offset`/`target`, `angle`/`angVel`, `vz`,
   `kickT` (−1 = idle, ≥0 = mid kick-swing animation), `raise`, `cd` (kick cooldown),
   and `ai*` smoothing fields.
-- **The user controls one rod at a time** (`S.ctrlRods[S.ctrl]`). The user's *other* rods
-  are AI-controlled — this is intended (they auto-defend while you focus one rod).
+- **Each SEAT (human) controls one rod at a time** — `seatRod(s)`, see `js/seats.js`. Their team's
+  *other* rods are AI-controlled; that's intended (they auto-defend while you focus one rod).
+  `isUserRod(r)` = "any seat is holding r". `userRod()` is the PRIMARY seat only and is not a
+  substitute for `seatOf(r)` — see the seats entry in the changelog.
 
 ## Ball types (`BALL_TYPES`)
 
@@ -157,7 +164,7 @@ Z (with prediction + a wandering error term), then decide to kick.
   coloured rows in the Match Setup panel (`#setDiffRed`, `#setDiffBlue`). Lets you, e.g.,
   set red=Rookie and blue=Legend to spectate a fish-vs-shark.
 
-### Two hands per team (`pickActiveRods`) — CONFIG.ai.hands (=2)
+### Two hands per team (`pickActiveRods`) — CONFIG.ai.hands (=3)
 
 A team may only **actively move `hands` rods at once** (2 = two human hands). `pickActiveRods`
 picks that pair each frame and stores it in `S.active[team]` (array of rod objects);
@@ -169,7 +176,10 @@ stops the pair flickering; it recomputes early only when the set goes invalid (e
 switches rod). **The user's controlled rod is always forced into their team's pair** — it's
 the hand they're holding; the AI plays the other. **Rods not in the pair HOLD** their lane
 (target frozen, men down) and block passively — this is both the design and a big chunk of the
-anti-jitter win. For 4-player later, just raise `hands` (→4 lifts the cap so every rod is live).
+anti-jitter win. **`hands` bounds the AI ONLY — it is NOT a cap on human players.** Every seat-held
+rod is forced into the set and `n` is raised to the seat count whenever a team has more seats than
+`hands`, so at 4-a-side all four rods are live and the AI plays none of that side. Local co-op is
+capped by the ROD COUNT (`CONFIG.seats.perTeam` = 4), not by this.
 
 ### Anti-jitter (why AI movement isn't twitchy)
 
@@ -292,6 +302,321 @@ positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggl
 visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readout
 below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#rodAngle`). The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
+
+### 2026-07-30
+- **LOCAL CO-OP RAISED TO 4-A-SIDE** (`CONFIG.seats.perTeam` 2→4, `max` 4→8, new `maxPads`;
+  `js/seats.js`, `js/roster.js`, `js/input.js`, `js/hud.js`, `css/styles.css`). The cap was one
+  config number — `rosCanJoin`/`rosSetTeam`/`rosNextTeam` were its only readers and everything
+  downstream was already N-generic (`pickActiveRods` raises a team's active-rod cap to its seat
+  count, `seatBindRods` push-offs in a loop, `setSeatCtrl`/`rodTaken` skip any number of held rods,
+  `updateChips`/`rosRender` iterate). So the work was the FALLOUT, not the number.
+  - **THE REAL CEILING IS THE ROD COUNT (4/side), NOT `CONFIG.ai.hands`.** The old comment tied
+    `perTeam` to `hands` and that was never the binding constraint — `pickActiveRods` already does
+    `n=min(max(hands,forced.length),tr.length)`, so 4 seats on a side make all 4 rods live and the
+    AI plays none of that team, which is correct. `hands` (now 3) only ever bounded the AI. Both
+    comments corrected. A 5th player a side would be a hand with nothing to hold.
+  - **DEVICES bound it below the rod count in practice.** One keyboard, one mouse, so N players
+    need N−2 pads. New **`CONFIG.seats.maxPads`** (8) generates the `'pad0'…'padN'` token list in
+    seats.js and replaces the **three hardcoded `4`s** that capped pad polling (`rosPads`,
+    `rosTick`, `rosterOpen`, `gamepadUpdate`). **XInput on Windows tops out at FOUR pads**, so
+    4 pads + kbd + mouse ≈ **6 players is the realistic ceiling there** — 4v4 needs 8 devices and
+    won't be reachable on a stock Windows box. `seatForDev`'s `/^pad\d$/` widened to `\d+`.
+  - **`CONFIG.seats.tint` had 2 entries and `seatTintHex` repeats the last** — so P3 and P4 on a
+    side would have rendered in P2's colour, defeating the one thing the tint exists for. Now 4,
+    spread by LIGHTNESS first (it's a small cone read at a glance) and hue second. Both kit
+    defaults sit at l≈.65, which is what lets P3 go −.22 without going black. `offsetHSL` wraps h
+    and clamps s/l, so the offsets are safe against any user kit colour.
+  - **DUPLICATE ROLE LOCKS are now refused.** A `lockRole` seat has a ONE-ROD list and literally
+    cannot switch, so two teammates locking the same role weld themselves to one handle and both
+    drive its target — unrecoverable in-match. With 4 roles and 4 seats a side that's one mis-click
+    away. `rosRoleTaken` gates `rosSetRole`, the button renders `.rodOpt.taken` (dashed/dimmed,
+    titled "Taken by P2" — same language as the device chips), and `rosSetTeam` drops the lock when
+    swapping onto a side that already has it (the only route past the guard).
+  - **`seatBindRods`' push-off had an ORDER BUG the cap was hiding.** It yielded only to EARLIER
+    seats (`j<i`), so an unlocked P1 taking MID before a locked-to-MID P2 was placed left P2
+    (`n<2`, early return) sitting on top of them. A single-rod seat can't be the one to give way,
+    so the test is now `j<i || o.rods.length<2`. Plus a backstop in the bind itself: a lock whose
+    rod an earlier locked seat already claimed is DROPPED (full rod list) rather than honoured.
+    Note this also changed the unmatched-role fallback from `mine[0]` to the full list — strictly
+    better, and unreachable from the two live callers.
+  - **`#chips` gets a COMPACT MODE past `CHIP_FULL_MAX` (2) seats** (`hud.js`). The full form is a
+    label + one chip PER ROD per seat = **40 chips at 4-a-side**, three wrapped rows over the play
+    area, and mostly dead affordance: once a side's 4 seats hold its 4 rods there is nowhere to
+    switch to and every off-rod chip is permanently `.taken`. Compact = one chip per player showing
+    the rod they hold; click still cycles. `#chips` also gained `flex-wrap:wrap-reverse` +
+    `max-width:88vw` (it was an unwrapped flex row running off both screen edges). **Solo and 2P
+    are under the threshold and render exactly as before.**
+  - **`#menu` scrolls now** (`overflow-y:auto; justify-content:safe center`). Four seat cards a side
+    can outgrow a short viewport, and `.screen` is a centred flex column with no overflow rule —
+    which clips at BOTH ends, so the title and the START bar above the wrap would be the first
+    things lost. `safe center` degrades to flex-start only when it doesn't fit. (`.lyScroll` covers
+    this for CUSTOM layouts only.)
+  - Untouched and worth knowing: `S.userTeam` is still the PRIMARY seat's team, so the HUD tint and
+    the handle-side flip follow P1 at 4v4; the sweet-spot guide is still one mesh set (`ssSeat`);
+    and with all 4 rods held, Q/E laps and does nothing, which is correct.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised with live devices.
+- **KICK OFF REBUILT AS TABS; layout editor now supports MULTIPLE regions per screen.**
+  - **`SCREENS[id].lay` may be an ARRAY of blocks**, each with its own `key`, `wrap`, `btn` and
+    `panels` (js/layout.js indexes them once into `LAY_BLOCKS`). Every layout function works on a
+    **layout KEY** now, not a screen id; `layApplyScreen(id)` is the screen-level entry point and
+    is what `showScreen` calls. **A block's key is what `cfg.layouts` is stored under, so renaming
+    one orphans every saved arrangement** — `'menu'` stays on the Kick Off team tab for exactly
+    that reason. A block with no key defaults to its screen id, so single-region screens
+    (league) are unchanged.
+  - **`layApply` skips a wrap inside a hidden tab** — it measures 0 wide there, which would squash
+    every panel to `LAY_MINW`. `menuSetTab` re-applies on reveal. Same reason each tab has its own
+    ⊞ button and only the live tab's is shown: two edit buttons in one corner would be a coin toss
+    as to which region you were about to rearrange.
+  - **Kick Off default layout is now Team 1 kit · Team Select · Team 2 kit.** The old combined
+    "Teams & Kits" panel is split into `menuKitPanel0`/`menuKitPanel1` (all its inner ids were
+    already per-team, so `refreshKitUI` needed no change), and the two roster columns are back
+    inside ONE `#menuTeamPanel` as `.rosCol`s.
+  - **Match Setup is its own TAB, split into three panels** (Match Rules / Table & Venue / Audio).
+    A tab rather than a fourth column because it's tall: under a team panel holding four players
+    it would be pushed off the bottom of the screen. Control ids are all unchanged — only the
+    grouping moved — and `menuSetupPanel` keeps its id so existing saves resolve it.
+  - **The Controls panel moved to Options → Controls** (`#optCtlRefPanel`) and gained the
+    controller column it never had, plus a note on what Total Control remaps. It's a thing you
+    look up once, not a thing you set per match.
+  - `.scrTabs`/`.scrTabBtn`/`.scrTab` are the generic tab classes; `.optTabs` etc. are kept as
+    aliases so the Options screen didn't have to change. Generic tabs use the steel accent, not
+    the league's gold.
+  - **A CUSTOM WRAP NOW HUGS ITS CONTENT ON BOTH AXES** (it only did height before, so a narrow
+    arrangement sat in a slab of empty dotted box). Two things make that safe:
+    · **Panels clamp against the width the wrap is ALLOWED to be, not its current width.**
+      `layApply` clears the inline width, measures `clientWidth`, then shrinks. Clamping against
+      the already-shrunk width would ratchet the box narrower on every call. Measuring this way
+      also means each wrap honours its own CSS max-width (`.panelWrap` 1640, `.lgWrap` 1820) with
+      no constant in layout.js to keep in sync.
+    · **While EDITING the wrap holds the full canvas** — shrink-wrapped to its panels there'd be
+      nowhere to drag one out to. `layEditEnd`'s `layApply` does the shrink.
+    `.lyCustom` gained `min-width:0` (`.panelWrap`'s 1200px floor is for the FLOW layout) and
+    deliberately does NOT override `max-width`, since that's what the measurement reads.
+  - **`.scrTab{width:100%}` is load-bearing.** A `.screen` is a centred flex column, so a plain
+    block child is shrink-to-fit — its width comes from its content, and a `.lyCustom` wrap's
+    content is absolutely-positioned panels contributing nothing. Without it the wrap's own
+    `width:100%` resolves against a collapsed box. Any future tab/section wrapper needs the same.
+  Verified by re-read (sandbox wouldn't boot).
+- **ROSTER PANELS ARE LAYOUT-EDITABLE + camera no longer favours red.** Two unrelated UX fixes.
+  - **The two Kick Off team columns are `.panel`s inside `.panelWrap` now** (`#rosPanel0` /
+    `#rosPanel1`, added to `SCREENS.menu.lay.panels`), so the ⊞ editor moves and resizes them like
+    any other panel. `.rosWrap` and the `VS` divider are GONE — `.panel` already supplies the card
+    chrome, so `.rosTeam` is down to the team accent colour. `.panelWrap` gained **`flex-wrap`**:
+    five panels past the 1640px max would otherwise squeeze every one of them thin instead of
+    dropping to a second row. The START bar sits ABOVE the wrap deliberately — a custom
+    arrangement can be taller than the viewport (`.lyScroll`), and a bottom-anchored primary
+    action would end up off-screen.
+  - **`layApply`'s no-saved-spot branch used to stack new panels almost exactly on top of each
+    other** (`y` offset 40px, `x` identical, height 288) — so anyone with a saved menu layout would
+    have seen the two roster columns arrive as one. They're now laid out in a 3-wide grid below the
+    saved arrangement. Worth knowing for any future panel added to an existing screen.
+  - **Camera: `CONFIG.camera.sideModes` + `soloOnly`.** Modes 1/4/5/6/7/8 are anchored to one END
+    of the table, and **two of them (1 and 8, both "RED MID CAM") had no blue counterpart at all**
+    — so a blue player pressing V got shots up the wrong half. That was broken in solo blue play
+    long before co-op. `camTeamSide()` returns the team holding EVERY seat, or −1 when that's
+    ambiguous; end-anchored shots mirror (x and lookX negate, nothing else — height and depth are
+    the same shot either way) when that team is blue. The ball-follow offset is a WORLD offset and
+    is deliberately not mirrored.
+  - **With humans on BOTH sides the unpaired shots drop out of the V cycle** (`soloOnly`). 4/5 and
+    6/7 are end PAIRS so both ends stay represented whatever happens; 1/8 are red-only and one
+    screen shared by two opposed players can't make a one-sided shot fair, so it isn't offered.
+    `cycleCam(d)` skips them rather than landing on them, and `startMatchNow` steps off a mode that
+    stopped being offerable since the last match (the camera persists between matches).
+  Verified by re-read (sandbox wouldn't boot).
+- **PER-SEAT MARKERS + SEAT COLOUR — step 5. Two players on one team can now tell their rod
+  apart.** This was the gap left open by steps 3–4: the held-rod marker and the sweet-spot guide
+  were single meshes tracking the primary seat, so player 2 played unmarked.
+  - **`CONFIG.seats.tint` + `seatTintHex(team,i)` / `seatCol(seat)` (seats.js).** The kit colour
+    identifies a TEAM and cannot identify a PLAYER — which is exactly what you need with two
+    humans on one side. So each seat past the first on a team is offset in HSL from its kit
+    colour (`THREE.Color.offsetHSL`, index-keyed, last entry repeats). **1v1 is unaffected**: each
+    seat is index 0 within its own team, so the markers are plain red and plain blue. Only a
+    SHARED side shifts. `seatTintHex` takes team+index rather than a seat so the lobby can colour
+    its cards from plain specs, before any live seat exists.
+  - **`indicator` (one cone) → `indicators[]`, one per `CONFIG.seats.max`,** built once in
+    `initThree` and only ever shown/hidden — same discipline as the fx light pool. Geometry is
+    SHARED across the four; the materials can't be, since each carries a different colour. The
+    bob is phase-offset by seat index (`+i*1.7`) so two markers never rise and fall in lockstep,
+    which matters more than the tint when they're both on screen. The old singular `indicator`
+    global is GONE (it had no readers left) — use `indicators`.
+  - Colour is cached per mesh (`m.userData.col`): `material.color.set('#rrggbb')` parses a string,
+    and doing that 4× a frame for a value that changes ~never is the only real cost in the loop.
+  - **The sweet-spot guide is one mesh set, so it now follows whoever pressed B** (`ssSeat`),
+    not always the primary seat. A second player pressing B TAKES it rather than switching the
+    first player's off — otherwise B reads as a global toggle someone else keeps flipping.
+    Pressing it while you already hold it turns it off, i.e. solo behaviour is unchanged.
+    `sweetGuideUpdate` self-heals `ssSeat` to null when it's no longer in `S.seats`, because
+    seats are rebuilt every match and a held reference goes stale at the next kickoff.
+  Verified by re-read (sandbox wouldn't boot).
+- **KICK OFF ROSTER (`js/roster.js` new) — step 4. Local co-op is live.** The three mode cards
+  (PLAY RED / PLAY BLUE / AI SHOWDOWN) and their rod rows are GONE; `wireRodCard` is deleted.
+  Side, rod and who's-AI are per-player now: two team columns of seat cards, each card showing
+  its player number, devices and a rod pick (ALL/GK/DEF/MID/ATT). A column with no seats shows
+  its AI difficulty instead — read-only, because the dropdown that sets it stays in the Match
+  Setup panel and two writers for one value is how they drift.
+  - **The lobby edits SPECS, not seats.** `S.roster` is `[{team,devs[],lockRole}]`; `flow.js`
+    maps them through `makeSeat` at kickoff (`startMatch('roster')`). `makeSeat` copies `devs`,
+    so a live seat can't mutate the spec — which is what lets Rematch replay the same line-up
+    with no re-derivation. An EMPTY roster is a legal state: `userTeam` falls to −1 and it's an
+    AI-vs-AI spectate, so the old AI SHOWDOWN card is just "start with nobody joined" (the START
+    button relabels itself to WATCH AI MATCH).
+  - **DEVICE RULE — the first seat absorbs every unclaimed device; every later seat takes exactly
+    the one it joined with, stripped from whoever held it.** That one sentence is `rosAbsorb()`,
+    and it's what keeps solo play intact: one seat holding keyboard + mouse + pad, exactly as
+    before. Drop back to one seat and it re-absorbs, so leaving restores solo controls.
+  - **Press-to-join only claims UNOWNED devices; taking one off another player is a CLICK.** Not
+    a style choice — Space and A are the most likely accidental presses, and a solo player
+    holding all three devices would otherwise split themselves into a second seat by tapping
+    either. So the chips list free devices AND takeable ones (dimmed, titled "Take from P1"),
+    and `rosTakeableDevs` refuses to strip a seat below one real device so nobody can be deleted
+    by someone else's click. Pad **B** mirrors the same rule: it only leaves when that pad is the
+    seat's ONLY real device, i.e. the seat exists because of that pad.
+  - **`'pad*'` is held by a lone seat and stripped the moment a second seat exists.** It covers a
+    pad plugged in AFTER kickoff, when the lobby is gone and there's no chip to click; with two
+    seats it has to go or player 2's pad would answer to player 1 as well. It's never SHOWN in a
+    device label — `rosAbsorb` adds the real `padN` alongside it once one is connected, and that
+    is what the player should read.
+  - **The poll gates on the screen being VISIBLE, not on `screenId()`.** `startMatchNow` calls
+    `hideScreens()` without navigating, so `scrCur` stays `'menu'` for the whole match — gating on
+    the router alone left the lobby polling through play, where a pad's B would call `rosLeave`
+    mid-rally. Edge state is primed in `rosterOpen` from what's held right now, so a button still
+    down from the click that opened the screen can't insta-join.
+  - Re-render is a **signature diff** (`rosSig`) on a rAF, not an event web: pad hotplug, a team
+    rename in the Kits panel and an AI-difficulty change all show up without any of those places
+    knowing the roster exists. `ui.js`'s name inputs no longer poke the mode cards at all.
+  - `CONFIG.seats.max` (4) and `perTeam` (2). **`perTeam` matches `CONFIG.ai.hands`** — a team only
+    ever has two hands, so a third player on one side would be a hand that can't exist. Raise both
+    together or not at all.
+  - Seeding is once per session (`ROS.seeded`): the first visit drops a red seat so a solo player
+    can just hit START, but leaving every seat to set up an AI-vs-AI match isn't undone by
+    stepping out to home and back.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised with two live devices.
+- **SEATS (`js/seats.js` new) — step 3, the local-co-op foundation. HEADLESS: one seat, plays
+  identically to before.** `S.userTeam`+`S.ctrl`+`S.ctrlRods` could only ever describe ONE person;
+  `S.seats[]` describes N. A seat = `{team, devs[], lockRole, rods[], ctrl, tcMult, padRaise,
+  padPrev}`. `seatOf(r)` replaces the old "is this rod index the player's" test everywhere.
+  - **DEVICES ARE A SET PER SEAT (`devs[]`), NOT ONE DEVICE PER SEAT** — the single most important
+    detail here. Solo play is one seat holding keyboard AND mouse AND pad simultaneously; make
+    device→seat 1:1 and a solo player slides with the mouse on one rod and the arrow keys on
+    another. Tokens: `'kbd'`, `'mouse'`, `'pad0'..'pad3'` (a specific pad, what the lobby hands
+    out) and **`'pad*'`** = any pad, which is what `soloSeat()` uses. `seatForDev(tok)` resolves
+    exact-match first, then a `'pad*'` holder.
+  - **`'pad*'` only answers to the FIRST connected pad** (`padSeat(idx,first)` in input.js). The
+    old code did `getGamepads()` → first non-null, so without that restriction plugging a 2nd pad
+    in mid-match would silently start driving player 1's rod.
+  - **Pad edge state moved onto the seat** (`padPrev`, was the module-global `gpPrev`) and so did
+    the raise-hold latch (`padRaise`, was `gpRaiseHeld`) and the Total-Control multiplier
+    (`tcMult`, was `S.tcMult`, read in rods.js via `seatOf(r)`). Two pads sharing one `gpPrev`
+    means a held button on pad 1 swallows pad 2's press — that's why these had to move, not
+    tidiness. `gamepadUpdate` now LOOPS pads and calls `padSeatUpdate` per claimed pad; pause and
+    replay-skip fire from any pad but are `didPause`/`didSkip`-guarded so two players pressing
+    Start in one frame don't toggle twice and land back where they started.
+  - **`setSeatCtrl` SKIPS rods another seat holds** (owner's call), searching on in the direction
+    of travel so Q/E lands on the next FREE rod rather than doing nothing. `rodTaken(r,except)`
+    is the test. Same skip is applied in the auto-rod-switch scan, or both players on a team get
+    dragged onto whichever rod is nearest the ball.
+  - **`pickActiveRods` forces EVERY seat-held rod on a team into the active pair**, not one. If a
+    team ever has more seats than `CONFIG.ai.hands`, the cap is raised to the seat count so nobody's
+    rod goes dead. Two humans on one team therefore fill both hands and the AI plays none — correct.
+  - `seatBindRods()` does the initial placement (MID by default, then push each seat off a rod an
+    earlier seat took) **by hand rather than via `setSeatCtrl`** — that stamps `S.lastSwitch`,
+    repaints the chips and plays a click, none of which belong in match setup.
+  - Primary-seat-only at the time of this step; **resolved in step 5 above** (per-seat marker
+    pool + seat colour). `updateChips` already renders one row per seat with a P1/P2 label and a
+    `.taken` state; with one seat it emits exactly the old markup.
+  - `S.userTeam` SURVIVES as "the primary seat's team" and still drives the camera/HUD tint and
+    the handle-side flip. It is not a per-player value — don't reach for it in new code.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised with two live devices.
+- **Training now quits to `#home`, not Kick Off** (`S.fromScreen`, set in `startMatchNow` from
+  `screenId()`, read by `gotoMenu`). A match returns to the screen it was LAUNCHED from, so a
+  quick match still lands back on Kick Off (rematch stays one click) while training — launched
+  from home — goes home. League/cup are forced to `'home'` instead of their lobby: they have their
+  own return paths (`lgReturn`/`cupReturn` re-render before showing), and a bare quit routed to
+  `'league'` would render a stale lobby.
+- **LANDING SCREEN `#home` — step 2 (v0.1.206).** The game now opens on a four-route landing page
+  (KICK OFF / LEAGUE / TRAINING / OPTIONS) instead of dropping a first-time player straight into
+  the full match-setup surface. Built entirely on the router below; no new navigation machinery.
+  - **`#menu` KEEPS ITS ID and becomes the KICK OFF screen.** That's the whole trick — renaming it
+    would have invalidated `cfg.layouts.menu` (saved panel arrangements), the `#menu .panelWrap`
+    CSS, `SCREENS.menu.lay`, and the back-target of customize/options. So the landing page went in
+    with **zero** changes to those. `SCREENS.menu.back` is `'home'`, `scrCur` starts at `'home'`.
+    **Read "menu" as "Kick Off" everywhere in the code** — that's the one piece of naming debt this
+    approach buys, and it's cheaper than the alternative.
+  - **LEAGUE and TRAINING cards MOVED to `#home` keeping their button ids** (`btnLeague`,
+    `btnTraining`), so league.js and training.js bind to them unchanged — moving a card between
+    screens is a pure HTML edit as long as the id travels with it. Only the two routes with no
+    module of their own (`btnKickOff`, `btnHomeOptions`) needed new wiring, in `bindUI`.
+    `Au.init()` rides those two clicks since WebAudio needs a user gesture and they're the only
+    home cards that didn't already call it.
+  - **The intro reveal moved to `#home`** (`intro.js` `menu`→`home`, the `#menu.introHide` /
+    `#menu.introIn` CSS block → `#home.*`, and the no-JS loader failsafe in index.html). `introHide`
+    is `visibility:hidden` and NOT `display:none` ON PURPOSE: `reveal()` measures this screen's
+    `.logo` to aim the intro logo's morph, and a `display:none` element has no rect. **`#home` is
+    therefore the one screen that boots WITHOUT `.hidden`** — `#menu` now boots with it.
+    Card stagger delays trimmed 5→4.
+  - Kick Off gained a top-LEFT `◀` (`.backBtn`, `#menuBack`) opposite the gear/⊞ stack, so a
+    screen's two corners read as "leave" vs "configure"; it overrides `.optGear`'s rotate-on-hover.
+    Its heading uses a new **`.scrTitle`** (steel gradient) rather than `.lgTitle` — gold is the
+    league's brand colour and a gold "KICK OFF" reads as league chrome. Reuse `.scrTitle` on any
+    non-league screen.
+  - `.homeRow` narrows `.modeCard` (280px min → 212) so four fit one row and WRAP to 2×2 below
+    ~950px rather than squeezing; marks and headlines are scaled up since four cards are the
+    entire screen. New accents: `.modeCard.kickoff` (team red), `.modeCard.opts` (steel).
+  - League's two Back buttons + `SCREENS.lgSlots/league.back` now point at `'home'` (league is
+    entered from home). `customize.back` stays `'menu'` — it's only reachable from the Kick Off
+    kit panel.
+  - **`gotoMenu()` still lands on Kick Off**, per the owner's call: rematch/change-rod is then one
+    click. Consequence worth knowing: quitting TRAINING (launched from home) also lands on Kick
+    Off. If that reads wrong, the fix is to stash `screenId()` in `startMatchNow` and return there.
+  Verified by re-read (sandbox wouldn't boot).
+- **Screen ROUTER (`js/screens.js` new) — step 1 of the landing-page work.** Groundwork only:
+  no screen was added, no screen looks different. Every full-page screen you NAVIGATE to is now
+  one entry in a `SCREENS` registry, driven by `showScreen(id)` / `backScreen()` / `hideScreens()`.
+  - **Why it had to come first.** "Go back to the menu" was a raw
+    `$('menu').classList.remove('hidden')` **repeated in 7 files / 14 sites** — intro, flow
+    (`startMatchNow` + `gotoMenu`), customize ×2, options ×2, league ×5, the Esc handler, and
+    `layout.js`'s own screen table. Adding ONE screen meant editing all of them, and the next one
+    after that too. All 14 are now `showScreen`/`hideScreens` calls.
+  - **OVERLAYS ARE DELIBERATELY NOT REGISTERED.** `#pause`, `#win`, `#lgForfeit`, `#lgTape`,
+    `#lgSeasonEnd` all carry `class="screen"` but they stack ON TOP of the screen underneath
+    rather than replacing it — `#pause` in particular sits on a live match, so routing to it would
+    leave the router pointing at a menu that isn't coming back until `gotoMenu`. `hideScreens()`
+    therefore leaves them alone and the two callers that want them down (`startMatchNow`,
+    `openCup`) hide them by hand. Same reason `openOptions('pause')` bypasses the router entirely
+    while `openOptions('menu')` goes through it.
+  - **`LAY_SCREENS` IS GONE — the layout editor reads `SCREENS` now.** A screen becomes
+    panel-arrangeable by gaining a `lay:{wrap,btn,panels}` block in its registry entry; `layApply`
+    then runs automatically inside `showScreen` (so the two manual `layApply('menu')` /
+    `layApply('league')` call sites in `gotoMenu`/`openLeague` are deleted), and the ⊞ button is
+    bound by a loop over `SCREENS` at layout.js load. `layout.js` keeps NO registry of its own —
+    that was two tables to keep in sync, and it's the reason adding a layout to a screen used to
+    be a three-file change. `layDef(id)`/`layPanels(id)` are the accessors; every layout function
+    early-outs when a screen has no `lay` block, so registering a screen WITHOUT one is fine.
+    `cfg.layouts` keys are unchanged, so saved arrangements survive.
+  - **Screens attach their OWN teardown** (`SCREENS.customize.onHide` in customize.js,
+    `SCREENS.options.onHide` in options.js) rather than screens.js reaching into their state.
+    This is load-bearing, not tidiness: **Esc now walks the tree** (`backScreen()` in the keydown
+    handler, replacing the league-only special case), so leaving Customize by Esc never calls
+    `closeCustomize` — without the hook the turntable would keep rendering through the shared
+    preview context behind the menu. Any future screen with live state needs the same.
+  - `backScreen()` returns **false** at a top-level screen (`back:null`) so Esc on the menu still
+    falls through to `togglePause()` instead of being swallowed. Free wins from the generic
+    handler: Esc now backs out of Customize / Slots / New-League.
+  - **`championsCup` is `back:null` ON PURPOSE** and it's the one place a registry `back` would
+    have been wrong: leaving the cup bracket isn't a plain screen change. Arriving there from a
+    finished tie's win screen leaves `S.lg` still set, and `cupReturn()` (the Back button) clears
+    it via `gotoMenu` before re-opening the lobby with fresh content — a bare
+    `showScreen('league')` would strand the bridge and render a stale lobby. Worth checking for
+    on any screen you give a `back`: **does its Back button do more than navigate?** If so the
+    extra work belongs in an `onHide` first.
+  - Load order: `screens.js` sits between `config.js` and `intro.js` in index.html's boot list.
+    It resolves elements LAZILY (never caches `$(id)`) so it can load before the DOM settles and
+    before any screen's own module has parsed; `layApply` is called through a `typeof` guard
+    since layout.js loads much later. `scrCur` starts at `'menu'` — the screen the intro reveals.
+  - **`intro.js` was NOT touched in step 1**: it toggles `introHide`/`introIn`, never `.hidden`,
+    so it never interacted with the router — it was handed to step 2, which repointed it at
+    `#home` along with the `#menu.introHide`/`#menu.introIn` CSS rules.
+  Verified by re-read (sandbox wouldn't boot).
 
 ### 2026-07-28
 - **Between-row LANES are dead zones now** (`CONFIG.deadball.rodGaps`, `js/powerups.js` `rodGaps()`

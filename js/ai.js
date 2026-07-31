@@ -155,16 +155,23 @@ function focusBall(t){
 }
 // Only AIC.hands rods per team may actively move at once (two 'hands'). The rest hold
 // their lane and block passively. The active pair = the rods nearest the live threat in
-// x, recomputed on a commit timer so it can't flicker frame-to-frame. The user's own
-// controlled rod is always forced into their team's pair (that's the hand they're using).
+// x, recomputed on a commit timer so it can't flicker frame-to-frame.
+// EVERY rod a human seat is holding on this team is forced into the pair — those are hands
+// physically on the table, so they're live by definition. With two people on one team that
+// fills both slots and the AI plays none, which is correct; the cap is raised to the forced
+// count if a team ever has MORE seats than hands so nobody's rod goes dead.
 function pickActiveRods(dt){
-  const H=AIC.hands;
   for(let t=0;t<2;t++){
    S.pairCd[t]-=dt;
-   const tr=teamRods(t),n=Math.min(H,tr.length);
-   const forced=(S.userTeam===t&&S.ctrlRods.length)?S.ctrlRods[S.ctrl]:null;
+   const tr=teamRods(t);
+   const forced=[];
+   for(let i=0;i<S.seats.length;i++){
+    const s=S.seats[i];if(s.team!==t)continue;
+    const hr=seatRod(s);if(hr&&tr.indexOf(hr)>=0&&forced.indexOf(hr)<0)forced.push(hr);
+   }
+   const n=Math.min(Math.max(AIC.hands,forced.length),tr.length);
    const cur=S.active[t]||[];
-   const valid=cur.length===n&&cur.every(r=>tr.indexOf(r)>=0)&&(!forced||cur.indexOf(forced)>=0);
+   const valid=cur.length===n&&cur.every(r=>tr.indexOf(r)>=0)&&forced.every(r=>cur.indexOf(r)>=0);
    if(S.pairCd[t]>0&&valid)continue;
    const fb=focusBall(t),bx=fb?fb.m.position.x:(t===0?F.L/2:-F.L/2);
    const dir=t===0?1:-1;
@@ -175,7 +182,7 @@ function pickActiveRods(dt){
     const penaltyB=behindB>10?behindB*10:0;
     return (Math.abs(a.x-bx)+penaltyA)-(Math.abs(b.x-bx)+penaltyB);
    });
-   const pick=[];if(forced)pick.push(forced);
+   const pick=forced.slice();
    for(const r of ranked){if(pick.length>=n)break;if(pick.indexOf(r)<0)pick.push(r);}
    S.active[t]=pick;S.pairCd[t]=AIC.pairCommit;
   }

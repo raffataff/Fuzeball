@@ -818,7 +818,9 @@ ai:{
    errEvery:[1.7,4.],                        // how often a fresh wandering aim-error target is rolled (s)
    
    // --- two-hands + anti-jitter -----------------------------------------
-   hands:3,                                   // rods per team that may actively move at once (like 2 human hands)
+   hands:3,                                   // rods per team the AI may actively move at once (like a pair of human hands).
+                                              //   NOT a cap on human seats — pickActiveRods raises the cap to the seat
+                                              //   count when a team has more seats than this, so every held rod is live.
    pairCommit:0.3,                            // min seconds a rod stays in the active pair before it can be swapped
    manHyst:2,                               // a different man must beat the current one by this many z-units to steal aim
    retargetDead:0.1,                          // desired slide must differ from current target by this (z) before we re-aim
@@ -864,7 +866,7 @@ ai:{
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
       src:'assets/fuzeball_mechaman.glb',scale:0.8,
       mug:'assets/renders/render_mechaman_mugshot.png',   
-      teamParts:['kit_mechaman'],hairParts:[],
+      teamParts:['kit_mechaman_new'],hairParts:[],
       explosionSrc:'assets/animations/mechaman_explosion.glb'
    },
    {id:'stormer',name:'Stormer',blurb:'Cold and endless',
@@ -884,13 +886,13 @@ ai:{
 
    // MEN
    {id:'manJerry',name:'Jerry',blurb:'Confident and cocky',
-      src:'assets/fuzeball_ManJerry.glb',scale:0.8,
+      src:'assets/fuzeball_manJerry.glb',scale:0.8,
       mug:'assets/renders/render_jerry_mugshot.png',   
-      teamParts:['kit_jerry_new'],hairParts:['kit_jerry_hair_new'],
+      teamParts:['kit_manJerry'],hairParts:['kit_manJerry_hair'],
       explosionSrc:'assets/animations/jerry_explosion.glb'
    },
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
-      src:'assets/fuzeball_richie.glb',scale:0.8,
+      src:'assets/fuzeball_manRichie.glb',scale:0.8,
       mug:'assets/renders/render_richie_mugshot.png',   
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
@@ -906,7 +908,7 @@ ai:{
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
       src:'assets/fuzeball_womanKimi.glb',scale:0.8,
       mug:'assets/renders/render_kimi_mugshot.png',   
-      teamParts:['kit_Kimi'],hairParts:[ 'kit_Kimi_hair' ],
+      teamParts:['kit_kimi'],hairParts:[ 'kit_kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
@@ -921,25 +923,25 @@ ai:{
       teamParts:['kit_tanya'],hairParts:[ 'kit_tanya_hair' ],
       explosionSrc:'assets/animations/tanya_explosion.glb'   
       },      
-   {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
+   /*{id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSasha.glb',scale:0.8,
       mug:'assets/renders/render_sasha_mugshot.png',   
       teamParts:['kit_sasha'],hairParts:['kit_sasha_hair'],
       explosionSrc:'assets/animations/sasha_explosion.glb'
-    },
-   {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
-      src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
-      mug:'assets/renders/render_zaneesh_mugshot.png',   
-      teamParts:['kit_zaneesh'],hairParts:['kit_zaneesh_hair'],
-      explosionSrc:'assets/animations/zaneesh_explosion.glb'
-    }, 
-   /*{id:'womanAndroid',name:'JennyBot',blurb:'Quick and calculating',
-      src:'assets/fuzeball_womanAndroid.glb',scale:0.8,
-      mug:'assets/renders/render_jennyBot_mugshot.png',
-      teamParts:['woman_android'],hairParts:['woman_android_hair'],
-      explosionSrc:'assets/animations/jennybot_explosion.glb'
-   },*/
-   // ALIENS
+    },*/
+    /*{id:'womanAndroid',name:'JennyBot',blurb:'Quick and calculating',
+    src:'assets/fuzeball_womanAndroid.glb',scale:0.8,
+    mug:'assets/renders/render_jennyBot_mugshot.png',
+    teamParts:['woman_android'],hairParts:['woman_android_hair'],
+    explosionSrc:'assets/animations/jennybot_explosion.glb'
+    },*/
+    // ALIENS
+    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
+       src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
+       mug:'assets/renders/render_zaneesh_mugshot.png',   
+       teamParts:['kit_zaneesh'],hairParts:['kit_zaneesh_hair'],
+       explosionSrc:'assets/animations/zaneesh_explosion.glb'
+     }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
       mug:'assets/renders/render_tamirok_mugshot.png',   
@@ -957,6 +959,18 @@ ai:{
       mug:'assets/renders/render_katum_mugshot.png',   
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
+      },
+   {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
+      src:'assets/fuzeball_alienKodus.glb',scale:0.8,
+      mug:'assets/renders/render_kodus_mugshot.png',   
+      teamParts:['kit_Kodus'],hairParts:[],
+      explosionSrc:'assets/animations/kodus_explosion.glb'
+      },
+   {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
+      src:'assets/fuzeball_alienZargon.glb',scale:0.8,
+      mug:'assets/renders/render_zargon_mugshot.png',   
+      teamParts:['kit_Zargon'],hairParts:[],
+      explosionSrc:'assets/animations/zargon_explosion.glb'
       },
   ],
   // Surface finishes offered as one-tap presets (metalness / roughness / glow).
@@ -1156,6 +1170,37 @@ ai:{
  /* ---- player control ------------------------------------------------- */
  control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2, nameMaxLength:20 }, // keyboard slide, mouse range, auto rod-switch delay
 
+ /* ---- seats (local co-op roster, js/seats.js + js/roster.js) ---------- */
+ seats:{
+  max:8,          // how many humans can join one match, total.
+  perTeam:4,      // …and how many on ONE side. THE CEILING IS THE ROD COUNT, not CONFIG.ai.hands:
+                  // a side has 4 rods, so a 5th player would be a hand with nothing to hold.
+                  // `pickActiveRods` raises a team's active-rod cap to its seat count whenever the
+                  // seats outnumber `hands`, so at 4-a-side every rod is live and the AI plays none
+                  // of that side — correct, and the reason `hands` does NOT bound this.
+                  // DEVICES bound it below the rod count in practice: there is one keyboard and one
+                  // mouse, so anything past 2 players needs a pad each (see `maxPads`).
+  maxPads:8,      // gamepad indices the lobby will hand out ('pad0'…'pad{maxPads-1}'). The Gamepad
+                  // API itself has no small cap, but XInput on Windows tops out at FOUR pads, so 4
+                  // controllers + keyboard + mouse ≈ 6 players is the realistic ceiling there.
+                  // Raising this costs nothing (it only widens the token list + the poll loop).
+  // SEAT COLOUR. Two players on the SAME team can't be told apart by team colour, so each seat
+  // after the first on a side gets an HSL offset from its kit colour — same family, clearly a
+  // different person. Applied to the held-rod marker, the HUD chips and the lobby cards, so the
+  // colour you pick a seat in is the colour that floats over your rod. Index = seat's position
+  // within its team; the last entry repeats if there are ever more seats than entries — so this
+  // list MUST be at least `perTeam` long or the last two players on a side render identically.
+  // Offsets are applied by THREE.Color.offsetHSL, which clamps s/l and wraps h, so they're safe
+  // against any kit colour. Spread by LIGHTNESS first (reads at a glance on a small cone) and hue
+  // second; both kit defaults sit at l≈.65, which is why P3 can afford to go down.
+  tint:[
+   {h: 0,     s: 0,    l: 0    },  // P1 — the plain kit colour
+   {h: 0.055, s:-0.10, l: 0.20 },  // P2 — lighter, hue nudged
+   {h:-0.050, s:-0.05, l:-0.22 },  // P3 — deeper
+   {h: 0.115, s:-0.30, l: 0.06 },  // P4 — hue shifted furthest, desaturated
+  ],
+ },
+
  /* ---- power-ups ------------------------------------------------------ */
  powerups:{
   firstDelay:[9,14], respawn:[11,17], // seconds until first spawn / after a pickup
@@ -1262,8 +1307,17 @@ ai:{
    [66,44,41,31,17,14],  // Goal 2 Corner
    [-66,44,41,31,-17,-14],  // Goal 1 Corner
    [-50,52,0,0,16,0], // RED MID CAM
-   ],   
-   
+   ],
+  // Indices above whose x is anchored to ONE END of the table. When every human is on the SAME
+  // team and that team is BLUE, these mirror (x and lookX negate) so a blue player gets the same
+  // shots from their own end. Without it "RED MID CAM" points a blue player up the wrong half —
+  // which was true of solo blue play long before local co-op existed.
+  sideModes:[1,4,5,6,7,8],
+  // …of those, the ones with no mirror partner already in the list. 4/5 and 6/7 are end pairs, so
+  // both ends are covered whatever happens; 1 and 8 are red-only, so they drop out of the V cycle
+  // when no single team owns the camera (humans on both sides, or an AI spectate). One screen,
+  // two players facing each other — a one-sided shot can't be made fair, so it isn't offered.
+  soloOnly:[1,8],
   follow:0.0014, lookFollow:0.01, lerp:3,   // ball-follow weights + position lerp
    shakeDecay:0.6, shakeX:0.004, shakeY:0.002, // screen-shake decay + amplitudes
    freeRoamSpeed:80, freeRoamSprint:2.0, freeRoamSens:0.22 // free-roam: base speed, sprint mult, mouse sens
