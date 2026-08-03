@@ -205,7 +205,7 @@ Three levers, all tuned in `CONFIG.ai`:
 ## Other systems
 
 - **Input:** ←/→ or Q/E switch rod; ↑/↓ or mouse slide; Space/click kick; Shift/right-click
-  raise; 1–4 select rod; V cycle camera; Esc pause; mouse wheel switch rod. Wired in the
+  raise; 1–4 select rod; V cycle camera; M frame profiler; Esc pause; mouse wheel switch rod. Wired in the
   `input` section + `userControlUpdate` (which also does auto rod-switch when `cfg.auto`).
   Gamepad (`gamepadUpdate`): left stick slide, A/RT kick, X/LT raise, right-stick absolute rod
   angle, LB/RB switch rod; the optional 'Total Control' mode (Options → Controller) remaps the
@@ -295,6 +295,10 @@ boxes lie flat on the floor spanning the rod's full slide range in z
 | footReach | orange `#ff8c3a` 18% | Oriented box inflated by `BALL_R` around each foot — ball inside = kick collision |
 | aligned | green `#7dff8a` 65%/12% | Floor bars at each man showing ±align zone along z; nearest man greened when dz < alignSlow/fast |
 
+All proxies are scaled instances of three shared unit primitives (`dbgUnitBox`/`dbgUnitSph`/
+`dbgUnitCyl`) — so **a debug mesh's size lives in `.scale`**; a layer that animates `.scale` needs
+its own geometry (aligned bars, sweet-flash discs). `disposeDebug()` frees the whole overlay.
+
 `toggleDebug()` builds everything once (`buildDebug` → `buildAIPanel` + AI geometries),
 then toggles `dbgGroup`/`dbgAIGroup`/panel visibility. `debugUpdate()` runs per-frame:
 positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggles
@@ -302,6 +306,246 @@ positions ball + foot-box proxies, calls `updateAIVis()` which updates all toggl
 visibility toggles. Also shows ball speed (`updateBallSpeed()`) in a cyan readout
 below the camera info, and the held rod's angle + dial (`updateRodAngle()`, `#rodAngle`). The panel is built via `document.createElement` in
 `buildAIPanel()` — no HTML template changes needed.
+
+## Frame profiler (`M` key, `perf.js`)
+
+Press `M` (anywhere, menu included) for a bottom-right overlay that attributes a SLOW FRAME to a
+cause. `cfg.profiler` persists the toggle; tuning is `CONFIG.perf`; `perfDump()` / `perfClear()`
+are console-callable. Built for the intermittent sags an average hides.
+
+**Two clocks per frame, and the difference is the point.** `ms` = rAF-to-rAF (the true interval:
+our work PLUS compositing, GPU wait, texture upload and any GC between frames). `js` = time inside
+`loop()`, split into `sim` / `fx` / `refl` / `rend` by paired `perfMark`/`perfAdd` hooks. **`gap =
+ms − js`**: under vsync a healthy gap is idle, but a gap that spikes while `js` stays flat means
+the stall is NOT in our code and no amount of optimising the sim will touch it.
+
+Every frame over `spikeMs` (45) or `spikeMult`×the running-typical frame writes ONE line to a ring
+of `spikeMax` (14), newest first, each with a heuristic verdict in priority order — **SHADER**
+(`renderer.info.programs` grew: a material compiled mid-play), **GC** (heap FELL by `gcDrop` MB;
+Chrome-only, `performance.memory`), **GPU/BROWSER** (gap dominated), **SIM** (fixed-step loop
+dominated), **RENDER**. Shader/GC are tested first because both ALSO present as a big gap.
+
+- **`renderer.info.autoReset` is turned OFF while profiling** so `draw`/`tri` accumulate across the
+  ball-reflection cube pass AND the main pass — a true per-frame total, not just the last
+  `render()` call. Restored on toggle-off; `perfFrame` re-clears it each frame so enabling from a
+  saved cfg before `initThree` has built the renderer still self-heals. `fpsDiag`'s DRAW line reads
+  the same counter and is correct either way.
+- **`steps` (`perfSteps`) is the cost-latch signature.** `main.js` banks up to `SIM.maxSteps` (7)
+  fixed steps per frame at `sim.hz` 120, so a SLOW frame runs MORE sim than a fast one — `aiUpdate`
+  and `physics` both ×7 — and with `physics` substepping to `subMax` (7, logged as `sub` via
+  `perfSub`) that's up to 49 collision passes in one frame. **The per-frame sim cost more than
+  triples once the frame rate falls**, so a brief trigger can hold the frame rate down long after
+  it's gone. `steps` pinned at max while `sim` dominates = that feedback loop, and the real trigger
+  may be several seconds in the past.
+- **`draw` is where object count is multiplied**: `updateBallReflect` renders the whole scene 6
+  more times every `CONFIG.ballReflect.every` (2) frames, and `refl` is bucketed separately so that
+  cost is visible on its own.
+- Cost when off is one boolean read per hook. Hooks live in `main.js` `loop()` (frame open/close +
+  the four buckets) and `physics.js` (`perfSub`) — keep the mark/add pairs sequential and
+  non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
+  like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
+  canvas would cost frames while we're measuring frames).
+
+### 2026-08-03
+- **BALL WEDGED HALFWAY INTO A WALL — the wall clamp was VELOCITY-GATED, and the boot resolved LAST**
+  (`js/physics.js` `stepBall` side/end walls + new `staticClamp`). Two independent halves, both needed.
+  - **The position correction only ran when the ball was moving OUTWARD.** `if(p.z>zl&&v.z>0){p.z=zl;…}`
+    reads as one test but is two: the bounce (rightly gated on arrival) and the CLAMP (which must not
+    be). A ball already past the line with inward or zero `v.z` was never pushed back — it just sat
+    buried. Now the sign is taken once (`sz`), the reflection stays gated, and `p.z=sz*zl` is
+    unconditional. Same split applied to both end walls (`p.x=±xl`).
+  - **The other half is ORDER.** `collideRod` resolves by writing `p` DIRECTLY and runs AFTER the wall
+    tests, so on a ball squeezed between a boot and a wall the foot's depenetration is the last thing
+    to touch the position that substep and can shove it clean through the wall plane. Worse, the two
+    halves feed each other: the grip lerp (`b.v=lerp(b.v,contactVel,g)`) drags `v.z` toward the FOOT's
+    velocity, so the ball is never "arriving" at the wall again and the gated clamp above could never
+    recover it. New **`staticClamp(b)`** re-asserts floor + side walls + end walls after the rod loop
+    (and before the out-of-bounds test, which a boot could otherwise trip). Static geometry wins the
+    squeeze, so the ball pops ALONG the wall instead of into it.
+  - `staticClamp` is **position-only and kills only the INTO-surface velocity component** — the bounce
+    belongs to `stepBall`'s arrival tests, which have already run this substep; re-bouncing here would
+    let a held ball churn against the boot. Its goal-mouth exemption **mirrors `stepBall`'s test
+    exactly** (`|p.z|<gh && (p.y<goalH||!ENDWALL_H)`) — if one is ever retuned, both must move, or a
+    ball on its way in gets clamped out at the line.
+  - **ARENA IS DELIBERATELY EXEMPT** (early `return`). `arenaContact` is distance-based with NO velocity
+    gate, so a bowl wall already re-resolves a pushed-in ball by itself on the next substep. Worth
+    knowing generally: **the SDF path never had this bug; only the flat table's gated clamps did.**
+  - **NOT a substepping problem, and `subTravel` is the wrong knob for it** (recorded because it's the
+    obvious first move and it costs frames for nothing). `sub=clamp(ceil(vmax·dt/subTravel),subMin,subMax)`
+    with `dt` fixed at 1/120, so `subMax:7` already binds at `vmax≈168`; a strike is `(strikeA/strike)·ARM
+    ≈126 u/s` and ball `maxV` is 100, i.e. hard play ALREADY runs 6–7 substeps. Dropping `subTravel` to
+    0.05 moves the cap to `vmax≈42` — pinned at 7 for essentially all play, paying max cost constantly,
+    to gain 6→7. Per-substep ball travel is ~0.17u against `BALL_R 1.9`: nothing is tunneling.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised live.
+- **CHAMPIONS CUP OVERHAUL — the mode had never been played through, and it did not work**
+  (`js/league.js`, `js/config.js`, `js/flow.js`, `js/ui.js`, `index.html`, `css/styles.css`). The
+  2026-08-02 entry below flagged that everything past `cupCreate`/`openCup` was unexercised. It was.
+  - **WINNING A TIE KNOCKED YOU OUT.** `cupRecord` stored `tie.res=[w,1-w]` from the winning TEAM
+    INDEX, so a player win (`w=0`) recorded `[0,1]` — a 0–1 defeat — and `winners` then advanced the
+    opponent. Compounding it, `res` is indexed by `tie.a`/`tie.b` while `w` describes team 0/1, and
+    the draw puts the player on either side, so even the sign was only right half the time.
+    Forfeiting (`cupRecord(1)`) could therefore ADVANCE you. Now `cupTieRes(tie,pGoals,oGoals)`
+    orients `S.score` onto a/b and the REAL scoreline is stored, so the bracket shows a result
+    instead of a 1–0 verdict. **`S.score` is authoritative; `cupRecord`'s `w` is now ignored** and
+    only kept so flow.js can call it and `lgRecord` through one expression.
+  - **A SECOND CUP COULD NEVER BE DRAWN.** `LG.cup` is never cleared (it carries the persisted elite
+    pool), so `cupValid()` stayed true off a FINISHED bracket and the season-end button's
+    `if(!cupValid())cupCreate()` never fired again — qualify a second time and ENTER CHAMPIONS CUP
+    re-opened the old completed one. Split into **`cupLive()`** (drawn, undecided, `season===LG.season`)
+    and **`cupCurrent()`** (this season's, decided or not). The button tests `cupLive`; the lobby
+    button shows on `cupCurrent` and relabels to **Cup Result** so a just-won bracket stays
+    reviewable until rollover — it used to vanish the instant the cup was decided.
+  - **THE CUP RAN ON ROOKIE BRAINS.** `cupPlayTie` reads `CUP.diff||LGC.baseDiff` and **`CUP.diff`
+    was never defined**, so the post-season showpiece played at `baseDiff` — 'rookie' — while the
+    Premier League you beat to qualify runs 'legend'. Now `diff:'legend'`, which with the pool's
+    base-8 builds on top makes it the hardest football in the game. Silent because it's a
+    `||` fallback, not a missing read: **check `CUP.*` keys exist, they fail quietly.**
+  - **THE BRACKET IS A REAL TREE NOW.** Winners were re-SHUFFLED every round, so the columns
+    `renderCup` draws implied a tree that didn't exist — you could beat the two best teams in the
+    quarters and semis and meet the third in the final by coin flip. Entrants are ranked by
+    `cupRate` (off+def) and placed by **`cupSeedOrder(n)`** — the standard mirror-fold seeding order
+    (`[0]`→`[0,1]`→`[0,3,1,2]`→`[0,7,3,4,1,6,2,5]`, generated so it stays right at 16) — and
+    **`cupNextRound`** pairs winner of tie 2j with winner of tie 2j+1, slots preserved. That is the
+    ONE definition of the pairing; live play and `cupAdvance`'s sim-ahead both go through it, so the
+    bracket you walk and the one the sim finishes can't be drawn differently. `CUP.seeded:false`
+    restores a random (but still tree-structured) draw. **`drawSize+1` must be a power of two and
+    `rounds` must be its log2** — a 6-team field pairs off into `undefined`; noted in config.
+  - `cupAdvance` takes TIES now, not winner ids, and the beaten-FINALIST case is handled separately
+    (`last?cupWinnerOf(tie):cupAdvance(ties)`) — feeding a 1-tie array to the pairing would have
+    produced `{a:winner,b:undefined}`.
+  - **Forfeiting a cup tie left the match running.** The cup branch called `cupRecord`+`openCup`
+    with no `gotoMenu`, so balls/fractures/replay state stayed live, the HUD phase stayed `pause`,
+    and the cup's kit/table kept overriding the player's `prevKit` snapshot. Routed through the same
+    teardown the league branch uses (record first — both readers need `S.lg`, which `gotoMenu` clears).
+    **Also fixed for the LEAGUE: `#lgForfeit` is an overlay, so it isn't in the screen registry and
+    `hideScreens()` never took it down** — it sat on top of the lobby you'd just forfeited back to.
+  - **The trophy was logged to the wrong season.** `cupRecord` stamped `cup:` onto `LG.hist`'s newest
+    entry, but a season's hist entry is only pushed at the rollover OUT of it and the cup is played
+    in the gap between — so the trophy landed on the PREVIOUS season's row (or nowhere, on a first
+    hist). Stamped in `lgNewSeason` from `LG.cup` instead, gated on `LG.cup.season===LG.season`.
+  - **`LG.cupTitles` was incremented and read by nothing.** Now on the lobby history line beside the
+    Premier count. **`cupDone` ("View Trophy") was bound to nothing** — a dead button on the one
+    screen you only reach by winning the thing; it's the primary **Continue ▶** now.
+  - **Winning a tie paid nothing and said nothing** until the final, so three rounds in four ended on
+    a bare round name. New `CUP.tieParts` (2); `cupRecord` stashes `S.lg.parts`/`S.lg.champ` for the
+    win screen (it runs before `endMatch` builds the HTML). Lifting the cup also had no moment of its
+    own — `renderCup` now fires confetti + `Au.goal()` once, latched on `cup.celeb` **in the save**
+    rather than on `S`, so re-opening a won bracket doesn't re-trigger it.
+  - Smaller: seed numbers render beside each name and on the NEXT TIE line; `cupSub` says ELIMINATED
+    rather than COMPLETE when the player went out; the Control select moved ABOVE Play Tie (it
+    configures what that button starts) and persists to **`LG.cupControl`** — its own key, not
+    `LG.control`, so a lock picked for a league round doesn't follow you into a final; `cupEnt` takes
+    an optional pool (so `cupCreate` can seed before the assign-last) and returns a grey placeholder
+    for an unknown id instead of throwing the whole bracket screen.
+  Verified by re-read (sandbox wouldn't boot). Old saves: a pre-change bracket has no `seeds`/`celeb`
+  (seed cells render empty, the celebration fires once) and keeps its unseeded shape — `cupNextRound`
+  pairs any even-length round, so nothing throws. NOT yet exercised live.
+- **THE MATCH-WINNING GOAL NOW GETS A REPLAY** (`CONFIG.replay.winner`, `S.pendingWin`, `js/flow.js`,
+  `js/replay.js`, `js/main.js`, `js/state.js`). The one goal most worth watching was the only one that
+  never got one: `onGoal`'s two winning-goal branches (`suddenDeath`, target reached) `return`ed into
+  `endMatch` BEFORE the `replayQueue(team)` line, so the win screen replaced the celebration outright.
+  - The winner now takes the **same** path as any other goal — banner, `S.phase='goal'`, `goalHold`
+    slow-mo, `replayQueue` — and the win screen WAITS. `S.pendingWin` parks the winning team;
+    `main.js`'s goal timer hands off to `replayStart` exactly as before; **`replayEnd` calls
+    `finishPendingWin()` instead of `startCount`**. Skipping the replay (any key/click/pad) therefore
+    goes to the win screen, not to a re-count — `replaySkip` routes through `replayEnd`.
+  - **`replayReady()`** (new, `replay.js`) is `replayPending()` minus the `RP.queued` test: "is there
+    footage worth showing right now". `onGoal` checks it **before committing anything**, so a case
+    that can't produce a replay (feature off, `cfg.replay` off, rally under `minLen`, another ball
+    still live) never sets a banner/phase it then has to unwind — it falls through to the immediate
+    `endMatch` and is byte-identical to the old behaviour. `replayPending` is now expressed in terms
+    of it, so the two can't drift.
+  - **`finishPendingWin()` returns false when nothing is waiting**, which is what lets both call sites
+    stay one-liners (`else if(!finishPendingWin())startCount(...)`). The `main.js` call is a
+    BACKSTOP, not the normal route: it only fires if a queued win stopped being replayable during
+    the hold. Cheap insurance — the failure mode it guards is a match that never reaches its win
+    screen. `endMatch` also nulls `S.pendingWin` (a clock-out could land with one queued) and
+    `startMatchNow` resets it with the rest of the match state.
+  - Sub-chip on the banner is `GOLDEN GOAL` in sudden death, else `MATCH WINNER` — deliberately NOT
+    the usual HYPE line or the `GOLDEN BALL · ×2` tag; this is the one goal where the format matters
+    more than the flavour. `CONFIG.replay.winner:false` restores the old cut-to-win-screen exactly.
+  - Worth knowing: league/cup recording (`lgRecord`/`cupRecord`) happens inside `endMatch`, so it is
+    now deferred by the replay's length. Nothing reads the result in between — the sim is frozen in
+    the `replay` phase and `checkMatchClock` only runs during `play`.
+  Verified by re-read (sandbox wouldn't boot).
+
+### 2026-08-02
+- **FRAME PROFILER (`js/perf.js` new, `M`)** — see the section above. Hooks in `main.js` `loop()`
+  (`perfFrame`/`perfFrameEnd` + four `perfMark`/`perfAdd` buckets) and `physics.js` (`perfSub`);
+  `CONFIG.perf` tunes it, `cfg.profiler` persists the toggle. Added because the intermittent
+  league-match sags couldn't be pinned by reading: the point of it is `gap = ms − js`, which
+  separates "our JS was slow" from "the browser/GPU stalled and our code was idle".
+- **DEBUG OVERLAY: shared proxy geometry + `disposeDebug()`** (`js/debug.js`). `buildDebug` was
+  allocating a fresh `BufferGeometry` per mesh — 5 per man for the capsule/foot/reach proxies (110
+  for 22 men), a fresh flat `BoxGeometry` per rod in each of six AI zone layers, a cylinder per
+  target dot / dribble mark / shot marker / sweet-flash. Everything is now scaled instances of
+  **`dbgUnitBox` / `dbgUnitSph` / `dbgUnitCyl`**, via the `box`/`plate`/`disc` helpers. Roughly
+  450 → ~95 geometries, and the remainder is nearly all the shot-lane lines (8 rods ×
+  `gapAim.samples`), which genuinely can't share — each `THREE.Line` holds its own 2-point buffer.
+  - **A mesh on a shared geometry carries its SIZE in `.scale`** — so any layer whose live update
+    writes `.scale` must keep its own geometry. Two do: the **aligned bars** (`updateAIVis` animates
+    `.scale.z` against the align threshold) and the **sweet-spot flash** discs (`.scale.setScalar`
+    for the pop). Both are hoisted to one shared geometry each instead, so they still went 22 → 1.
+  - The ball collision proxies now ride `dbgUnitSph` (10×8 segments, was 14×12) — a slightly coarser
+    cyan wireframe, the only visual change in the whole pass.
+  - **`disposeDebug()`** (console-callable) frees the lot: every geometry is registered in `dbgGeo`
+    as it's built (`keep()`), materials are collected by traversal, and the capsules + manHyst rings
+    are stripped SEPARATELY because they're parented to `r.pivot`, not to the debug groups.
+    `dbgAIPanel` is deliberately kept (just hidden) so a rebuild reuses it — `buildAIPanel` is
+    `if(dbgAIPanel)return`-guarded and the checkbox state lives in `dbgAIOpts`.
+  - **`C` off now PARKS the overlay out of the scene graph** (`dbgAttach`/`dbgPark`/`dbgUnpark`),
+    it does not just hide it. **`visible=false` was not enough**: `renderer.render()` calls
+    `scene.updateMatrixWorld()`, which recurses through INVISIBLE objects — only `projectObject`
+    (the render-list build) skips them. So a hidden overlay was still walked every pass, and with
+    `cfg.reflections` on `updateBallReflect` renders the whole scene 6 more times every
+    `ballReflect.every` frames, plus the shadow pass — several walks a frame for nothing. The
+    capsules + manHyst rings were the worst of it: parented to `r.pivot`, which moves every frame,
+    so their matrices were genuinely RECOMPUTED, not skipped. This is what "laggy after leaving
+    debug" was. Parking frees nothing on the GPU, so re-entry is still instant.
+    Each object stores its own parent in `userData.dbgHome`, so the same two calls handle the
+    scene-level groups and the pivot-parented proxies.
+  - **`C` off also clears `dbgLogRod`.** The AI tracer is guarded by `dbgLogRod===r` at ~40 sites in
+    `ai.js`/`physics.js`, but those run per SIM STEP and `flushKickLog` only runs in `debugUpdate`'s
+    `dbgOn` branch — so a rod left traced kept formatting strings into a buffer nothing drained. `L`
+    is `dbgOn`-gated anyway, so you just re-pick on re-entry.
+  - **`C` still does NOT dispose** — parking already removes the per-frame cost, and disposing would
+    make re-entry a rebuild hitch. `disposeDebug()` stays the explicit "free it" call. Note for
+    future work: **anything that REPLACES the rod pivots must call `disposeDebug()` first** or the
+    pivot-parented proxies strand. `rebuildRodMen` only swaps `r.men`, so it's safe; `buildRods`
+    runs once at boot, before the overlay can exist.
+  - Worth knowing when profiling: geometry COUNT is a VRAM/upload figure, not a frame-cost one —
+    a hidden mesh isn't drawn. What costs frames is turning the layers ON, which adds hundreds of
+    transparent draw calls, ×7 once `updateBallReflect`'s cube pass renders the scene 6 more times.
+    **Measure with `C` off.**
+- **CHAMPIONS CUP CRASHED ON ENTRY — `CONFIG.league.cup` was one brace outside `league`**
+  (`js/config.js`, `js/league.js`). `Continue to Cup` on the season-end screen threw
+  `Cannot read properties of undefined (reading 'names')` in `cupMakePool`. **`CUP` itself was
+  undefined**, not `CUP.names`: the `league:{…}` object closed immediately after `colClash:80`,
+  so the `cup:{…}` block that follows it parsed as a SIBLING key — `CONFIG.cup` — while the alias
+  at the bottom of config.js reads `CUP=CONFIG.league.cup`. Valid JS, no parse error, and the
+  indentation LOOKS right (config.js mixes 1/2/3-space indents at the same nesting depth, so the
+  eye can't be used to check this) — it only surfaces the first time something reads CUP, which
+  is the one screen you reach after winning a whole season. Fixed by moving league's closing
+  brace below the cup block; a comment on the block now says it must stay inside `league`.
+  - **Watch for this shape generally**: an alias in the derived-alias section resolving to
+    `undefined` is silent until first use. `CUP` is the only alias that was wrong; the rest were
+    checked against their CONFIG paths.
+  - **The crash also left a HALF-BUILT `LG.cup` behind, which would have been permanent.**
+    `cupCreate` assigned `LG.cup={…roundsTies:[]}` BEFORE calling `cupMakePool`, so the throw
+    stranded a bracket-less cup, and the button's guard was `if(!LG.cup)cupCreate()` — truthy, so
+    it would never rebuild. Any later `saveLG()` (spending an upgrade part is enough) would have
+    persisted that to localStorage and killed the cup for that save file for good.
+    `cupCreate` now builds everything into locals and **assigns `LG.cup` LAST, whole**, and the
+    new **`cupValid()`** (`roundsTies` present AND non-empty) replaces the truthy test at both
+    read sites — the season-end Enter Cup button and the lobby's resume-cup visibility. That
+    combination also SELF-HEALS a save that already persisted the broken object.
+    `cupMakePool(existing)` is a pure function returning the pool now, rather than mutating
+    `LG.cup.pool` (it was the only thing forcing the early assign). Only caller is `cupCreate`.
+  - The participation bonus (`CUP.enterParts`) is granted after the assign, so the recovery path
+    hands it over exactly once — the failed attempt never reached that line.
+  Verified by re-read (sandbox wouldn't boot — the brace move is net-zero on the file's brace
+  count, and the `league`→`cup`→`control` nesting was walked by hand). NOT yet exercised live:
+  the cup beyond `cupCreate`/`openCup` (tie playing, sim, bracket advance) has not been run since.
 
 ### 2026-07-30
 - **LOCAL CO-OP RAISED TO 4-A-SIDE** (`CONFIG.seats.perTeam` 2→4, `max` 4→8, new `maxPads`;

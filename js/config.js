@@ -54,6 +54,19 @@ const CONFIG = {
   warnT:5          // final-seconds warning: clock pulses red + ticks in the last N seconds
  },
 
+ /* ---- frame profiler (js/perf.js · M key) -----------------------------
+    Dev instrument for the intermittent frame-rate sags: every frame slower than
+    `spikeMs` (or spikeMult x the running-typical frame, whichever is larger) writes
+    one line with its full cost breakdown. See the header of js/perf.js for what the
+    verdicts mean. Nothing here affects gameplay; the whole file is inert when off. */
+ perf:{
+  pub:500,        // ms between panel repaints (the panel shows the WORST frame since the last one)
+  spikeMs:45,     // absolute floor: a frame longer than this is always logged
+  spikeMult:2.6,  // relative: ...or this many times the running-typical frame
+  spikeMax:14,    // spike lines kept in the ring
+  gcDrop:6        // JS heap must FALL this many MB in one frame to be called a GC (Chrome only)
+ },
+
  /* ---- simulation timing ---------------------------------------------- */
  sim:{
   hz:120,        // fixed physics rate (steps/sec). The sim always advances in
@@ -123,10 +136,10 @@ const CONFIG = {
    collision:'flat',                        // flat box walls (physics.js default branch)
    room:null,                               // no bespoke backdrop; uses the shared ground plane + crowd
    defTheme:'classic',
-   defSkin:'alienShip', // default skin name (must match a skins entry)
+   defSkin:'wood', // default skin name (must match a skins entry)
    skins:{
-    alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, // current textured classic (fallback = old file location)
-    glass:{name:'Glass', glb:'fuzeball_table_classic_glass.glb'}                                     // build: tools/build_table.py -- classic glass
+      wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},                                     
+      alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
    },
    // Dead-ball pockets (see CONFIG.deadball.zoneMult + deadzoneMult() in powerups.js). A ball
    // pinned in one of these regions is unreachable — no man can slide to it — so the dead-ball
@@ -137,7 +150,7 @@ const CONFIG = {
    // wall-corner pockets behind the keeper line. Tune per table; `mult` optional (defaults to
    // CONFIG.deadball.zoneMult). Omit `deadzones` entirely for a table with no dead pockets.
    deadzones:[
-    {xMin:47, zMin:16.5}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:47, zMin:16.0}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   arena:{
@@ -192,7 +205,7 @@ const CONFIG = {
    seg:{loop:200,profile:10} // visual mesh resolution: samples around the perimeter / up the profile
    },
    deadzones:[
-    {xMin:45, zMin:16.5}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:45, zMin:16.0}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   circuit:{                                  // flat shape with a WALLED goal end: the two mouth-flanking
@@ -213,7 +226,7 @@ const CONFIG = {
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
    rods:{folder:'assets/tables/circuit/rods/'},   // glowing-circuit rods (GLBs not built yet -> per-size fallback to shared set)
    deadzones:[
-    {xMin:47, zMin:16.5}   // same wall-corner pockets as classic (walls sit at the same x/z)
+    {xMin:47, zMin:16.0}   // same wall-corner pockets as classic (walls sit at the same x/z)
    ]
   }
  },
@@ -330,7 +343,7 @@ ai:{
    inFrontMin:2, inFrontMax:6.3,            // ahead-window that a forward swing can reach (connects to overFoot, no dead band)
    underFootFront:6.5, underFootBack:2.9,     // ahead/BEHIND (positive magnitude) of rod where a swung rod stays forward instead of lowering — window is rel∈[-underFootBack, underFootFront], so it MUST cover rel≈0 (ball under the player). Raise underFootBack for more behind-coverage if feet still clip. (prevents own-goal swipe + lowering onto a ball at the feet)
    lowY:2,                                    // only swing when the ball is below this height
-   raiseBehind:-7.5,                          // ball must be at least this far behind (real, dir-relative) to consider raising
+   raiseBehind:-7.8,                          // ball must be at least this far behind (real, dir-relative) to consider raising
    overFoot:2.2,                              // |Δx| under which the ball is 'at the feet' and strikeable (≈footR+ballR sweet spot)
    overFootOffset:1.4,                        // shift the overFoot zone this far forward (dir-relative) so it sits in front of the men, not straddling the rod — prevents latch releasing too early as the ball 
 
@@ -412,7 +425,7 @@ ai:{
       maxVX:55,           // ball |v.x| must be under this — enough x-speed will reach the feet on its own
       maxSpeed:55,        // total ball speed cap for attempting/keeping a trap
       alignZ:1.1,         // z-alignment (nearest man) needed to commit to the trap (matches the general align tolerances)
-      gkReach:6,          // GK-only: also enter the trap when the ball is within this far BEYOND
+      gkReach:10,          // GK-only: also enter the trap when the ball is within this far BEYOND
                         //   the keeper's z-slide band (early-detect a ball drifting back toward a
                         //   goal it can't yet slide onto). Outfield rods ignore this, use alignZ.
                         //   KEEP SMALL: this REPLACES the alignZ test for the keeper, so a big value
@@ -803,7 +816,7 @@ ai:{
                                                 //   fires when a man can actually connect. Looser values let the rod
                                                 //   kick at a ball off to the side, whiff, and (on a slow ball with a
                                                 //   short cd) hammer it again — the side-miss-repeat bug.
-   wallReach:2.1, wallSlack:0.7,              // wall-hug rescue. A ball jammed against a side wall sits BEYOND the
+   wallReach:2.6, wallSlack:0.7,              // wall-hug rescue. A ball jammed against a side wall sits BEYOND the
                                                 //   outermost man's centrable z-range (that man is pinned at ±maxOff),
                                                 //   so dz can never fall under alignSlow even though the leg/capsule
                                                 //   (radius BALL_R+PRAD≈2.6) is still touching it — the rod stands there
@@ -981,12 +994,12 @@ ai:{
    matte:   {metalness:.05,roughness:.90,glow:0},
    satin:   {metalness:.15,roughness:.45,glow:0},
    plastic: {metalness:.0,roughness:.18,glow:0},
-   metallic:{metalness:.75,roughness:.28,glow:.25},
-   chrome:  {metalness:1.0,roughness:.06,glow:.15},
-   neon:    {metalness:.25,roughness:.35,glow:0.40}
+   metallic:{metalness:.75,roughness:.28,glow:.0},
+   chrome:  {metalness:1.0,roughness:.06,glow:.05},
+   neon:    {metalness:.25,roughness:.35,glow:0.10}
   },
   // Quick-pick kit colour swatches for the panel.
-  swatches:['#ff0011','#ff8c3a','#ffcf4d','#7dff8a','#2af5ff','#3d8bff','#a06bff','#ff2bd6','#f2ede2','#545d71'],
+  swatches:['#ff0011','#ff8c3a','#fff94d','#00fa19','#2af5ff','#3d8bff','#5900ff','#ff2bd6','#f2ede2','#757983'],
   // Natural hair colours for random tinting.
   hairSwatches:['#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#c9b896','#e8d4b9','#f5f1c8','#c49a6c','#8b5a2b','#6b3f1a','#4a2c1a','#b8860b','#daa520','#cd853f'],
   // Max figurine GLB templates kept resident per cache (LRU). Browsing/customizing loads a
@@ -999,7 +1012,7 @@ ai:{
  rods:{
   spacing:{ two:24, three:18.5, other:11.9 }, // per-man spacing by man-count
   margin:8.0,       // total z margin subtracted when deriving slide range
-  gkSlide:14,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
+  gkSlide:12,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
   wallClear:2.5,  // stick-out kept past the outer side wall at full inward slide (fixes handle-through-wall)
   handleLen:5,    // handle grip length (sits just outside the wall)
   collarLen:2.4,  // far-end collar/stopper width (the bumper opposite the handle)
@@ -1094,7 +1107,7 @@ ai:{
     divisions:[            // tier order: 0 bottom .. 2 top
       {name:'Sunday League', base:1, diff:'rookie',   aiBudget:[5,10], room:'open',    table:'classic',  pitch:'pub_classic'},
       {name:'Pro League',    base:3, diff:'pro',      aiBudget:[5,10], room:'pub',     table:'classic',  pitch:'classic'},
-      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  table:'classic',  pitch:'royal'}
+      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'open',  table:'classic',  pitch:'royal'}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
     upPromote1:5, upPromote2:3, // upgrade parts: 1st-place promotion / 2nd-place promotion
@@ -1137,9 +1150,11 @@ ai:{
        '#d500f9','#76ff03','#1de9b6','#ff1744','#448aff','#ffab00',
        '#e040fb','#00e5ff','#b2ff59','#ff3d00','#40c4ff','#eeff41'
     ],
-    colClash:80      // RGB distance threshold: if AI colour is too close to player's, reassign
-   },
+    colClash:80,     // RGB distance threshold: if AI colour is too close to player's, reassign
    /* ---- champions cup (post-season KO for the Premier League champion) ---- */
+   // NOTE: this block MUST stay INSIDE `league` — it is read as CONFIG.league.cup
+   // (aliased to CUP at the bottom of this file). It sat one brace too far out once,
+   // which made CUP undefined and crashed cupMakePool the moment a cup was created.
    // The cup has its OWN table/theme/pitch selection (answer to NOTES.md
    // "define which tables/pitches are used for which division/cup") — independent of
    // the Premier division's, so it can be retuned without touching the league.
@@ -1148,14 +1163,23 @@ ai:{
    // are spares (variety between seasons, recurring rivals).
    cup:{
      name:'Champions Cup',
+     // AI brains for a cup tie. This is NOT optional plumbing: cupPlayTie reads `CUP.diff||baseDiff`,
+     // so leaving it undefined ran the post-season showpiece on 'rookie' — EASIER than the Premier
+     // League ('legend') the player just won to qualify. The elite pool's base-8 builds stack on top
+     // of this, so 'legend' here is deliberately the hardest football in the game.
+     diff:'legend',
+     seeded:true,     // false = random draw (still a proper tree, just unseeded). See cupCreate.
      table:'arena', room:'arcade', pitch:'champions_green',   // its own selection (retune here)
-     // the cup rotates between these two bespoke pitch meshes (see cupPlayTie); the
-     // `pitch` above is the fallback default used before a tie picks one
+     // Every tie rolls a pitch from this list (cupPlayTie), so `pitch` above is NOT read — it's
+     // kept as the documented "house" pitch and the one to fall back to if the rotation is dropped.
      pitches:['champions_green','champions_purple', 'neon', 'verdantia', 'cyatron'],
     goals:5, special:true, power:true,            // spectacle on; goals default to league
     poolSize:12, drawSize:7,                      // 12 elite teams, draw 7 + player = 8
+    // drawSize+1 MUST be a power of two and `rounds` MUST be log2 of it — the bracket is a real
+    // tree now (cupSeedOrder / cupNextRound), so a 6- or 12-team field would pair off into
+    // undefined. 15 + 4 rounds is the next legal size up.
     base:8, budget:[3,5],                       // elite build base + weighted spend
-    enterParts:2, winParts:8,                     // participation / victory rewards (upgrade parts)
+    enterParts:2, tieParts:2, winParts:8,         // entering / winning a tie / lifting it (upgrade parts)
     rounds:['QUARTER-FINAL','SEMI-FINAL','FINAL'],
     names:[
       'NIGHTWATCH','GALACTICOS','VOID RAIDERS','IRON LEGION','CYBER WOLVES','NOVA KINGS',
@@ -1165,7 +1189,8 @@ ai:{
       '#9b5cff','#ff3df0','#3dffd5','#ffd23d','#ff6a3d','#5dff7a',
       '#3d8bff','#ff4d8c','#c0ff3d','#ff8c3d','#7a5cff','#3dfff0'
     ]
-   },
+   }
+  },
 
  /* ---- player control ------------------------------------------------- */
  control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2, nameMaxLength:20 }, // keyboard slide, mouse range, auto rod-switch delay
@@ -1366,7 +1391,7 @@ ai:{
       // NOTE: `name` is HUD copy — keep it emoji-free. The ball tag colour-codes the type from
       // `trail` (see setBallTag in hud.js); OS colour emoji can't be tinted and render per-platform.
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.7,maxV:100,w:70,trail:'#ffffff',
+      mass:1.4,maxV:130,w:70,trail:'#ffffff',
       audio:{
        kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
              beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1494,7 +1519,7 @@ ai:{
     name:'Void', folder:'na', glb:'fuzeball_room_void.glb', reflect:false,
     bg:0x05060f, fog:[210,440],
     hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9},
-    dir:{color:0xffffff,int:1.1,pos:[45,100,35]},
+    dir:{color:0xffffff,int:0.7,pos:[45,100,35]},
     env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
     led:{idle:'rainbow'}
    },
@@ -1509,6 +1534,7 @@ ai:{
    },
    arcade:{
     name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:true,
+    lightScale:0.0003,
     bg:0x05060f, fog:[200,430],
     hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.66},
     dir:{color:0xd6b8ff,int:0.9,pos:[45,100,35]},
@@ -1584,6 +1610,9 @@ ai:{
  // in-menu toggle; this block is the tuning.
  replay:{
   on:true,          // master switch (false = feature compiled out, recorder never runs)
+  winner:true,      // ALSO replay the match-winning goal — the win screen waits until it's done
+                    // (flow.js parks the winner in S.pendingWin; replayEnd hands off to endMatch).
+                    // false = the winning goal cuts straight to the win screen, as it used to.
   buffer:7,         // seconds of play the ring buffer holds
   len:4.4,          // longest stretch of footage a replay shows (rally-capped)
   minLen:1.4,       // rallies shorter than this skip the replay (nothing worth showing)
@@ -1701,6 +1730,7 @@ cfg.renderScale=clamp(cfg.renderScale,0.4,1);
 if(typeof cfg.shadows!=='boolean')cfg.shadows=true;
 if(cfg.fpsCap!=='match'&&typeof cfg.fpsCap!=='number')cfg.fpsCap=0;   // number, or 'match' (track detected refresh)
 if(typeof cfg.showFps!=='boolean')cfg.showFps=false;
+if(typeof cfg.profiler!=='boolean')cfg.profiler=false;   // frame profiler overlay (M) — persists so a session picks up where it left off
 if(typeof cfg.gfxPreset!=='string')cfg.gfxPreset='high';
 if(typeof cfg.physQuality!=='string')cfg.physQuality='high';
 if(typeof cfg.reducedFx!=='boolean')cfg.reducedFx=false;

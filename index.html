@@ -42,9 +42,16 @@
 
 <div id="hud" class="hidden">
   <div id="sb">
-    <span class="nm r" id="sbRN">TEAM 1</span><span class="sc r" id="sbRS">0</span>
-    <span class="colon">:</span>
-    <span class="sc b" id="sbBS">0</span><span class="nm b" id="sbBN">TEAM 2</span>
+    <span class="nm r" id="sbRN">TEAM 1</span>
+    <!-- Scores+colon are their own centre column (see #sb grid in styles.css) so they stay pinned
+         to true centre regardless of name length — names grow OUTWARD from here instead of the
+         whole plate re-centring around whichever name is longer. -->
+    <div class="sbMid">
+      <span class="sc r" id="sbRS">0</span>
+      <span class="colon">:</span>
+      <span class="sc b" id="sbBS">0</span>
+    </div>
+    <span class="nm b" id="sbBN">TEAM 2</span>
     <!-- Active-effect rails. Absolutely positioned against #sb so a tab physically grows out of
          the score it belongs to (red extends left, blue right) instead of floating in a corner
          with no spatial link to what it affects. Populated by fxRailSync() in hud.js. -->
@@ -79,7 +86,7 @@
      to them unchanged, they just live on this screen now. -->
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.21</div>
+  <div class="tagline">v0.1.22</div>
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
     <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season &middot; upgrades &middot; glory</div></div>
@@ -512,18 +519,21 @@
   <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
   <div class="tagline" id="cupSub"></div>
   <div id="cupBracket"></div>
-  <div class="btnRow">
-    <button class="btn gold" id="cupPlay">▶ Play Tie</button>
-    <button class="btn hidden" id="cupDone">View Trophy</button>
-    <button class="btn ghost" id="cupBack">◀ League</button>
-  </div>
-  <div class="cupControlWrap">
+  <!-- Control sits ABOVE Play Tie: it configures the thing the button starts, and below it the
+       player reached the button first and only found the lock afterwards. Hidden by renderCup once
+       there's no tie left to play. -->
+  <div class="cupControlWrap" id="cupControlWrap">
     <label>Control</label>
     <select id="cupControl">
       <option value="">All rods</option><option value="GK">GK only</option>
       <option value="DEF">DEF only</option><option value="MID">MID only</option>
       <option value="ATT">ATT only</option><option value="watch">Spectate</option>
     </select>
+  </div>
+  <div class="btnRow">
+    <button class="btn gold" id="cupPlay">▶ Play Tie</button>
+    <button class="btn gold hidden" id="cupDone">Continue ▶</button>
+    <button class="btn ghost" id="cupBack">◀ League</button>
   </div>
 </div>
 
@@ -540,7 +550,7 @@
   'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/sweetspot.js','js/training.js','js/main.js'
+  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/main.js'
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;

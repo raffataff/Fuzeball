@@ -74,7 +74,14 @@ function bindUI(){
   else gotoMenu();
  };
   $('btnForfeit').onclick=()=>{
-    if(S.lg&&S.lg.cup){S.score=[0,CUP.goals];cupRecord(1);openCup();}
+    // #lgForfeit is an OVERLAY, so it isn't in the screen registry and hideScreens() won't take it
+    // down — without this it stayed up over the lobby you just forfeited back to. (League too.)
+    $('lgForfeit').classList.add('hidden');
+    // gotoMenu is what tears the match down (balls, fractures, replay, HUD) and restores the
+    // player's real kit/table from S.lg.prevKit. The cup branch used to skip it and route straight
+    // to the bracket, leaving a paused match and the cup's kit still overriding the player's.
+    // cupRecord/lgRecord run FIRST — both read S.lg, which gotoMenu clears.
+    if(S.lg&&S.lg.cup){S.score=[0,CUP.goals];cupRecord(1);gotoMenu();openCup();}
     else{S.score=[0,CONFIG.league.goals];lgRecord(1);gotoMenu();openLeague();}
   };
  $('btnForfeitCancel').onclick=()=>{$('lgForfeit').classList.add('hidden');togglePause();};

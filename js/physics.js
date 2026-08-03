@@ -12,6 +12,7 @@ function physics(dt){
  let vmax=0;for(const b of S.balls){const s=b.v.length();if(s>vmax)vmax=s;}
  for(const r of rods){const fs=Math.abs(r.angVel)*ARM+Math.abs(r.vz);if(fs>vmax)vmax=fs;}
  const sub=clamp(Math.ceil(vmax*dt/PHY.subTravel),PHY.subMin,PHY.subMax),h=dt/sub;
+ perfSub(sub);   // frame profiler (perf.js): substeps actually run — pinned at subMax means fast play, not a leak
  // Rod pose at the START of this sim step, reconstructed exactly: updateRods set
  // angVel=(angle-prevAngle)/dt, so angle-angVel*dt IS the previous angle. angVel/vz themselves are
  // left alone — they're the average rate over the step, which is what the contact impulse wants.
@@ -62,9 +63,15 @@ function stepBall(b,h){
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
+  // The CLAMP is positional; only the BOUNCE is gated on arrival. The old form gated p.z on the ball
+  // moving outward, so a ball already past the line with inward or zero v.z was never pushed back —
+  // which is exactly what a boot pressing it into the wall produces: collideRod resolves by writing p
+  // directly, and its grip lerp then drags v.z toward the foot's own velocity, so the ball is never
+  // "arriving" again. That is the ball-buried-in-the-wall case. See staticClamp for the other half.
   if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R){
-   if(p.z>zl&&v.z>0){p.z=zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
-   else if(p.z<-zl&&v.z<0){p.z=-zl;v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
+   const sz=p.z>0?1:-1;
+   if(v.z*sz>0){v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
+   p.z=sz*zl;
   }
   if(!b.scored){
    // ENDWALL_H>0 (walled tables, e.g. circuit): each end is ONE solid wall up to that height with
@@ -77,13 +84,13 @@ function stepBall(b,h){
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
      else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}                // goal ONLY under the bar, whole ball over the line, and NOT dropping in from over the top
-    else if(p.y<ew+BALL_R&&v.x>0){p.x=xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
+    else if(p.y<ew+BALL_R){if(v.x>0){v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
      else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<ew+BALL_R&&v.x<0){p.x=-xl;v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}
+    else if(p.y<ew+BALL_R){if(v.x<0){v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}p.x=-xl;}
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
   }else{
@@ -156,9 +163,38 @@ function stepBall(b,h){
   if(Math.abs(p.x-r.x)>ARM+BALL_R+2)continue;
   collideRod(b,r);
  }
+ if(!b.scored)staticClamp(b);   // static geometry gets the last word — must run BEFORE the out-of-bounds test below
  if(!b.scored&&(p.y<-8||Math.abs(p.x)>F.L/2+F.goalDepth+8||Math.abs(p.z)>F.W/2+10)){outOfBounds(b);return;}
  const mv=b.t.maxV,sp2=v.x*v.x+v.y*v.y+v.z*v.z;
  if(sp2>mv*mv){const k=mv/Math.sqrt(sp2);v.multiplyScalar(k);}
+}
+/* STATIC GEOMETRY GETS THE LAST WORD — the second half of the wall-wedge fix.
+   collideRod resolves a contact by writing the ball's position DIRECTLY, and it runs AFTER stepBall's
+   wall tests, so on a ball squeezed between a boot and a wall the foot's depenetration is the last
+   thing to touch p in that substep and can shove it clean through the wall plane. Re-asserting the
+   bounds afterwards makes the wall win the squeeze, so the ball pops ALONG it instead of into it.
+   Position-only, and only the INTO-surface velocity component is killed: the bounce belongs to the
+   arrival tests in stepBall, which have already run this substep, and re-bouncing here would let a
+   held ball churn against the boot. Arena is exempt — arenaContact is distance-based with no velocity
+   gate, so a bowl wall already re-resolves a pushed-in ball on the next substep by itself.
+   Scored balls are exempt too: they live behind the line under their own in-net clamps. */
+function staticClamp(b){
+ if(ARENA_ON)return;
+ const p=b.m.position,v=b.v;
+ if(p.y<BALL_R){p.y=BALL_R;if(v.y<0)v.y=0;}
+ const zl=F.W/2-BALL_R;
+ if(p.y<F.wallH+BALL_R){
+  if(p.z>zl){p.z=zl;if(v.z>0)v.z=0;}
+  else if(p.z<-zl){p.z=-zl;if(v.z<0)v.z=0;}
+ }
+ const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
+ if(p.y<ew+BALL_R){
+  // mouth test mirrors stepBall's exactly — a ball in the opening is on its way in, not against a wall
+  if(p.x>xl){const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
+   if(!(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H))){p.x=xl;if(v.x>0)v.x=0;}}
+  else if(p.x<-xl){const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
+   if(!(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H))){p.x=-xl;if(v.x<0)v.x=0;}}
+ }
 }
 /* solid round goal posts (vertical) + crossbar (horizontal) + a SOLID net roof, both goals,
    both tables. Posts/bar sit at the effective goal-mouth edge (scales with the 'big goal'

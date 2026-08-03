@@ -42,7 +42,7 @@ function startMatchNow(mode,rodLockRole){
  S.userTeam=mode==='roster'?(S.roster.length?S.roster[0].team:-1)
   :(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
  S.rodLockRole=mode==='roster'?null:(rodLockRole||null);
- S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;
+ S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;S.pendingWin=null;
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
   clearBalls();clearPU();clearFractures();replayAbort();replayCut();
@@ -115,8 +115,22 @@ function onGoal(team,b){
  goalFx(team,b);
  updateScoreUI(team);
  removeBall(b);
- if(S.suddenDeath){endMatch(team);return;}          // golden goal: first strike after a level time-up wins
- if(S.score[team]>=goalTarget()){endMatch(team);return;}
+ const wins=S.suddenDeath||S.score[team]>=goalTarget();   // golden goal after a level time-up, or the target reached
+ if(wins){
+  // The one goal most worth watching was the only one that never got a replay — the winner used to
+  // cut straight to the win screen. It now runs the SAME celebration + replay as any other goal and
+  // the win screen WAITS: S.pendingWin parks the winner, main.js's goal timer hands off to
+  // replayStart, and replayEnd (or a skip) routes to endMatch instead of the re-count.
+  // replayReady() is checked BEFORE anything is committed, so every case that can't show footage
+  // (feature/cfg off, rally too short, another ball still live) falls through to the immediate
+  // endMatch below — byte-identical to the old behaviour.
+  if(REPLAY.winner&&!S.balls.length&&replayReady()){
+   banner(teamName(team)+' GOAL',S.suddenDeath?'GOLDEN GOAL':'MATCH WINNER',1.9,teamCol(team));
+   resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
+   replayQueue(team);S.pendingWin=team;return;
+  }
+  endMatch(team);return;
+ }
  // accented in the SCORING team's colour — the old fixed blue glow made every goal look the same
  // and clashed with --c1, so a blue goal and a red goal read identically.
  banner(teamName(team)+' GOAL',
@@ -124,6 +138,10 @@ function onGoal(team,b){
  if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
   replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay + footage length)
 }
+/* Open the win screen for a goal that's been held back for its celebration/replay. Returns false
+   when nothing is waiting, so callers just fall through to their normal path (main.js's goal timer
+   → re-count, replayEnd → re-count). The ONLY writer of S.pendingWin is onGoal above. */
+function finishPendingWin(){if(S.pendingWin==null)return false;const w=S.pendingWin;S.pendingWin=null;endMatch(w);return true;}
 /* Match clock (timed modes only). Called every frame during 'play' after S.matchTime advances.
    Ticks the final-seconds warning, then at time-up either ends the match (a team ahead) or drops
    into sudden death (level) — play carries straight on, the HUD flips to SUDDEN DEATH, and the
@@ -145,7 +163,7 @@ function outOfBounds(b){
  if(!S.balls.length&&S.phase==='play'){resetRodRotation();notice('OUT OF PLAY',1.1);S.phase='goal';S.goalT=MATCH.outHold;}
 }
 function endMatch(w){
- S.phase='win';
+ S.phase='win';S.pendingWin=null;   // cleared here too: a clock-out/forfeit can land while a goal replay is queued
  Au.goal();Au.whistle(3);
  flash();S.shake=1;
  clearBalls();clearPU();replayAbort();clearFxRail();
@@ -160,7 +178,11 @@ function endMatch(w){
   '<span class="l">'+st.kicks[0]+'</span><span class="m">Kicks</span><span class="r">'+st.kicks[1]+'</span>'+
   '<span class="m" style="grid-column:1/4;text-align:center">Top ball speed: '+Math.round(st.topSpeed*.35)+' km/h</span>'+
     (wasLg?(S.lg.cup
-      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+S.lg.banner+'</span>' // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
+      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+S.lg.banner+'</span>'+ // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
+       // parts/champ are stamped by cupRecord just above. Winning a cup tie used to pay nothing and
+       // SAY nothing until the final, so three rounds out of four ended on a bare round name.
+       (S.lg.champ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+CUP.name.toUpperCase()+' WINNERS · +'+S.lg.parts+' upgrade parts</span>'
+        :S.lg.parts?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">Through to the next round · +'+S.lg.parts+' upgrade parts</span>':'')
       :'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">+'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
        (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">Clean sheet · +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':'')):'');
  $('btnWinContinue').classList.toggle('hidden',!wasLg); // league: Continue → lobby

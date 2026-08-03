@@ -2,6 +2,7 @@
 /* ================= game state ================= */
 const S={phase:'menu',mode:'red',userTeam:0,score:[0,0],balls:[],time:0,matchTime:0,
  suddenDeath:false,clockBeep:0, // suddenDeath: match ran level to time-up, next goal wins · clockBeep: last integer second warned (final-seconds tick, hud/flow)
+ pendingWin:null,  // winning team parked while its goal celebration + instant replay play out; the win screen opens when that finishes (flow.js finishPendingWin)
  // seats: every human at the table (js/seats.js) — team + claimed devices + the rod they hold.
  // Empty = nobody playing (AI showdown). userTeam is the PRIMARY seat's team and drives the
  // camera/HUD tint + the "is a human involved" guards; it is NOT a stand-in for per-seat state.

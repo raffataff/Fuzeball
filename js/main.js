@@ -22,6 +22,10 @@ let detectedHz=0;
  }
  requestAnimationFrame(step);
 })();
+/* The perf* calls are the frame profiler's hooks (js/perf.js, M key). They cost one boolean
+   read each when it's off. The buckets they carve the frame into — sim / fx / refl / rend —
+   are what the overlay attributes a slow frame to, so keep them paired and non-overlapping
+   if this loop is ever restructured. */
 function loop(t){
  requestAnimationFrame(loop);
  // Frame-rate limit (Options → Display · cfg.fpsCap): skip rAF ticks that arrive sooner than the target
@@ -32,6 +36,7 @@ function loop(t){
  const cap=cfg.fpsCap==='match'?detectedHz:cfg.fpsCap;
  if(cap>0&&t-lastFrameT<1000/cap-0.5)return;
  lastFrameT=t;
+ perfFrame();           // open the profiler's frame AFTER the cap return, so a capped-away tick isn't counted
  const rdt=Math.min(.05,(t-lastT)/1000);lastT=t;
  Au.tick(rdt);
  gamepadUpdate(rdt);   // poll controller once per rendered frame (in-match play + pause)
@@ -40,7 +45,10 @@ function loop(t){
   const FIXED=1/SIM.hz;
   /* --- wall-clock timers (real time, once per frame) --- */
   if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
-  if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else startCount(MATCH.recount);}}
+  // goal hold → instant replay if there's footage, else straight on. finishPendingWin() is the
+  // match-winning-goal path (flow.js): normally the replay's end routes there, this is the backstop
+  // for a win whose replay stopped being playable during the hold — the win screen can't be lost.
+  if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else if(!finishPendingWin())startCount(MATCH.recount);}}
   else if(S.phase==='count'){
    S.countT-=rdt;
    const v=Math.ceil(S.countT);
@@ -56,6 +64,7 @@ function loop(t){
   if(S.trn&&S.trn.freeze){if(S.trn.stepQ>0){S.trn.stepQ--;physAcc=FIXED;}else physAcc=0;}
   for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
+  perfMark('p');
   while(physAcc>=FIXED&&steps<SIM.maxSteps){
    if(!stepped)for(const b of S.balls)b.m.position.copy(b.cur); // undo last frame's interp → true sim state
    for(const b of S.balls)b.prev.copy(b.m.position);
@@ -69,12 +78,14 @@ function loop(t){
                                        // so the buffer ends with the ball still at the line (freeze-frame keeps it).
    S.time+=FIXED;physAcc-=FIXED;steps++;stepped=true;
   }
+  perfAdd('p','sim');perfSteps(steps);   // steps pinned at SIM.maxSteps is the cost-latch signature
   if(steps>=SIM.maxSteps)physAcc=0;                    // spiral-of-death guard: drop the backlog
   if(stepped){
    for(const b of S.balls)b.cur.copy(b.m.position);    // capture true current sim state
    for(const r of rods){r.iOff=r.offset;r.iAng=r.angle;}
   }
   /* --- render interpolation --- */
+  perfMark('p');
   const alpha=clamp(physAcc/FIXED,0,1);
    for(const b of S.balls){
     b.m.position.lerpVectors(b.prev,b.cur,alpha);
@@ -88,7 +99,9 @@ function loop(t){
    }
    fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
    respawnSwirlUpdate(rdt); // spawn/advance/fade the pre-respawn swirl for removed players
+   perfAdd('p','fx');
   }
+ perfMark('p');
  replayUpdate(rdt);      // playback owns balls/rods/camera while phase==='replay' (no-op otherwise)
  fxUpdate(rdt);
  if(S.phase!=='replay')cameraUpdate(rdt);   // the replay's shot camera has the conn during playback
@@ -96,8 +109,14 @@ function loop(t){
  sweetGuideUpdate();
  if(S.phase!=='menu')hudTick(rdt);
  if(S.trn)trainingTick();               // training panel readout (ball pos/speed)
+ perfAdd('p','fx');
+ perfMark('p');
  updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating, no-op off)
+ perfAdd('p','refl');
+ perfMark('p');
  renderer.render(scene,camera);
+ perfAdd('p','rend');
+ perfFrameEnd();
 }
 initThree();
 initCustomize();

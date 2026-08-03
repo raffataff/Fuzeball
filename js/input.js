@@ -25,6 +25,7 @@ addEventListener('keydown',e=>{
  if(e.code==='KeyC'&&S.phase!=='menu'){toggleDebug();return;}
  if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
+ if(e.code==='KeyM'){togglePerf();return;}   // frame profiler overlay (js/perf.js) — works on the menu too, so a menu-side sag is measurable
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(!S.seats.length)return;                       // nobody playing (AI showdown / spectate)

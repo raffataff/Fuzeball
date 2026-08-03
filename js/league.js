@@ -140,10 +140,15 @@ function lgNewSeason(keep,opts,forceSlot){
   const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
   // 5. Record history (OLD division in the history entry)
   const porder=orders[oldPd];
+   // `cup` is stamped HERE, not in cupRecord. A season's hist entry is only created at the rollover
+   // OUT of it, and the cup is played in the gap between the two — so cupRecord writing to hist's
+   // newest entry credited the trophy to the season BEFORE the one it was won in. LG.season is still
+   // the closing season at this point, which is exactly what LG.cup.season holds.
    LG.hist.push({season:LG.season,
    divChamps:[orders[0][0]?orders[0][0].t.name:'',orders[1][0]?orders[1][0].t.name:'',orders[2][0]?orders[2][0].t.name:''],
    playerDiv:LGC.divisions[oldPd].name,
    playerPos:porder?porder.findIndex(e=>e.i===LG.playerId)+1:0,
+   cup:(LG.cup&&LG.cup.done&&LG.cup.season===LG.season)?cupChampName():null,
    promoted:pPromoted,relegated:pRelegated});
   // 6. AI spend
   for(let i=0;i<LG.teams.length;i++){if(i!==LG.playerId)lgAiSpend(LG.teams[i]);}
@@ -417,14 +422,15 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   const pPos=pOrder.findIndex(e=>e.i===LG.playerId)+1;
   const pPromoted=oldPd<2&&promotedIds[oldPd].includes(LG.playerId);
   const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
-  const pChamp=oldPd===2&&orders[2][0].i===LG.playerId;
-  const fate=pChamp?'champion':pPromoted?'promoted':pRelegated?'relegated':'stayed';
+   const pChamp=oldPd===2&&orders[2][0].i===LG.playerId;
+   const pCup=oldPd===2&&pPos<=2; // Premier top 2 qualify for the Champions Cup
+   const fate=pChamp?'champion':pPromoted?'promoted':pRelegated?'relegated':'stayed';
   // Apply the player's stat change NOW (before lgNewSeason swaps divisions) so the lobby squad
   // already reflects it; lgNewSeason skips the player for the same reason.
   let playerLosses=[],playerGains=[];
   if(pRelegated)playerLosses=lgRelegatePenalty(LG.teams[LG.playerId]);
   else if(pPromoted)playerGains=lgPromoteBoost(LG.teams[LG.playerId],pPos-1);
-  LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,divs,playerLosses,playerGains,shown:false};
+   LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,cupQualified:pCup,divs,playerLosses,playerGains,shown:false};
   saveLG();
 }
 function lgSeasonEarn(){
@@ -493,7 +499,7 @@ function lgSERewards(r,se){
     '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' '+ico('cog','icoInline')+'</span><span class="sub">spend in squad</span></div>'+
     '<div class="lgSERew"><span class="k">TITLES</span><span class="v">'+r.titles+'×</span><span class="sub">Premier wins</span></div>'+
    '</div>';
-  if(se.playerFate==='champion')
+   if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified)
     h+='<div class="lgSECup">'+ico('trophy','icoInline')+' QUALIFIED FOR THE CHAMPIONS CUP</div>'+
        '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">ENTER CHAMPIONS CUP</button>';
   return '<div class="lgSEPanel">'+h+'</div>';
@@ -558,9 +564,11 @@ function renderLgSeasonEnd(){
    lgSERewards(r,se)+
    lgSELoss(se)+
    lgSEGain(se);
-  if(se.playerFate==='champion'){ // wire the Enter Cup button (created in lgSERewards)
+  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){ // wire the Enter Cup button (created in lgSERewards)
     const b=$('lgSEEnterCup');
-    if(b)b.onclick=()=>{if(!LG.cup)cupCreate();openCup();};
+    // cupLive, NOT cupValid: a FINISHED bracket from an earlier championship is still "valid", so
+    // the old test meant the second cup was never drawn — this button re-opened last season's.
+    if(b)b.onclick=()=>{if(!cupLive())cupCreate();openCup();};
   }
 }
 function showSeasonEnd(){
@@ -604,7 +612,10 @@ function renderLgHist(){
  $('lgHistPanel').classList.remove('hidden');
   const playerName=LG.teams[LG.playerId].name;
   const titles=LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===playerName).length;
-   $('lgTitles').textContent=titles?'· '+titles+'x Premier Champion':'';
+   // cupTitles was incremented on every cup win and then read by nothing at all — the only trace of
+   // a Champions Cup anywhere in the lobby was a trophy glyph on one history row.
+   const cups=LG.cupTitles||0;
+   $('lgTitles').textContent=(titles?'· '+titles+'x Premier Champion':'')+(cups?(titles?' · ':'· ')+cups+'x Cup Winner':'');
    let h='<div class="row head"><span>Season</span><span>Division</span><span>Pos</span></div>';
    for(let i=LG.hist.length-1;i>=0;i--){
     const e=LG.hist[i];
@@ -639,7 +650,10 @@ function renderLeague(reveal){
  }
  $('lgSeasonTag').innerHTML=(ban||'')+'<span>'+dv.name+' · SEASON '+LG.season+(dv.champ?' · COMPLETE':' · ROUND '+(LG.round+1)+' / '+dv.fixtures.length)+'</span>';
   $('lgNew').textContent=dv.champ?'Next Season ▶':'Reset League';
-  $('lgCup').classList.toggle('hidden',!(LG.cup&&!LG.cup.done)); // resume an in-progress cup
+  // Resume an in-progress cup, or review the one just decided. Both are THIS season's only — a cup
+  // stops being reachable at rollover, which is also what frees the slot for the next one.
+  $('lgCup').classList.toggle('hidden',!cupCurrent());
+  $('lgCup').textContent=cupLive()?'Champions Cup':'Cup Result';
  renderLgTable();renderLgFix();renderLgLast(reveal);renderLgSquad();renderLgHist();
 }
 function renderLgTable(){
@@ -893,19 +907,44 @@ function openSetup(slot){
  };
 }
 /* =========================================================================
-   CHAMPIONS CUP — post-season KO for the reigning Premier League champion.
+   CHAMPIONS CUP — post-season KO for the top of the Premier League.
    The player is one of 8 seeds; the other 7 are drawn from a PERSISTED pool of
    ~12 elite "special teams" (top-tier builds), leaving spares for variety. All
-   ties single-leg on the cup's own Arena + Neon Nights table (CONFIG.league.cup).
+   ties single-leg on the cup's own table/room/pitch (CONFIG.league.cup).
    The player's ties are played live; every other tie is simmed with lgSimBlds.
    State lives on LG.cup (roundsTies = full bracket history, round = current).
+
+   THE BRACKET IS A TREE, and that is the whole shape of this file's cup half.
+   Entrants are ranked by rating and dropped into the standard KO seeding order
+   (1v8 · 4v5 · 2v7 · 3v6), then a round's winners KEEP THEIR SLOT: the winner of
+   tie 2j meets the winner of tie 2j+1, so the top two seeds can only meet in the
+   final. Nothing is reshuffled between rounds — the columns renderCup draws
+   actually connect. `cupNextRound` is the ONE place that pairing lives and both
+   live play and the sim-ahead go through it, so the two can't drift apart.
    ========================================================================= */
-function cupEnt(id){
-  if(id==='player'){const t=LG.teams[LG.playerId];return{name:t.name,col:t.col,model:t.model,bld:t.bld};}
-  return LG.cup.pool.find(e=>e.id===id);
+// `pool` lets cupCreate resolve entrants BEFORE LG.cup is assigned (it's assigned last and whole —
+// see cupCreate). An id with no entrant resolves to a grey placeholder rather than throwing: one
+// bad row in a save should cost you that row, not the entire bracket screen.
+function cupEnt(id,pool){
+  if(id==='player'){const t=LG.teams[LG.playerId];return{id:'player',name:t.name,col:t.col,model:t.model,bld:t.bld};}
+  const p=pool||(LG.cup&&LG.cup.pool)||[];
+  return p.find(e=>e.id===id)||{id,name:'—',col:'#93a5c6',model:null,bld:lgBld(CUP.base)};
 }
-function cupMakePool(){ // generate the elite pool ONCE; persists on LG across seasons
-  if(LG.cup.pool&&LG.cup.pool.length)return;
+function cupRate(e){return lgOff(e.bld)+lgDef(e.bld);}   // seeding strength — the same two numbers the tape shows
+function cupChampName(){const c=LG&&LG.cup&&LG.cup.champion;return c?(c==='player'?LG.teams[LG.playerId].name:cupEnt(c).name):null;}
+// A cup is only usable once it has a DRAWN BRACKET. Anything less (a save written while
+// cupCreate was part-way through) must read as "no cup" so cupCreate re-runs, or the Enter
+// Cup button is dead forever with no way back.
+function cupValid(){return !!(LG&&LG.cup&&LG.cup.roundsTies&&LG.cup.roundsTies.length);}
+// …and only THIS season's cup counts as one. LG.cup is never cleared (it carries the persisted
+// elite pool between championships), so without the season test a finished bracket reads as "a cup
+// exists" forever: the second time the player qualified, ENTER CHAMPIONS CUP re-opened the old
+// completed bracket and a second cup could never be drawn. cupLive = playable, cupCurrent = this
+// season's, decided or not (so a just-won bracket stays reviewable from the lobby until rollover).
+function cupLive(){return cupValid()&&!LG.cup.done&&LG.cup.season===LG.season;}
+function cupCurrent(){return cupValid()&&LG.cup.season===LG.season;}
+function cupMakePool(existing){ // generate the elite pool ONCE; persists on LG across seasons
+  if(existing&&existing.length)return existing;
   const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
   const pcol=LG.teams[LG.playerId].col;
   const names=CUP.names.slice(),cols=CUP.cols.slice();
@@ -921,20 +960,35 @@ function cupMakePool(){ // generate the elite pool ONCE; persists on LG across s
     lgAiSpend(team); // weighted-random spend → position-flavoured elite builds
     pool.push(team);
   }
-  LG.cup.pool=pool;
+  return pool;
 }
-function cupCreate(){ // build a fresh cup for the current Premier champion
+// Standard single-elimination seeding order for a power-of-two field, built by mirror-folding:
+// [0] → [0,1] → [0,3,1,2] → [0,7,3,4,1,6,2,5]. Read it as slot→seed, so consecutive PAIRS of slots
+// are the first-round ties (1v8, 4v5, 2v7, 3v6) and each half of the list is a half of the draw.
+// Generating it beats a hand-written table because it stays correct if the field ever grows to 16.
+function cupSeedOrder(n){
+  let o=[0];
+  while(o.length<n){const m=o.length*2-1,x=[];for(let i=0;i<o.length;i++){x.push(o[i]);x.push(m-o[i]);}o=x;}
+  return o;
+}
+function cupCreate(){ // draw a fresh cup for this season's qualifier
   if(!LG)return;
   const pid=LG.playerId;
-  const existingPool=(LG.cup&&LG.cup.pool)||null; // persist pool across championships
-  LG.cup={season:LG.season,round:0,playerOut:false,done:false,champion:null,pool:existingPool,roundsTies:[]};
-  cupMakePool();
-  const ids=LG.cup.pool.map(e=>e.id);
+  const pool=cupMakePool((LG.cup&&LG.cup.pool)||null); // pool persists across championships
+  const ids=pool.map(e=>e.id);
   for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=ids[i];ids[i]=ids[j];ids[j]=t;}
   const drawn=['player'].concat(ids.slice(0,CUP.drawSize)); // player + 7 of 12 (5 spares)
-  for(let i=drawn.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=drawn[i];drawn[i]=drawn[j];drawn[j]=t;}
-  const ties=[];for(let i=0;i<drawn.length;i+=2)ties.push({a:drawn[i],b:drawn[i+1],res:null,played:false});
-  LG.cup.roundsTies=[ties];
+  // WHO you get is random — the shuffle above. WHERE you meet them is not, and that's what gives a
+  // bracket stakes: rank the field, then place it by cupSeedOrder. Come in as the top seed and the
+  // draw opens up in front of you; scrape in 8th and you meet the best team in the cup first.
+  if(CUP.seeded===false)for(let i=drawn.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=drawn[i];drawn[i]=drawn[j];drawn[j]=t;}
+  else drawn.sort((a,b)=>cupRate(cupEnt(b,pool))-cupRate(cupEnt(a,pool)));
+  const seeds={};drawn.forEach((id,i)=>{seeds[id]=i+1;});   // rendered beside each name
+  const slots=cupSeedOrder(drawn.length).map(s=>drawn[s]);
+  const ties=[];for(let i=0;i<slots.length;i+=2)ties.push({a:slots[i],b:slots[i+1],res:null,played:false});
+  // LG.cup is assigned LAST, whole: a throw anywhere above then leaves the previous state
+  // untouched instead of stranding a bracket-less cup that cupValid() would reject forever.
+  LG.cup={season:LG.season,round:0,playerOut:false,done:false,champion:null,celeb:false,pool,seeds,roundsTies:[ties]};
   LG.teams[pid].up+=CUP.enterParts; // participation bonus
   if(LG.seasonEnd)LG.seasonEnd.shown=true; // don't re-pop the season summary on return
   saveLG();
@@ -999,54 +1053,70 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
    teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?'));
   $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
 }
-function cupAdvance(winners){ // sim the rest of the bracket from `winners` to a single champion (stores ties)
-  let w=winners.slice();
-  while(w.length>1){
-    for(let i=w.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=w[i];w[i]=w[j];w[j]=t;}
-    const nt=[],nw=[];
-    for(let i=0;i<w.length;i+=2){
-      const ea=cupEnt(w[i]),eb=cupEnt(w[i+1]);
-      const r=lgSimBlds(ea.bld,eb.bld);
-      nt.push({a:w[i],b:w[i+1],res:r,played:true});
-      nw.push(r[0]>r[1]?w[i]:w[i+1]);
-    }
-    LG.cup.roundsTies.push(nt);w=nw;
+function cupWinnerOf(t){return t.res[0]>t.res[1]?t.a:t.b;}
+// A tie's res is indexed by a/b. The player is ALWAYS team 0 in the live match (cupPlayTie seats
+// them red) but the draw puts them on either side of the tie, so the scoreline has to be oriented
+// on the way in. Everything downstream reads res positionally — get this wrong and winning knocks
+// you out, which is exactly what the old `[w,1-w]` did.
+function cupTieRes(tie,pGoals,oGoals){return tie.a==='player'?[pGoals,oGoals]:[oGoals,pGoals];}
+// THE tree pairing, used by both live play and the sim-ahead: winner of tie 2j meets winner of
+// tie 2j+1, slots preserved. One definition so the bracket the player walks and the bracket the
+// sim finishes for them can never be drawn differently.
+function cupNextRound(ties){
+  const w=ties.map(cupWinnerOf),nt=[];
+  for(let i=0;i<w.length;i+=2)nt.push({a:w[i],b:w[i+1],res:null,played:false});
+  return nt;
+}
+function cupAdvance(ties){ // sim the rest of the bracket from `ties`' winners down to one champion (stores ties)
+  if(ties.length<2)return cupWinnerOf(ties[0]);
+  let cur=cupNextRound(ties);
+  for(;;){
+    for(const t of cur){const ea=cupEnt(t.a),eb=cupEnt(t.b);t.res=lgSimBlds(ea.bld,eb.bld);t.played=true;}
+    LG.cup.roundsTies.push(cur);
+    if(cur.length<2)return cupWinnerOf(cur[0]);
+    cur=cupNextRound(cur);
   }
-  return w[0];
 }
 function awardCupWin(){
   const pid=LG.playerId;
   LG.teams[pid].up+=CUP.winParts;
-  LG.cupTitles=(LG.cupTitles||0)+1;
+  LG.cupTitles=(LG.cupTitles||0)+1;   // shown on the lobby history panel
 }
+// `w` (winning team index) is accepted so flow.js can call cupRecord and lgRecord through one
+// expression, but it is deliberately IGNORED — S.score is the authoritative result and carries the
+// real scoreline, which is what the bracket displays. The forfeit path sets S.score itself.
 function cupRecord(w){ // called by endMatch while S.lg.cup is live (player just finished their tie)
   if(!LG||!LG.cup||!S.lg||!S.lg.cup||S.lg.rec)return;S.lg.rec=true;
-  const cup=LG.cup,round=cup.round,ties=cup.roundsTies[round],tie=S.lg.res;
-  tie.res=[w,1-w];tie.played=true; // names[0]=player→team0; res[0]=player goals
+  const cup=LG.cup,round=cup.round,ties=cup.roundsTies[round],tie=S.lg.res,pid=LG.playerId;
+  tie.res=cupTieRes(tie,S.score[0],S.score[1]);tie.played=true;
   for(const t of ties){if(t===tie)continue;const ea=cupEnt(t.a),eb=cupEnt(t.b);t.res=lgSimBlds(ea.bld,eb.bld);t.played=true;}
-  const winners=ties.map(t=>t.res[0]>t.res[1]?t.a:t.b);
-  if(!winners.includes('player')){ // player eliminated → sim the rest to crown a champion
+  const last=round>=CUP.rounds.length-1;
+  let parts=0;
+  if(cupWinnerOf(tie)!=='player'){       // eliminated → sim the remaining rounds to crown a champion
     cup.playerOut=true;
-    cup.champion=cupAdvance(winners);
+    cup.champion=last?cupWinnerOf(tie):cupAdvance(ties);   // beaten finalist: the team that beat us lifts it
     cup.round=cup.roundsTies.length-1;
     cup.done=true;
-  }else if(round>=CUP.rounds.length-1){ // player won the Final
-    cup.champion='player';cup.done=true;awardCupWin();
-  }else{ // advance to the next round
-    const w=winners.slice();
-    for(let i=w.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=w[i];w[i]=w[j];w[j]=t;}
-    const nt=[];for(let i=0;i<w.length;i+=2)nt.push({a:w[i],b:w[i+1],res:null,played:false});
-    cup.roundsTies.push(nt);cup.round++;
+  }else if(last){                        // won the Final
+    cup.champion='player';cup.done=true;parts=CUP.winParts;awardCupWin();   // awardCupWin does the actual credit
+  }else{                                 // through to the next round
+    cup.roundsTies.push(cupNextRound(ties));cup.round++;
+    parts=CUP.tieParts||0;LG.teams[pid].up+=parts;
   }
-  if(LG.hist&&LG.hist.length){const last=LG.hist[LG.hist.length-1];
-    if(last)last.cup=(cup.champion==='player')?LG.teams[LG.playerId].name:cupEnt(cup.champion).name;}
+  // Read by endMatch's win screen. Progress used to be its own reward and nothing else — a tie win
+  // paid out only if it happened to be the final, so three of the four rounds ended on a blank.
+  S.lg.parts=parts;S.lg.champ=cup.done&&cup.champion==='player';
+  // NOTE: the trophy is stamped into LG.hist by lgNewSeason, NOT here. The hist entry for season N
+  // is only pushed at the rollover INTO N+1, and the cup is played before that — so writing to
+  // hist's newest entry from here credited the cup to the PREVIOUS season's row.
   saveLG();
 }
 function renderCup(){
   if(!LG||!LG.cup)return;
-  const cup=LG.cup;
+  const cup=LG.cup,sd=cup.seeds||{};
+  const out=cup.done&&cup.playerOut;
   $('cupTitle').textContent=CUP.name;
-  $('cupSub').textContent='SEASON '+cup.season+' · '+(cup.done?'COMPLETE':CUP.rounds[cup.round]);
+  $('cupSub').textContent='SEASON '+cup.season+' · '+(cup.done?(out?'ELIMINATED':'COMPLETE'):CUP.rounds[cup.round]);
   let h='<div class="cupBracket">';
   for(let r=0;r<cup.roundsTies.length;r++){
     const ties=cup.roundsTies[r];
@@ -1057,6 +1127,7 @@ function renderCup(){
       const playerHere=(t.a==='player'||t.b==='player');
       const row=(ent,goals,won,isPlayer)=>
         '<div class="cupTeam'+(won?' win':'')+(isPlayer?' me':'')+'">'+
+        '<span class="seed">'+(sd[ent.id]||'')+'</span>'+
         '<i class="dot" style="background:'+ent.col+'"></i>'+
         '<span class="nm">'+ent.name+'</span>'+
         (t.res?'<span class="sc">'+goals+'</span>':'<span class="sc"></span>')+'</div>';
@@ -1073,12 +1144,19 @@ function renderCup(){
   }else{
     const tie=cupPlayerTie();
     if(tie){const opp=cupEnt(tie.a==='player'?tie.b:tie.a);
-      h+='<div class="cupNext">NEXT TIE: <span style="color:'+opp.col+'">'+opp.name+'</span></div>';
+      h+='<div class="cupNext">NEXT TIE: <span style="color:'+opp.col+'">'+opp.name+'</span>'+
+         (sd[opp.id]?'<span class="cupSeedTag">SEED '+sd[opp.id]+'</span>':'')+'</div>';
       primeMatchExplosions(cupEnt('player').model,opp.model);} // warm both shatters now, while in the cup bracket
   }
   $('cupBracket').innerHTML=h;
+  $('cupControl').value=LG.cupControl!=null?LG.cupControl:(LG.control||''); // seeded from the league default until the cup is given its own
+  $('cupControlWrap').classList.toggle('hidden',!cupPlayerTie());
   $('cupPlay').classList.toggle('hidden',!cupPlayerTie());
   $('cupDone').classList.toggle('hidden',!cup.done);
+  // Lifting the cup is the biggest thing in the mode and had no moment of its own — the win screen
+  // celebrated the FINAL, then handed over to a bracket that just quietly said CHAMPION. Fires once
+  // ever, latched on the save (not on S) so re-opening a won bracket doesn't re-trigger it.
+  if(cup.done&&cup.champion==='player'&&!cup.celeb){cup.celeb=true;saveLG();confetti(0);Au.goal();}
 }
 function openCup(){
   // overlays + the HUD aren't in the screen registry — arriving from a finished tie's win screen
@@ -1101,7 +1179,11 @@ function bindLeague(){
    $('btnWinContinue').onclick=lgWinContinue;
    $('lgSEContinue').onclick=lgReturn;
    $('cupPlay').onclick=cupPlayTie;
+   $('cupDone').onclick=cupReturn;   // was bound to NOTHING — a visible dead button on the one screen you reach by winning a cup
    $('cupBack').onclick=cupReturn;
+   // Persisted on its own key rather than sharing LG.control: the cup is a different table with
+   // different stakes, and a lock chosen for a league round shouldn't silently follow you into a final.
+   $('cupControl').onchange=e=>{if(LG){LG.cupControl=e.target.value;saveLG();}Au.ui();};
    $('lgSlotsBack').onclick=()=>{showScreen('home');Au.ui();};
 }
 bindLeague();

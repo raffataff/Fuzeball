@@ -40,7 +40,11 @@ function rbIdx(j){return(RB.head-RB.n+j+RB.cap)%RB.cap;}
 const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,
  shot:0,lastShot:-1,fov0:0,snap:false,ghosts:null,hasLook:false,
  look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3()};
-function replayPending(){return RP.queued&&REPLAY.on&&cfg.replay&&RB.n/SIM.hz>=REPLAY.minLen;}
+// replayReady = is there footage worth showing RIGHT NOW (nothing queued required). flow.js tests it
+// before committing a match-winning goal to the celebration hold, so a rally too short to replay
+// still cuts straight to the win screen.
+function replayReady(){return REPLAY.on&&cfg.replay&&RB.n/SIM.hz>=REPLAY.minLen;}
+function replayPending(){return RP.queued&&replayReady();}
 function replayQueue(team){RP.queued=true;RP.team=team;}
 
 /* Ghost balls: 4 pooled spheres re-tinted per recorded type — no GLB cloning,
@@ -160,6 +164,9 @@ function replayEnd(){
   for(const r of rods){r.pivot.position.z=r.offset;r.pivot.rotation.z=r.angle;}   // hand the pivots back to the live sim pose
  document.body.classList.remove('replayOn');
  $('replayUI').classList.add('hidden');
+ // A match-winning goal held its win back so this replay could play (flow.js onGoal) — go to the
+ // win screen instead of a re-count. endMatch does its own flash/shake, so don't double up.
+ if(finishPendingWin())return;
  flash();
  startCount(MATCH.recount);
 }

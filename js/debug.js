@@ -13,6 +13,16 @@
    reach, in-front swing range, low-height kick limit, and man hysteresis. */
 let dbgGroup=null,dbgOn=false,dbgCaps=[],dbgBalls=[],dbgFootS=[];
 let dbgArenaWalls=null,dbgContourRings=[];
+/* SHARED proxy geometries. Nearly every debug visual is a flat plate or an identical
+   per-man primitive, so they all ride ONE unit-cube (and one sphere/cylinder) scaled per
+   mesh rather than allocating a fresh BufferGeometry each. That matters because the
+   overlay is built once and never freed for the session — before this, the AI layers
+   alone allocated ~200 one-off geometries, most of them the same shape at a different
+   size. `dbgGeo` collects everything buildDebug creates so disposeDebug can free the lot.
+   NOTE: a mesh on a shared geometry carries its size in .scale — don't also write .scale
+   in updateAIVis for those layers (the aligned bars and sweet-spot flashes do use .scale
+   for their live animation, which is why both keep their own dedicated geometry). */
+let dbgUnitBox=null,dbgUnitSph=null,dbgUnitCyl=null,dbgGeo=[];
 
 /* ===== memory / GPU footprint dump ======================================
    Boot logs (see main.js) fire this at boot and again once assets have
@@ -307,9 +317,20 @@ function buildAIPanel(){
 function buildDebug(){
  dbgGroup=new THREE.Group();scene.add(dbgGroup);
  dbgAIGroup=new THREE.Group();scene.add(dbgAIGroup);
+ // One unit primitive per shape, scaled per mesh (see the dbgGeo note up top).
+ dbgUnitBox=new THREE.BoxGeometry(1,1,1);
+ dbgUnitSph=new THREE.SphereGeometry(1,10,8);
+ dbgUnitCyl=new THREE.CylinderGeometry(1,1,1,16);
+ dbgGeo=[dbgUnitBox,dbgUnitSph,dbgUnitCyl];
+ const keep=g=>{dbgGeo.push(g);return g;};          // register a one-off geometry for disposeDebug
  const wallM=dbgMat(0xff3b3b,.30),goalM=dbgMat(0x3bff6a,.22),floorM=dbgMat(0x3b7bff,.12),
        manM=dbgMat(0xffe23b,.38),ballM=new THREE.MeshBasicMaterial({color:0x2af5ff,wireframe:true});
- const box=(w,h,d,x,y,z,m,g)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);(g||dbgGroup).add(b);return b;};
+ // Every flat plate in the overlay comes through here, so this one line is what collapses
+ // the wall/goal/zone boxes onto a single geometry. Size lives in .scale from now on.
+ const box=(w,h,d,x,y,z,m,g)=>{const b=new THREE.Mesh(dbgUnitBox,m);b.scale.set(w,h,d);b.position.set(x,y,z);(g||dbgGroup).add(b);return b;};
+ // Same idea for the AI layers' floor plates, which sit flat and only vary in w/d.
+ const plate=(m,w,h,d,x,y,z)=>{const b=new THREE.Mesh(dbgUnitBox,m);b.scale.set(w,h,d);b.position.set(x,y,z);b.visible=false;dbgAIGroup.add(b);return b;};
+ const disc=(r,h,m)=>{const c=new THREE.Mesh(dbgUnitCyl,m);c.scale.set(r,h,r);c.visible=false;dbgAIGroup.add(c);return c;};
  // floor: ball centre clamps to y=BALL_R, i.e. the collision surface is y=0.
  box(F.L,0.04,F.W,0,0,0,floorM);
  // side walls: bounce face at |z| = W/2, active up to y = wallH.
@@ -324,32 +345,35 @@ function buildDebug(){
  // player capsules: pivot(y=ROD_H) -> foot(-ARM), radius PRAD. Parented to each
  // pivot so they inherit rotation.z (swing) and position.z (slide) for free —
  // exactly how collideRod builds the segment.
+ // Every man's proxy is the SAME size, so the geometries and materials are built once
+ // here and shared across all 22 — this loop used to allocate 5 geometries per man.
+ const rch=BALL_R*FOOT_BOX_REACH;
+ const footBM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.45,wireframe:true,depthWrite:false});
+ const reachM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false});
  for(const r of rods)for(const bz of r.baseZ){
   const cap=new THREE.Group();cap.position.set(0,0,bz);
-  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(PRAD,PRAD,ARM,10),manM);cyl.position.y=-ARM/2;cap.add(cyl);
-  const top=new THREE.Mesh(new THREE.SphereGeometry(PRAD,10,8),manM);cap.add(top);
-  const foot=new THREE.Mesh(new THREE.SphereGeometry(PRAD,10,8),manM);foot.position.y=-ARM;cap.add(foot);
+  const cyl=new THREE.Mesh(dbgUnitCyl,manM);cyl.scale.set(PRAD,ARM,PRAD);cyl.position.y=-ARM/2;cap.add(cyl);
+  const top=new THREE.Mesh(dbgUnitSph,manM);top.scale.setScalar(PRAD);cap.add(top);
+  const foot=new THREE.Mesh(dbgUnitSph,manM);foot.scale.setScalar(PRAD);foot.position.y=-ARM;cap.add(foot);
   cap.visible=false;r.pivot.add(cap);dbgCaps.push(cap);
    // foot box: collision proxy (oriented box, half-extents from config)
-    const fbGeo=new THREE.BoxGeometry(FOOT_BOX.y*2,FOOT_BOX.x*2,FOOT_BOX.z*2);
-    const footBM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.45,wireframe:true,depthWrite:false});
-    const footBox=new THREE.Mesh(fbGeo,footBM);
+    const footBox=new THREE.Mesh(dbgUnitBox,footBM);
+    footBox.scale.set(FOOT_BOX.y*2,FOOT_BOX.x*2,FOOT_BOX.z*2);
     footBox.visible=false;dbgAIGroup.add(footBox);dbgFootS.push({mesh:footBox,rod:r,manIdx:r.baseZ.indexOf(bz)});
      // foot reach: box inflated by ball reach distance in each dimension
-     const rch=BALL_R*FOOT_BOX_REACH;
-     const rbGeo=new THREE.BoxGeometry((FOOT_BOX.y+rch)*2,(FOOT_BOX.x+rch)*2,(FOOT_BOX.z+rch)*2);
-    const reachM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false});
-    const reachBox=new THREE.Mesh(rbGeo,reachM);
+    const reachBox=new THREE.Mesh(dbgUnitBox,reachM);
+    reachBox.scale.set((FOOT_BOX.y+rch)*2,(FOOT_BOX.x+rch)*2,(FOOT_BOX.z+rch)*2);
     reachBox.visible=false;dbgAIGroup.add(reachBox);dbgFootReach.push({mesh:reachBox,rod:r,manIdx:r.baseZ.indexOf(bz)});
  }
   // ball collision spheres (radius BALL_R), positioned each frame.
-  for(let i=0;i<KICK.splitMax+2;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,14,12),ballM);s.visible=false;dbgGroup.add(s);dbgBalls.push(s);}
+  for(let i=0;i<KICK.splitMax+2;i++){const s=new THREE.Mesh(dbgUnitSph,ballM);s.scale.setScalar(BALL_R);s.visible=false;dbgGroup.add(s);dbgBalls.push(s);}
   // arena debug: low-res wireframe of the swept bowl (shown when ARENA_ON instead of flat wall proxies)
   dbgArenaWalls=buildArenaDebugMesh();
-  if(dbgArenaWalls){dbgArenaWalls.visible=false;dbgGroup.add(dbgArenaWalls);}
+  if(dbgArenaWalls){dbgArenaWalls.visible=false;dbgGroup.add(dbgArenaWalls);
+   if(dbgArenaWalls.geometry)keep(dbgArenaWalls.geometry);}   // built in arena.js — register it so disposeDebug frees it too
   // per-ball contact contour rings
   for(let i=0;i<KICK.splitMax+2;i++){
-   const crGeo=new THREE.BufferGeometry();
+   const crGeo=keep(new THREE.BufferGeometry());   // per-ball: holds its own contour points
    const crPts=[];for(let j=0;j<=48;j++){const a=j/48*Math.PI*2;crPts.push(0,0,0);}
    crGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(crPts),3));
    const cr=new THREE.LineLoop(crGeo,dbgMat(0xff3b3b,.55));
@@ -410,7 +434,7 @@ function buildDebug(){
  // per-frame (follows slide); hot pink while the rod is actually held (r.heldFwd).
  const dsW=AIC.heldFwd.xBack+AIC.heldFwd.xFront;
  const dsZ=(FOOT_BOX.z+BALL_R+AIC.heldFwd.zMargin)*2;
- const dsGeo=new THREE.BoxGeometry(dsW,0.05,dsZ);
+ const dsGeo=keep(new THREE.BoxGeometry(dsW,0.05,dsZ));
  const dsDim=dbgMat(0xff5c8a,.15),dsHot=dbgMat(0xff5c8a,.5);
  for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
   const m=new THREE.Mesh(dsGeo,dsDim);m.visible=false;dbgAIGroup.add(m);
@@ -423,7 +447,7 @@ function buildDebug(){
  // clearMargin) around each foot. Follows the slide; hot white while any live ball is inside.
  const frW=AIC.footRangeBack+AIC.underFootFront;
  const frZ=(FOOT_BOX.z+BALL_R+AIC.clearMargin)*2;
- const frGeo=new THREE.BoxGeometry(frW,0.05,frZ);
+ const frGeo=keep(new THREE.BoxGeometry(frW,0.05,frZ));
  const frDim=dbgMat(0xeaeaea,.12),frHot=dbgMat(0xeaeaea,.45);
  for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
   const m=new THREE.Mesh(frGeo,frDim);m.visible=false;dbgAIGroup.add(m);
@@ -438,9 +462,7 @@ function buildDebug(){
  for(const r of rods){
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(tzW,0.05,zMax-zMin||0.1),tzDim);
-  m.position.set(r.x+(AIC.trap.back+AIC.trap.front)/2*dir,0.04,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(tzDim,tzW,0.05,zMax-zMin||0.1,r.x+(AIC.trap.back+AIC.trap.front)/2*dir,0.04,(zMin+zMax)/2);
   dbgTrapZone.push({mesh:m,rod:r,matDim:tzDim,matHot:tzHot});
  }
 
@@ -452,9 +474,7 @@ function buildDebug(){
  for(const r of rods){
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(srW,0.05,zMax-zMin||0.1),srDim);
-  m.position.set(r.x+(AIC.safeRaise.back+AIC.safeRaise.front)/2*dir,0.045,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(srDim,srW,0.05,zMax-zMin||0.1,r.x+(AIC.safeRaise.back+AIC.safeRaise.front)/2*dir,0.045,(zMin+zMax)/2);
   dbgSafeRaise.push({mesh:m,rod:r,matDim:srDim,matHot:srHot});
  }
 
@@ -466,9 +486,7 @@ function buildDebug(){
  for(const r of rods){
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(evW,0.05,zMax-zMin||0.1),evDim);
-  m.position.set(r.x-evW/2*dir,0.05,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(evDim,evW,0.05,zMax-zMin||0.1,r.x-evW/2*dir,0.05,(zMin+zMax)/2);
   dbgEvade.push({mesh:m,rod:r,matDim:evDim,matHot:evHot});
  }
 
@@ -480,9 +498,7 @@ function buildDebug(){
  for(const r of rods){
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(edW,0.04,zMax-zMin||0.1),edDim);
-  m.position.set(r.x-edW/2*dir,0.04,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(edDim,edW,0.04,zMax-zMin||0.1,r.x-edW/2*dir,0.04,(zMin+zMax)/2);
   dbgEvadeDead.push({mesh:m,rod:r,matDim:edDim,matHot:edHot});
  }
 
@@ -502,9 +518,7 @@ function buildDebug(){
    if(!mate||Math.abs(o.x-r.x)<Math.abs(mate.x-r.x))mate=o;}
   if(!mate)continue;
   const zMin=mate.baseZ[0]-mate.maxOff-CLD.zPad,zMax=mate.baseZ[mate.baseZ.length-1]+mate.maxOff+CLD.zPad;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(mwW,0.05,zMax-zMin||0.1),mwDim);
-  m.position.set(r.x+(CLD.behind-mwW/2)*dir,0.06,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(mwDim,mwW,0.05,zMax-zMin||0.1,r.x+(CLD.behind-mwW/2)*dir,0.06,(zMin+zMax)/2);
   dbgMakeWay.push({mesh:m,rod:r,matDim:mwDim,matHot:mwHot});
  }
 
@@ -521,11 +535,10 @@ function buildDebug(){
   if(DRD.roles&&DRD.roles.indexOf(r.role)<0)continue;
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=new THREE.Mesh(new THREE.BoxGeometry(drW,0.05,zMax-zMin||0.1),drDim);
-  m.position.set(r.x+(DRD.back+DRD.front)/2*dir,0.07,(zMin+zMax)/2);
-  m.visible=false;dbgAIGroup.add(m);
-  const mk=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.08,14),drMark);mk.visible=false;dbgAIGroup.add(mk);
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+  const m=plate(drDim,drW,0.05,zMax-zMin||0.1,r.x+(DRD.back+DRD.front)/2*dir,0.07,(zMin+zMax)/2);
+  const mk=disc(0.5,0.08,drMark);
+  // the pass line holds its own per-frame endpoints, so it genuinely needs its own buffer
+  const geo=keep(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
   const ln=new THREE.Line(geo,drPass);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);
   dbgDribble.push({mesh:m,mark:mk,line:ln,rod:r,matDim:drDim,matHot:drHot});
  }
@@ -558,9 +571,7 @@ function buildDebug(){
  for(const z of dzList){
   const w=F.L/2-z.xMin,d=F.W/2-z.zMin;
   for(const sx of [-1,1])for(const sz of [-1,1]){
-   const m=new THREE.Mesh(new THREE.BoxGeometry(w,0.05,d),dzDim);
-   m.position.set(sx*(z.xMin+F.L/2)/2,dzY,sz*(z.zMin+F.W/2)/2);
-   m.visible=false;dbgAIGroup.add(m);
+   const m=plate(dzDim,w,0.05,d,sx*(z.xMin+F.L/2)/2,dzY,sz*(z.zMin+F.W/2)/2);
    dbgDeadzones.push({mesh:m,zone:z,sx,sz,matDim:dzDim,matHot:dzHot});
   }
  }
@@ -568,29 +579,25 @@ function buildDebug(){
  // a ball settled up there is unreachable too (CONFIG.deadball.roofMult). Plate at y=goalH over the
  // box; drawn at the stock mouth width, so under 'big goal' the live zone is wider than the plate.
  if(DEAD.roofMult>1)for(const sx of [-1,1]){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(F.goalDepth,0.05,F.goalHalf*2),dzDim);
-  m.position.set(sx*(F.L/2+F.goalDepth/2),F.goalH,0);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(dzDim,F.goalDepth,0.05,F.goalHalf*2,sx*(F.L/2+F.goalDepth/2),F.goalH,0);
   dbgDeadzones.push({mesh:m,zone:null,roof:true,sx,sz:0,matDim:dzDim,matHot:dzHot});
  }
  // …and the between-row lanes (CONFIG.deadball.rodGaps.lanes — strips neither adjacent row can swing
  // at). Same flat plate as the corner pockets, full pitch width, straight off the config list so the
  // overlay is literally what the timer reads.
  for(const ln of rodGaps()){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(ln.x1-ln.x0,0.05,F.W),dzDim);
-  m.position.set((ln.x0+ln.x1)/2,dzY,0);
-  m.visible=false;dbgAIGroup.add(m);
+  const m=plate(dzDim,ln.x1-ln.x0,0.05,F.W,(ln.x0+ln.x1)/2,dzY,0);
   dbgDeadzones.push({mesh:m,zone:null,band:ln,sx:0,sz:0,matDim:dzDim,matHot:dzHot});
  }
 
  // lowY: translucent horizontal plane at y = lowY (AI only kicks below this)
  const lowYM=dbgMat(0x2af5ff,.10);
- dbgAILowY=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),lowYM);
+ dbgAILowY=new THREE.Mesh(keep(new THREE.PlaneGeometry(F.L,F.W)),lowYM);
  dbgAILowY.rotation.x=-Math.PI/2;dbgAILowY.position.y=AIC.lowY;
  dbgAILowY.visible=false;dbgAIGroup.add(dbgAILowY);
 
   // manHyst: per-man highlight rings (shown on the selected man) + per-rod target dots
-  const ringGeo=new THREE.TorusGeometry(PRAD+0.2,0.1,8,16);
+  const ringGeo=keep(new THREE.TorusGeometry(PRAD+0.2,0.1,8,16));   // shared across all 22 men
   const ringM=dbgMat(0xffcf4d,.85);
   for(const r of rods){
    for(let i=0;i<r.baseZ.length;i++){
@@ -598,13 +605,14 @@ function buildDebug(){
     ring.position.set(0,-ARM,r.baseZ[i]);ring.visible=false;
     r.pivot.add(ring);dbgAIManRings.push({ring,rod:r,manIdx:i});
    }
-   const dot=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,0.06,12),dbgMat(0xffcf4d,.9));
-   dot.visible=false;dbgAIGroup.add(dot);
+   const dot=disc(0.35,0.06,dbgMat(0xffcf4d,.9));
    dbgAITargetDots.push({dot,rod:r});
   }
 
   // aligned: per-man floor bars showing ±align zone along z. Green = nearest man is aligned.
-  const alGeo=new THREE.BoxGeometry(0.15,0.06,AIC.alignSlow*2);
+  // keeps its OWN geometry (not dbgUnitBox): updateAIVis animates these bars via .scale.z,
+  // which would fight the unit-box sizing.
+  const alGeo=keep(new THREE.BoxGeometry(0.15,0.06,AIC.alignSlow*2));
   const alMatGreen=dbgMat(0x7dff8a,.65);
   const alMatDim=dbgMat(0x7dff8a,.12);
   for(const r of rods){
@@ -625,10 +633,10 @@ function buildDebug(){
  for(const r of rods){
   const set={rod:r,lines:[],marker:null};
   for(let s=0;s<AIC.gapAim.samples;s++){
-   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+   const geo=keep(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
    const ln=new THREE.Line(geo,dbgShotBlock);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);set.lines.push(ln);
   }
-  const mk=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.09,16),dbgMarkOpen);mk.visible=false;dbgAIGroup.add(mk);set.marker=mk;
+  const mk=disc(0.55,0.09,dbgMarkOpen);set.marker=mk;
   dbgShotLanes.push(set);
  }
 
@@ -652,11 +660,50 @@ function buildDebug(){
   // sweetSpot flash: a rising, fading disc placed at the contact point whenever a sweet kick
   // lands (r.aimSweet set by physics each frame). Pooled, one per foot.
   dbgSweetFlashMat=dbgMat(0xffe14d,.9);
+  // Own geometry, hoisted (was one per man): updateAIVis pops these with .scale.setScalar,
+  // so they can't ride dbgUnitCyl the way the static discs do.
+  const sfGeo=keep(new THREE.CylinderGeometry(0.5,0.5,0.1,16));
   for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
-   const d=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.1,16),dbgSweetFlashMat);
+   const d=new THREE.Mesh(sfGeo,dbgSweetFlashMat);
    d.visible=false;dbgAIGroup.add(d);
    dbgSweetFlash.push({mesh:d,rod:r,manIdx:i,t:-1});
   }
+}
+
+/* Tear the whole overlay down and free its GPU buffers. `C` alone does NOT call this — toggling
+   off just hides, because rebuilding costs a visible hitch and you usually toggle straight back
+   on. Call this when you want it genuinely gone (console: disposeDebug()), e.g. before profiling
+   so the overlay isn't in the scene graph at all. buildDebug() runs clean afterwards.
+   The capsules and manHyst rings hang off r.pivot rather than the debug groups, so they're
+   stripped separately — anything that ever REPLACES the rod pivots (buildRods, which today only
+   runs once at boot) must call this first or they'd be stranded on discarded pivots.
+   rebuildRodMen only swaps r.men, so it leaves these alone and needs no hook.
+   Materials come from dbgMat and are never shared with game meshes, so disposing them is safe;
+   every geometry buildDebug creates is registered in dbgGeo. */
+function disposeDebug(){
+ if(!dbgGroup)return;
+ const mats=new Set();
+ const strip=o=>{
+  if(!o)return;
+  o.traverse(c=>{if(c.material)(Array.isArray(c.material)?c.material:[c.material]).forEach(m=>m&&mats.add(m));});
+  if(o.parent)o.parent.remove(o);
+ };
+ strip(dbgGroup);strip(dbgAIGroup);
+ for(const c of dbgCaps)strip(c);                              // parented to rod pivots, not the groups
+ for(const e of dbgAIManRings)strip(e.ring);                   // ditto
+ for(const g of dbgGeo)if(g&&g.dispose)g.dispose();
+ mats.forEach(m=>m.dispose());
+ dbgGroup=dbgAIGroup=dbgArenaWalls=dbgAILowY=null;
+ dbgUnitBox=dbgUnitSph=dbgUnitCyl=null;dbgGeo=[];
+ dbgCaps=[];dbgBalls=[];dbgFootS=[];dbgContourRings=[];
+ dbgAIGKPad=[];dbgAIRaise=[];dbgAIOverFoot=[];dbgAIUnderFoot=[];dbgAIInFront=[];
+ dbgDropSweep=[];dbgFootRange=[];dbgTrapZone=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
+ dbgMakeWay=[];dbgDribble=[];dbgDeadzones=[];dbgShotLanes=[];
+ dbgAIManRings=[];dbgAITargetDots=[];dbgFootReach=[];dbgAlignRings=[];dbgAIServe=[];dbgAIRedrop=[];
+ dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;
+ dbgShotOpen=dbgShotBlock=dbgMarkOpen=dbgMarkBlock=null;
+ if(dbgAIPanel){dbgAIPanel.style.display='none';}
+ dbgOn=false;
 }
 
 function updateAIVis(){
@@ -857,15 +904,41 @@ function updateAIVis(){
   }
 }
 
+/* PARK the overlay out of the scene graph when it's off.
+   `visible=false` is NOT enough: renderer.render() calls scene.updateMatrixWorld(), which recurses
+   through invisible objects — only projectObject (the render-list build) skips them. So a hidden
+   overlay was still being walked every pass, and with cfg.reflections on updateBallReflect renders
+   the whole scene 6 MORE times every ballReflect.every frames (plus the shadow pass), so that walk
+   happened several times a frame for nothing. The capsules and manHyst rings are the worst of it:
+   they hang off r.pivot, which moves every frame, so their matrices were genuinely RECOMPUTED
+   rather than skipped.
+   Detaching costs nothing on the GPU — geometries, materials and compiled programs all stay
+   resident — so re-entry is instant and there's still no reason for `C` to dispose.
+   Each object remembers its own parent in userData.dbgHome, so this works uniformly for the two
+   scene-level groups and for the pivot-parented proxies. */
+function dbgPark(o){if(!o||!o.parent)return;o.userData.dbgHome=o.parent;o.parent.remove(o);}
+function dbgUnpark(o){const h=o&&o.userData&&o.userData.dbgHome;if(h&&!o.parent)h.add(o);}
+function dbgAttach(on){
+ const list=[dbgGroup,dbgAIGroup];
+ for(const c of dbgCaps)list.push(c);
+ for(const e of dbgAIManRings)list.push(e.ring);
+ for(const o of list)on?dbgUnpark(o):dbgPark(o);
+}
 function toggleDebug(){
  if(!dbgGroup)buildDebug();
  dbgOn=!dbgOn;
+ dbgAttach(dbgOn);
   dbgGroup.visible=dbgOn;
   for(const c of dbgCaps)c.visible=dbgOn;
   for(const c of dbgFootS)c.mesh.visible=dbgOn;
   dbgAIGroup.visible=dbgOn;
  if(dbgAIPanel)dbgAIPanel.style.display=dbgOn?'block':'none';
  if(dbgLogPanel)dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
+ // Drop the AI tracer on the way out. It's guarded by `dbgLogRod===r` at ~40 call sites in ai.js
+ // and physics.js, but those run per SIM STEP (up to SIM.maxSteps a frame) and nothing drains the
+ // buffer while the overlay is hidden — flushKickLog only runs in debugUpdate's dbgOn branch.
+ // L is dbgOn-gated anyway, so you re-pick the rod on re-entry.
+ if(!dbgOn){dbgLogRod=null;dbgLogLast={};dbgLogRepKey='';}
  updateAIVis();
  toast('COLLISION DEBUG',dbgOn?'red=wall · green=goal · yellow=player':'off',1.1);
  Au.ui();
