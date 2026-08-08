@@ -197,15 +197,18 @@ Three levers, all tuned in `CONFIG.ai`:
 
 ## Dead-ball handling
 
-- `redropBall(b)` relocates the ball to a **fresh random spot** (never clamps to its stuck
-  x — doing that just re-lands it in the same dead zone).
+- `redropBall(b,atX)` relocates the ball to a fresh spot in the face-off zone that SERVES the x it
+  died at (`redropZone` / `CONFIG.deadball.redrop.zones[].from`) — same third, jittered inside it.
+  It never clamps to the stuck x itself (that just re-lands it in the same dead zone).
+- `S.serveAt` carries the same rule to an out-of-play / cannonball restart; a goal kickoff is centre.
 - `deadBallUpdate`: global stall (all balls quiet) re-drops after **2.6s**; a single wedged
   ball (multi-ball play) re-drops after **2.2s**.
 
 ## Other systems
 
 - **Input:** ←/→ or Q/E switch rod; ↑/↓ or mouse slide; Space/click kick; Shift/right-click
-  raise; 1–4 select rod; V cycle camera; M frame profiler; Esc pause; mouse wheel switch rod. Wired in the
+  raise; 1–4 select rod; V cycle camera; M frame profiler; Esc pause; mouse wheel switch rod;
+  **S (during a goal replay only) saves that replay as a .webm** — every OTHER key skips. Wired in the
   `input` section + `userControlUpdate` (which also does auto rod-switch when `cfg.auto`).
   Gamepad (`gamepadUpdate`): left stick slide, A/RT kick, X/LT raise, right-stick absolute rod
   angle, LB/RB switch rod; the optional 'Total Control' mode (Options → Controller) remaps the
@@ -345,6 +348,437 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-08-07
+- **THE LEAGUE SESSION OWNS THE VENUE NOW, NOT THE MATCH — and the division `skin` was wired to
+  nothing** (`js/league.js` new venue block, `js/flow.js`, `js/world.js`, `js/models.js`,
+  `js/config.js`). Reported from play: the Sunday League LOBBY loaded and displayed the arcade room,
+  then the match cut to the void room the division actually specifies — `room "arcade" loaded` /
+  `room freed: arcade` twice in one round of console.
+  - **The venue was swapped by the MATCH, so the lobby was always the wrong one.** `lgPlayMatch` set
+    `cfg.table/room/pitch` from the division and stashed the player's in `S.lg.prevKit`; `gotoMenu`
+    put them back. But the return path is `gotoMenu(); openLeague()` — so coming out of a fixture
+    RESTORED the player's Kick Off room (a GLB fetch), the lobby rendered in it, and the next Play
+    FREED it again for the division's. **One load + one free per round, forever**, and the lobby you
+    spend a whole season on advertised a venue you never play in.
+  - Now `lgVenueEnter` / `lgVenueExit` (top of league.js): the venue goes on when you walk into the
+    lobby or the bracket, and comes off when you leave league land. A season is ONE swap in and ONE
+    swap out. `LGV` parks the player's own meanwhile.
+  - **The restore is DEFERRED one tick and that is load-bearing.** Every return-to-lobby path
+    (`lgReturn`, `cupReturn`, both forfeit branches) is `gotoMenu(); openLeague()` in one synchronous
+    run, and gotoMenu's screen change fires the exit through `SCREENS.league.onHide`. An immediate
+    restore would tear the division's room down and re-fetch the player's, only for the lobby to swap
+    straight back — i.e. exactly the churn, just moved. `lgVenueEnter` cancels the pending timer, so
+    a quit-to-home restores and a return-to-lobby doesn't.
+  - **`lgVenueEnter` must sit ABOVE `openLeague`'s season-end early-return** for the same reason —
+    that's the cancel, and skipping it would let the restore land behind the summary overlay.
+  - **`CONFIG.league.divisions[].skin` had NO READER.** `curSkin(id)` resolves `cfg.skins[id]` →
+    `defSkin`, and nothing ever wrote the division's choice in, so a league match wore whatever
+    livery was last picked in Kick Off. `lgDivVenue` reads it; `LG.divs[]` freezes it at season
+    creation (like table/room/pitch already were) and `loadLG` backfills it for existing saves.
+  - **A venue SPEC and a venue SNAPSHOT are different shapes on purpose.** A spec carries one `skin`
+    id and touches only ITS table's livery; the snapshot carries the whole `skins` map. A spec that
+    wrote the map would wipe the player's choice for every other table.
+  - **`saveCfg` now writes the PARKED venue, not the live cfg** (`lgVenueHeld`). The 2026-07-16 entry
+    flagged this as a known gap when the window was one match; it's now the whole lobby, and without
+    it touching any Options control from a league pause menu makes that fixture's table/room/pitch/
+    skin the player's permanent Kick Off setting. `typeof`-guarded because config.js parses first.
+  - **`prevKit` is KIT ONLY now** (colours, models, special, power). `gotoMenu` calls `lgVenueExit()`
+    as the backstop for quit-to-home.
+  - **The cup's random pitch is PINNED TO THE TIE** (`cupVenue` → `tie.pitch`, persisted). It was
+    re-rolled inside `cupPlayTie`, so the bracket screen and the match it starts disagreed, and
+    re-opening a bracket re-rolled it again.
+  - Both kickoff gates collapse from `tableDone`+`roomDone` to one `venueDone` off
+    `lgVenueEnter`'s cb. It's still a GATE (a division can force a table never opened, and Play can
+    beat the lobby's fetch) but resolves synchronously in the normal case.
+- **A MISSING ROOM GLB WAS RE-FETCHED ON EVERY SCREEN CHANGE, AND ITS FALLBACK NEVER RAN**
+  (`js/models.js` `roomFailed`/`roomHasGlb`, `js/world.js` `applyRoom`, `CONFIG.rooms[].backdrop`).
+  Found alongside the above: `nafuzeball_room_void.glb 404` once per venue change.
+  - `ensureRoom` cached success but **not failure**, so a room pointing at a file that isn't there
+    re-issued the request every single `applyRoom`. Latched in `roomFailed` (session-scoped — a
+    reload re-tries, so dropping the file in during development still works).
+  - **`applyRoom`'s "no backdrop" fallback tested `rm.glb`**, which is still set on a room whose file
+    is absent — so it never engaged, and the console line saying "using shared backdrop" was a lie.
+    `hasGlb` was also captured ONCE before the load, so the reveal path couldn't correct it either.
+    Both are now recomputed inside `show()` off "is a backdrop actually on screen", which also means
+    the shared ground+crowd stand in WHILE a room GLB downloads instead of leaving a hole.
+  - **New `CONFIG.rooms[].backdrop`**: `false` = no stand-in, just bg + fog. Set on `open` (Void),
+    because that room's current look — nothing — was an ACCIDENT of the broken glb path, and the
+    fallback fix would otherwise have silently put a ground plane and a crowd in the void. Now it's
+    stated rather than emergent. Every other room defaults to standing the backdrop in.
+  Verified by re-read (sandbox wouldn't boot — session disk missing). NOT yet exercised live.
+- **A RE-DROP NOW COMES BACK IN THE THIRD IT DIED IN — holding the ball was a free 60u of territory**
+  (`CONFIG.deadball.redrop.sameThird` + per-zone `from`, new `redropZone` in `js/powerups.js`, new
+  `S.serveAt`, `js/balls.js`, `js/flow.js`, `js/debug.js`). Reported from play: a keeper or defender
+  who smothers the ball against his own line loses nothing by it. He takes the whistle and the re-drop
+  picked one of the three face-off zones AT RANDOM — so **two times in three the punishment for being
+  pinned in your own corner was the ball reappearing further up the table than he could have kicked
+  it**, and the strongest move from a dead position was to stop playing.
+  - **The zones were already the three thirds** (x −30 / 0 / +30, i.e. the centre of each); the only
+    thing missing was the mapping. Each zone gained **`from:[x0,x1]`** — the stretch of pitch it
+    serves — and `redropZone(x)` returns the zone containing the death x. Expressed as explicit
+    ranges rather than nearest-centre because those are NOT the same partition: nearest-centre puts
+    the boundaries at ±15, and the thirds of a 120-unit table are at ±20. Ranges also mean a fourth
+    zone is a pure config edit.
+  - **The outer ranges run to ±999 on purpose.** A ball can die behind a goal line (out of play, or
+    resting on the goal roof), so the catchment has to extend past the table or the one case that most
+    needs resolving falls through to the random fallback. Same reason `redropZone` falls back rather
+    than throwing: it's on the code path a stuck ball depends on to become playable again.
+  - **The drop is still JITTERED inside the chosen zone** (`spread`, plus the full ±`redrop.z` in z).
+    This is not a restoration to where the ball was held — it's a face-off at the nearest contested
+    spot, which is the point. Nothing about the drop mechanics or the fall-time back-solve changed.
+  - **OUT OF PLAY IS THE SAME EXPLOIT BY ANOTHER ROUTE, and it does NOT go through `redropBall`** —
+    it removes the ball and re-serves via `serve()` after the hold, which drops centre. So belting it
+    off the table from your own corner was strictly BETTER than holding it: same territory, no whistle
+    to sit through. `outOfBounds` now parks the exit x in **`S.serveAt`** and `serve()` consumes it
+    through the same `redropZone`. Cannonball detonation (`balls.js`) does likewise — sitting on the
+    fuse in your own corner is the identical trade with a timer attached.
+  - **`S.serveAt` is set only by the ball that ENDS the rally** (inside the `!S.balls.length` branch).
+    In multi-ball the others are still live and their exit says nothing about where play stopped.
+    It's read in `outOfBounds` from **`b.cur`, before `removeBall`** — `b.m.position` carries the
+    render interpolation and the mesh is freed a line later.
+  - **A GOAL KICKOFF IS DELIBERATELY UNTOUCHED and must stay that way.** `serve()` is the single
+    entry for every restart, so the ONLY thing separating a kickoff from a restart is `S.serveAt`
+    being null — hence it's consumed in `serve()` and reset in `startMatchNow`. Leak it and conceding
+    would restart play in the scorer's attacking third, which is the exploit inverted.
+  - **Made visible, or the rule is unfalsifiable by eye**: the existing **Redrop Zones** debug layer
+    (`C`) gained a thin bar per zone along the near touchline spanning its `from` range, so the third
+    boundaries are readable. Watching a ball re-appear in the middle zone otherwise tells you nothing
+    about whether it was SENT there or rolled a 1-in-3. Pushed into `dbgAIRedrop`, so the existing
+    visibility line covers it.
+  - `sameThird:false` restores the old random pick everywhere, including the serve path.
+  Verified by re-read (sandbox wouldn't boot — session disk missing). NOT yet exercised live.
+- **THE PRE-MATCH TAPE'S PORTRAITS WERE NEVER PRELOADED — they were requested at the frame the
+  splash appeared** (`CONFIG.league.tapeReadyCap`, `js/league.js` new `primeMatchTape`/`tapeDwell`,
+  `js/config.js`). Reported as "it always swipe loads when the screen loads", which is exactly the
+  shape of a big PNG streaming top-to-bottom into a fixed box.
+  - **`renderLgTape` builds the portraits as raw `<img src>` inside an `innerHTML` string**, so the
+    first byte of `assets/renders/render_<x>_cycles.png` is requested at the instant `#lgTape` is
+    un-hidden. `.lgFigBox` is a fixed 600×700, so there's no layout jump to disguise it — you watch
+    the image arrive. The lobby primed the shatter GLBs (`primeMatchExplosions`) and the table/room,
+    and nothing at all for these.
+  - **The scout panel does NOT already cover this, which is the easy wrong assumption.** `renderLgScout`
+    runs `mugImg` on the SAME figurine, but that loads `render_*_MUGSHOT.png` — a different file — so
+    the tape's `_cycles` render stayed cold no matter how long you sat in the lobby.
+  - **`primeMatchTape(idA,idB)` sits beside `primeMatchExplosions`** in `openLeague` and `renderCupFix`,
+    and takes figurine model IDS for the same reason that one does (`cfg.modelRed/Blue` aren't the
+    league teams until `lgPlayMatch`, so `activeModel()` reads the menu figurines in a lobby).
+  - **Images are HELD in `TAPE_IMG`, not fired and forgotten** — a live reference keeps the decoded
+    bitmap, so the tape's own `<img>` paints from cache with no second decode. **Bounded to the two
+    figurines of the NEXT match**: each decoded portrait is several MB, and a season of past opponents
+    accruing in that map is a slow leak that nothing would ever free. The map is rebuilt per call and
+    anything not in the new pair is dropped; re-entering the lobby re-issues nothing.
+  - **`tapeDwell(cb)` starts the `tapeT` beat once the portraits can PAINT, not when the tape is
+    revealed.** Without it the 3s dwell was spent watching the PNG arrive and then cut to kickoff at
+    the moment the screen finally looked right — `tapeDone` was a bare `setTimeout` with no relation
+    to the images. Uses `img.decode()` (resolves when the bitmap is ready with no main-thread hitch,
+    rejects on a broken image → caught, so a figurine with no render is a clean skip).
+  - **`tapeReadyCap` (2.5s) is a hard ceiling and is load-bearing** — a stalled or 404 render must
+    never be able to hold up a match start; past the cap the tape runs exactly as it did before.
+    `tapeReadyCap:0` restores the old unconditional timer.
+  - **`tapeDwell` returns a CANCEL fn and the click-to-skip path must call it.** It kills BOTH timers
+    and disarms the pending decode handler — without that, a skipped tape re-fires `go()` a beat later
+    against whatever screen came next.
+  - Worth knowing generally: **`RENDER_MAP`/`modelRender` fall through to the raw id**, so a key with
+    no branch in that chain yields `render_<id>_cycles.png` and 404s silently (`manStumpy` is such a
+    key; harmless only because it isn't in the live roster). And `womanSasha`/`womanAndroid` are
+    commented out in `CONFIG.playerModel.models` while their renders exist on disk.
+  Verified by re-read (sandbox wouldn't boot — session disk missing). NOT yet exercised live.
+- **REPLAYS HAVE SOUND NOW, AND CAN BE SAVED AS A .webm** (`CONFIG.replay.audio`,
+  `CONFIG.replay.save`, new `CONFIG.capture`, new `js/capture.js`, `js/replay.js`, `js/audio.js`,
+  `js/input.js`, `index.html`, `css/styles.css`). Two asks, one entry, because the save only has a
+  soundtrack because of the first half.
+  - **THE REPLAY WAS SILENT BECAUSE THE SIM IS FROZEN.** Playback re-poses ghosts and pivots from
+    the ring buffer; nothing calls `physics`, so nothing calls `Au`. The crowd bed kept running
+    (`Au.tick` gates on `phase!=='menu'`, and `'replay'` isn't) which is exactly why it read as an
+    audio *dropout* rather than as a deliberately quiet moment.
+  - **The rally's sounds are logged by TAPPING `Au` ITSELF**, not by instrumenting the ~10 call
+    sites across physics/fx/powerups. One place to maintain, nothing added to the physics hot path
+    beyond what's already inside those methods, and a sound added later is recorded for free.
+    `replay.js` wraps `kick/wall/post/power/boom` at load (it parses after `audio.js`). The tap is
+    gated exactly like `recordReplay` **plus `!RP.on`** — without that, the sounds playback re-fires
+    would log themselves straight back into the buffer.
+  - **Deliberately NOT tapped: `whistle`, `beep`, `ui`, `goal`.** Those are match chrome, not
+    footage — a replayed countdown beep is nonsense. The horn is re-fired separately at the
+    freeze-frame (`audio.goalSting`) and at NORMAL pitch: it isn't footage, it's the celebration
+    landing, and a tape-slowed horn reads as a fault rather than as drama.
+  - **Events store an ABSOLUTE step index (`RB.tot`), not a ring slot.** A slot gets overwritten as
+    the ring wraps, which would silently re-point an old event at new footage. `rbAbs(j)` maps
+    logical step → abs, and `replayCut` resets `RB.tot` **and** the sound log together — abs
+    restarts at 0 on every serve, so a surviving event would fire against whatever footage landed
+    on its old number. The entry also keeps the ball type's audio-config OBJECT by reference (a
+    preallocated slot array, no growth), so a replayed fireball still sounds like a fireball.
+  - **Sounds are logged with `RB.tot` BEFORE `recordReplay` increments it** — they fire inside
+    `physics()`, which runs earlier in the same fixed step, so `RB.tot` is still the index of the
+    step about to be written. If that ordering in `main.js`'s loop ever changes, this moves with it.
+  - **Pitch: new global `Au.rate` / `Au.vol` multipliers**, applied by the two primitives (`beep`,
+    `noise`) and by `post`. `rate` is a TAPE-SPEED multiplier — frequencies scale with it, every
+    duration scales inversely, so `rate<1` is a slower, deeper, softer-attack version of the SAME
+    hit rather than a different sound. It tracks the playback rate, so a slow-mo strike lands as a
+    deep thud instead of clattering over slowed pictures. Set and reset around the fire loop in
+    `replaySndUpdate`, plus a belt-and-braces reset in `replayEnd`/`replayAbort` — they're global,
+    and a skip landing mid-loop must not leave the next rally detuned.
+  - **Two traps in that multiplier, both handled.** `post` applies `vol` only to its own oscillator
+    envelope, because the `this.noise(...)` call at the end applies `vol` itself — the obvious
+    single `v*=this.vol` gives `vol²` on that one channel. And `R` is guarded `>0` in all three
+    functions: every duration is DIVIDED by it, and a zero puts an Infinity into a buffer length
+    and throws from deep inside WebAudio. `beep`'s `slide` scales with pitch, not with time — it's
+    a frequency delta, not a duration.
+  - **Tuning:** `pitch` (0.85) is the shoot-first knob — 0 = normal pitch throughout, 1 = full tape
+    slowdown. Note the whole replay runs at `speed` 0.7, so even at CRUISE the pitch sits at ~0.75;
+    that's correct and consistent, but it's why the replay sounds "lower" everywhere, not just at
+    the end. `pitchMin` (0.3) is the floor — at 0.3 a kick's 95Hz body lands at ~28Hz, i.e. felt
+    rather than heard, and the noise burst carries the hit; raise it toward 0.45 if strikes stop
+    reading. `audio.on:false` restores the silent replay exactly.
+  - **SAVING: `js/capture.js`** — a MediaRecorder over the game canvas plus a second tap off `Au.mg`
+    into a `MediaStreamDestination` for the audio track (a tap, NOT a re-route: live audio is
+    untouched). Generic; nothing in it knows what a replay is.
+  - **RECORD-THEN-PROMOTE, not record-on-demand** (owner's call, and the right one). A player only
+    knows the goal was worth keeping AFTER watching it, and a replay is over in ~5s — recording from
+    the keypress would only ever capture the tail you already saw. So the recorder is armed on the
+    replay's FIRST FRAME and `S` promotes the whole clip; an unpromoted recording is dropped on stop.
+    **The cost is one encode per goal whether or not anyone saves it** — Chrome encodes off-thread so
+    the main-thread share is the per-frame canvas copy, and it only runs while the sim is frozen, but
+    `CONFIG.replay.save.on:false` is the first thing to try if a weak machine sags on replays. The
+    profiler (M) will attribute it to **GPU/BROWSER**, not SIM.
+  - **The canvas stream is created PER RECORDING and its video track STOPPED again in `clipFlush`.**
+    Not tidiness: a live `CanvasCaptureMediaStreamTrack` makes the browser copy the framebuffer at
+    its capture rate for as long as it exists, whether or not anything consumes it — holding one
+    open for the session would tax every rally to serve the two seconds a year someone saves a clip.
+    Stopping it any EARLIER than `onstop` truncates the tail of the clip. The AUDIO track is the
+    opposite case (permanent destination node, free when idle) and is reused.
+  - **The clip is the CANVAS ONLY.** Letterbox bars, the REPLAY tag, the save hint and the whole HUD
+    are DOM, so what lands on disk is clean gameplay footage with no chrome burnt in. That's a
+    feature for sharing, and it's also why the "CLIP SAVED" confirmation is a `toast()` fired in
+    `replayEnd` AFTER the chrome comes down — `body.replayOn` fades `#hud` (which owns toast) to
+    zero for the whole replay, so anything announced earlier is announced to nobody.
+    Corollary worth knowing: capture reads the canvas BACKING STORE, so **`cfg.renderScale` is the
+    clip's resolution** — a player on 0.6 render scale saves a 0.6-scale video, and no amount of
+    `capture.bitrate` recovers it.
+  - **`S` is tested BEFORE the skip in both input paths.** Every other key/click skips a replay, so
+    without that ordering the save key would be swallowed by the skip and the clip would end at the
+    moment you asked to keep it. Same on the pad: **Y** (`save.pad` 3, already in the polled button
+    list) saves, A/B/Start still skip. Save is deliberately not `didSkip`-guarded — it's idempotent.
+  - Everything in capture.js is best-effort and **nothing in it may throw into the game loop**: no
+    MediaRecorder, no `captureStream`, no supported codec or a recorder that throws → `clipStart`
+    returns false, `clipReady()` stays false, the hint never renders and the replay plays exactly as
+    it did before. A hard failure latches `CLIP.fail` so the session stops retrying once per goal.
+  - Files land in the browser's download folder as
+    `fuzeball_goal_<team-slug>_<date>_<time>.webm` (`clipSlug` flattens a player-typed team name
+    down to something a filesystem will take). Container/codec = first of `CONFIG.capture.mime` the
+    browser admits, resolved once per session.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised live — in particular the pitch
+  numbers are a first cut against a real rally, and clip capture has not been run in an
+  Electron/Steam wrapper, only reasoned about.
+
+### 2026-08-05
+- **REPLAYED BALLS NOW ROLL — the recorder stores POSITION ONLY** (`CONFIG.replay.roll`,
+  `js/replay.js`). Reported as "the texture doesn't rotate with the ball in replays, it's fine in
+  play". Both halves of that are exactly right and the reason is that they're two different meshes:
+  the live ball rolls in `physics.js` (`b.m.rotation.z-=v.x*dt/BALL_R`, `.x+=v.z*dt/BALL_R`, once
+  per sim step), but a replay draws POOLED GHOSTS re-posed from the ring buffer, and the buffer
+  holds `{x,y,z}` + a type byte per slot and nothing else. So the ghost was handed a position every
+  frame and never a rotation — a ball skating down the pitch with its print frozen. Invisible on the
+  procedural sphere, obvious the moment the GLB ball with a print on it is the active mesh.
+  - **Orientation is RE-DERIVED from the path, not recorded.** Rolling without slipping makes
+    orientation a pure function of the ground track, so the buffer doesn't need to grow (recording
+    it would have been +3 floats × 4 slots × ~840 steps ≈ a second 40KB buffer for something
+    reconstructable). `replayRoll(g,dx,dz)` turns the ghost about `(dz,0,-dx)` by `dist/BALL_R` —
+    **the same axis convention as the live ball** (+x travel turns about −z, +z about +x; derived
+    from `v = ω × R·ŷ`), and horizontal-only for the same reason, so a replay matches what was just
+    watched.
+  - **Driven by DISTANCE, not time** — which is what makes it free under the speed ramp: slow-mo
+    shortens the per-frame step, so the spin slows with the ball without reading `RP.t` at all.
+    A `hold` freeze-frame moves 0 and therefore spins 0.
+  - **Accumulated as a world-axis QUATERNION, deliberately not the live Euler pair.** Live gets away
+    with Euler because it's fed a fresh axis every step from a mostly-straight track; a replay
+    stacks many small turns about a curving one, which is where Euler accumulation starts to
+    tumble instead of roll. `Quaternion.premultiply` = the same thing `rotateOnWorldAxis` does.
+  - **`rqBase` matters if you touch this**: the roll is applied ON TOP of the GLB clone's authored
+    root quaternion (`replayRollSet`), never in place of it. Live play gets this for free by using
+    `-=`/`+=` on the existing rotation; the replay assigns, so a baked root rotation would be
+    silently discarded. The sphere fallback has no base and takes the identity path.
+  - Reset lives in `replayGhostHide` (which `replayStart` runs over every ghost), and it clears the
+    MESH pose as well as the accumulator — otherwise `roll:false` wouldn't be a true off-switch
+    after a session with it on: a parked ghost would keep its last rolled pose and open the next
+    replay crooked.
+  - Applied before `g.prev` is advanced, since the trail-speed test below reads the same delta.
+  Verified by re-read (sandbox wouldn't boot). `roll:false` restores the old frozen-texture
+  behaviour exactly.
+
+### 2026-08-04
+- **STAMINA IS TWO CHANNELS NOW — the clock, plus what each rod has actually DONE**
+  (`CONFIG.stats.kickFat`, `js/stats.js`, `js/rods.js`, `js/world.js`, `js/flow.js`, `js/training.js`,
+  `js/debug.js`). Fatigue was a flat tax: `stFat` read `S.matchTime` and the `sta` stat and nothing
+  else, so the keeper who touched the ball twice tired at exactly the rate of the midfield that
+  played the whole match. Every rod now banks its OWN exertion per swing.
+  - **`r.exert` — banked in `kickRod`, bled off in `updateRods`.** `kickRod` is the ONE place every
+    swing in the game passes through (human, AI, shot, trapShot, pass), so the hook is a single line
+    and nothing can swing without paying. Deliberately NOT charged per kick style: a pass is as much
+    of a swing as a strike. Recovery ticks beside the rod's other cooldowns, i.e. in exactly the set
+    of phases where a swing can happen, so both halves of the channel run on one clock.
+  - **`weight` SPLITS `fatMax`, it does not stack on it.** Clock owns `(1-weight)` of the budget,
+    exertion owns `weight`. The worst case is therefore still `fatMax` and the existing balance stays
+    bounded — **what actually changed is that a QUIET rod fades LESS than it used to**, which is the
+    whole point. `weight:0` / `on:false` restores the old ramp byte-for-byte. Numbers at base sta
+    over a 180s match: everyone used to land on 87.5%; now an idle rod holds 94.4% and a hard-worked
+    one still reaches 87.5%. At a league sta of 0 it's 88.75% vs 75%. **To widen the spread raise
+    `fatMax`, not `weight`** — weight only moves where the same budget is spent.
+  - **Exertion is deliberately NOT scaled by `sta` a second time.** `stFat`'s outer `(1 - sta/max)`
+    already gates BOTH channels, so a sta-10 rod is immune to swing drain too and `sta` stays the
+    single stamina knob. Scaling the accumulator by it as well would double-dip and make the
+    tuning unreadable — worth stating because it's the obvious "improvement" to add later.
+  - **`r.exert` is cleared in `startMatchNow` and NOWHERE ELSE — specifically not in
+    `resetRodRotation`**, which is where a per-rod field instinctively goes. That function runs on
+    every goal, dead ball and out-of-play, so putting it there would wipe the accumulation several
+    times a match and pin the channel near zero — the failure mode would look like "the feature does
+    nothing" rather than like a bug. There's a comment at the reset site saying so.
+  - **`userDrain:false` by default — human-held rods accrue nothing.** Not squeamishness: a human
+    swing isn't cooldown-gated the way an AI's is (only the swing length caps the rate, ~3–4/s), so
+    a player mashing kick out-swings every AI on the table several times over and nerfs their own
+    rod within seconds. Turning it on makes mashing self-punishing, which is a defensible design
+    choice but a REAL balance decision, so it isn't made silently. `seatOf(r)` is the test.
+  - **`cap:1.25`×`full` bounds the accumulator.** Unbounded growth would have a rod sitting maxed for
+    minutes after a busy spell in a long match; a small overdraft still means a hammered rod doesn't
+    come back the instant it stops swinging.
+  - **Made VISIBLE, because otherwise it isn't.** This only ever shows up as a rod feeling slightly
+    slower than it did twenty swings ago, which is unverifiable by eye. Training panel's rod block
+    gained a `stam` (live `stFat` %) + `exert` (raw / `full`) line, and the kick log's `★KICK` line
+    carries `ex=` and `fat=` — `dbgKickGate` runs BEFORE `kickRod`, so `ex` is the count going INTO
+    that swing and you watch it step up one per kick and bleed down in the gaps.
+  - Tuning: **`full` (30) is the knob to reach for first** — how many swings it takes to notice.
+    Reaching it NET over 180s takes ≈ `full + recover×180` ≈ 52 swings, i.e. heavy involvement, not
+    something an idle keeper wanders into. Lower it if the effect reads as invisible; raise it if
+    busy rods all bunch at the ceiling and stop differentiating from each other.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised live — `full` is a first-cut guess
+  at a real match's swing counts, so that's the first number to check against a played-out match.
+- **SETTINGS-PANEL ROW SPACING WAS 30px, AND THE RULE ISN'T ON THE PANEL** (`css/styles.css`).
+  Reported as "really large gaps between each row and I can't find its styling" — same shape of
+  problem as the Last Round one below: nothing on `#lgSettingsPanel` sets spacing, so searching
+  for the panel finds nothing. It comes from `.lgSide>.panel`, which makes every league/cup side
+  panel a **flex column with `gap:14px`** — a rule that reads as sizing.
+  - **Flex changes `.row{margin:8px 0}` in two ways at once**, which is why it lands so far off:
+    the gap is ADDED to the margins rather than replacing them, and **adjacent margins never
+    collapse inside a flex container**, so both the 8px bottom and the 8px top count.
+    14 + 8 + 8 = **30px**, against **8px** for the identical markup in Kick Off's Match Setup
+    (a plain block `.panel`, where those two margins collapse into one).
+  - Fixed with **`#lgSettingsPanel,#cupSettingsPanel{display:block}`** — not `gap:0`, which would
+    have given 16px and still been double. Nothing in those panels needed the flex column: `.row`
+    is its own flex box and `.lgPlayBtn`'s `width:100%` fills a block parent the same way `stretch`
+    did. **The gap stays on every other `.lgSide` panel**, where it separates genuine blocks (the
+    fixture line from the round list, a heading from its table).
+  - Worth knowing generally: **a flex/grid container silently changes the margin model of every
+    child**, so a shared row class can't be assumed to space the same in two panels. Both bugs
+    this week were "the rule governing this element isn't written on this element".
+- **PANEL TYPE SCALE (`:root` tokens) + the Last Round panel had a DEAD RULE** (`css/styles.css`,
+  `index.html`). Reported as "I can't find the styling for Last Round, and it looks odd next to
+  Next Match". Both true, and the second followed from the first.
+  - **`.lgSide>.panel.lgLast{…}` never matched anything.** `#lgLastPanel` is
+    `class="panel hidden"` — there is no `lgLast` class on it, and never was. So the panel had no
+    rule of its own, which is exactly why searching for one turned up nothing. Deleted rather than
+    repaired: its `height:100px` would have clipped a 5-fixture round anyway. **Worth checking for
+    generally — a class selector whose class isn't in the markup fails silently and looks like a
+    styling gap, not a bug.**
+  - **The two fixture lists render IDENTICAL `.lgFixSm` markup and looked different** because only
+    `#lgRound` had a wrapper (13px, uppercase, tracked, dim) and `#lgLast` had none. Now a shared
+    **`.lgFixList`** class on both; `#lgRound` keeps ONLY its top-border separator (it's a
+    sub-section of the Next Match panel; `#lgLast` is a whole panel body). The readable `body`
+    treatment won over the uppercase one — Last Round carries SCORES, and dim uppercase fought them.
+  - **`:root` now carries a type scale and a five-step text ramp** — `--fs-micro/label/head/num/
+    body/lead`, `--tr-micro/label/head`, `--tx-dim/mute/body/strong/bright`. The league block alone
+    had **nine hand-tuned font sizes and eight greys**, set per element, which is what let two
+    lists of the same thing diverge. Colours are picked by IMPORTANCE, not by what the thing is.
+    **`--fs-head` and `--fs-num` are the same 13px on purpose**: different roles, and only one of
+    them should move if the heading scale is retuned.
+  - Re-expressed against the tokens: `.panel h3` / `.row` / `.row label` (identical values — pure
+    tokenisation, no visual change), the whole league panel body, the cup bracket, and both history
+    grids. **`#lgHist` and `#cupHist` now share every rule but their `grid-template-columns`** —
+    written as separate blocks they drifted within a day.
+  - Three real drifts fixed while tokenising: `#lgTable .h` was **`#ba7f7f`**, a warm grey that
+    appears nowhere else and reads as a typo for a cool one; `.lgScout` and `.lgHist` each carried
+    a **panel-wide `letter-spacing:.1em`** that applied on top of every child's own tracking, which
+    is why those two panels read differently from the rest; and the ▼ column head had a one-off
+    8px override, now `micro` like every other head.
+  - **Deliberately NOT touched**: `.lgSub` / `.tagline` (screen chrome, not panel content) and the
+    other menu screens. The tokens exist now, so those are a follow-up, not a rewrite.
+  Verified by re-read (sandbox wouldn't boot). Sizes moved on a few elements — the standings table
+  and its numbers step down 15→13.5 and 14→13 to sit on the scale, so that's the first thing to eye.
+- **MATCH RULES BELONG TO THE LEAGUE SAVE, AND THE CUP READS THE SAME ONES** (`js/league.js`,
+  `js/ui.js`, `js/config.js`, `index.html`, `css/styles.css`). Reported from play: a Champions Cup
+  tie didn't match the league that qualified you — different special balls, power-ups and clock.
+  It was three separate leaks into one symptom.
+  - **The cup forced its own rules.** `cupPlayTie` did `cfg.special=CUP.special; cfg.power=CUP.power`
+    while `lgPlayMatch` (correctly) used `LG.special`/`LG.power`; `goalTarget()` branched to
+    `CUP.goals`; and `gameTimeLimit()` hardcoded **0 for the cup** — so a 10-minute league handed
+    you an unlimited final. All four now read the LEAGUE. `CUP.goals/special/power` stay in config
+    as the FALLBACK for a save written before `LG.goals` existed (commented as such — they look
+    like live knobs and aren't).
+  - **`LG.goals` is new; `LG.special`/`power`/`gameTime` already existed.** The gap was that only
+    special/power were on the create screen, and only gameTime/control were in the lobby — no
+    screen showed the whole set. Create screen now has **Goals to win + Game time** alongside the
+    existing three; the lobby's Match Settings panel gains **Goals / Special balls / Power-ups**
+    beside the two it had. Both seed from the quick-match `cfg` prefs and then belong to the SAVE.
+  - **`lgGoalCap()` / `lgMins()` are the ONE source of truth** — `goalTarget`, `gameTimeLimit`,
+    `lgSimBlds`'s per-team cap and the lobby seeding all route through them. **Deliberately NOT
+    named `lgGoals`**: an element `id` becomes a window property, and `#lgGoals` is the lobby's
+    select. A same-named function declaration shadows it (own property beats named access), so it
+    would have worked — which is exactly what makes it a trap. Worth knowing generally in this
+    codebase: **plain globals + element ids share one namespace.**
+  - **The SIM was capped at `LGC.goals` too**, so a league set to 3 or 7 had the player racing to
+    its target while every AI fixture raced to 5. Now `lgGoalCap()`. And **cup sims now pass
+    `lgMins()`** (`cupAdvance`, `cupRecord`) — they passed nothing, so in a timed league a simmed
+    semi-final still used the unlimited race-to-goals shape while the player's tie was on a clock.
+  - **Both forfeit sites hardcoded the scoreline** (`js/ui.js`): the message quoted
+    `CUP.goals`/`CONFIG.league.goals` and `btnForfeit` wrote `S.score=[0,<same>]`. In a to-3 or
+    to-7 league that promised — and recorded — a result the mode doesn't produce. Both are
+    `goalTarget()` now, captured into `fl` **before** `gotoMenu()` since that clears `S.lg`, which
+    `goalTarget` reads.
+  - The cup BRACKET shows the rules (`lgRulesLabel()` appended to `cupSub`, phrased like flow.js's
+    kickoff banner). It's the one screen with no settings panel on it, so a tie's format was
+    previously unknowable from where you start it. **Venue is untouched** — the cup keeps its own
+    table/room/pitch rotation; that's showpiece dressing, not a rule.
+  - Old saves: `loadLG` backfills `LG.goals` from `LGC.goals` — the number they were already
+    playing to, so nothing changes for an in-progress league.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised live.
+- **CUP LOBBY REBUILT AS A PANEL SCREEN — it had no squad panel, so cup parts were unspendable**
+  (`index.html`, `js/league.js`, `js/screens.js`, `css/styles.css`). Reported from play. `#championsCup`
+  was a bare bracket + a Control select + two buttons, so the one screen you spend a whole post-season
+  on could show you neither your squad, your upgrade parts, the rules a tie would be played to, nor
+  anything about the team you were about to face. **Parts were never a per-mode currency** — winning a
+  tie pays `CUP.tieParts` into the same pool the league pays into — so the cup was accruing them with
+  no way to spend them until you came back out.
+  - **Now structurally identical to `#league`**: `.lgWrap` of `.panel`s, a ⊞ layout button, and a
+    `lay` block in `SCREENS.championsCup` (that block's PRESENCE is the whole registration — layout.js
+    indexes it and binds `cupEditLayout` on load, nothing else to edit). Panels: **Bracket** (takes the
+    standings slot), **Next Tie**, **Match Settings**, **Cup Honours**, **Squad**, **Scout**.
+  - **`renderSquadInto(squadId,upId,again)`** — `renderLgSquad` was hardcoded to `#lgSquad`/`#lgUP` and
+    re-entrant by name. Both lobbies now render the SAME `LG.teams[playerId]` block through it.
+    Spending mid-cup lands immediately on the table: `cupEnt('player')` reads the live `bld`.
+  - **`seedRuleCtls` / `bindRuleCtls` take an ID MAP** (`LG_RULE_IDS` / `CUP_RULE_IDS`). The four rules
+    are ONE value on the save with two sets of controls — element ids can't be shared because both
+    panels are in the DOM at once, and that's the only reason the indirection exists. Change the clock
+    in the cup and the league lobby shows it on its next render.
+  - **The cup scout can't be the league scout.** Entrants aren't `LG.teams`: a KO field has no table,
+    so there's no W/L, GF/GA or form. `renderCupScout` shows **seed + `cupRate`** on that line and then
+    reuses the league scout's OFF/DEF bars, `lgBuildHTML` grid and `mugImg` portrait verbatim. It takes
+    an ENTRANT ID (`'player'` or a pool id), not an `LG.teams` index — passing one to the other is the
+    mistake to watch for. Every name in the bracket is clickable (`data-ent`), same affordance as a
+    standings row, and `openCup` opens on the opponent so the panel isn't one you have to discover.
+  - **Cup Honours reads TWO sources and must.** This season's trophy is NOT in `LG.hist` — a hist entry
+    is only pushed at the rollover OUT of a season and the cup is played in the gap, which is the same
+    asymmetry that makes `lgNewSeason` (not `cupRecord`) stamp `hist[].cup`. So it's read off `LG.cup`
+    and prepended, **gated on `cupCurrent()`** — without that gate, after a rollover the finished
+    bracket still sitting on `LG` would render the same trophy a second time beside its hist row.
+  - `#cupBracketPanel` sizing is an **ID rule on purpose**: it has to beat `.lgWrap>.panel:nth-child(1)`
+    (sized for a 10-row table, max-width 400) and needs ~3 round-columns. Which is also why it's listed
+    by id in the ≤1040px media query — a class selector there would lose the specificity fight and
+    leave a 560px panel in a 520px wrap. `.lgWrap .panel` is `overflow:hidden`, so it sets `auto`.
+  - Gone with the old screen: `.cupControlWrap`, `.cupNext`, `#championsCup .tagline` (the subtitle is
+    `.lgSub` now, matching the league). `renderCup` is an orchestrator — bracket/fix/squad/hist each
+    render themselves. The rules label stays on `cupSub` as well as in the panel because a DECIDED cup
+    hides the settings panel, and then the subtitle is the only record of what the ties were played to.
+  Verified by re-read (sandbox wouldn't boot). NOT yet exercised live — the layout editor on this
+  screen in particular is untested.
 
 ### 2026-08-03
 - **BALL WEDGED HALFWAY INTO A WALL — the wall clamp was VELOCITY-GATED, and the boot resolved LAST**

@@ -6,12 +6,39 @@
 //   S.teamStats=[{ALL:{spd:9,str:9,acc:9,ctl:9,rea:9,sta:9}},null]
 const STC=CONFIG.stats;
 function ST(r,k){const t=S.teamStats&&S.teamStats[r.team],s=r.stats||(t&&(t[r.role]||t.ALL)),v=s&&s[k];return v==null?STC.base:v;}
-// Stamina fade: a ≤1 multiplier that ramps in over the matchTime window (0 until fatStart, full at
-// fatEnd), scaled by how far sta is below max — sta=10 never fades, low sta fades hardest. Feeds
-// EVERY tiring channel: slide speed (stSpeed), agility (stAgil), reaction (stReact), AI aim
-// (stErr/stAim) and AI decisions (stIQ/stPred). Left OUT of shared execution (stHit/stGrip/stAccFrac/
-// aimAssist) so a tired team plays sluggish + sloppy + dozy, but the HUMAN's kick feel never fades.
-function stFat(r){const ramp=clamp((S.matchTime-STC.fatStart)/(STC.fatEnd-STC.fatStart),0,1);return 1-STC.fatMax*(1-ST(r,'sta')/STC.max)*ramp;}
+/* ---- stamina -------------------------------------------------------------------------------
+   TWO channels, sharing ONE budget (STC.fatMax), blended by STC.kickFat.weight:
+     A · the CLOCK   — a uniform ramp over the matchTime window (0 until fatStart, full at fatEnd).
+     B · EXERTION    — this rod's own accumulated swinging (r.exert), so the rods that do the work
+                       are the ones that are spent by the whistle instead of everyone fading alike.
+   `stFat` is the ≤1 multiplier both produce, scaled by how far sta sits below max — sta=10 never
+   fades at all (which is what makes sta the SINGLE stamina knob, and why neither channel scales
+   itself by it again). It feeds every tiring channel: slide speed (stSpeed), agility (stAgil),
+   reaction (stReact), AI aim (stErr/stAim) and AI decisions (stIQ/stPred). Deliberately left OUT
+   of shared execution (stHit/stGrip/stAccFrac/aimAssist) so a tired team plays sluggish + sloppy +
+   dozy, but the HUMAN's kick feel never degrades. */
+// 0..1 — how spent this rod is from SWINGING alone, independent of the clock. r.exert is banked by
+// stExertKick (one unit a swing) and bled off by stExertTick; both are called from rods.js.
+function stExert(r){const K=STC.kickFat;return (K.on&&K.full>0)?clamp((r.exert||0)/K.full,0,1):0;}
+// Bank one swing's exertion. Called from kickRod — the ONE place every swing in the game passes
+// through, human or AI, shot or pass. NOT charged per kick style on purpose: a pass is as much of a
+// swing as a strike. seatOf(r) is the "a human is holding this right now" test; see
+// CONFIG.stats.kickFat.userDrain for why a held rod is exempt by default.
+function stExertKick(r){
+ const K=STC.kickFat;
+ if(!K.on)return;
+ if(!K.userDrain&&typeof seatOf==='function'&&seatOf(r))return;
+ r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per);
+}
+// Recovery. Ticked once per sim step from updateRods, alongside the rod's other cooldowns — the
+// same set of phases in which a swing can happen, so both halves of the channel run on one clock.
+function stExertTick(r,dt){if(r.exert>0)r.exert=Math.max(0,r.exert-STC.kickFat.recover*dt);}
+function stFat(r){
+ const K=STC.kickFat,w=K.on?clamp(K.weight,0,1):0;
+ const clockR=clamp((S.matchTime-STC.fatStart)/(STC.fatEnd-STC.fatStart),0,1);
+ const ramp=w?clockR*(1-w)+stExert(r)*w:clockR;   // w=0 → byte-identical to the old clock-only ramp
+ return 1-STC.fatMax*(1-ST(r,'sta')/STC.max)*ramp;
+}
 function stSpeed(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.spd)*stFat(r));}
 // AI slide AGILITY: scales the accel cap on an AI rod's direction changes (see updateRods). Keyed
 // on spd too — a 'fast' rod both tops out higher AND reverses quicker — with its own coefficient so

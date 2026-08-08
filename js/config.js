@@ -138,7 +138,11 @@ const CONFIG = {
    defTheme:'classic',
    defSkin:'wood', // default skin name (must match a skins entry)
    skins:{
-      wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},                                     
+      wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},
+      sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
+      proLeague:{name:'Pro League', glb:'fuzeball_table_classic_proLeague.glb'},
+      strike:{name:'Strike', glb:'fuzeball_table_classic_strike.glb'},
+      alienTech:{name:'Alien Tech', glb:'fuzeball_table_classic_alienTech.glb'},                            
       alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
    },
    // Dead-ball pockets (see CONFIG.deadball.zoneMult + deadzoneMult() in powerups.js). A ball
@@ -150,7 +154,7 @@ const CONFIG = {
    // wall-corner pockets behind the keeper line. Tune per table; `mult` optional (defaults to
    // CONFIG.deadball.zoneMult). Omit `deadzones` entirely for a table with no dead pockets.
    deadzones:[
-    {xMin:47, zMin:16.0}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:46, zMin:16.3}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   arena:{
@@ -205,7 +209,7 @@ const CONFIG = {
    seg:{loop:200,profile:10} // visual mesh resolution: samples around the perimeter / up the profile
    },
    deadzones:[
-    {xMin:45, zMin:16.0}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:46, zMin:16.30}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   circuit:{                                  // flat shape with a WALLED goal end: the two mouth-flanking
@@ -226,7 +230,7 @@ const CONFIG = {
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
    rods:{folder:'assets/tables/circuit/rods/'},   // glowing-circuit rods (GLBs not built yet -> per-size fallback to shared set)
    deadzones:[
-    {xMin:47, zMin:16.0}   // same wall-corner pockets as classic (walls sit at the same x/z)
+    {xMin:46, zMin:16.30}   // same wall-corner pockets as classic (walls sit at the same x/z)
    ]
   }
  },
@@ -860,7 +864,7 @@ ai:{
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
       src:'assets/fuzeball_cyborg.glb',scale:0.8,
       mug:'assets/renders/render_cyborg_mugshot.png',
-      teamParts:['kit_cyborg'],
+      teamParts:['kit_cyborg', 'kit_cyborg_visor'],
       hairParts:['kit_cyborg_hair'],
       explosionSrc:'assets/animations/cyborg_explosion.glb'
    },
@@ -873,7 +877,7 @@ ai:{
    {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
       src:'assets/fuzeball_irnman.glb',scale:0.8,
       mug:'assets/renders/render_irnman_mugshot.png',
-      teamParts:['kit_irnman'],hairParts:[],
+      teamParts:['kit_irnman','kit_irnman_centre'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
@@ -952,7 +956,7 @@ ai:{
     {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
        src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
        mug:'assets/renders/render_zaneesh_mugshot.png',   
-       teamParts:['kit_zaneesh'],hairParts:['kit_zaneesh_hair'],
+       teamParts:['kit_zaneesh'],hairParts:[],
        explosionSrc:'assets/animations/zaneesh_explosion.glb'
      }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
@@ -976,13 +980,13 @@ ai:{
    {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
       src:'assets/fuzeball_alienKodus.glb',scale:0.8,
       mug:'assets/renders/render_kodus_mugshot.png',   
-      teamParts:['kit_Kodus'],hairParts:[],
+      teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
    {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
       src:'assets/fuzeball_alienZargon.glb',scale:0.8,
       mug:'assets/renders/render_zargon_mugshot.png',   
-      teamParts:['kit_Zargon'],hairParts:[],
+      teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
       explosionSrc:'assets/animations/zargon_explosion.glb'
       },
   ],
@@ -1012,7 +1016,7 @@ ai:{
  rods:{
   spacing:{ two:24, three:18.5, other:11.9 }, // per-man spacing by man-count
   margin:8.0,       // total z margin subtracted when deriving slide range
-  gkSlide:12,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
+  gkSlide:6,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
   wallClear:2.5,  // stick-out kept past the outer side wall at full inward slide (fixes handle-through-wall)
   handleLen:5,    // handle grip length (sits just outside the wall)
   collarLen:2.4,  // far-end collar/stopper width (the bumper opposite the handle)
@@ -1042,9 +1046,9 @@ ai:{
   //   fast balls can now beat the AI to the punch instead of it responding frame-perfectly. Scaled
   //   per rod by the rea stat via stReact (higher rea → shorter delay; fatigue lengthens it). Keep
   //   the largest possible value (rookie × stReact's ~1.5 floor) under CONFIG.ai.reactMax.
-  rookie:{speed:29,react:.15,err:1.0,range:5.0,pred:.35,cd:1.05,aim:.25,iq:.15,reactDelay:.1},
-  pro:   {speed:35,react:.1,err:0.8,range:5.8,pred:.75,cd:.75,aim:.6,iq:.55,reactDelay:.07},
-  legend:{speed:45,react:.07,err:.6, range:6.6,pred:1.0,cd:.50,aim:.9,iq:.9,reactDelay:.04}
+  rookie:{speed:30,react:.23,err:0.95,range:5.0,pred:.35,cd:1.05,aim:.5,iq:.35,reactDelay:.1},
+  pro:   {speed:35,react:.18,err:0.8,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
+  legend:{speed:40,react:.13,err:.6, range:6.6,pred:0.95,cd:.50,aim:.9,iq:.9,reactDelay:.04}
  },
 
  /* ---- rod stats (league builds) --------------------------------------- */
@@ -1075,7 +1079,45 @@ ai:{
                       // IS the team's smartness knob.
   predIq:.06,         // ball-trajectory anticipation (stPred): scales D.pred lead ±6%/pt of iq
   predFloor:.7,       // …floored here so low-iq rods still lead the ball a bit (never below ×.7)
-  fatStart:60, fatEnd:180, fatMax:.25 // stamina: fatigue ramps over matchTime window; max slow-down at sta=0
+  /* ---- stamina, channel A: the CLOCK ----------------------------------
+     A uniform ramp over the match — nothing until fatStart, full by fatEnd. Everyone on the
+     table tires at this rate whether they've played the whole match or stood still. */
+  fatStart:60, fatEnd:180,
+  fatMax:.25,        // the TOTAL fatigue budget (max slow-down at sta=0). BOTH channels share it.
+  /* ---- stamina, channel B: EXERTION ------------------------------------
+     Every swing costs the SWINGING rod a little, and the cost bleeds off again at `recover`/s.
+     So a rod that's been in the thick of it all match is spent by the whistle while one that's
+     touched the ball twice is still fresh — fatigue stops being a flat tax on everybody.
+     `weight` SPLITS fatMax between the two channels, it does NOT stack on top of it: the clock
+     owns (1-weight) of the budget and exertion owns `weight`. The worst case is therefore still
+     fatMax and existing balance stays bounded — what changes is that a QUIET rod now fades less
+     than it used to. `weight:0` (or `on:false`) restores the old uniform drain EXACTLY. To widen
+     the gap between a busy rod and an idle one, raise fatMax rather than weight.
+     Exertion is deliberately NOT scaled by the sta stat: stFat's outer (1 - sta/max) term is
+     already the one stamina knob and it gates BOTH channels, so a sta-10 rod is immune to kick
+     drain too. Scaling it here as well would double-dip and make the numbers unreadable. */
+  kickFat:{
+   on:true,
+   weight:.55,      // share of fatMax driven by swinging (the clock keeps the other .45)
+   per:1,           // exertion banked per swing — the unit IS a swing, so `full` reads as a count
+   full:30,         // swings-worth of exertion at which this channel is fully spent (ramp = 1).
+                    //   THE knob to reach for first: it sets how many swings it takes to notice.
+                    //   Lower = the channel bites sooner (and busy rods bunch up at the ceiling),
+                    //   higher = only a rod that's had the ball all match ever feels it.
+   recover:.12,     // …bled off per second of sim time. Net-positive above ~1 swing / 8.3s, so a
+                    //   rod under sustained pressure banks fatigue while a quiet one drifts back
+                    //   fresh. Reaching `full` NET over a 180s match therefore takes about
+                    //   full + .12×180 ≈ 52 swings — i.e. genuinely heavy involvement, not a
+                    //   number an idle keeper wanders into.
+   cap:1.25,        // hard ceiling, as a multiple of `full`. Bounds a very long match AND leaves a
+                    //   little overdraft, so a rod that's been hammered doesn't come back the
+                    //   instant it stops swinging.
+   userDrain:false  // do HUMAN-held rods accrue it? OFF by default: a human swing isn't cooldown-
+                    //   gated the way an AI's is (only the swing length caps the rate), so a player
+                    //   mashing kick would out-swing every AI on the table several times over and
+                    //   nerf their own rod. Turning it on makes mashing self-punishing — that's a
+                    //   real balance decision, not a fix.
+  }
  },
 
   /* ---- league mode ------------------------------------------------------ */
@@ -1101,13 +1143,17 @@ ai:{
     playerStart:10,       // parts the player has to spend when a fresh league starts
     cost:[1,2,3,5,8],    // cost of raising a stat from level 5+i (5→6=1, 9→10=3)
     tape:true, tapeT:3,   // pre-match splash: OFF/DEF bars + figurines; click to skip
+    // tapeT is a "look at this" beat, so it only starts once the two figurine PNGs have DECODED
+    // (they're preloaded in the lobby by primeMatchTape, so normally that's the same frame).
+    // tapeReadyCap bounds that wait — a stalled or missing render can never hold up kickoff; past
+    // it the tape runs exactly as it did before. 0 = don't wait at all (old behaviour).
+    tapeReadyCap:2.5,
     graceT:10,             // seconds after match-start where quitting does NOT forfeit
-    aiBudget:[8,15],     // random starting stat points each AI team gets (league strength spread)
     simK:.5,              // sim: stat edge → per-goal probability steepness (logistic)
     divisions:[            // tier order: 0 bottom .. 2 top
-      {name:'Sunday League', base:1, diff:'rookie',   aiBudget:[5,10], room:'open',    table:'classic',  pitch:'pub_classic'},
-      {name:'Pro League',    base:3, diff:'pro',      aiBudget:[5,10], room:'pub',     table:'classic',  pitch:'classic'},
-      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'open',  table:'classic',  pitch:'royal'}
+      {name:'Sunday League', base:1, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
+      {name:'Pro League',    base:3, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'classic'},
+      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'strike',  table:'classic',  pitch:'royal'}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
     upPromote1:5, upPromote2:3, // upgrade parts: 1st-place promotion / 2nd-place promotion
@@ -1141,12 +1187,14 @@ ai:{
        'BACKSPIN BOYS','THE TABLERS','NUTMEG NOMADS','CHOP SHOP','RIMSHOT ROVERS',
        'PIVOT PIRATES','THE SWERVE','CLEAN SHEETS FC','TOE-POKE TOWN','LOB CITY',
        'WALL PASS WANDERERS','SPINNERS UTD','THE DEADLOCKS','CROSSBAR CREW',
-       'SCREWBALL CITY','THE HANDLERS','BENCHWARMERS FC','WRATH OF ROD','TACTICAL FOULS'
+       'SCREWBALL CITY','THE HANDLERS','BENCHWARMERS FC','WRATH OF ROD','TACTICAL FOULS', 
+       'Net Busters', 'Last Minute FC', 'The Nutmeggers', 'Handlebar Heroes', 'The Rod Squad', 
+       'Spin Masters', 'The Misfits', 'Relegation Rovers', 'The Slide Tackleers', 'The Foosballers', 'The Table Titans'
     ],
     cols:[
        '#ff8c3a','#ffcf4d','#7dff8a','#2af5ff','#3d8bff','#74abff',
-       '#a06bff','#ff2bd6','#c45ba9','#f2ede2','#9dff2b','#ff5c2b',
-       '#504240','#888888','#250d06','#00bfa5','#ff6e40','#8d6e63',
+       '#a06bff','#ff2bd6','#c45ba9','#f2ede2','#cfa241','#ff5c2b',
+       '#6d5551','#888888','#250d06','#00bfa5','#ff6e40','#8d6e63',
        '#d500f9','#76ff03','#1de9b6','#ff1744','#448aff','#ffab00',
        '#e040fb','#00e5ff','#b2ff59','#ff3d00','#40c4ff','#eeff41'
     ],
@@ -1162,32 +1210,28 @@ ai:{
    // draws `drawSize` of them (+ the player = 8) into an 8-team single-leg KO. The rest
    // are spares (variety between seasons, recurring rivals).
    cup:{
-     name:'Champions Cup',
-     // AI brains for a cup tie. This is NOT optional plumbing: cupPlayTie reads `CUP.diff||baseDiff`,
-     // so leaving it undefined ran the post-season showpiece on 'rookie' — EASIER than the Premier
-     // League ('legend') the player just won to qualify. The elite pool's base-8 builds stack on top
-     // of this, so 'legend' here is deliberately the hardest football in the game.
-     diff:'legend',
-     seeded:true,     // false = random draw (still a proper tree, just unseeded). See cupCreate.
-     table:'arena', room:'arcade', pitch:'champions_green',   // its own selection (retune here)
-     // Every tie rolls a pitch from this list (cupPlayTie), so `pitch` above is NOT read — it's
-     // kept as the documented "house" pitch and the one to fall back to if the rotation is dropped.
-     pitches:['champions_green','champions_purple', 'neon', 'verdantia', 'cyatron'],
-    goals:5, special:true, power:true,            // spectacle on; goals default to league
-    poolSize:12, drawSize:7,                      // 12 elite teams, draw 7 + player = 8
+      name:'Champions Cup',
+      diff:'legend',
+      seeded:true,     // false = random draw (still a proper tree, just unseeded). See cupCreate.
+      table:'arena', skin:'standard', room:'arcade', pitch:'champions_green', // its own venue (retune here); skin must name a CONFIG.tables[table].skins entry
+      // `pitch` above is only the fallback — a tie's pitch is DRAWN from `pitches` below and then
+      // remembered on the tie (cupVenue), so the bracket, the tape and the match all agree on it.
+      pitches:['champions_green','champions_purple', 'neon', 'verdantia', 'cyatron'],
+      goals:5, special:true, power:true,
+      poolSize:12, drawSize:7,                      // 12 elite teams, draw 7 + player = 8
     // drawSize+1 MUST be a power of two and `rounds` MUST be log2 of it — the bracket is a real
     // tree now (cupSeedOrder / cupNextRound), so a 6- or 12-team field would pair off into
     // undefined. 15 + 4 rounds is the next legal size up.
-    base:8, budget:[3,5],                       // elite build base + weighted spend
-    enterParts:2, tieParts:2, winParts:8,         // entering / winning a tie / lifting it (upgrade parts)
-    rounds:['QUARTER-FINAL','SEMI-FINAL','FINAL'],
-    names:[
-      'NIGHTWATCH','GALACTICOS','VOID RAIDERS','IRON LEGION','CYBER WOLVES','NOVA KINGS',
-      'APEX PREDATORS','PHANTOM XI','TITAN FORGE','SOLAR FURY','EMBERLORDS','CRIMSON COBALT'
+      base:8, budget:[3,5],                       // elite build base + weighted spend
+      enterParts:2, tieParts:2, winParts:8,         // entering / winning a tie / lifting it (upgrade parts)
+      rounds:['QUARTER-FINAL','SEMI-FINAL','FINAL'],
+      names:[
+         'NIGHTWATCH','GALACTICOS','VOID RAIDERS','IRON LEGION','CYBER WOLVES','NOVA KINGS',
+         'APEX PREDATORS','PHANTOM XI','TITAN FORGE','SOLAR FURY','EMBERLORDS','CRIMSON COBALT'
     ],
-    cols:[
-      '#9b5cff','#ff3df0','#3dffd5','#ffd23d','#ff6a3d','#5dff7a',
-      '#3d8bff','#ff4d8c','#c0ff3d','#ff8c3d','#7a5cff','#3dfff0'
+      cols:[
+         '#9b5cff','#ff3df0','#3dffd5','#ffd23d','#ff6a3d','#5dff7a',
+         '#3d8bff','#ff4d8c','#c0ff3d','#ff8c3d','#7a5cff','#3dfff0'
     ]
    }
   },
@@ -1311,11 +1355,25 @@ ai:{
      {x0:44,  x1:46}     // blue DEF 37.5 ↔ blue GK 52.5    · same team
     ]
    },
+   // Where a dead / out-of-play ball comes back in. Each zone is a face-off spot BETWEEN two opposing
+   // rows: `x` is the spot, `spread` the random x jitter around it.
+   //   `from` is the stretch of pitch that zone SERVES. With sameThird on, the re-drop lands in the
+   // zone whose `from` contains the x the ball DIED at, so it returns in the same third it was killed
+   // in. Without that a random zone was pure profit for whoever was cornered: a keeper or defender
+   // could smother the ball against his own line, take the whistle, and get a 2-in-3 chance of the
+   // re-drop landing further up the table than he could ever have kicked it. Same rule is applied to
+   // the restart after a ball goes OUT OF PLAY (js/balls.js serve, via S.serveAt) — otherwise hoofing
+   // it off the table from your own corner is the identical exploit by another route. A goal kickoff
+   // is unaffected and still drops centre.
+   //   The three ranges must tile -L/2..L/2 with no gaps; the outer two run past the goal lines so a
+   // ball that leaves behind a goal still resolves. An x covered by nothing (or sameThird:false)
+   // falls back to the old random pick.
    redrop:{y:30,z:16,vel:30,  // fresh drop box + launch speed (x removed — now uses zones)
+    sameThird:true,
     zones:[                   // 3 face-off zones where both teams contest
-     {x:-30,spread:5},       // def vs att  (between DEF -37.5 & ATT -22.5)
-     {x:0,  spread:5},       // mid vs mid  (between MID -7.5  & MID  7.5)
-     {x:30, spread:5}        // att vs def  (between ATT  22.5 & DEF  37.5)
+     {x:-30,spread:5,from:[-999,-20]},  // def vs att  (between DEF -37.5 & ATT -22.5) · red's own third
+     {x:0,  spread:5,from:[-20,20]},    // mid vs mid  (between MID -7.5  & MID  7.5)  · middle third
+     {x:30, spread:5,from:[20,999]}     // att vs def  (between ATT  22.5 & DEF  37.5) · blue's own third
     ]}
   },
 
@@ -1391,7 +1449,7 @@ ai:{
       // NOTE: `name` is HUD copy — keep it emoji-free. The ball tag colour-codes the type from
       // `trail` (see setBallTag in hud.js); OS colour emoji can't be tinted and render per-platform.
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.4,maxV:130,w:70,trail:'#ffffff',
+      mass:1.25,maxV:125,w:70,trail:'#ffffff',
       audio:{
        kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
              beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1423,7 +1481,7 @@ ai:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:2.5,maxV:100,w:3,splits:true,trail:'#c39bff',
+      mass:1.5,maxV:140,w:3,splits:true,trail:'#c39bff',
       audio:{
        kick:{noiseDur:.05,noiseFreq:6000,noiseFreqScale:10,noiseVol:.05,noiseVolScale:.002,noiseVolMax:.02,
              beepFreq:80,beepDur:.17,beepType:'sine',beepVol:.01,beepVolScale:.04,beepVolMax:.25,beepSlide:-55},
@@ -1438,7 +1496,7 @@ ai:{
       // trap. Energy-safe: spin only rotates the horizontal velocity, it never adds speed. No GLB mesh
       // slot, so it renders as its own glowing-cyan sphere (makeBallModel returns null → sphere fallback).
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.2,maxV:100,w:12,trail:'#8fe8ff',light:0x33cfff,
+      mass:1.0,maxV:100,w:12,trail:'#8fe8ff',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-kick spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:9,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -1450,7 +1508,7 @@ ai:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:3,maxV:90,w:3,value:2,trail:'#ffd75e',metal:.85,
+      mass:3,maxV:140,w:3,value:2,trail:'#ffd75e',metal:.85,
       audio:{
        kick:{noiseDur:.055,noiseFreq:800,noiseFreqScale:7,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
              beepFreq:110,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
@@ -1501,7 +1559,11 @@ ai:{
                        makes a pub feel warm and an arcade feel neon, and it reflects off the
                        table/pitch/ball PBR materials.
       • glb          — an optional environment backdrop model (path relative to folder). null =
-                       use the shared ground plane + rotating crowd cylinder instead.
+                       use the shared ground plane + rotating crowd cylinder instead. A path that
+                       404s is latched (models.js roomFailed) and falls back the same way, ONCE —
+                       it isn't re-fetched on every venue change.
+      • backdrop     — false: don't stand the shared ground+crowd in when this room's glb isn't on
+                       screen. Just bg + fog, i.e. a true void. Default (absent) = do stand it in.
       • reflect      — true: bake the reflection env-map FROM the glb (real room reflections on
                        metal/gloss). false: use the synthetic `env` panels below. Globally gated
                        by cfg.reflections (off → always synthetic, cheap).
@@ -1516,7 +1578,12 @@ ai:{
     folder if it has a backdrop). */
   rooms:{
    open:{
-    name:'Void', folder:'na', glb:'fuzeball_room_void.glb', reflect:false,
+    // backdrop:false = nothing stands in when there's no room GLB on screen — just bg + fog, which
+    // is what 'Void' means. Every OTHER room falls back to the shared ground plane + crowd while
+    // its glb loads (or forever, if it has none). This USED to be an accident: the glb path below
+    // doesn't resolve, and applyRoom's old fallback tested rm.glb rather than "is a backdrop
+    // actually on screen", so a broken path and a deliberate void looked identical. Now it's stated.
+    name:'Void', folder:'na', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
     bg:0x05060f, fog:[210,440],
     hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9},
     dir:{color:0xffffff,int:0.7,pos:[45,100,35]},
@@ -1624,6 +1691,42 @@ ai:{
   camLerp:5.5,      // camera position chase rate (hand-held feel — lower = floatier)
   lookLerp:8,       // look-target chase rate (slightly ahead of the body, like a real operator)
   trailEvery:0.045, // seconds between trail sprites on a fast-moving replayed ball
+  roll:true,        // spin the replayed ball along its path (the recorder stores POSITION only, so
+                    // without this a textured ball slides through the replay without turning).
+                    // false = the old frozen-texture behaviour.
+  // --- replay AUDIO ------------------------------------------------------
+  // The sim is FROZEN during playback, so nothing fires a sound by itself and a replay used to
+  // run silent under the live crowd bed. The rally's impacts are logged as they happen (replay.js
+  // taps Au directly — see the sound-recorder block there) and re-fired against the FOOTAGE clock,
+  // pitched down as the replay eases into slow-mo. `on:false` restores the silent replay exactly.
+  audio:{
+   on:true,        // ← master boolean: re-fire the rally's sounds during playback
+   gain:0.9,       // level of a replayed sound vs the same sound live (feeds Au.vol)
+   pitch:0.85,     // how far pitch follows the playback rate. 0 = normal pitch throughout,
+                   // 1 = full tape slowdown (a slow-mo strike lands as a deep thud)
+   pitchMin:0.3,   // pitch floor — below this a hit stops reading as a hit and becomes a rumble
+   goalSting:true, // re-fire the goal horn on the freeze-frame, at NORMAL pitch (it's the
+                   // celebration landing, not footage)
+   events:192      // ring capacity for logged sounds. A 7s buffer never gets close; overflow
+                   // just drops the oldest, same as the position ring
+  },
+  // --- clip SAVING -------------------------------------------------------
+  // The canvas recorder (js/capture.js) is armed at the FIRST FRAME of every replay, so the save
+  // key can be pressed at any point — including on the freeze-frame, which is when you actually
+  // know the goal was worth keeping — and still write the WHOLE replay out rather than the tail
+  // from the keypress. A recording nobody promoted is discarded on stop.
+  // THE COST OF THAT: every goal pays one encode whether or not anyone saves it. Chrome encodes
+  // off-thread, so the main-thread share is the per-frame canvas copy, and it only runs during
+  // the ~5s replay while the sim is frozen — but if a weak machine shows a sag on replays, this
+  // is the first thing to turn off, and the profiler (M) will call it GPU/BROWSER, not SIM.
+  // `on:false` = never record; the save hint then never appears and every key skips as before.
+  save:{
+   on:true,
+   key:'KeyS',     // keyboard code. EVERY other key still skips the replay (input.js)
+   pad:3,          // gamepad button (3 = Y / triangle); A/B/Start still skip
+   hint:'S — save clip',
+   saving:'SAVING CLIP'
+  },
   // --- shot placement (world units: X = goal-to-goal, Z = width, Y = up; the table
   //     walls top out at y≈10, so keep camera heights above that unless you WANT the
   //     wall in frame). `gx` below = the beaten goal's end of the table (±60), so
@@ -1638,6 +1741,28 @@ ai:{
   }
  },
 
+ /* ---- clip capture (js/capture.js) ------------------------------------ */
+ // MediaRecorder over the game canvas, plus a second tap off Au's master gain for the audio
+ // track. ONLY THE CANVAS is recorded, so a saved clip carries no letterbox bars, no REPLAY
+ // tag and no HUD — all of that chrome is DOM. Currently driven only by the goal replay
+ // (CONFIG.replay.save) but nothing in capture.js knows that. Every step is best-effort: an
+ // unsupported browser, a missing codec or a throwing recorder means no clip, never an
+ // exception into the game loop, and one failure disables capture for the rest of the session.
+ capture:{
+  on:true,             // master switch for the recorder
+  fps:60,              // canvas capture rate. 0 means "a frame per composite" and needs manual
+                       // requestFrame() calls to produce anything — leave it above zero
+  bitrate:12000000,    // video bits/s. 12M ≈ 7MB for a 5s clip — deliberately generous: a foosball
+                       // table in slow-mo is all hard edges and fine mesh, which a low bitrate mushes
+  audio:true,          // mux the game audio into the clip (silent if cfg.sound is off)
+  audioBitrate:128000,
+  chunkMs:250,         // MediaRecorder timeslice — small enough that a replay skipped a beat after
+                       // the save key still has data to write
+  revokeMs:20000,      // how long the blob URL is held alive after the download fires
+  prefix:'fuzeball_goal',
+  mime:['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']   // first supported wins
+ },
+
 };
 
 /* =========================================================================
@@ -1650,7 +1775,8 @@ const BALL_R=CONFIG.physics.ballR, ROD_H=CONFIG.physics.rodH, PLAYER_H=CONFIG.ph
        FOOT_T=CONFIG.physics.footT, FOOT_BOX=CONFIG.physics.footBox, FOOT_BOX_OFF=CONFIG.physics.footBoxOff,
        FOOT_BOX_REACH=CONFIG.physics.footBoxReach, FOOT_JITTER=CONFIG.physics.footJitter;
 const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
-      PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay;
+      PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay,
+      CAPTURE=CONFIG.capture;
 const RODDEFS=CONFIG.rods.defs, DIFFS=CONFIG.diffs, BALL_TYPES=CONFIG.ballTypes,
        PU_TYPES=CONFIG.puTypes, ROOMS=CONFIG.rooms, CUP=CONFIG.league.cup;
 const pCount=CONFIG.fx.particleCount;
@@ -1748,7 +1874,15 @@ if(!cfg.pitch){
 }
 // Clamp figurine yaws into the slider range (fixes an old saved blueYaw:10.0 default).
 cfg.redYaw=clamp(cfg.redYaw||0,-Math.PI,Math.PI);cfg.blueYaw=clamp(cfg.blueYaw||0,-Math.PI,Math.PI);
-function saveCfg(){try{localStorage.setItem('fuzeball',JSON.stringify(cfg));}catch(e){}}
+/* Persist the player's own settings. A league/cup VENUE (table + skin + room + pitch) can be sitting
+   on the live cfg while a fixture is on screen — it belongs to the league SAVE, not to the player —
+   so whatever js/league.js has parked for them (lgVenueHeld) is written instead. Without this,
+   touching any Options control from a league match's pause menu silently makes that fixture's venue
+   the player's permanent Kick Off choice. */
+function saveCfg(){try{
+ const v=(typeof lgVenueHeld==='function')&&lgVenueHeld();
+ localStorage.setItem('fuzeball',JSON.stringify(v?Object.assign({},cfg,{table:v.table,room:v.room,pitch:v.pitch,skins:v.skins}):cfg));
+}catch(e){}}
 
 /* Physics quality (Options → Display · Performance). The adaptive substepper subdivides each sim step
    so a fast ball/foot can't tunnel: sub = ceil(vmax·dt / subTravel), clamped [subMin, subMax]. Fast

@@ -51,7 +51,8 @@ const SCREENS={
  // clears it via gotoMenu before re-opening the lobby with fresh content. A bare
  // showScreen('league') would strand the bridge and render a stale lobby, so Esc falls through
  // here exactly as it did before. Give this a `back` only once that teardown is an onHide.
- championsCup:{back:null},
+ championsCup:{back:null,lay:{wrap:'#championsCup .lgWrap',btn:'cupEditLayout',
+  panels:['cupBracketPanel','cupFixturePanel','cupSettingsPanel','cupHistPanel','cupSquadPanel','cupScout']}},
  options:{back:'menu'}   // rewritten per-open by openOptions — Options is reachable from several screens
 };
 let scrCur='home';                                   // #home is the screen live at boot (the intro reveals it)

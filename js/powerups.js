@@ -68,9 +68,24 @@ function powerupUpdate(dt){
   if(b.m.position.distanceTo(o.position)<BALL_R+PWR.pickR){collectPU();break;}
  }
 }
-function redropBall(b){
- const zones=DEAD.redrop.zones;
- const z=zones[Math.floor(Math.random()*zones.length)];
+// Which re-drop zone serves world-x `x` — the one whose `from` range contains it (see
+// CONFIG.deadball.redrop). This is what keeps a re-drop in the third the ball died in: a random pick
+// rewarded whoever was cornered, since a keeper smothering the ball on his own line got a 2-in-3
+// shot at the whistle putting it further up the table than he could have kicked it. Shared with
+// serve() so an out-of-play restart follows the same rule. Falls back to random when the feature is
+// off or nothing covers x, so a mis-edited zone list degrades to the old behaviour rather than
+// throwing on the one code path a stuck ball depends on.
+function redropZone(x){
+ const R=DEAD.redrop,zs=R.zones;
+ if(R.sameThird&&typeof x==='number'&&isFinite(x))for(const z of zs)if(z.from&&x>=z.from[0]&&x<=z.from[1])return z;
+ return zs[Math.floor(Math.random()*zs.length)];
+}
+// atX = the x the ball DIED at; defaults to its own live sim position (b.cur — the dead-ball case,
+// where the ball is still on the table). Pass it explicitly when the ball has already been taken out
+// of play and its position is gone. Only the ZONE is chosen from it; the drop is still jittered
+// inside that zone, so a re-drop is never a free return to the exact spot it was held.
+function redropBall(b,atX){
+ const z=redropZone(atX!==undefined?atX:(b.cur||b.m.position).x);
  // target = where the ball should actually LAND, not where it's released — a falling ball
  // carries its launch vx/vz the whole way down (air friction is negligible), so releasing it
  // AT the zone lets that drift carry it well past the zone and into a rod's men. Back-solve the

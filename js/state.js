@@ -9,6 +9,10 @@ const S={phase:'menu',mode:'red',userTeam:0,score:[0,0],balls:[],time:0,matchTim
  // roster: the Kick Off lobby's seat SPECS ({team,devs,lockRole}) — survives the match so a
  // rematch keeps the same line-up. seats: the live seat objects built from it at kickoff.
  roster:[],seats:[],active:[[],[]],pairCd:[0,0],goalT:0,countT:0,lastCount:-1,timeScale:1,prePause:'play',
+ // serveAt: world-x the rally ENDED at, parked for the next serve so a restart after the ball went
+ // out of play (or was blown up) comes back in that same third — same anti-exploit as the dead-ball
+ // re-drop. null = a plain kickoff, which always drops centre. serve() consumes and clears it.
+ serveAt:null,
  eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}],lastTouch:-1,lastSwitch:0,
  stats:null,pu:{obj:null,timer:10,type:null,spin:0},shake:0,camMode:0,camLookX:0,freeRoam:false,camYaw:0,camPitch:0,
   fromScreen:'home', // screen the live match was launched from — gotoMenu returns THERE (Kick Off for a quick match, home for training)

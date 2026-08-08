@@ -93,7 +93,14 @@ function serve(){
  replayCut();   // fresh rally = fresh footage (a replay must never show the drop-in teleport)
  const key=pickType();
  const b=makeBall(key);
- b.m.position.set(rand(-SRV.spread,SRV.spread),SRV.dropY,rand(-SRV.zSpread,SRV.zSpread));
+ // A KICKOFF (match start, after a goal) drops centre, as it always has. A RESTART after the ball
+ // left play — out of bounds, or a cannonball detonating — instead comes back in the third it ended
+ // in, via the same zone table the dead-ball re-drop uses. Without it, clearing the ball off the
+ // table from your own corner is the dead-ball exploit by another route, and the better one: no
+ // whistle to wait out. S.serveAt is set by outOfBounds/cannonballUpdate and CONSUMED here, so a
+ // restart can't leak into the next kickoff.
+ const sz=(typeof S.serveAt==='number')?redropZone(S.serveAt):null;S.serveAt=null;
+ b.m.position.set(sz?sz.x+rand(-sz.spread,sz.spread):rand(-SRV.spread,SRV.spread),SRV.dropY,rand(-SRV.zSpread,SRV.zSpread));
   b.v.set(rand(-SRV.vel,SRV.vel),0,rand(-SRV.vel,SRV.vel));
   b.spin=rand(-SRV.spin,SRV.spin);
  if(ARENA_ON)arenaClampSpawn(b.m.position);
@@ -141,7 +148,10 @@ function cannonballUpdate(dt){
     }
     if(!S.balls.length&&S.phase==='play'){
      if(S.trn){trainingBallGone();}      // training sandbox: respawn at the last spot, never enter the goal-hold
-     else{resetRodRotation();notice('BALL DESTROYED',1.2,'#ff8c3a');S.phase='goal';S.goalT=MATCH.outHold;}
+     // Restart in the third it blew up in, same rule as an out-of-play (S.serveAt → serve()). Sitting
+     // on a cannonball in your own corner until the fuse runs out would otherwise be the dead-ball
+     // exploit with a timer attached: hold it, lose nothing, get a centre drop.
+     else{S.serveAt=bp.x;resetRodRotation();notice('BALL DESTROYED',1.2,'#ff8c3a');S.phase='goal';S.goalT=MATCH.outHold;}
     }
     break;
    }

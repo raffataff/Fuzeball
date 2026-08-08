@@ -73,10 +73,13 @@
 </div>
 
 <!-- Goal instant replay chrome (js/replay.js): letterbox bars slide in, a pulsing
-     REPLAY tag + skip hint ride them. The HUD dims out underneath (body.replayOn). -->
+     REPLAY tag + skip hint ride them. The HUD dims out underneath (body.replayOn).
+     #repSave is the clip recorder's state (js/capture.js): the save hint, then SAVING once
+     the clip has been promoted, and empty when nothing is recording. All of this is DOM, so
+     none of it ends up in a saved clip — that's canvas only. -->
 <div id="replayUI" class="hidden">
   <div class="repBar top"><span id="repTag"><i></i>REPLAY</span></div>
-  <div class="repBar bot"><span id="repSkip">any key / click — skip</span></div>
+  <div class="repBar bot"><span id="repSave"></span><span id="repSkip">any key / click — skip</span></div>
 </div>
 
 <!-- LANDING SCREEN. First thing after the intro cinematic, and the screen the intro's logo morph
@@ -86,7 +89,7 @@
      to them unchanged, they just live on this screen now. -->
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.22</div>
+  <div class="tagline">v0.1.23</div>
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
     <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season &middot; upgrades &middot; glory</div></div>
@@ -261,6 +264,13 @@
         <option value="2">Premier League (strongest teams)</option>
       </select>
 <h3>Match rules</h3>
+      <div class="lgRuleNote">Used for every match in this league — Champions Cup ties included.</div>
+      <div class="row"><label>Goals to win</label><select id="lgSetupGoals" class="lgSetupSelect">
+        <option>3</option><option selected>5</option><option>7</option><option>10</option>
+      </select></div>
+      <div class="row"><label>Game time</label><select id="lgSetupGameTime" class="lgSetupSelect">
+        <option value="0" selected>Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
+      </select></div>
       <div class="row"><label>Control</label><select id="lgSetupControl" class="lgSetupSelect">
         <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
         <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
@@ -307,17 +317,23 @@
       <div class="panel" id="lgFixturePanel">
         <h3>Next Match</h3>
         <div class="lgFixture" id="lgFixture"></div>
-        <div id="lgRound"></div>
+        <div class="lgFixList" id="lgRound"></div>
       </div>
       <div class="panel hidden" id="lgLastPanel">
         <h3>Last Round</h3>
-        <div id="lgLast"></div>
+        <div class="lgFixList" id="lgLast"></div>
       </div>
       <div class="panel" id="lgSettingsPanel">
         <h3>Match Settings</h3>
+        <div class="lgRuleNote">Applies to league and Champions Cup matches.</div>
+        <div class="row" id="lgGoalsRow"><label>Goals to win</label><select id="lgGoals">
+          <option>3</option><option>5</option><option>7</option><option>10</option>
+        </select></div>
         <div class="row" id="lgGameTimeRow"><label>Game time</label><select id="lgGameTime">
           <option value="0">Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
         </select></div>
+        <div class="row" id="lgSpecialRow"><label>Special balls</label><input type="checkbox" id="lgSpecial"></div>
+        <div class="row" id="lgPowerRow"><label>Power-ups</label><input type="checkbox" id="lgPower"></div>
         <div class="row" id="lgControlRow"><label>Control</label><select id="lgControl">
           <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
           <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
@@ -515,23 +531,60 @@
   <div class="btnRow"><button class="btn" id="lgSEContinue">Continue ▶</button></div>
 </div>
 
+<!-- Champions Cup lobby. Deliberately the SAME shape as #league: .lgWrap of .panels, a ⊞ layout
+     button, standings-slot replaced by the bracket. It used to be a bare bracket + a Control
+     select, which meant the one screen you spend a whole post-season on couldn't show your squad,
+     your parts, the rules a tie would be played to, or anything about the team you were about to
+     face. Every panel here has a twin in the league lobby and renders through the same helpers. -->
 <div id="championsCup" class="screen hidden">
+  <button id="cupEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
-  <div class="tagline" id="cupSub"></div>
-  <div id="cupBracket"></div>
-  <!-- Control sits ABOVE Play Tie: it configures the thing the button starts, and below it the
-       player reached the button first and only found the lock afterwards. Hidden by renderCup once
-       there's no tie left to play. -->
-  <div class="cupControlWrap" id="cupControlWrap">
-    <label>Control</label>
-    <select id="cupControl">
-      <option value="">All rods</option><option value="GK">GK only</option>
-      <option value="DEF">DEF only</option><option value="MID">MID only</option>
-      <option value="ATT">ATT only</option><option value="watch">Spectate</option>
-    </select>
+  <div class="lgSub" id="cupSub"></div>
+  <div class="lgWrap">
+    <div class="panel" id="cupBracketPanel">
+      <h3>Bracket</h3>
+      <div id="cupBracket"></div>
+    </div>
+    <div class="lgSide">
+      <div class="panel" id="cupFixturePanel">
+        <h3>Next Tie</h3>
+        <div class="lgFixture" id="cupFixture"></div>
+      </div>
+      <!-- Control sits ABOVE Play Tie: it configures the thing the button starts, and below it the
+           player reached the button first and only found the lock afterwards. -->
+      <div class="panel" id="cupSettingsPanel">
+        <h3>Match Settings</h3>
+        <div class="lgRuleNote">Shared with the league — changing one changes both.</div>
+        <div class="row"><label>Goals to win</label><select id="cupGoals">
+          <option>3</option><option>5</option><option>7</option><option>10</option>
+        </select></div>
+        <div class="row"><label>Game time</label><select id="cupGameTime">
+          <option value="0">Off (first to goals)</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
+        </select></div>
+        <div class="row"><label>Special balls</label><input type="checkbox" id="cupSpecial"></div>
+        <div class="row"><label>Power-ups</label><input type="checkbox" id="cupPower"></div>
+        <div class="row"><label>Control</label><select id="cupControl">
+          <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
+          <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
+        </select></div>
+        <button class="btn gold lgPlayBtn" id="cupPlay">▶ Play Tie</button>
+      </div>
+      <div class="panel hidden lgHist" id="cupHistPanel">
+        <h3>Cup Honours <span style="color:var(--gold);font-weight:400" id="cupTitles"></span></h3>
+        <div id="cupHist"></div>
+      </div>
+    </div>
+    <div class="panel" id="cupSquadPanel">
+      <h3>Squad · <span class="lgUPWrap"><span id="cupUP">0</span> parts</span></h3>
+      <div id="cupSquad"></div>
+    </div>
+    <div class="panel hidden lgScout" id="cupScout">
+      <h3 id="cupScoutName">SCOUT</h3>
+      <div class="lgScoutRec" id="cupScoutRec"></div>
+      <div id="cupScoutBody"></div>
+    </div>
   </div>
   <div class="btnRow">
-    <button class="btn gold" id="cupPlay">▶ Play Tie</button>
     <button class="btn gold hidden" id="cupDone">Continue ▶</button>
     <button class="btn ghost" id="cupBack">◀ League</button>
   </div>
@@ -549,7 +602,7 @@
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
   'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/main.js'
  ];
  function loadOne(item,done){

@@ -262,9 +262,16 @@ function trnAngTick(){
  if(!r){trnAngT.innerHTML='<span>rod</span>none held';trnNeedle.setAttribute('transform','rotate(0)');return;}
  const D=180/Math.PI,a=r.angle,
        st=r.kickT>=0?'KICK '+r.kickT.toFixed(3):r.act?r.act.toUpperCase():r.raise?'RAISE':'REST';
+ // Stamina is otherwise INVISIBLE — it only shows up as a rod that feels a bit slower than it did
+ // twenty swings ago. stam is the live stFat multiplier actually being applied to this rod's speed/
+ // reaction/aim; exert is its raw banked swing count against kickFat.full. Watch exert climb per
+ // swing and bleed back down between them; a held rod stays at 0 unless kickFat.userDrain is on.
+ const KF=CONFIG.stats.kickFat,
+       fat=(typeof stFat==='function')?stFat(r):1;
  trnAngT.innerHTML='<span>rod</span><b>'+(r.team===0?'T1 ':'T2 ')+r.role+'</b><b class="st">'+st+'</b><br>'+
   '<span>ang</span><b>'+(a*D).toFixed(1)+'°</b><span>swing</span><b>'+(a/r.kickDir*D).toFixed(1)+'°</b><br>'+
-  '<span>ω</span><b>'+(r.angVel||0).toFixed(1)+'</b> rad/s';
+  '<span>ω</span><b>'+(r.angVel||0).toFixed(1)+'</b> rad/s<br>'+
+  '<span>stam</span><b>'+(fat*100).toFixed(1)+'%</b><span>exert</span><b>'+(r.exert||0).toFixed(1)+'</b>/'+KF.full;
  trnNeedle.setAttribute('transform','rotate('+(-a*D).toFixed(2)+')');
 }
 (function(){const b=$('btnTraining');if(b)b.onclick=()=>startMatch('training');})();

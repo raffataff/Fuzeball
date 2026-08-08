@@ -237,6 +237,11 @@ function dbgHit(r,man,foot,pow,sweet,vn,b,c){
 }
 // the kick GATE: logs every fire (with gap since the last), and the first failing
 // condition when blocked (deduped). g = the gate's raw booleans/values from ai.js.
+//   ex   = this rod's banked swing exertion / kickFat.full, i.e. stamina channel B (stats.js).
+//          ai.js calls this BEFORE kickRod, so it's the count going INTO this swing — watch it
+//          step up one per ★KICK and bleed back down in the gaps.
+//   fat  = the resulting stFat multiplier, the number actually applied to speed/reaction/aim.
+//          Both channels are in it, so a fresh rod late in a match still reads under 100%.
 function dbgKickGate(r,g){
  if(r!==dbgLogRod)return;
  const now=S.time;
@@ -245,6 +250,7 @@ function dbgKickGate(r,g){
   dbgLogLast={};                                 // a real event: let every steady state re-announce after it
   dbgLogPush(dbgFmtT(now)+'  ★KICK  gap='+(gap>=0?gap.toFixed(2)+'s':'--')
    +'  rel='+g.rel.toFixed(1)+' dz='+g.dz.toFixed(2)+' spd='+g.speed.toFixed(0)
+   +'  ex='+(r.exert||0).toFixed(1)+'/'+CONFIG.stats.kickFat.full+' fat='+(stFat(r)*100).toFixed(1)+'%'
    +(g.overFoot?' [over]':' [inFront]')+(g.act?(' act='+g.act):''));
   return;
  }
@@ -554,6 +560,20 @@ function buildDebug(){
  for(const z of DEAD.redrop.zones){
   const rzg=abox(z.spread*2,DEAD.redrop.z*2,z.x,0,redropM);
   rzg.visible=false;dbgAIRedrop.push(rzg);
+ }
+ // ...plus each zone's CATCHMENT (z.from) — the stretch of pitch that zone SERVES under
+ // redrop.sameThird — as a thin bar along the near touchline, so the third boundaries read without
+ // painting over the pitch. This is the half of the rule you otherwise can't see: watching a ball
+ // re-appear in the middle zone tells you nothing about whether it was sent there or rolled a 1-in-3.
+ // Clamped to the table (the outer ranges deliberately run past the goal lines to catch a ball that
+ // left behind a goal) and inset a touch on each side so two neighbouring bars don't read as one.
+ const catchM=dbgMat(0xff5c5c,.12);
+ for(const z of DEAD.redrop.zones){
+  if(!z.from)continue;
+  const x0=Math.max(z.from[0],-F.L/2)+0.4,x1=Math.min(z.from[1],F.L/2)-0.4;
+  if(x1<=x0)continue;
+  const cg=abox(x1-x0,3,(x0+x1)/2,F.W/2-2,catchM);
+  cg.visible=false;dbgAIRedrop.push(cg);
  }
 
  // deadzones: the active table's dead-ball pockets (activeTable.deadzones — corners where a

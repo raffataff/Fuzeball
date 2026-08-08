@@ -213,9 +213,18 @@ function registerBigGoalMeshes(root){
    glb, it's already resident, or a fetch is in flight. cb runs on success, failure, and every
    no-op, so applyRoom can gate on it. */
 const roomLoading={};   // room id -> [pending cbs] while its backdrop GLB is in flight
+/* Rooms whose GLB came back 404. WITHOUT this a room pointing at a file that isn't there is
+   re-fetched on EVERY applyRoom — and applyRoom runs on every venue change, so a missing backdrop
+   cost a network round-trip per screen transition. Worse, applyRoom's "this room has no backdrop"
+   fallback (the shared ground plane + crowd) tests rm.glb, which is still set on a room whose file
+   is absent — so it never engaged and the room rendered as an empty void that CLAIMED, in the
+   console, to be using the shared backdrop. roomHasGlb() is the honest test both paths read.
+   Session-scoped: a reload re-tries, so dropping the file in during development still works. */
+const roomFailed={};
+function roomHasGlb(id){const R=CONFIG.rooms&&CONFIG.rooms[id];return !!(R&&R.glb&&!roomFailed[id]);}
 function ensureRoom(id,cb){
  const R=CONFIG.rooms&&CONFIG.rooms[id];
- if(!R||!R.glb){if(cb)cb();return;}
+ if(!roomHasGlb(id)){if(cb)cb();return;}
  if(roomGroups[id]){touchRoom(id);if(cb)cb();return;}
  // In flight: QUEUE the cb so it fires when the backdrop is truly resident, not immediately —
  // a kickoff gate reading this must not proceed with the room still downloading (skipped intro).
@@ -242,6 +251,7 @@ function ensureRoom(id,cb){
   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
   flush();                                          // resident now → release every queued cb
  },undefined,()=>{
+  roomFailed[id]=true;                              // latch: never re-fetch this file, and let applyRoom fall back to the shared backdrop for real
   const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
   console.warn('room GLB missing for '+id+' ('+url+'), using shared backdrop');
   flush();                                          // GLB missing → shared backdrop; release queued cbs so a gate doesn't wait forever

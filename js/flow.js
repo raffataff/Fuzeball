@@ -43,6 +43,7 @@ function startMatchNow(mode,rodLockRole){
   :(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
  S.rodLockRole=mode==='roster'?null:(rodLockRole||null);
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;S.pendingWin=null;
+ S.serveAt=null;   // a restart spot left over from the last match must not aim its first kickoff
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
   clearBalls();clearPU();clearFractures();replayAbort();replayCut();
@@ -58,7 +59,10 @@ function startMatchNow(mode,rodLockRole){
   }
   S.active=[[],[]];S.pairCd=[0,0];
   rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
-   r.kickT=-1;r.raise=false;r.cd=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
+   r.kickT=-1;r.raise=false;r.cd=0;r.exert=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
+   // NOTE: r.exert (swing fatigue) is cleared HERE and nowhere else. It must NOT go in
+   // resetRodRotation — that runs on every goal / dead ball / out, which would wipe the
+   // accumulation several times a match and leave the channel permanently near zero.
    r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
    r.removedUntil=[];r.men.forEach(m=>{m.visible=true;});
    r.pivot.rotation.z=0;r.pivot.position.z=0;
@@ -159,8 +163,14 @@ function checkMatchClock(){
 }
 function outOfBounds(b){
  if(S.trn){redropBall(b);Au.whistle();return;}   // training: keep the ball live, no goal-hold
+ // Grab the x BEFORE removeBall frees the mesh — the restart is keyed to the third the ball left
+ // from (S.serveAt → serve()), so belting it off the table out of your own corner isn't a free 60u
+ // transfer up the pitch. b.cur is the true sim position (b.m.position carries the render lerp).
+ const ox=(b.cur||b.m.position).x;
  removeBall(b);Au.whistle();
- if(!S.balls.length&&S.phase==='play'){resetRodRotation();notice('OUT OF PLAY',1.1);S.phase='goal';S.goalT=MATCH.outHold;}
+ // Only the ball that actually ENDS the rally sets the restart spot — in multi-ball the others are
+ // still live and their exit says nothing about where play stopped.
+ if(!S.balls.length&&S.phase==='play'){S.serveAt=ox;resetRodRotation();notice('OUT OF PLAY',1.1);S.phase='goal';S.goalT=MATCH.outHold;}
 }
 function endMatch(w){
  S.phase='win';S.pendingWin=null;   // cleared here too: a clock-out/forfeit can land while a goal replay is queued
@@ -196,14 +206,18 @@ function togglePause(){
 }
 function gotoMenu(){
   if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods + drop the training gate
+  // KIT ONLY. The VENUE (table/skin/room/pitch) used to be restored here too, and that was the
+  // load-then-free churn: a league match handed the player's room back on the way to the lobby,
+  // which promptly forced the division's again. The league SESSION owns it now — see the venue
+  // block at the top of js/league.js. lgVenueExit below is the backstop for the quit-to-home path;
+  // it's deferred a tick, so a `gotoMenu(); openLeague()` return cancels it instead of thrashing.
   if(S.lg&&S.lg.prevKit){
    cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
    cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;
    cfg.special=S.lg.prevKit.special;cfg.power=S.lg.prevKit.power;
-   cfg.table=S.lg.prevKit.table;cfg.room=S.lg.prevKit.room;cfg.pitch=S.lg.prevKit.pitch;
-   applyTable();applyRoom();
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
+  if(typeof lgVenueExit==='function')lgVenueExit();
   S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();
   // No match live — free every shatter GLB except the two figurines the menu now shows (kept warm
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.

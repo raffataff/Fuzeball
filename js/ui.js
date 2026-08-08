@@ -69,7 +69,10 @@ function bindUI(){
  $('btnPauseMenu').onclick=()=>{
   if(S.lg){
    if(S.lg.matchStart&&S.time-S.lg.matchStart<CONFIG.league.graceT){gotoMenu();return;}
-    $('lgForfeit').classList.remove('hidden');$('lgForfeitMsg').innerHTML='Recorded as a 0–'+(S.lg&&S.lg.cup?CUP.goals:CONFIG.league.goals)+' loss';Au.ui();
+    // goalTarget(), not a hardcoded CUP.goals/league.goals pair: the goal target belongs to the
+    // league SAVE now (LG.goals) and a cup tie plays to the same one, so quoting the config
+    // default would promise a scoreline the record below no longer writes.
+    $('lgForfeit').classList.remove('hidden');$('lgForfeitMsg').innerHTML='Recorded as a 0–'+goalTarget()+' loss';Au.ui();
   }
   else gotoMenu();
  };
@@ -80,9 +83,11 @@ function bindUI(){
     // gotoMenu is what tears the match down (balls, fractures, replay, HUD) and restores the
     // player's real kit/table from S.lg.prevKit. The cup branch used to skip it and route straight
     // to the bracket, leaving a paused match and the cup's kit still overriding the player's.
-    // cupRecord/lgRecord run FIRST — both read S.lg, which gotoMenu clears.
-    if(S.lg&&S.lg.cup){S.score=[0,CUP.goals];cupRecord(1);gotoMenu();openCup();}
-    else{S.score=[0,CONFIG.league.goals];lgRecord(1);gotoMenu();openLeague();}
+    // cupRecord/lgRecord run FIRST — both read S.lg, which gotoMenu clears (and goalTarget() reads
+    // it too, so the forfeit scoreline must be built BEFORE the teardown).
+    const fl=goalTarget();
+    if(S.lg&&S.lg.cup){S.score=[0,fl];cupRecord(1);gotoMenu();openCup();}
+    else{S.score=[0,fl];lgRecord(1);gotoMenu();openLeague();}
   };
  $('btnForfeitCancel').onclick=()=>{$('lgForfeit').classList.add('hidden');togglePause();};
  $('btnRematch').onclick=()=>startMatch(S.mode,S.rodLockRole);

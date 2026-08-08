@@ -1,6 +1,12 @@
 'use strict';
 /* ================= audio (all synthesized via WebAudio) ================= */
-const Au={ctx:null,mg:null,crowd:null,exc:0,
+/* rate / vol are GLOBAL modifiers applied by the two primitives (beep, noise) and by post.
+   Both sit at 1 for all live play; the goal replay sets them around its sound-fire loop and
+   resets them in the same breath (js/replay.js replaySndUpdate), so nothing can leak a
+   detuned Au into the next rally. rate is a tape-speed multiplier — frequencies scale with
+   it and every duration scales inversely, so rate<1 is a slower, deeper, softer-attack
+   version of the same hit rather than a different sound. */
+const Au={ctx:null,mg:null,crowd:null,exc:0,rate:1,vol:1,
  init(){if(this.ctx)return;try{
   this.ctx=new (window.AudioContext||window.webkitAudioContext)();
   this.mg=this.ctx.createGain();this.mg.gain.value=cfg.sound?0.55:0;this.mg.connect(this.ctx.destination);
@@ -16,15 +22,20 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   const inMatch=typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win';
   this.crowd.gain.value=(cfg.ambience&&inMatch)?.05+this.exc*.28:0;}},
  env(g,t0,a,d,pk){g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(pk,t0+a);g.gain.exponentialRampToValueAtTime(.0001,t0+a+d);},
- beep(fr,d=.1,type='square',v=.18,slide=0){if(!this.ctx)return;const c=this.ctx,o=c.createOscillator(),g=c.createGain();
+ // R is guarded >0 in all three: every duration is divided by it, and a zero would put an
+ // Infinity into a buffer length / an AudioParam time and throw from deep inside WebAudio.
+ beep(fr,d=.1,type='square',v=.18,slide=0){if(!this.ctx)return;const c=this.ctx,o=c.createOscillator(),g=c.createGain(),R=this.rate>0?this.rate:1;
+  fr*=R;slide*=R;d/=R;v*=this.vol;   // slide is a freq DELTA, so it scales with pitch, not with time
   o.type=type;o.frequency.setValueAtTime(fr,c.currentTime);
   if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,fr+slide),c.currentTime+d);
-  this.env(g,c.currentTime,.006,d,v);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+d+.1);},
- noise(d=.08,fq=1800,v=.22){if(!this.ctx)return;const c=this.ctx,n=Math.floor(c.sampleRate*d)+64,b=c.createBuffer(1,n,c.sampleRate),o=b.getChannelData(0);
+  this.env(g,c.currentTime,.006/R,d,v);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+d+.1);},
+ noise(d=.08,fq=1800,v=.22){if(!this.ctx)return;const c=this.ctx,R=this.rate>0?this.rate:1;
+  fq*=R;d/=R;v*=this.vol;
+  const n=Math.floor(c.sampleRate*d)+64,b=c.createBuffer(1,n,c.sampleRate),o=b.getChannelData(0);
   for(let i=0;i<n;i++)o[i]=Math.random()*2-1;
   const s=c.createBufferSource();s.buffer=b;
   const f=c.createBiquadFilter();f.type='bandpass';f.frequency.value=fq;f.Q.value=.9;
-  const g=c.createGain();this.env(g,c.currentTime,.004,d,v);
+  const g=c.createGain();this.env(g,c.currentTime,.004/R,d,v);
   s.connect(f);f.connect(g);g.connect(this.mg);s.start();},
  kick(p,aC){const ak=aC||{},
   nd=ak.noiseDur??.06,nf=(ak.noiseFreq??900)+p*(ak.noiseFreqScale??8),
@@ -37,15 +48,16 @@ const Au={ctx:null,mg:null,crowd:null,exc:0,
   nd=ak.noiseDur??.045,nf=ak.noiseFreq??2300,
   nv=Math.min(ak.noiseVolMax??.28,(ak.noiseVol??.04)+p*(ak.noiseVolScale??.002));
   this.noise(nd,nf,nv);},
- post(p,aC){if(!this.ctx)return;const c=this.ctx,ak=aC||{},
+ post(p,aC){if(!this.ctx)return;const c=this.ctx,ak=aC||{},R=this.rate>0?this.rate:1,
   frs=ak.freqs||[523,832,1290,1900],dr=ak.droop??.94,
-  at=ak.attack??.003,de=ak.decay??.28,
+  at=(ak.attack??.003)/R,de=(ak.decay??.28)/R,ds=(ak.decayShift??.045)/R,
   vm=ak.volMax??.5,vb=ak.vol??.14,vs=ak.volScale??.004,
-  v=Math.min(vm,vb+p*vs);
-  frs.forEach((fr,i)=>{const o=c.createOscillator(),g=c.createGain();
-   o.type=i?'triangle':'sine';o.frequency.setValueAtTime(fr,c.currentTime);
-   o.frequency.exponentialRampToValueAtTime(fr*dr,c.currentTime+de);
-   this.env(g,c.currentTime,at,de-i*(ak.decayShift??.045),v*(1-i*(ak.falloff??.18)));o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+de+.14);});
+  v=Math.min(vm,vb+p*vs),gv=v*this.vol;   // gv = the oscillator level; v stays clean for the noise
+                                          // call below, which applies this.vol itself (no double-dip)
+  frs.forEach((fr,i)=>{const o=c.createOscillator(),g=c.createGain(),f=fr*R;
+   o.type=i?'triangle':'sine';o.frequency.setValueAtTime(f,c.currentTime);
+   o.frequency.exponentialRampToValueAtTime(f*dr,c.currentTime+de);
+   this.env(g,c.currentTime,at,de-i*ds,gv*(1-i*(ak.falloff??.18)));o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+de+.14/R);});
   this.noise(ak.noiseDur??.03,ak.noiseFreq??3200,v*(ak.noiseVolScale??.5));this.exc=Math.min(1,this.exc+.25);},
  goal(){if(!this.ctx)return;const c=this.ctx;
   [220,277,330].forEach(fr=>{const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';

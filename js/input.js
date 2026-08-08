@@ -12,7 +12,9 @@ addEventListener('keydown',e=>{
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
- if(S.phase==='replay'){replaySkip();return;}   // any key skips the goal replay
+ // The save key is tested FIRST because every OTHER key skips the replay — without this it
+ // would be swallowed by the skip and the clip would end where you asked to keep it.
+ if(S.phase==='replay'){if(e.code===REPLAY.save.key)replaySaveClip();else replaySkip();return;}
  if(e.code==='Escape'){
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
@@ -132,7 +134,10 @@ function gamepadUpdate(dt){
   const prev=seat?seat.padPrev:(gpFree[idx]||(gpFree[idx]={}));
   const just={};
   for(const i of [0,1,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
-  if(S.phase==='replay'){if(!didSkip&&(just[0]||just[1]||just[9])){didSkip=true;replaySkip();}continue;}
+  // Y saves the clip (same reasoning as the keyboard branch — it must beat the skip buttons);
+  // A/B/Start still skip. Save is deliberately NOT didSkip-guarded: replaySaveClip is idempotent.
+  if(S.phase==='replay'){if(just[REPLAY.save.pad])replaySaveClip();
+   else if(!didSkip&&(just[0]||just[1]||just[9])){didSkip=true;replaySkip();}continue;}
   if(just[9]&&!didPause&&(S.phase==='play'||S.phase==='count'||S.phase==='pause')){didPause=true;togglePause();}
   if(!seat)continue;
   padSeatUpdate(dt,gp,seat,just);

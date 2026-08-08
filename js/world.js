@@ -454,7 +454,7 @@ function buildRods(){
     const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
-     kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,aiMan:-1,
+     kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
@@ -672,16 +672,22 @@ function applyRoom(onReady){
  // idle seeds the strip colour now; 'rainbow' is driven per-frame so its seed doesn't matter.
  curLeds=Object.assign({},CONFIG.leds,rm.led||{});
  if(curLeds.idle!=='rainbow'&&ledMat){const c=(rm.led&&rm.led.color)||0x38e0ff;ledMat.color.set(c);if(ledMat.emissive)ledMat.emissive.set(c);}
- const hasGlb=!!rm.glb;
- // show the active room's backdrop (if resident), hide the rest; swap the shared ground+crowd in
- // when this room has no bespoke backdrop.
+ // Is a backdrop GLB worth waiting for? roomHasGlb (models.js) says no for a room with no glb AND
+ // for one whose file 404'd, so a missing backdrop stops being re-fetched on every venue change.
+ const wantGlb=(typeof roomHasGlb==='function')?roomHasGlb(id):!!rm.glb;
+ // Show the active room's backdrop, hide the rest; the shared ground+crowd stand in whenever it
+ // ISN'T on screen — no glb, file missing, or still downloading. Recomputed INSIDE show() rather
+ // than captured once: the old code read rm.glb up front, so a room whose GLB never arrived hid the
+ // shared backdrop too and rendered as an empty void.
  const show=()=>{
-  for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&hasGlb);}
-  if(groundMesh)groundMesh.visible=!hasGlb;
-  if(crowdMesh)crowdMesh.visible=!hasGlb;
+  const on=!!(roomGroups[id]&&roomGroups[id].children.length);
+  for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&on);}
+  const fill=!on&&rm.backdrop!==false;   // backdrop:false = a TRUE void (bg + fog only), no stand-in
+  if(groundMesh)groundMesh.visible=fill;
+  if(crowdMesh)crowdMesh.visible=fill;
  };
  show();setRoomEnv(id,rm);
- if(hasGlb&&typeof ensureRoom==='function'){
+ if(wantGlb&&typeof ensureRoom==='function'){
   ensureRoom(id,()=>{                                    // GLB resident: reveal it + upgrade env to the real reflection bake
    show();setRoomEnv(id,rm);
    if(typeof pruneRooms==='function')pruneRooms(id);
