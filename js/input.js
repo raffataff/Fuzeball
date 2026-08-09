@@ -71,15 +71,15 @@ function userControlUpdate(dt){
  // Auto rod-switch runs PER SEAT, and skips rods another seat is holding — otherwise two
  // players on one team would both be dragged onto whichever rod is nearest the ball. Silent
  // by design (no Au.ui, no S.lastSwitch stamp), so it keeps re-evaluating every frame.
- if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
-  const bp=S.balls[0].m.position;
-  S.seats.forEach(s=>{
-   if(s.rods.length<2)return;
-   let bi=s.ctrl,bd=1e9;
-   s.rods.forEach((rr,i)=>{if(rodTaken(rr,s))return;const d=Math.abs(bp.x-rr.x);if(d<bd){bd=d;bi=i;}});
-   if(bi!==s.ctrl){s.ctrl=bi;updateChips();}
-  });
- }
+  if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
+   const bp=S.balls[0].m.position;
+   S.seats.forEach(s=>{
+    if(s.rods.length<2)return;
+    let bi=s.ctrl,bd=1e9;
+    s.rods.forEach((rr,i)=>{if(rodTaken(rr,s))return;const d=Math.abs(bp.x-rr.x);if(d<bd){bd=d;bi=i;}});
+    if(bi!==s.ctrl){clearRodAI(s.rods[bi]);s.ctrl=bi;updateChips();}
+   });
+  }
 }
 /* ---- gamepad (Steam controller) ----------------------------------------
    Standard-layout pad mapped onto the SAME rod controls as mouse+keyboard,

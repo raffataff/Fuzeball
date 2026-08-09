@@ -104,6 +104,21 @@ function seatForDev(tok){
  if(/^pad\d+$/.test(tok))for(let i=0;i<S.seats.length;i++)if(S.seats[i].devs.indexOf('pad*')>=0)return S.seats[i];
  return null;
 }
+/* Clear AI-driven state from a rod when a player takes control. The AI skips user rods each
+   frame (ai.js:isUserRod), but any state it set before the switch persists — raise latch,
+   behindFlag, active actions (trap/dribble/safeRaise/lane/evade), hold-evade timers, man
+   selection, etc. Without clearing these the rod stays raised, continues AI angle overrides,
+   or mid-action when the player expects a clean handoff. */
+function clearRodAI(r){
+ if(!r)return;
+ r.raise=false;r.behindFlag=false;r.act=null;r.heldFwd=false;
+ r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;
+ r.aiMan=-1;
+ r.trapMan=-1;r.trapDir=0;
+ r.dribMan=-1;r.dribZ=0;r.dribZ0=0;
+ r.laneDir=0;
+ r.passTo=null;r.aimEv=null;
+}
 /* Absolute rod select, skipping rods other seats hold. `dir` is the direction to keep searching
    when the requested rod is taken (so a wheel/Q/E press lands on the next FREE rod rather than
    silently doing nothing). Returns true if the held rod actually changed. */
@@ -116,6 +131,7 @@ function setSeatCtrl(s,i,dir){
   k=((k+d)%n+n)%n;
  }
  if(s.ctrl===was)return false;
+ clearRodAI(s.rods[s.ctrl]);                 // handoff: wipe AI state from the newly claimed rod
  S.lastSwitch=S.time;updateChips();Au.ui();
  return true;
 }

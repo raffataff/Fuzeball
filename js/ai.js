@@ -400,17 +400,18 @@ function passPick(r,bx,bz){
        &&bb.m.position.y<AIC.lowY&&!inFootRange(r,bb)&&laneMate(r,bb)){
      r.raise=true;r.behindFlag=false;continue;
     }
-    if(inFootRange(r,bb,AIC.underFootBack)){
-     r.raise=false;r.behindFlag=false;                 // ball right at the feet — never swing back through it
-    }else{
-     if(!r.behindFlag && relReal2<AIC.raiseBehind) r.behindFlag=true;
-     if(r.behindFlag){
-      r.raise=true;
-      if(relReal2>(AIC.overFootOffset-AIC.overFoot) && relReal2<(AIC.overFootOffset+AIC.overFoot)) r.behindFlag=false;
+     if(inFootRange(r,bb,AIC.underFootBack)){
+      r.raise=false;r.behindFlag=false;                 // ball right at the feet — never swing back through it
      }else{
-      r.raise=relReal2<AIC.raiseBehind;
+      if(!r.behindFlag && relReal2<AIC.raiseBehind) r.behindFlag=true;
+      if(r.behindFlag){
+       r.raise=true;
+       // Release when ball reaches feet OR has moved well past them (skipped the zone)
+       if(relReal2>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
+      }else{
+       r.raise=relReal2<AIC.raiseBehind;
+      }
      }
-    }
     continue;
   }   // a resting hand: hold its lane, block passively
    const D=r.team===0?Dred:Dblue;
@@ -511,17 +512,18 @@ function passPick(r,bx,bz){
   //      Either way the men then drop + the evade action slides the rod clear. ----
   const footStuck=inFootRange(r,best);
   const latchStuck=inFootRange(r,best,AIC.underFootBack);
-  if(latchStuck){
-   r.raise=false;r.behindFlag=false;       // ball right at the feet — drop, never swing back through it
-  }else{
-   if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
-   if(r.behindFlag){
-    r.raise=true;
-    if(overFoot) r.behindFlag=false;       // ball reached the feet — release the latch
+   if(latchStuck){
+    r.raise=false;r.behindFlag=false;       // ball right at the feet — drop, never swing back through it
    }else{
-    r.raise=relReal<AIC.raiseBehind;
+    if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
+    if(r.behindFlag){
+     r.raise=true;
+     // Release when ball reaches feet OR has moved well past them (skipped the zone)
+     if(overFoot || relReal>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
+    }else{
+     r.raise=relReal<AIC.raiseBehind;
+    }
    }
-  }
   // ---- lane-clear action (r.act='lane') — MAKE WAY for the rod behind us. A teammate nearer our
   //      own goal has the ball and is about to hit it forward through our row; whatever we do in
   //      that z-lane is a block on our own clearance. This is the keeper-smothered-by-its-own-

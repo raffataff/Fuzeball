@@ -141,6 +141,7 @@ const CONFIG = {
       wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},
       sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
       proLeague:{name:'Pro League', glb:'fuzeball_table_classic_proLeague.glb'},
+      premierLeague:{name:'Premier League', glb:'fuzeball_table_classic_premierLeague.glb'},
       strike:{name:'Strike', glb:'fuzeball_table_classic_strike.glb'},
       alienTech:{name:'Alien Tech', glb:'fuzeball_table_classic_alienTech.glb'},                            
       alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
@@ -570,12 +571,12 @@ ai:{
       // CONTACT OVERRIDE while r.act==='dribble' (read by collideRod, both passes, via holdCfg).
       // Same mechanism as trap.holdRest/holdGrip, deliberately much lighter — see the note above.
       holdRest:0,         // absorbing, so the ball doesn't rebound off the boot as we work it
-      holdGrip:0.50,      // fraction of the FOOT's velocity lerped into the ball per contact. 0.55 (the
+      holdGrip:0.30,      // fraction of the FOOT's velocity lerped into the ball per contact. 0.55 (the
                         //   trap) reads as welded; ~0.08 (a passive touch) means the rod slides out
                         //   from under it. 0.30 drags it along with visible slip = a dribble.
       holdZ:2.9,          // z-distance from the dribbling man above which contact is LOST and the action
                         //   released (just under the boot's real z reach, ≈3.25)
-      carryLead:1.2,      // how far past the ball (z) the man aims each frame while pushing it. Must stay
+      carryLead:1.5,      // how far past the ball (z) the man aims each frame while pushing it. Must stay
                         //   well under that z reach or the man simply walks off the ball.
       carryMult:0.8,      // rod slide-speed multiplier while dribbling. Higher than the trap's 0.5 — this
                         //   is a player moving the ball to a better line, not shepherding it.
@@ -1016,7 +1017,7 @@ ai:{
  rods:{
   spacing:{ two:24, three:18.5, other:11.9 }, // per-man spacing by man-count
   margin:8.0,       // total z margin subtracted when deriving slide range
-  gkSlide:6,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
+  gkSlide:11,     // goalie slide cap — keeper stays in its goal area (real tables restrict this), keeps its rod short
   wallClear:2.5,  // stick-out kept past the outer side wall at full inward slide (fixes handle-through-wall)
   handleLen:5,    // handle grip length (sits just outside the wall)
   collarLen:2.4,  // far-end collar/stopper width (the bumper opposite the handle)
@@ -1024,14 +1025,14 @@ ai:{
    // 1-2-5-3 per side. x = position along long axis; team 0 = red (attacks +x).
    // Optional `slideCap` overrides the computed max slide range for this row.
    defs:[
-    {x:-52.5,team:0,men:1,role:'GK',slideCap:15},
+    {x:-52.5,team:0,men:1,role:'GK',slideCap:11},
     {x:-37.5,team:0,men:2,role:'DEF'},
     {x:-22.5,team:1,men:3,role:'ATT'},
     {x:-7.5, team:0,men:5,role:'MID'},
     {x: 7.5, team:1,men:5,role:'MID'},
     {x: 22.5,team:0,men:3,role:'ATT'},
     {x: 37.5,team:1,men:2,role:'DEF'},
-    {x: 52.5,team:1,men:1,role:'GK',slideCap:13}]
+    {x: 52.5,team:1,men:1,role:'GK',slideCap:11}]
  },
 
  /* ---- difficulty ----------------------------------------------------- */
@@ -1046,9 +1047,9 @@ ai:{
   //   fast balls can now beat the AI to the punch instead of it responding frame-perfectly. Scaled
   //   per rod by the rea stat via stReact (higher rea → shorter delay; fatigue lengthens it). Keep
   //   the largest possible value (rookie × stReact's ~1.5 floor) under CONFIG.ai.reactMax.
-  rookie:{speed:30,react:.23,err:0.95,range:5.0,pred:.35,cd:1.05,aim:.5,iq:.35,reactDelay:.1},
-  pro:   {speed:35,react:.18,err:0.8,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
-  legend:{speed:40,react:.13,err:.6, range:6.6,pred:0.95,cd:.50,aim:.9,iq:.9,reactDelay:.04}
+  rookie:{speed:30,react:.23,err:0.9,range:5.0,pred:.45,cd:1.05,aim:.5,iq:.40,reactDelay:.1},
+  pro:   {speed:35,react:.18,err:0.75,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
+  legend:{speed:43,react:.13,err:.55, range:6.6,pred:0.95,cd:.50,aim:.9,iq:.8,reactDelay:.04}
  },
 
  /* ---- rod stats (league builds) --------------------------------------- */
@@ -1151,8 +1152,8 @@ ai:{
     graceT:10,             // seconds after match-start where quitting does NOT forfeit
     simK:.5,              // sim: stat edge → per-goal probability steepness (logistic)
     divisions:[            // tier order: 0 bottom .. 2 top
-      {name:'Sunday League', base:1, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
-      {name:'Pro League',    base:3, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'classic'},
+      {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
+      {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'classic'},
       {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'strike',  table:'classic',  pitch:'royal'}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
@@ -1449,7 +1450,7 @@ ai:{
       // NOTE: `name` is HUD copy — keep it emoji-free. The ball tag colour-codes the type from
       // `trail` (see setBallTag in hud.js); OS colour emoji can't be tinted and render per-platform.
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.25,maxV:125,w:70,trail:'#ffffff',
+      mass:1.25,maxV:135,w:70,trail:'#ffffff',
       audio:{
        kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
              beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
