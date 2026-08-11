@@ -32,8 +32,47 @@ function physics(dt){
   if(b.light)b.light.position.copy(b.m.position);
   b.trailT-=dt;
   if(b.trailT<=0&&sp>CONFIG.fx.trailSpeed){b.trailT=.022;spawnTrail(b);}
+  rollProbe(b);   // sustained-contact audio (see below) — position-only, reads the settled state
  }
  if(S.stats&&S.lastTouch>=0&&S.phase==='play')S.stats.poss[S.lastTouch]+=dt;
+}
+/* ================= contact AUDIO gating =================================
+   An impact is an EVENT, a roll is a STATE — the same split every shipped physics game draws
+   (Unity spells it OnCollisionEnter vs OnCollisionStay). Full rationale in js/audio.js.
+
+   hitFresh is the EVENT half. A contact earns a one-shot only if it is genuinely NEW — that
+   surface must have been clear for PHY.contactHold — AND hard enough to clear the surface's
+   threshold. Before this, the side/end wall bounce had no threshold at all and re-fired on
+   every substep, so a ball hugging a wall produced 3-7 noise bursts per rendered frame
+   (~420/s): the buzzsaw. Sustained contact is the roll layer's job now, not the tap's.
+
+   Timestamps, not countdowns: S.time only advances BETWEEN fixed sim steps, so every substep
+   inside one step reads the same clock and only the first contact of that step can be fresh —
+   exactly the wanted behaviour, with no per-frame bookkeeping to keep in sync.
+   k indexes b.cT: 0 = floor/net roof, 1 = wall, 2 = ball-vs-ball. */
+function hitFresh(b,k,imp,min){
+ // -1e9, not 0: S.time starts at 0 and (0-0 > contactHold) is FALSE, which would swallow the
+ // very first contact of the session. "Never touched" has to read as "touched infinitely long ago".
+ const t=b.cT||(b.cT=[-1e9,-1e9,-1e9]);   // lazy init covers a ball built before balls.js gained the field
+ const fresh=S.time-t[k]>PHY.contactHold;
+ t[k]=S.time;                    // stamp on EVERY contact, fired or not — that is what holds the gate shut
+ return fresh&&imp>min;
+}
+/* rollProbe is the STATE half. Position-only: it reads the ball AFTER every collision response
+   this frame has applied and asks "is it resting on / against anything, and how fast is it
+   travelling ALONG that surface". It never writes p or v, which is why it is safe to run on the
+   settled state once per frame instead of per substep. Au.rollFeed takes a MAX, so reporting the
+   same contact twice is harmless and the fastest contact in play owns the timbre.
+   The arena bowl's curved walls feed themselves from arenaContact's inelastic branch (arena.js) —
+   that branch IS the rolling case — so only the floor test is shared with it here. */
+function rollProbe(b){
+ if(b.scored)return;
+ const p=b.m.position,v=b.v,eps=PHY.contactEps,aC=b.t.audio;
+ if(p.y<BALL_R+eps)Au.rollFeed(0,Math.hypot(v.x,v.z),aC);             // floor — both tables
+ if(ARENA_ON||p.y>=F.wallH+BALL_R)return;
+ const zl=F.W/2-BALL_R,xl=F.L/2-BALL_R;
+ if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
+ else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
 }
 function stepBall(b,h){
  const p=b.m.position,v=b.v;
@@ -59,7 +98,7 @@ function stepBall(b,h){
  if(!ARENA_ON){
   if(p.y<BALL_R){
    p.y=BALL_R;
-   if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+   if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
@@ -70,7 +109,9 @@ function stepBall(b,h){
   // "arriving" again. That is the ball-buried-in-the-wall case. See staticClamp for the other half.
   if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R){
    const sz=p.z>0?1:-1;
-   if(v.z*sz>0){v.z=-v.z*PHY.wallRest;Au.wall(Math.abs(v.z),b.t.audio?.wall);}
+   // gated on FRESH contact + PHY.wallHitSnd: a ball riding the wall re-enters this branch every
+   // substep, and firing a tap each time is what made the buzzsaw. The ride is a roll (rollProbe).
+   if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}
    p.z=sz*zl;
   }
   if(!b.scored){
@@ -84,13 +125,13 @@ function stepBall(b,h){
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
      else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}                // goal ONLY under the bar, whole ball over the line, and NOT dropping in from over the top
-    else if(p.y<ew+BALL_R){if(v.x>0){v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
+    else if(p.y<ew+BALL_R){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
      else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<ew+BALL_R){if(v.x<0){v.x=-v.x*PHY.wallRest;Au.wall(Math.abs(v.x),b.t.audio?.wall);}p.x=-xl;}
+    else if(p.y<ew+BALL_R){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}p.x=-xl;}
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
   }else{
@@ -140,7 +181,7 @@ function stepBall(b,h){
      arenaContact(b,pen,nx,ny,nz);contacted=true;
     }
     if(p.y<BALL_R){
-     p.y=BALL_R;if(v.y<0){if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+     p.y=BALL_R;if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
@@ -226,7 +267,7 @@ function goalFrameCollide(b,h){
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
   const roofSolid=sx>0?b.overBar===1:b.overBar===-1;
    if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
-   p.y=GH+BALL_R;if(v.y<-PHY.floorHitSnd)Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
+   p.y=GH+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }
@@ -396,5 +437,9 @@ function ballBall(a,b){
  const vbn2=((mb-e*ma)*vbn+(1+e)*ma*van)/(ma+mb);
  a.v.x+=(van2-van)*dx;a.v.y+=(van2-van)*dy;a.v.z+=(van2-van)*dz;
  b.v.x+=(vbn2-vbn)*dx;b.v.y+=(vbn2-vbn)*dy;b.v.z+=(vbn2-vbn)*dz;
- Au.wall((van-vbn)*2,(ma>=mb?a:b).t.audio?.wall);
+ // BOTH balls must be fresh, and both timers are stamped either way — two balls jostling in a
+ // pile resolve every substep, and the old ungated call turned that into the same machine-gun
+ // the walls had. The heavier ball owns the timbre, as before.
+ const cl=van-vbn,fa=hitFresh(a,2,cl,PHY.ballHitSnd),fb=hitFresh(b,2,cl,PHY.ballHitSnd);
+ if(fa&&fb)Au.wall(cl*2,(ma>=mb?a:b).t.audio?.wall);
 }

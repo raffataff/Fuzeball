@@ -266,6 +266,18 @@ physics:{
    floorRest:0.42,                        // vertical restitution off the floor
    floorRestCut:6,                        // below this upward speed the bounce dies to 0
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
+   /* ---- contact AUDIO gates (see the CONTACT SOUND MODEL note at the top of js/audio.js) --
+      An impact is an EVENT, a roll is a STATE. These decide which one a given contact is.
+      The side/end wall bounce used to have NO threshold, so a ball hugging a wall re-fired the
+      one-shot on every substep — 3-7 per rendered frame, up to ~420/s, which comb-filtered into
+      a buzzsaw. Raise the *HitSnd values for a quieter, rollier table; drop them for a clackier,
+      more arcade one. contactHold is the debounce FMOD/Wwise call "min time between instances". */
+   wallHitSnd:16,                         // |v| INTO a side/end wall above this plays a tap; below it the
+                                          // contact is a scrape and belongs to the roll layer instead
+   ballHitSnd:12,                         // ball-vs-ball CLOSING speed above this plays a knock
+   contactHold:0.05,                      // s — a surface must have been CLEAR this long before it can fire
+                                          // another impact ('fresh contact', physics.js hitFresh)
+   contactEps:0.35,                       // gap below which the roll probe counts a ball as touching a surface
    floorFric:0.35, airFric:0.06,           // per-substep friction, applied as exp(-k*h) — keep as coefficients
    wallRest:0.52,                         // side + end wall restitution
    postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution (metal = bouncy)
@@ -833,14 +845,14 @@ ai:{
    slowSpeed:35,                              // ball speed under this counts as a dead-ball (be eager)
    cdSlow:[1,2.5], cdFast:[0.5,1.5],       // cooldown random range (× DIFFS.cd). Slow-ball cd raised so a missed
                                                 //   swing at a dead ball can't re-fire twice a second.
-   errEvery:[1.7,4.],                        // how often a fresh wandering aim-error target is rolled (s)
+   errEvery:[1.7,6.],                        // how often a fresh wandering aim-error target is rolled (s)
    
    // --- two-hands + anti-jitter -----------------------------------------
    hands:3,                                   // rods per team the AI may actively move at once (like a pair of human hands).
                                               //   NOT a cap on human seats — pickActiveRods raises the cap to the seat
                                               //   count when a team has more seats than this, so every held rod is live.
    pairCommit:0.3,                            // min seconds a rod stays in the active pair before it can be swapped
-   manHyst:2,                               // a different man must beat the current one by this many z-units to steal aim
+   manHyst:1.8,                               // a different man must beat the current one by this many z-units to steal aim
    retargetDead:0.1,                          // desired slide must differ from current target by this (z) before we re-aim
    errLerp:7.0,                               // rate the wandering aim error drifts toward its new target (per s)
    slideAccel:600                             // AI rod slide acceleration cap (u/s²) — kills instant direction flips
@@ -932,13 +944,13 @@ ai:{
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
       src:'assets/fuzeball_womanTalia.glb',scale:0.8,
       mug:'assets/renders/render_talia_mugshot.png',   
-      teamParts:['kit_talia'],hairParts:[ 'kit_talia_hair' ],
+      teamParts:['kit_talia', 'kit_talia_centre'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
       },
    {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
       src:'assets/fuzeball_womanTanya.glb',scale:0.8,
       mug:'assets/renders/render_tanya_mugshot.png',   
-      teamParts:['kit_tanya'],hairParts:[ 'kit_tanya_hair' ],
+      teamParts:['kit_tanya', 'kit_tanya_centre'],hairParts:[ 'kit_tanya_hair' ],
       explosionSrc:'assets/animations/tanya_explosion.glb'   
       },      
    /*{id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
@@ -963,7 +975,7 @@ ai:{
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
       mug:'assets/renders/render_tamirok_mugshot.png',   
-      teamParts:['kit_tamirok'],hairParts:[],
+      teamParts:['kit_tamirok', 'kit_tamirok_centre'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
    {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
@@ -1439,12 +1451,52 @@ ai:{
      respawnFade:2.6          // seconds the returning figurine eases in from transparent → opaque on respawn (gentle fade-in instead of a hard pop). Starts AT reform, i.e. at the start of respawnSwirlTail
   },
 
+  /* ---- audio mix (js/audio.js) -----------------------------------------
+     Global mixer/voicing rules. The per-BALL sonic character lives in each ball type's
+     `audio` block below; this block is the plumbing every one of them runs through:
+       master   final gain into the limiter (was hard-coded 0.55 in two places)
+       limiter  the "sum then squeeze" stage — simultaneous hits duck instead of clipping.
+                Every game mix has one; without it a six-ball pile-up crunches.
+       voices   per-sound retrigger cooldown (gap, seconds) + concurrent cap (max). Wwise and
+                FMOD ship exactly these two knobs on every event; this is the backstop that
+                stops a scramble stacking twenty copies of the same 45ms burst.
+       jitter   ± fraction of pitch/level randomisation per one-shot. Repeating an IDENTICAL
+                transient is what makes a burst of contacts read as one synthetic tone; a few
+                percent of spread between them is what makes them read as separate events.
+                Signature sounds (goal horn, whistle, UI, countdown) are exempt — they should
+                be the same every time.
+       roll     the sustained-contact layer. Two permanently-running looping voices (floor and
+                wall) at gain 0, driven by how fast a ball is travelling ALONG a surface it is
+                touching. speedMin is where a roll becomes audible, speedRef where it maxes out,
+                curve <1 makes it loud early (a slow trickle is still clearly audible). Attack
+                fast / release slow so a probe miss doesn't chop the sound into a rattle.
+                def.* is the fallback character; a ball type can override it with its own
+                `audio.roll:{floor:{…},wall:{…}}` block. */
+  audioMix:{
+   master:0.55,
+   limiter:{on:true,threshold:-7,knee:8,ratio:10,attack:0.004,release:0.15},
+   voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3}},
+   jitter:{pitch:0.16},
+   roll:{
+    on:false,
+    speedMin:4,        // tangential speed where the roll fades in
+    speedRef:80,       // …and where it hits full level
+    curve:0.6,         // gain = norm^curve — <1 = loud early, >1 = only fast rolls are loud
+    attack:0.030, release:0.16,   // gain smoothing time constants (s). release ≫ attack on purpose
+    rateBase:0.55, rateScale:0.85, // noise grain playback rate: base + norm*scale (texture speeds up with the ball)
+    def:{floor:{vol:0.0,freq:450,freqScale:2.0,q:0.7},
+         wall: {vol:0.12,freq:620,freqScale:11.0,q:1.5}}
+   }
+  },
+
 /* ---- ball types ----------------------------------------------------- */
   // Each ball type may define an optional `audio` block that overrides the
   // synthesised contact sounds for that ball. Every field is optional — any
   // missing field falls back to the hard-coded defaults in audio.js, preserving
   // the current sound exactly. Tune these per-ball to give each type a distinct
   // sonic character (crackling fire, heavy cannon thud, glassy split, etc.).
+  // `roll` overrides the sustained-contact layer for that ball (see audioMix.roll above);
+  // omit it and the ball rolls with audioMix.roll.def.
   ballTypes:{
    classic:{
       // NOTE: `name` is HUD copy — keep it emoji-free. The ball tag colour-codes the type from
@@ -1454,7 +1506,15 @@ ai:{
       audio:{
        kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
              beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
-       wall:{noiseDur:.045,noiseFreq:2300,noiseVol:.04,noiseVolScale:.002,noiseVolMax:.28},
+       // Wall/floor TAP. noiseVol is the level of the QUIETEST tap that still gets through the
+       // PHY.wallHitSnd gate; noiseVolScale is how fast it grows with impact speed. Keep the base
+       // low and the scale meaningful — that's the difference between a graze and a slap. body* adds
+       // a short low thump under hard hits so a slam reads as mass rather than as more treble.
+       wall:{noiseDur:.045,noiseFreq:2200,noiseFreqScale:4,noiseVol:.012,noiseVolScale:.0035,noiseVolMax:.30,q:.9,
+             bodyFrom:55,bodyFreq:150,bodyDur:.055,bodyVolScale:.0016,bodyVolMax:.16,bodySlide:-55},
+       // Sustained-contact ROLL (audioMix.roll). Hardwood-on-lacquer: warm floor, thin bright scrape.
+       roll:{floor:{vol:.26,freq:250,freqScale:5.0,q:.7},
+             wall: {vol:.20,freq:620,freqScale:11,q:1.5}},
        post:{noiseDur:.03,noiseFreq:3200,noiseVolScale:.5,freqs:[523,832,1290,1900],droop:.94,
              attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
       }
@@ -1464,7 +1524,10 @@ ai:{
       audio:{
        kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
              beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.001,beepVolScale:.002,beepVolMax:.015,beepSlide:-80,attack:.08,decay:1.1,},
-       wall:{noiseDur:.05,noiseFreq:2800,noiseVol:.06,noiseVolScale:.003,noiseVolMax:.12},
+       wall:{noiseDur:.05,noiseFreq:2800,noiseFreqScale:6,noiseVol:.014,noiseVolScale:.0025,noiseVolMax:.16,q:.7,
+             bodyFrom:70,bodyFreq:120,bodyDur:.07,bodyVolScale:.0012,bodyVolMax:.10,bodySlide:-40},
+       roll:{floor:{vol:.30,freq:420,freqScale:7,q:.5},          // airy hiss rather than a hard roll
+             wall: {vol:.24,freq:1100,freqScale:16,q:.9}},
        post:{noiseDur:.04,noiseFreq:4000,noiseVolScale:.6,freqs:[587,932,1397,2100],droop:.93,
              attack:.003,decay:.8,vol:.15,volScale:.005,volMax:.35}
       }
@@ -1475,7 +1538,10 @@ ai:{
       audio:{
        kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
              beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
-       wall:{noiseDur:.06,noiseFreq:1200,noiseVol:.08,noiseVolScale:.003,noiseVolMax:.35},
+       wall:{noiseDur:.075,noiseFreq:900,noiseFreqScale:2.5,noiseVol:.02,noiseVolScale:.004,noiseVolMax:.38,q:1.1,
+             bodyFrom:30,bodyFreq:85,bodyDur:.12,bodyVolScale:.0028,bodyVolMax:.30,bodySlide:-30},
+       roll:{floor:{vol:.42,freq:130,freqScale:2.2,q:1.0},       // 7× mass — a low grinding rumble, not a roll
+             wall: {vol:.34,freq:300,freqScale:5,q:1.8}},
        post:{noiseDur:.04,noiseFreq:2200,noiseVolScale:.4,freqs:[328,523,784,1100],droop:.95,
              attack:.004,decay:.32,vol:.2,volScale:.006,volMax:.6}
       }
@@ -1486,7 +1552,10 @@ ai:{
       audio:{
        kick:{noiseDur:.05,noiseFreq:6000,noiseFreqScale:10,noiseVol:.05,noiseVolScale:.002,noiseVolMax:.02,
              beepFreq:80,beepDur:.17,beepType:'sine',beepVol:.01,beepVolScale:.04,beepVolMax:.25,beepSlide:-55},
-       wall:{noiseDur:.04,noiseFreq:3200,noiseVol:.03,noiseVolScale:.0015,noiseVolMax:.22},
+       wall:{noiseDur:.035,noiseFreq:3400,noiseFreqScale:7,noiseVol:.010,noiseVolScale:.0030,noiseVolMax:.24,q:1.6,
+             bodyFrom:65,bodyFreq:210,bodyDur:.04,bodyVolScale:.0012,bodyVolMax:.11,bodySlide:-70},
+       roll:{floor:{vol:.20,freq:380,freqScale:8,q:1.2},         // glassy and light
+             wall: {vol:.17,freq:1400,freqScale:18,q:2.4}},
        post:{noiseDur:.025,noiseFreq:3600,noiseVolScale:.55,freqs:[659,988,1480,2200],droop:.92,
              attack:.002,decay:.22,vol:.12,volScale:.003,volMax:.4}
       }
@@ -1502,7 +1571,10 @@ ai:{
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:9,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
              beepFreq:100,beepDur:.1,beepType:'sine',beepVol:.07,beepVolScale:.03,beepVolMax:.24,beepSlide:60},
-       wall:{noiseDur:.045,noiseFreq:2600,noiseVol:.04,noiseVolScale:.002,noiseVolMax:.24},
+       wall:{noiseDur:.045,noiseFreq:2600,noiseFreqScale:5,noiseVol:.011,noiseVolScale:.0032,noiseVolMax:.26,q:1.0,
+             bodyFrom:58,bodyFreq:165,bodyDur:.05,bodyVolScale:.0014,bodyVolMax:.14,bodySlide:-60},
+       roll:{floor:{vol:.24,freq:290,freqScale:6,q:.8},
+             wall: {vol:.19,freq:780,freqScale:13,q:1.7}},
        post:{noiseDur:.03,noiseFreq:3400,noiseVolScale:.5,freqs:[622,988,1480,2200],droop:.93,
              attack:.003,decay:.26,vol:.13,volScale:.004,volMax:.48}
       }
@@ -1513,7 +1585,10 @@ ai:{
       audio:{
        kick:{noiseDur:.055,noiseFreq:800,noiseFreqScale:7,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
              beepFreq:110,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
-       wall:{noiseDur:.04,noiseFreq:2100,noiseVol:.035,noiseVolScale:.0018,noiseVolMax:.26},
+       wall:{noiseDur:.05,noiseFreq:2000,noiseFreqScale:3.5,noiseVol:.013,noiseVolScale:.0034,noiseVolMax:.28,q:2.2,
+             bodyFrom:45,bodyFreq:190,bodyDur:.09,bodyVolScale:.0020,bodyVolMax:.20,bodySlide:-25},
+       roll:{floor:{vol:.30,freq:200,freqScale:4,q:1.4},         // heavy metal ball: dense, ringy
+             wall: {vol:.25,freq:900,freqScale:9,q:3.0}},
        post:{noiseDur:.028,noiseFreq:3000,noiseVolScale:.48,freqs:[587,880,1319,1760],droop:.93,
              attack:.003,decay:.26,vol:.15,volScale:.0045,volMax:.52}
       }
@@ -1775,6 +1850,7 @@ const BALL_R=CONFIG.physics.ballR, ROD_H=CONFIG.physics.rodH, PLAYER_H=CONFIG.ph
        PRAD=CONFIG.physics.prad, GRAV=CONFIG.physics.grav,
        FOOT_T=CONFIG.physics.footT, FOOT_BOX=CONFIG.physics.footBox, FOOT_BOX_OFF=CONFIG.physics.footBoxOff,
        FOOT_BOX_REACH=CONFIG.physics.footBoxReach, FOOT_JITTER=CONFIG.physics.footJitter;
+const AUMIX=CONFIG.audioMix;            // mixer/voicing rules — js/audio.js reads this at init and per frame
 const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
       PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay,
       CAPTURE=CONFIG.capture;

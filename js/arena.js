@@ -33,8 +33,15 @@ function arenaContact(b,pen,nx,ny,nz){
  const vn=v.x*nx+v.y*ny+v.z*nz;
  if(vn<0){
   // static geometry: mass-free reflection. Slow contact goes inelastic → ball ROLLS up/down
-  if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;Au.wall(-vn,b.t.audio?.wall);}
-  else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;}
+  // The two branches are literally the impact/roll split the audio model wants, so each feeds its
+  // own half: the bouncing branch fires a gated one-shot, the inelastic branch drives the roll
+  // layer (physics.js rollProbe skips the bowl walls precisely because this does it better —
+  // it already knows the surface normal, so the tangential speed here is exact).
+  if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;
+   if(hitFresh(b,ny>ARENA.fricNy?0:1,-vn,ny>ARENA.fricNy?PHY.floorHitSnd:PHY.wallHitSnd))Au.wall(-vn,b.t.audio?.wall);}
+  else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;
+   // tangential = what's left of v once the normal component is removed (just done, so |v| IS it)
+   Au.rollFeed(ny>ARENA.fricNy?0:1,Math.hypot(v.x,v.y,v.z),b.t.audio);}
   if(ny>ARENA.fricNy){const f=Math.exp(-PHY.floorFric*hStep);v.x*=f;v.z*=f;}
  }
 }

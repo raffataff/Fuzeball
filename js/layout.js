@@ -67,7 +67,15 @@ function layApply(k){
  // narrower on every call. Clearing first also means each wrap honours its own CSS max-width
  // (.panelWrap 1640, .lgWrap 1820) with no constant here to keep in sync.
  w.style.width='';
- const avail=Math.max(LAY_MINW+LAY_PAD*2,w.clientWidth);   // floor guards against a collapsed measurement
+ // box-sizing:border-box means the wrap's width includes padding+border, but clientWidth is
+ // content+padding only. Measure the content area explicitly so panel positions (which are
+ // relative to the content area) stay consistent.
+ const cs=getComputedStyle(w);
+ const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+ const padY=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+ const bordX=parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth);
+ const bordY=parseFloat(cs.borderTopWidth)+parseFloat(cs.borderBottomWidth);
+ const avail=Math.max(LAY_MINW+LAY_PAD*2,w.clientWidth-padX);   // content area width; floor guards against a collapsed measurement
  let mb=0,mr=0,nu=0;
  layPanels(k).forEach(p=>{const el=$(p);if(!el)return;
   // No saved spot = a panel added to the screen SINCE the player last arranged it. Park those in
@@ -81,8 +89,9 @@ function layApply(k){
   mb=Math.max(mb,st.y+st.h);mr=Math.max(mr,px+pw);});
  // While EDITING, hold the full canvas so there's empty space to drag a panel out into; a wrap
  // shrink-wrapped to its panels would have nowhere to drop one.
- w.style.width=(layEditing===k?avail:clamp(mr+LAY_PAD,LAY_MINW+LAY_PAD*2,avail))+'px';
- w.style.height=(mb+LAY_PAD)+'px';
+ // The wrap's width property is border-box, so add back padding+border to get the correct size.
+ w.style.width=(layEditing===k?avail+padX+bordX:clamp(mr+LAY_PAD,LAY_MINW+LAY_PAD*2,avail)+padX+bordX)+'px';
+ w.style.height=(mb+LAY_PAD+padY+bordY)+'px';
 }
 /* ---- edit mode ---- */
 function layEditStart(k){
@@ -130,7 +139,12 @@ function laySave(k){
  layPanels(k).forEach(p=>{const el=$(p);if(!el||!el.style.width)return;
   o[p]={x:parseFloat(el.style.left)||0,y:parseFloat(el.style.top)||0,w:parseFloat(el.style.width),h:parseFloat(el.style.height)};
   mb=Math.max(mb,o[p].y+o[p].h);});
- cfg.layouts[k]={p:o,h:mb};w.style.height=(mb+LAY_PAD)+'px';saveCfg();
+ cfg.layouts[k]={p:o,h:mb};
+ // Account for padding+border since the wrap's height is border-box
+ const cs=getComputedStyle(w);
+ const padY=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+ const bordY=parseFloat(cs.borderTopWidth)+parseFloat(cs.borderBottomWidth);
+ w.style.height=(mb+LAY_PAD+padY+bordY)+'px';saveCfg();
 }
 /* ---- wiring ---- */
 /* Every `lay` block gets its ⊞ button bound here — declare one in SCREENS and it's picked up on
