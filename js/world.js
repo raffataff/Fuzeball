@@ -455,7 +455,7 @@ function buildRods(){
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
-    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,laneDir:0,laneCd:0,
+    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
      removedUntil:[]};

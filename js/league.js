@@ -349,31 +349,47 @@ function lgApply(a,b,ga,gb){
 function lgOrder(){const a=LG.teams.map((t,i)=>({i,t}));a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgOrderDiv(tier){const a=LG.teams.map((t,i)=>({i,t})).filter(e=>e.t.div===tier);a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round];return R?R.find(f=>f[0]===LG.playerId||f[1]===LG.playerId):null;}
-/* ---- figurine render image map ---- */
-const RENDER_MAP={cyborg:1,deltaborg:1,mechaMan:1,irnman:1,stormer:1,manJerry:1,manrichie:1,womanMaria:1,womanKimi:1,womanZaneesh:1,womanTanya:1,womanTalia:1,manStumpy:1,alienTamirok:1,alienGrimlot:1,rocko:1,alienKatum:1,alienKodus:1,alienZargon:1};
-function modelRender(id){
- if(!RENDER_MAP[id])return null;
-  const base=id
-  ==='cyborg'?'cyborg':id
-  ==='deltaborg'?'deltaborg':id 
-  ==='irnman'?'irnman':id
-  ==='mechaMan'?'mechaman':id
-  ==='stormer'?'stormer':id
-  ==='rocko'?'rocko2':id
-  ==='manJerry'?'jerry':id
-  ==='manrichie'?'richie':id
-  ==='womanKimi'?'kimi':id
-  ==='womanMaria'?'maria':id
-  ==='womanZaneesh'?'zaneesh':id
-  ==='womanTanya'?'tanya':id
-  ==='womanTalia'?'talia':id
-  ==='alienGrimlot'?'grimlot':id
-  ==='alienTamirok'?'tamirok':id
-  ==='alienKatum'?'katum':id
-  ==='alienKodus'?'kodus':id
-  ==='alienZargon'?'zargon':id
-  ;
- return 'assets/renders/render_'+base+'_cycles.png';
+/* ---- figurine render image map ----
+   model id → the filename stem its Blender renders were exported under. The stem does NOT always
+   match the id (womanAndroid → jennyBot, manrichie → richie, rocko → rocko2, mechaMan → mechaman),
+   and this map is the ONE place that discrepancy is allowed to live — config.js's `mug` paths
+   follow the same convention.
+   This replaces a RENDER_MAP gate plus a ternary ladder whose final `:id` fallback meant an id
+   listed in the gate but missing from the ladder silently resolved to a guessed filename and 404'd
+   on the tape (which is what the dead `manStumpy` entry did). A plain map can't drift like that:
+   no entry means no render, and the tape draws its '?' box, which is a designed state. */
+const RENDER_STEM={
+ cyborg:'cyborg',deltaborg:'deltaborg',irnman:'irnman',mechaMan:'mechaman',stormer:'stormer',
+ rocko:'rocko2',manJerry:'jerry',manrichie:'richie',womanMaria:'maria',womanKimi:'kimi',
+ womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanAndroid:'jennyBot',
+ womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
+ alienKodus:'kodus',alienZargon:'zargon'};
+function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
+/* Stems that HAVE a team-parts matte exported. tools/render_team_masks.py prints this exact line
+   at the end of a run — re-paste it rather than hand-editing.
+   This is a declared list rather than a runtime probe ON PURPOSE. The tape used to just request
+   the mask and let a 404 tell it the file wasn't there. That worked, and it degraded correctly,
+   but it meant every figurine without a matte logged a red 404 in the console on every visit to
+   the lobby — and console errors in a shipping build read as a broken game even when nothing is
+   wrong. So the roster's mask coverage is stated up front and a file is only requested when we
+   already know it exists.
+   sasha and jennyBot are deliberately absent: their mattes rendered empty and they're no longer in
+   the in-game selection, so requesting them would cost a fetch to tint nothing. */
+const MASK_STEMS=new Set([
+ 'cyborg','deltaborg','irnman','mechaman','stormer','rocko2','jerry','richie','maria','kimi',
+ 'talia','tanya','zaneesh','tamirok','grimlot','katum','kodus','zargon']);
+/* Team-parts matte for that same render, from the same camera, with the matte baked into the ALPHA
+   channel. Used as a CSS mask on the tint layer so the tape can colour the KIT and only the kit —
+   skin, hair and eyes are excluded by construction, because they're separate materials in the
+   blend and the matte is cut from config.js's own `teamParts` list by Blender's Cryptomatte
+   Material pass.
+   Alpha, not luminance, is deliberate: `mask-image` keys off alpha, so a plain black-and-white PNG
+   would be fully opaque and the tint would cover the whole portrait.
+   Null for a figurine with no matte — the tape then shows the untinted render it showed before, so
+   the roster can gain masks one figurine at a time with no console noise in between. */
+function modelRenderMask(id){
+ const s=RENDER_STEM[id];
+ return (s&&MASK_STEMS.has(s))?'assets/renders/render_'+s+'_teammask.png':null;
 }
 /* ---- live-match bridge (flow.js/rods.js/ai.js read these) ---- */
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
@@ -447,14 +463,26 @@ function primeMatchExplosions(idA,idB){
    bitmap around, so the tape's own <img> paints from cache with no second decode. Kept to the two
    figurines of the NEXT match only: each decoded portrait is several MB, and a season's worth of
    past opponents accruing in a map would be a slow leak. Re-entering the lobby re-issues nothing.
+   The team-part MASKS are primed on the same pass. They're tiny next to the portraits, but they
+   arrive as a CSS mask-image on a layer stacked over the render, so a late mask would show as the
+   portrait painting untinted and then popping to the team colour — worse than the swipe this
+   function exists to kill. Priming them here means both are warm before the tape is ever revealed.
+   Which masks exist is settled by MASK_STEMS before anything is requested, so this never fetches a
+   file that isn't there. An earlier version probed instead — request the mask, let a 404 report
+   its absence — which degraded correctly but logged a console error per un-exported figurine on
+   every lobby visit, and console errors in a shipping build read as a broken game.
    Pass figurine model IDS, same as primeMatchExplosions. */
 let TAPE_IMG={};
 function primeMatchTape(idA,idB){
  const keep={};
  for(const id of [idA,idB]){
-  const src=id&&modelRender(id);if(!src||keep[src])continue;
-  if(TAPE_IMG[src]){keep[src]=TAPE_IMG[src];continue;}
-  const im=new Image();im.src=src;keep[src]=im;      // a 404 just never decodes; nothing reads this map
+  // modelRenderMask returns null unless MASK_STEMS says the file is there, so nothing here can
+  // request a mask that doesn't exist — no 404, no probe, no console noise.
+  for(const src of [id&&modelRender(id),id&&modelRenderMask(id)]){
+   if(!src||keep[src])continue;
+   if(TAPE_IMG[src]){keep[src]=TAPE_IMG[src];continue;}
+   const im=new Image();im.src=src;keep[src]=im;
+  }
  }
  TAPE_IMG=keep;                                       // anything not in the next match is dropped
 }
@@ -472,10 +500,44 @@ function tapeDwell(cb){
  const cap=(LGC.tapeReadyCap||0)*1000;
  if(cap>0){
   t2=setTimeout(arm,cap);
-  const imgs=[].slice.call($('lgTapeBody').querySelectorAll('.lgFigImg'));
-  Promise.all(imgs.map(im=>im.decode?im.decode().catch(()=>0):0)).then(arm,arm);
+  // The portraits are in the DOM as <img>; the masks are not (they're CSS mask-image on the tint
+  // layer, which exposes no load event), so we wait on the primed Image objects standing in for
+  // them. Both have to be ready or the dwell starts on a portrait that's about to change colour.
+  const imgs=[].slice.call($('lgTapeBody').querySelectorAll('.lgFigImg'))
+              .concat(Object.keys(TAPE_IMG).map(k=>TAPE_IMG[k]));
+  Promise.all(imgs.map(im=>im&&im.decode?im.decode().catch(()=>0):0)).then(arm,arm);
  }else arm();
  return ()=>{clearTimeout(t1);clearTimeout(t2);armed=true;};
+}
+/* The tape's figurine card. renderLgTape and renderCupTape read different data (LG.teams vs cup
+   entrants) but draw the SAME card, and it was copy-pasted between them — so the tint layer would
+   have had to be added twice and kept in sync twice. One builder, two callers.
+   The tint is a layer stacked OVER the portrait, masked to the team parts and composited in
+   `color` blend mode: hue and saturation come from the team colour, luminance stays the render's.
+   That's what keeps the Cycles lighting — the specular hits, the ambient occlusion in the folds,
+   the bounce — instead of flooding the kit with flat colour the way a straight overlay would.
+   `flip` has to be carried onto the tint as well as the portrait, or the mask lands on the mirrored
+   figurine's other side.
+   MASK-IMAGE IS SET INLINE, NOT VIA A CUSTOM PROPERTY. This looks like the uglier option and is
+   the only correct one: a relative url() inside a CSS variable is resolved against the stylesheet
+   that CONSUMES it, not the document. `--mask:url(assets/renders/x.png)` read by a rule in
+   css/styles.css therefore requested css/assets/renders/x.png — a folder that does not exist — so
+   every mask 404'd and no figurine ever tinted. An inline mask-image resolves against the document
+   like the <img> beside it does. The sizing/repeat/position half of the mask stays in the
+   stylesheet; only the URL has to live here. */
+function tapeFig(col,src,mask,flip,name){
+ const f=flip?' flip':'';
+ if(!src)return '<div class="lgTapeFig" style="--tc:'+col+'"><div class="lgFigBox lgFigEmpty">?</div>'+
+                '<div class="lgFigCap">'+name+'</div></div>';
+ const tint=mask?'<div class="lgFigTint'+f+'" style="-webkit-mask-image:url('+mask+
+                 ');mask-image:url('+mask+')"></div>':'';
+ return '<div class="lgTapeFig" style="--tc:'+col+'">'+
+   '<div class="lgFigBox">'+
+    '<img src="'+src+'" class="lgFigImg'+f+'" alt="'+name+'">'+
+    tint+
+   '</div>'+
+   '<div class="lgFigCap">'+name+'</div>'+
+  '</div>';
 }
 function renderLgTape(op){
  const T=LG.teams,me=T[LG.playerId],them=T[op];
@@ -484,19 +546,16 @@ function renderLgTape(op){
  const offA=lgOff(me.bld),defA=lgDef(me.bld),offB=lgOff(them.bld),defB=lgDef(them.bld);
  const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
  const rA=modelRender(me.model),rB=modelRender(them.model);
+ const kA=modelRenderMask(me.model),kB=modelRenderMask(them.model);
  // the caption used to be prefixed with the figurine's emoji ico — pointless beside an actual
  // render of that same figurine, and it was '🤖' on half the roster and '🏃' on the rest.
- const fig=(col,src,flip,name)=>
-  '<div class="lgTapeFig" style="--tc:'+col+'">'+
-   (src?'<div class="lgFigBox"><img src="'+src+'" class="lgFigImg'+(flip?' flip':'')+'" alt="'+name+'"></div>':'<div class="lgFigBox lgFigEmpty">?</div>')+
-   '<div class="lgFigCap">'+name+'</div>'+
-  '</div>';
+ // Card markup lives in tapeFig() so the cup tape draws an identical one from its own data.
  const teamCard=(col,name,off,def,figHtml)=>
   '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
  $('lgTapeBody').innerHTML=
-  teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?'))+
+  teamCard(me.col,me.name,offA,defA,tapeFig(me.col,rA,kA,false,mo?mo.name:'?'))+
   '<div class="lgTapeVs"><span>VS</span></div>'+
-  teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?'));
+  teamCard(them.col,them.name,offB,defB,tapeFig(them.col,rB,kB,true,to?to.name:'?'));
  $('lgTapeRound').textContent='ROUND '+(LG.round+1)+' / '+LG.divs[playerDiv()].fixtures.length;
 }
 function lgPlayMatch(){
@@ -1226,18 +1285,15 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
   const offA=lgOff(me.bld),defA=lgDef(me.bld),offB=lgOff(them.bld),defB=lgDef(them.bld);
   const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
   const rA=modelRender(me.model),rB=modelRender(them.model);
-  // same shape as renderLgTape's fig() — the figurine emoji prefix is gone from both (the caption
-  // sits directly under a render of that figurine, so the mark was never carrying anything).
-  const fig=(col,src,flip,name)=>
-   '<div class="lgTapeFig" style="--tc:'+col+'">'+
-    (src?'<div class="lgFigBox"><img src="'+src+'" class="lgFigImg'+(flip?' flip':'')+'" alt="'+name+'"></div>':'<div class="lgFigBox lgFigEmpty">?</div>')+
-    '<div class="lgFigCap">'+name+'</div></div>';
+  const kA=modelRenderMask(me.model),kB=modelRenderMask(them.model);
+  // Card markup is tapeFig(), shared with renderLgTape — this used to be a second copy of the same
+  // string builder, which is how the two tapes were free to drift apart.
   const teamCard=(col,name,off,def,figHtml)=>
    '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
   $('lgTapeBody').innerHTML=
-   teamCard(me.col,me.name,offA,defA,fig(me.col,rA,false,mo?mo.name:'?'))+
+   teamCard(me.col,me.name,offA,defA,tapeFig(me.col,rA,kA,false,mo?mo.name:'?'))+
    '<div class="lgTapeVs"><span>VS</span></div>'+
-   teamCard(them.col,them.name,offB,defB,fig(them.col,rB,true,to?to.name:'?'));
+   teamCard(them.col,them.name,offB,defB,tapeFig(them.col,rB,kB,true,to?to.name:'?'));
   $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
 }
 function cupWinnerOf(t){return t.res[0]>t.res[1]?t.a:t.b;}

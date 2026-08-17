@@ -67,7 +67,13 @@ function stPred(r){return Math.max(STC.predFloor,(1+(ST(r,'iq')-STC.base)*STC.pr
 // Pure horizontal rotation (Magnus-style) — adds no energy, so it's stable. Only
 // acts above base accuracy, only on goalward shots already near the target cone,
 // and the bend is clamped small — it sweetens good strikes, it can't rescue bad ones.
-function aimAssist(b,r){
+/* noPass — collideRod sets this when the contact that produced this call was NOT a clean front-face
+   boot strike: a clip off the side or back of the foot box (passFaceOK, rods.js), or ANY contact that
+   fell through to the rod capsule, which is the leg rather than the boot. Such a touch still deserves
+   the ordinary goal-ward assist, but it must not be treated as a PASS — bending a stray deflection at
+   the intended receiver is what made phantom passes look deliberate. It suppresses the pass TARGET
+   only; r.passTo itself is left alone, so a later, cleaner contact in the same swing still passes. */
+function aimAssist(b,r,noPass){
  // Decoupled from a hard accuracy gate: every rod gets a BASELINE bend (assistBase) so aiming
  // happens even with no build, and accuracy scales it up toward assistMax (and fades it toward 0
  // below base). Accuracy still matters — it just no longer switches aiming fully off at base.
@@ -75,7 +81,7 @@ function aimAssist(b,r){
  // is a teammate rather than the goal mouth, and it gets its own — larger — bend, cone and speed
  // gate from CONFIG.ai.dribble.pass. A pass is a deliberate, aimed action and travels slower than
  // a shot, so the shot's assistMinVX (20) would skip it entirely.
- const PS=CONFIG.ai.dribble.pass,pass=r.passTo||null;
+ const PS=CONFIG.ai.dribble.pass,pass=(!noPass&&r.passTo)||null;
  const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
  let a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
  if(pass)a=Math.max(a,PS.assist);

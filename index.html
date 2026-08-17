@@ -8,7 +8,7 @@
   <link rel="shortcut icon" href="favicon.ico" />
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
-<title>FUZEBALL — 3D Foosball</title>
+<title>FUZEBALL — Total Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <!-- Self-hosted fonts for offline/Steam builds. 404s harmlessly until tools/fetch-vendor.ps1
@@ -72,24 +72,15 @@
   <div id="fps"></div>
 </div>
 
-<!-- Goal instant replay chrome (js/replay.js): letterbox bars slide in, a pulsing
-     REPLAY tag + skip hint ride them. The HUD dims out underneath (body.replayOn).
-     #repSave is the clip recorder's state (js/capture.js): the save hint, then SAVING once
-     the clip has been promoted, and empty when nothing is recording. All of this is DOM, so
-     none of it ends up in a saved clip — that's canvas only. -->
 <div id="replayUI" class="hidden">
   <div class="repBar top"><span id="repTag"><i></i>REPLAY</span></div>
   <div class="repBar bot"><span id="repSave"></span><span id="repSkip">any key / click — skip</span></div>
 </div>
 
-<!-- LANDING SCREEN. First thing after the intro cinematic, and the screen the intro's logo morph
-     targets (css: #home.introHide / #home.introIn). Four routes, nothing else — a first-time
-     player shouldn't meet the whole match-setup surface before choosing a mode. KICK OFF opens
-     #menu below; LEAGUE/TRAINING keep their original button ids so league.js/training.js bind
-     to them unchanged, they just live on this screen now. -->
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.24</div>
+  <div class="tagline">v0.1.25</div>
+
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
     <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season &middot; upgrades &middot; glory</div></div>
@@ -99,9 +90,7 @@
   <div class="foot">Table football, taken far too seriously</div>
 </div>
 
-<!-- KICK OFF — the quick-match lobby. Keeps id="menu" deliberately: cfg.layouts.menu saves, the
-     .panelWrap CSS and every back-target in customize/options still resolve, so the landing page
-     went in without touching any of them. This screen's guts become the multi-player roster. -->
+<!-- KICK OFF -->
 <div id="menu" class="screen hidden">
   <button id="menuBack" class="optGear backBtn" title="Back">◀</button>
   <button id="btnOptions" class="optGear" title="Options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></button>
@@ -113,19 +102,16 @@
     <span class="rosHint">Press <b>SPACE</b> or a controller's <b>A</b> to take a side &middot; <b>B</b> or <b>✕</b> to leave</span>
     <button class="btn" id="btnStart">START MATCH</button>
   </div>
-  <!-- Two tabs, each with its OWN .panelWrap and its own ⊞ button, so they're arranged and saved
-       independently (SCREENS.menu.lay is an array — see js/layout.js). Match Setup is a tab rather
-       than another column because it's tall: sat under a team panel holding four players it would
-       be shoved off the bottom of the screen. -->
+
   <div class="scrTabs">
     <button class="scrTabBtn on" id="menuTabBtnTeam">Team Select</button>
     <button class="scrTabBtn" id="menuTabBtnRules">Match Setup</button>
   </div>
   <div class="scrTab" id="menuTab_team">
   <div class="panelWrap">
-    <!-- Default reading order: Team 1's kit on the LEFT, who's playing in the MIDDLE, Team 2's
-         kit on the RIGHT. All three are plain .panel elements so the ⊞ editor moves and resizes
-         them; that's what the stable ids are for (SCREENS.menu.lay, js/screens.js). -->
+
+    <!-- KICK OFF -->
+
     <div class="panel kitPanel" id="menuKitPanel0">
       <h3>Team 1 &middot; Kit</h3>
       <div class="kitCol">
@@ -134,9 +120,6 @@
         <div class="kitPal" id="kitPal0"></div>
       </div>
     </div>
-    <!-- ROSTER (js/roster.js). Seat cards + join chips are built in JS; only the shell is here.
-         A side with no seats shows its AI difficulty instead; the dropdown that SETS it lives in
-         the Match Setup tab, so there's one writer for that value. -->
     <div class="panel" id="menuTeamPanel">
       <h3>Team Select</h3>
       <div class="rosCols">
@@ -162,9 +145,7 @@
   </div>
   <div class="scrTab hidden" id="menuTab_rules">
   <div class="panelWrap">
-    <!-- Split three ways so this tab is worth arranging (and one panel doesn't float alone in a
-         1200px wrap). Every control id is unchanged — only the grouping moved. menuSetupPanel
-         keeps its id so existing cfg.layouts saves still resolve it. -->
+    
     <div class="panel" id="menuSetupPanel">
       <h3>Match Rules</h3>
       <div class="row"><label><span class="lblR">Team 1</span> AI</label><select id="setDiffRed"><option value="rookie">Rookie</option><option value="pro" selected>Pro</option><option value="legend">Legend</option></select></div>
@@ -531,11 +512,7 @@
   <div class="btnRow"><button class="btn" id="lgSEContinue">Continue ▶</button></div>
 </div>
 
-<!-- Champions Cup lobby. Deliberately the SAME shape as #league: .lgWrap of .panels, a ⊞ layout
-     button, standings-slot replaced by the bracket. It used to be a bare bracket + a Control
-     select, which meant the one screen you spend a whole post-season on couldn't show your squad,
-     your parts, the rules a tie would be played to, or anything about the team you were about to
-     face. Every panel here has a twin in the league lobby and renders through the same helpers. -->
+<!-- Champions Cup lobby -->
 <div id="championsCup" class="screen hidden">
   <button id="cupEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
@@ -550,8 +527,7 @@
         <h3>Next Tie</h3>
         <div class="lgFixture" id="cupFixture"></div>
       </div>
-      <!-- Control sits ABOVE Play Tie: it configures the thing the button starts, and below it the
-           player reached the button first and only found the lock afterwards. -->
+
       <div class="panel" id="cupSettingsPanel">
         <h3>Match Settings</h3>
         <div class="lgRuleNote">Shared with the league — changing one changes both.</div>
@@ -590,13 +566,22 @@
   </div>
 </div>
 
-<!-- Ordered loader. Three.js r128 + GLTFLoader each try their LOCAL vendored copy first
-     (offline/Steam), then fall back to the CDN so the game still runs before vendor/ is
-     populated — run tools/fetch-vendor.ps1 once to fill it. Game modules are plain
-     (non-module) scripts sharing one global scope and work from file://, http(s), and an
-     Electron/Steam wrapper alike; strict sequential loading preserves their order. -->
+<!-- Ordered loader -->
 <script>
 (function(){
+
+ var BUILD='2026-08-16';
+ var FILE=(location.protocol==='file:');
+ var DEV=!FILE&&(/^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|192\.168\.|10\.)/.test(location.hostname)
+                 ||!!location.port);
+ var STAMP=DEV?('dev'+Date.now()):BUILD;
+
+ function stamped(url){
+  if(FILE||/^https?:\/\//i.test(url))return url;
+  return url+(url.indexOf('?')<0?'?v=':'&v=')+STAMP;
+ }
+ if(DEV)console.log('%cFuzeball DEV — scripts cache-busted, every reload is fresh','color:#5a8cff');
+
  var boot=[
   {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
@@ -607,13 +592,11 @@
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;
-  // Only the two vendor libs (multi-source, UMD) get a stall timeout — they're safe to re-run if a
-  // slow load lands late. Game modules are single-source and MUST NOT double-execute (duplicate
-  // top-level const throws), so they rely on onload/onerror alone, which local files fire reliably.
+
   var guard=srcs.length>1;
   (function attempt(){
    if(i>=srcs.length){console.error('Fuzeball: failed to load',srcs);done();return;}
-   var s=document.createElement('script'),fired=false;s.src=srcs[i++];s.async=false;
+   var s=document.createElement('script'),fired=false;s.src=stamped(srcs[i++]);s.async=false;
    function ok(){if(fired)return;fired=true;done();}
    function fail(){if(fired)return;fired=true;attempt();}   // local missing → try the CDN fallback
    s.onload=ok;s.onerror=fail;
@@ -622,8 +605,7 @@
   })();
  }
  (function next(k){if(k>=boot.length)return;loadOne(boot[k],function(){next(k+1);});})(0);
- // Failsafe: if intro.js never takes charge (script error / missing file), drop the
- // opaque intro cover + un-hide the menu so the game can't hang behind it.
+
  setTimeout(function(){
   var i=document.getElementById('intro');
   if(i&&!i.dataset.live){i.style.display='none';var m=document.getElementById('home');if(m)m.classList.remove('introHide');}

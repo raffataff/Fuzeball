@@ -54,6 +54,221 @@ function inFootRange(r,b,back){
  for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;if(Math.abs(bz-(r.baseZ[i]+r.offset))<hz)return true;}
  return false;
 }
+// ---- foot-box geometry, shared by the trap sweep guard ---------------------------------------
+// Distance from a ball centre to man i's foot box with the rod at angle `a` — the EXACT transform
+// collideRod's foot-box pass uses (physics.js), lifted into one place so the AI's prediction of a
+// contact and the physics that actually resolves it cannot drift apart. The contact normal and the
+// world-space closest point go into the _fb scratch instead of a returned object: this runs per
+// man, per arc sample, per frame, and allocating there is pure GC churn on a hot path.
+// `foff` (optional) overrides the rod's slide offset for this test — the strike gate below uses it to
+// ask the question at a PREDICTED offset (where the men will have slid to mid-swing) rather than only
+// at the one they occupy this frame. Omitted ⇒ r.offset, i.e. every existing caller is unchanged.
+const _fb={nx:0,ny:0,cwx:0,cwy:0};
+function footBoxDist(r,a,i,px,py,pz,foff){
+ const dir=r.kickDir,sa=Math.sin(a),ca=Math.cos(a);
+ const offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*dir;
+ const fx=r.x+sa*ARM*FOOT_T,fy=ROD_H-ca*ARM*FOOT_T;
+ const bcx=fx+offx*sa+offy*ca,bcy=fy-offx*ca+offy*sa,fz=r.baseZ[i]+(foff===undefined?r.offset:foff);
+ const dxw=px-bcx,dyw=py-bcy,dzw=pz-fz;
+ const lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa,lz=dzw;                       // world → box-local
+ const clx=clamp(lx,-FOOT_BOX.x,FOOT_BOX.x),cly=clamp(ly,-FOOT_BOX.y,FOOT_BOX.y),clz=clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
+ const cdx=lx-clx,cdy=ly-cly,cdz=lz-clz;
+ const d=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz);
+ if(d<1e-4){_fb.nx=dir;_fb.ny=0;}else{_fb.nx=(cdx*sa+cdy*ca)/d;_fb.ny=(-cdx*ca+cdy*sa)/d;}
+ _fb.cwx=bcx+clx*sa+cly*ca;_fb.cwy=bcy-clx*ca+cly*sa;
+ return d;
+}
+// ---- trap sweep guard --------------------------------------------------------------------------
+// "Would rotating this rod from angle a0 to a1 drive a foot box INTO the ball and shove it toward
+// our OWN goal?" This is the check the trap entry was missing, and the reason a catch sometimes
+// read as a backward kick: entering a trap does not freeze the rod — rods.js eases r.angle to the
+// trap target, and that rotation is a MOVING box. Anything standing in the arc is struck along the
+// contact normal, with trap.holdGrip (0.55) lerping the boot's own velocity into the ball on top of
+// the impulse. When that normal points at our net, the "trap" is an own-goal nudge.
+//
+// inFootRange/footStuck cannot answer this. It is a STATIC question — could a foot touch the ball
+// from where everything sits right now — over a rectangle whose back depth (footRangeBack 7.0) is
+// DEEPER than the entire catch window (trap.back −5.8). Gating entry on `!footStuck` therefore
+// refuses 100% of traps, which is exactly why it was left out of this block to begin with.
+//
+// So: sample the arc, rebuild the real foot box at each sample, and refuse only when a sample is in
+// contact AND the boot is driving INTO the ball along the normal AND that normal points goal-ward.
+// Two contact classes stay legal, and they are the traps worth keeping:
+//   • the boot is RETREATING from the ball along the normal (cv·n <= 0) — there is no shove;
+//   • the impulse points UPFIELD or straight down (n·x̂·dir >= −pushDot) — the ball is ahead of the
+//     boot, so the tilt closes a lip BEHIND it, which is the catch working as designed.
+// Only the rotational term is tested. r.vz (the slide) is deliberately excluded: a z-knock is the
+// evade/clearOffset problem, not this one, and man-selection's transient slide would otherwise flip
+// the verdict frame to frame.
+function sweepClips(r,b,a0,a1){
+ const SW=AIC.trap.sweep;
+ if(!SW||!SW.on||a0===a1)return false;
+ const n=Math.max(2,SW.samples|0),dir=r.kickDir,reach=BALL_R*FOOT_BOX_REACH+SW.pad;
+ const p0=b.m.position,step=SW.sweepT/(n-1);
+ const w=(a1>a0)?1:-1;                                 // angular direction of the ease; only its SIGN is used
+ for(let s=0;s<n;s++){
+  const a=a0+(a1-a0)*(s/(n-1)),t=step*s;
+  // Advance the BALL along the arc too, so one rolling into the swing is judged where it will
+  // actually be when the boot arrives rather than where it sits at the instant of the test.
+  const px=p0.x+b.v.x*t,py=p0.y+b.v.y*t,pz=p0.z+b.v.z*t;
+  for(let i=0;i<r.baseZ.length;i++){
+   if(!manLive(r,i))continue;
+   if(Math.abs(pz-(r.baseZ[i]+r.offset))>FOOT_BOX.z+reach)continue;    // cheap z reject before the transform
+   if(footBoxDist(r,a,i,px,py,pz)>reach)continue;                      // this sample never touches the ball
+   if(_fb.nx*dir>=-SW.pushDot)continue;                                // impulse goes upfield / sideways / down — safe
+   // Contact-point velocity for a unit angular rate about the rod pivot (r.x, ROD_H). The magnitude
+   // is irrelevant: we only need to know whether the boot closes on the ball or backs off it.
+   if((-(_fb.cwy-ROD_H)*w)*_fb.nx+((_fb.cwx-r.x)*w)*_fb.ny<=0)continue; // boot retreating — no shove
+   return true;                                                        // this catch would knock the ball back
+  }
+ }
+ return false;
+}
+// Is the ball actually within contact reach of a live foot at rod angle `a`? A sweep that clips
+// nothing but also never touches the ball is an EMPTY trap: the action would latch, pin nothing,
+// and time out into a trapShot at thin air. Pairs with trapAngle below.
+function footHolds(r,b,a){
+ const p=b.m.position,reach=BALL_R*FOOT_BOX_REACH;
+ for(let i=0;i<r.baseZ.length;i++){
+  if(!manLive(r,i))continue;
+  if(Math.abs(p.z-(r.baseZ[i]+r.offset))>FOOT_BOX.z+reach)continue;
+  if(footBoxDist(r,a,i,p.x,p.y,p.z)<=reach)return true;
+ }
+ return false;
+}
+/* ---- strike gate: contact-range check for AIMED swings ------------------------------------------
+   "If I commit THIS kick style right now, will a live boot genuinely be on the ball while its power
+   window is open?" Asked BEFORE kickRod, so an aimed action can be REFUSED instead of swung at air.
+
+   Why the ordinary kick gate isn't enough for a pass. `(overFoot||inFront) && aligned` is a STATIC
+   snapshot, taken on the rod's DELAYED perception (aiView), and it was tuned for the normal swing —
+   whose boot is on the ball almost immediately. An aimed swing carries two lags that the snapshot
+   knows nothing about, and they compound:
+     • perception — DIFFS.reactDelay, up to ~0.25s once a poor rea stat and fatigue scale it, so `bp`
+                    is where the ball WAS, not where it is;
+     • the swing  — passShot contacts at powFrom..powTo = 0.08–0.20s AFTER the commit, roughly double
+                    the normal curve, because a pass is deliberately soft and slow.
+   ~0.45s of combined error is ~9 units of ball travel at midfield pace — comfortably more than the
+   whole gap between two men. The rod was passing to where the ball had been; by contact it had rolled
+   between the players. That is the whiff. When it did connect it was often a corner clip off the SIDE
+   of a foot box, which collideRod still resolves as a contact and which then collected the pass
+   aim-assist — a deflection dressed up as a pass.
+
+   So: predict rather than snapshot. Replay the EXACT swing curve updateRods will run (swingAngleAt),
+   advance the REAL ball to each sample time, advance the men's slide too, and ask footBoxDist — the
+   same transform collideRod resolves against — whether a boot is actually there. Three conditions,
+   all required:
+     reach  — the closest sample must sit inside footBoxReach + pad of the ball;
+     face   — the contact normal must point FORWARD (dir-relative). A z-side clip reads ~0 and one
+              from behind reads negative: that is a deflection, not a pass;
+     centre — the ball must be within zFrac of the boot's true z half-reach, not hanging off a corner.
+   Only the styles listed in strikeGate.styles are gated. The plain kick is deliberately NOT among
+   them, so ordinary clearing — the AI's most important reflex — is byte-identical to before, and
+   strikeGate.on:false restores the whole pre-gate behaviour. ---------------------------------------- */
+// The swing's rod-LOCAL angle T seconds into style block KS, ramping from a0 — the angle the swing
+// STARTS from, which kickRod captures as r.kickA0. This is the chain in updateRods, lifted verbatim,
+// so prediction and playback cannot drift apart: change the curve and both follow it.
+function swingAngleAt(KS,a0,T){
+ const rampA0=KS.windup>0?KS.windupA:a0;
+ if(T<KS.windup) return a0+(KS.windupA-a0)*(T/KS.windup);
+ if(T<KS.strike) return rampA0+(KS.strikeA-rampA0)*((T-KS.windup)/(KS.strike-KS.windup));
+ if(T<KS.hold)   return KS.strikeA;
+ if(T<KS.drop)   return KS.strikeA*(1-(T-KS.hold)/(KS.drop-KS.hold));
+ return 0;
+}
+// Scratch result — this sits on the kick path, per rod, so it must not allocate. Fields: ok (all three
+// conditions met), d (closest approach), face (dir-relative normal), dz (z offset from that boot), t
+// (when in the swing), man (which figurine). Everything past `ok` exists for the kick-log trace.
+const _sp={ok:false,d:1e9,face:0,dz:0,t:0,man:-1};
+function strikeProbe(r,b,style){
+ const SG=AIC.strikeGate,KS=styleCfg(style);
+ const reach=BALL_R*FOOT_BOX_REACH,zReach=FOOT_BOX.z+reach;
+ const n=Math.max(2,SG.samples|0),dir=r.kickDir;
+ // Never sample before KS.windup: during the pull-back the boot is travelling AWAY from the ball, so
+ // a "contact" there is the backswing brushing it — the opposite of a pass. lead can only widen the
+ // window into the forward sweep, never into the windup.
+ const t0=Math.max(KS.windup,KS.powFrom-SG.lead),t1=Math.max(t0,Math.min(KS.drop,KS.powTo+SG.lag));
+ const a0=r.angle/(dir||1);                          // the swing starts from where the rod IS — kickRod's kickA0
+ const p=b.m.position,v=b.v,room=r.target-r.offset;
+ // Exponential friction, integrated exactly: ∫₀ᵗ e^(−k·s) ds. A rolling ball sheds real speed at
+ // floorFric over a 0.2s pass window, and OVER-predicting its travel would refuse passes that would
+ // actually have connected — the gate has to be honest in both directions.
+ const fr=(p.y<=BALL_R+SG.groundY)?PHY.floorFric:PHY.airFric;
+ _sp.ok=false;_sp.d=1e9;_sp.face=0;_sp.dz=0;_sp.t=0;_sp.man=-1;
+ for(let s=0;s<n;s++){
+  const t=t0+(t1-t0)*(n>1?s/(n-1):0);
+  const k=fr>1e-6?(1-Math.exp(-fr*t))/fr:t;
+  const px=p.x+v.x*k, pz=p.z+v.z*k;
+  const py=Math.max(BALL_R,p.y+v.y*t-0.5*GRAV*t*t);  // ballistic in y, floored — a rolling ball can't sink
+  const a=swingAngleAt(KS,a0,t)*dir;                 // rod-local → world, exactly as updateRods writes it
+  // The men keep sliding while the swing runs. Lead the offset by the rod's CURRENT slide velocity,
+  // clamped to the room still left to r.target so a decelerating rod is never predicted past it.
+  const lead=SG.slideLead?clamp(r.slideV*t,Math.min(0,room),Math.max(0,room)):0;
+  const foff=r.offset+lead;
+  for(let i=0;i<r.baseZ.length;i++){
+   if(!manLive(r,i))continue;
+   const dz=pz-(r.baseZ[i]+foff);
+   if(Math.abs(dz)>zReach+1)continue;                // cheap z reject before the transform
+   const d=footBoxDist(r,a,i,px,py,pz,foff);
+   const face=_fb.nx*dir;
+   const ok=d<=reach+SG.pad && face>=SG.faceDot && Math.abs(dz)<=zReach*SG.zFrac;
+   // A VALID contact always wins; among equally valid (or equally invalid) samples keep the CLOSEST,
+   // so a refusal reports the near-miss that actually happened rather than an arbitrary man.
+   if((ok&&!_sp.ok)||(ok===_sp.ok&&d<_sp.d)){_sp.ok=ok;_sp.d=d;_sp.face=face;_sp.dz=dz;_sp.t=t;_sp.man=i;}
+  }
+ }
+ return _sp;
+}
+/* The gate itself. `bv` is the rod's PERCEIVED ball (the aiView proxy); the probe runs on bv.real by
+   default, because "will the boot touch it" is a physics question rather than a perception one —
+   reaction lag belongs in WHEN a rod decides, not in whether the decision is geometrically possible.
+   Any style not listed in strikeGate.styles returns true, so the normal kick path is untouched. */
+function strikeOn(r,bv,style){
+ const SG=AIC.strikeGate;
+ if(!SG||!SG.on)return true;
+ if(SG.styles.indexOf(style||'kick')<0)return true;
+ const b=(SG.useReal&&bv&&bv.real)?bv.real:bv;
+ if(!b||b.scored)return false;
+ if(b.v.length()>SG.maxBallSpeed){                    // too quick to be PLACED by a soft, aimed swing
+  if(dbgLogRod===r)dbgRod(r,'GATE:'+(style||'kick').toUpperCase(),'refused — ball at '+b.v.length().toFixed(0)+'u/s > maxBallSpeed '+SG.maxBallSpeed);
+  return false;
+ }
+ const c=strikeProbe(r,b,style);
+ if(!c.ok&&dbgLogRod===r)dbgRod(r,'GATE:'+(style||'kick').toUpperCase(),
+  'refused — d='+c.d.toFixed(2)+'/'+(BALL_R*FOOT_BOX_REACH+SG.pad).toFixed(2)
+  +' face='+c.face.toFixed(2)+'/'+SG.faceDot+' dz='+c.dz.toFixed(2)
+  +'/'+((FOOT_BOX.z+BALL_R*FOOT_BOX_REACH)*SG.zFrac).toFixed(2)+' at t='+c.t.toFixed(3)+' man='+c.man);
+ return c.ok;
+}
+// ---- per-ball trap angle ------------------------------------------------------------------------
+// The catch target is NOT the fixed trap.angle any more; it is the DEEPEST angle on the way there
+// whose sweep is clean. This is what keeps the guard above from disabling the feature outright.
+// The boot's box sits at rel ≈ +0.40 at rest and rel ≈ −2.36 at trap.angle −0.5, so committing to
+// the full tilt means ~2.8u of backward travel EVERY time — and any ball already inside that path
+// gets shoved goal-ward, which is precisely the knock-back. Walking the arc outward instead gives:
+//   • ball at rel ≈ −2.5..−1.0 → target 0 (rest). It is already inside the resting box, so the boot
+//     pins it flat and never travels. This is how the dribble has always held a ball (see the note
+//     on the r.act==='dribble' branch in rods.js) — the hold is holdRest 0 / holdGrip 0.55 in
+//     collideRod, not the angle, so a flat boot pins perfectly well.
+//   • ball at rel ≈ −0.5..+0.5 → full trap.angle. The boot is already behind it, so the tilt closes
+//     a lip rather than sweeping through, and the catch looks like a deliberate catch.
+//   • deeper than ≈ −3 → null. Genuinely unreachable: no angle puts a boot on the ball without
+//     travelling through it first. Entry is refused and the ball falls to the evade action, which
+//     slides the rod off it exactly as before.
+// Returns the world-space angle to hold, or null if no angle both clears the sweep and reaches.
+function trapAngle(r,b,a0,aT){
+ const SW=AIC.trap.sweep,n=Math.max(1,SW.clampSteps|0);
+ if(!SW.on)return footHolds(r,b,aT)?aT:null;           // guard off = old fixed-target behaviour
+ let best=null;
+ for(let s=0;s<=n;s++){
+  const a=a0+(aT-a0)*(s/n);
+  if(sweepClips(r,b,a0,a))break;                       // first clipping depth ends the walk
+  best=a;
+ }
+ if(best===null)return null;
+ if(Math.abs(best-a0)>1e-6&&Math.abs(best-aT)>1e-6&&SW.floor>0&&Math.abs(best-a0)<SW.floor)best=a0;
+ return footHolds(r,b,best)?best:null;
+}
 // Nearest slide offset where NO live foot is within cz of the ball z bz — i.e. the rod is z-clear
 // of the ball. `prefer` (−1/0/+1) restricts the search to one side of the current offset (used by
 // evade to step AWAY from the ball rather than through it). Candidates are each foot's ±cz edge
@@ -641,15 +856,28 @@ function passPick(r,bx,bz){
    // abort killed the trap one frame after it began (why traps were never seen). The forward `front`
    // bound + the directional own-goal guard are the own-goal guards instead — the latter also aborts
    // a trap whose ball has DRIFTED behind the feet toward our net since it was caught.
-   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<ogGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;}
+   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<ogGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;}
   }else if(TR.on&&r.aiIQ&&!r.act&&!dribFirst&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ
            &&approach>TR.minApproach&&approach<TR.maxApproach&&goalDist>ogGuard){
-   // Entry commits to ONE man — the live man nearest the ball in z — and remembers where the ball
-   // was caught. Holding the man fixed for the whole trap is what stops the man-index hysteresis
-   // re-picking a neighbour mid-carry and dragging the boot off the ball it is dribbling.
-   let tm=-1,td=1e9;
-   for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const d=Math.abs(bp.z-(r.baseZ[i]+r.offset));if(d<td){td=d;tm=i;}}
-   r.act='trap';r.actT=0;r.trapMan=tm;r.trapZ0=bp.z;r.trapDir=0;   // not gated on r.raise — a slow ball at an aligned foot is caught directly, latched or not
+   /* SWEEP GUARD — the last gate, and deliberately the most expensive one, so it only runs on the
+      handful of frames where every cheap test has already passed. Everything above asks "is this
+      ball trappable in principle"; this asks the one question that was missing — "does the rotation
+      that STARTS the trap swing a boot through it on the way?" Entry does not freeze the rod:
+      rods.js immediately eases r.angle to TR.angle, and a ball standing in that arc is struck along
+      the contact normal and dragged by holdGrip. World angles both sides (r.angle is already
+      ×kickDir; TR.angle is rod-local, so it needs the multiply) — sweepClips rebuilds collideRod's
+      geometry verbatim and that pass uses r.angle raw. */
+   const ta=trapAngle(r,best,r.angle,TR.angle*r.kickDir);
+   if(ta===null){
+    if(dbgLogRod===r)dbgRod(r,'TRAP-VETO','no clean catch angle: rel='+relReal.toFixed(1)+' dz='+dz.toFixed(2)+' a='+r.angle.toFixed(2)+'->'+(TR.angle*r.kickDir).toFixed(2));
+   }else{
+    // Entry commits to ONE man — the live man nearest the ball in z — and remembers where the ball
+    // was caught. Holding the man fixed for the whole trap is what stops the man-index hysteresis
+    // re-picking a neighbour mid-carry and dragging the boot off the ball it is dribbling.
+    let tm=-1,td=1e9;
+    for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const d=Math.abs(bp.z-(r.baseZ[i]+r.offset));if(d<td){td=d;tm=i;}}
+    r.act='trap';r.actT=0;r.trapMan=tm;r.trapZ0=bp.z;r.trapDir=0;r.trapA=ta;  // not gated on r.raise — a slow ball at an aligned foot is caught directly, latched or not
+   }
   }
   if(r.act==='trap'){
    r.raise=false;r.behindFlag=false;       // trap owns the angle (updateRods) — latch released
@@ -672,7 +900,7 @@ function passPick(r,bx,bz){
        carried ball crosses the probe midpoint. ---- */
     if(tdz>TR.holdZ){                       // contact lost — not a trap any more
      if(dbgLogRod===r)dbgRod(r,'TRAP-LOST','tdz='+tdz.toFixed(2)+' > holdZ '+TR.holdZ);
-     r.act=null;r.trapMan=-1;r.trapDir=0;
+     r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;
     }else{
      const ev=shotEval(r.team,bp.x,bp.z);r.aimEv=ev;     // also feeds the 'Shot Lanes' debug layer
      if(!r.trapDir){
@@ -684,13 +912,16 @@ function passPick(r,bx,bz){
      }
      const timeUp=r.actT>TR.settleT+TR.holdT;
      const open=ev.best.clr>=TR.lineClear;
-     if((open||timeUp)&&tdz<TR.alignZ&&r.kickT<0&&r.cd<=0){
+     // strikeOn is the last word: tdz only says the ball is in the boot's z lane, not that the SCOOP
+     // will land on it. A trapped ball that has crept out from under the boot (or is being nudged
+     // along by the carry) falls through to the timeUp branch and is released instead of scooped at.
+     if((open||timeUp)&&tdz<TR.alignZ&&r.kickT<0&&r.cd<=0&&strikeOn(r,best,'trapShot')){
       if(dbgLogRod===r)dbgRod(r,'TRAPSHOT',(open?'lane open':'hold expired')+' clr='+ev.best.clr.toFixed(1)+' rel='+relReal.toFixed(1)+' tdz='+tdz.toFixed(2)+' carried='+(bp.z-r.trapZ0).toFixed(1));
       kickRod(r,'trapShot');                // scoop shot with dedicated trap power window
       r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
-      r.trapMan=-1;r.trapDir=0;shot=true;
+      r.trapMan=-1;r.trapDir=0;r.trapA=null;shot=true;
      }else if(timeUp){                      // held long enough but never squared up — give the ball back
-      r.act=null;r.trapMan=-1;r.trapDir=0;
+      r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;
      }else{
       /* Dribble. The boot must STAY ON the ball to push it, so the man is aimed a short carryLead
          PAST the ball, not at the far end of the travel budget: targeting bp.z ± slideMax (7u) — as
@@ -784,8 +1015,13 @@ function passPick(r,bx,bz){
        a teammate has a better outlet — it must beat the shot by pass.bias, so this can't decay into
        a side that never shoots. */
     const pk=open?null:passPick(r,bp.x,bp.z);
+    // …and only if the pass swing will genuinely CONNECT. The dribble releases on the control
+    // tolerance (ddz<holdZ), which is looser than a strike needs, and passShot contacts ~0.2s after
+    // the commit — plenty of time for a nudged ball to slide out from under the boot. Failing the
+    // gate doesn't cancel the release; it just plays the ordinary swing instead of an aimed one.
     const wantPass=!!pk&&DR.pass.on&&DR.pass.roles.indexOf(r.role)>=0
-                   &&pk.score>dev.best.clr*DR.pass.shotBias+DR.pass.bias;
+                   &&pk.score>dev.best.clr*DR.pass.shotBias+DR.pass.bias
+                   &&strikeOn(r,best,'pass');
     if(dbgLogRod===r)dbgRod(r,wantPass?'DRIB-PASS':'DRIB-HIT',
      (open?'way forward open':arrived?'arrived':pressed?'closed down':'time up')
      +' out='+outNow.toFixed(1)+' moved='+(bp.z-r.dribZ0).toFixed(1)
@@ -925,7 +1161,12 @@ function passPick(r,bx,bz){
    let aimAt=null,pk=null;
    if(PS.on&&PS.onKick&&r.aiIQ&&PS.roles.indexOf(r.role)>=0&&r.aimEv&&r.aimEv.best.clr<PS.onKickClr){
     pk=passPick(r,bp.x,bp.z);
-    if(pk&&pk.clr>=PS.minClear)aimAt={x:pk.x,z:pk.z};
+    // The pass is only ON if a boot will actually be on the ball when the SOFT pass curve contacts
+    // (~0.08–0.20s from here — see strikeOn). canKick's inFront window is over 4u wide and reads a
+    // delayed ball, which is fine for the normal swing that fires immediately after it and hopeless
+    // for one that lands a fifth of a second later. Refused ⇒ aimAt stays null and this becomes an
+    // ordinary kick, which is exactly the behaviour that was already correct.
+    if(pk&&pk.clr>=PS.minClear&&strikeOn(r,best,'pass'))aimAt={x:pk.x,z:pk.z};
    }
    if(aimAt&&dbgLogRod===r)dbgRod(r,'PASS','→ '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1)+' shotClr='+r.aimEv.best.clr.toFixed(1));
    kickRod(r,aimAt?'pass':null,aimAt);

@@ -13,7 +13,7 @@ const CONFIG = {
 
   /* ---- logo ----------------------------------------------------------- */
   logo:{
-   src:'assets/fuzeball_logo.png',  // path to the logo image
+   src:'assets/fuzeball_logo_TC.png',  // path to the logo image
    width:460,                       // max width in px
    glow:'#5090ff',                  // glow colour for the drop-shadow + pulse
    glowSize:28,                     // base glow spread (px)
@@ -155,7 +155,7 @@ const CONFIG = {
    // wall-corner pockets behind the keeper line. Tune per table; `mult` optional (defaults to
    // CONFIG.deadball.zoneMult). Omit `deadzones` entirely for a table with no dead pockets.
    deadzones:[
-    {xMin:46, zMin:16.3}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
+    {xMin:46, zMin:16.}   // corner pocket (all 4 corners); uses CONFIG.deadball.zoneMult
    ]
   },
   arena:{
@@ -165,7 +165,7 @@ const CONFIG = {
    room:'fuzeball_room_arena.glb',          // arcade-room backdrop (relative to folder)
    defTheme:'neon',
    defSkin:'standard',
-   skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena.glb'} },
+   skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena_standard.glb'} },
    rods:{folder:'assets/tables/arena/rods/'},   // sci-fi rods (GLBs not built yet -> per-size fallback to shared set)
    // ---- bowl shape (only read when collision:'bowl'). All radii in table units;
    //      tweak and reload. tools/build_arena_table.py mirrors these numbers. ----
@@ -231,7 +231,7 @@ const CONFIG = {
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
    rods:{folder:'assets/tables/circuit/rods/'},   // glowing-circuit rods (GLBs not built yet -> per-size fallback to shared set)
    deadzones:[
-    {xMin:46, zMin:16.30}   // same wall-corner pockets as classic (walls sit at the same x/z)
+    {xMin:46, zMin:16.}   // same wall-corner pockets as classic (walls sit at the same x/z)
    ]
   }
  },
@@ -407,7 +407,7 @@ ai:{
       // --- foot-trap break: drop a raised rod when a slow ball is pinned right at a foot.
    //     (NOTE: previously referenced but never defined — made the check dead code.) ---
    footTrapSlow:38.0,                         // ball speed under this is "pinned"
-   footTrapZ:0.8,                            // ball within this z of any foot counts as "at the foot"
+   footTrapZ:1.2,                            // ball within this z of any foot counts as "at the foot"
 
    // --- trap action (r.act='trap'): a slow ball at/behind the men is PINNED under the boot
    //     instead of being swung at — the rod eases to a shallow angle so the foot box sits at
@@ -479,6 +479,44 @@ ai:{
                         //     own goal. GK sits ~7.5u from its line, so at 16 the keeper NEVER traps a ball behind
                         //     it (correct — that catch can only go into the net); the DEF (~22.5u out) still can.
                         //     Lower toward the FRONT value to let the keeper trap behind again (at own-goal risk).
+      // --- SWEEP GUARD (the knock-back fix). Entering a trap does NOT freeze the rod: rods.js eases
+      //     r.angle to `angle` above, and that rotation drags an oriented box through space. A ball
+      //     standing in that arc is struck along the contact normal and, with holdGrip 0.55 lerping
+      //     the boot's own velocity into it, dragged as well — so when the normal points at our net
+      //     the catch IS a backward kick. That is the "trapped it into my own half" case.
+      //     Why footStuck/inFootRange can't do this job: it is a STATIC rectangle whose back depth
+      //     (footRangeBack 7.0) is DEEPER than this whole catch window (back −5.8), so `!footStuck`
+      //     on entry refuses 100% of traps. This tests the ACTUAL swept arc instead, and refuses
+      //     only the contacts whose impulse is goal-ward — see sweepClips() in ai.js.
+      //     NET EFFECT ON FEEL: the usable catch band tightens from `back` −5.8 to roughly the
+      //     boot's RESTING reach (rel ≈ −2.5), because a ball further back than that cannot be
+      //     reached without the boot travelling through it first — there is no angle that gets a
+      //     lip behind it without shoving it there. Balls now refused fall through to the evade
+      //     action, which slides the rod off them exactly as it did before.
+      sweep:{
+         on:true,          // false = pre-fix behaviour (tilt into the ball regardless)
+         samples:7,        // arc samples from the CURRENT angle to `angle`. The box is ~2.9u wide in
+                        //   x and the arc sweeps ~5.8u, so 7 steps leaves no gap wider than the box
+                        //   itself — nothing tunnels between samples. 5 is coarse, 9 is thorough.
+         sweepT:0.12,      // seconds the ease takes (≈1/lerp, rounded up). ONLY used to advance the
+                        //   BALL along the arc, so one rolling into the swing is judged where it
+                        //   will be when the boot arrives. 0 = test the ball's current spot only.
+         pad:0.15,         // extra contact slop beyond BALL_R×footBoxReach. Refuses near-misses too,
+                        //   since the ball keeps rolling after the test. RAISE THIS FIRST if a
+                        //   knock-back still slips through.
+         clampSteps:10,    // resolution of the per-ball angle walk (trapAngle in ai.js): the catch
+                        //   targets the DEEPEST tilt on the way to `angle` whose sweep stays clean,
+                        //   instead of always committing to `angle` and shoving whatever is in the
+                        //   path. 10 steps over a 0.5 rad arc = 0.05 rad granularity. Higher = finer
+                        //   (and more sweepClips calls, though only on the frame a trap is entered).
+         floor:0.08,       // snap-to-rest deadband, radians. A clamped target this shallow isn't a
+                        //   visible tilt anyway, so collapse it to the resting angle and let the men
+                        //   pin the ball flat rather than creeping a few degrees. 0 = no snapping.
+         pushDot:0.2       // how goal-ward the impulse normal must be to count as a knock-back
+                        //   (refuse when n·x̂·dir < −this). 0 = refuse ANY rearward component
+                        //   (strictest, costs the most legitimate traps); 0.5 = only near head-on
+                        //   shoves. Lower to catch more knock-backs, raise if good traps vanish.
+      },
       settleT:0.35,       // CATCH length: hold still this long to kill the ball before starting to carry it.
       // --- CARRY phase: dribble the pinned ball sideways looking for a shooting lane. ---
       holdT:3.3,          // max carry AFTER settleT. Ball is shot when this expires whatever the lane looks like.
@@ -652,7 +690,7 @@ ai:{
          shotBias:1.0,        // multiplier on the shot's clearance in that comparison (>1 = shoot-happy)
          onKick:true,         // ALSO redirect a NORMAL kick into a pass when the shot is covered — so
                               //   build-up play happens even when no dribble was needed/possible.
-         onKickClr:1.2,       // …only when the best lane clears by less than this (a covered shot)
+         onKickClr:1.8,       // …only when the best lane clears by less than this (a covered shot)
          every:0.2,           // seconds between pass evaluations per rod (cached on r.passEv; the scan is
                               //   the priciest thing in the AI, so don't run it per step)
          assist:0.16,         // aim-assist bend (rad) toward the receiver. Bigger than the shot assist
@@ -690,8 +728,8 @@ ai:{
       angle:-0.8,        // defined lift angle the rod eases to (rod-local, ×kickDir; full raiseA is -1.6)
       lerp:4,             // ease rate toward the angle (a brisk, clean lift)
       back:-5.8,          // dir-relative x band behind the rod where a loitering ball triggers a safe-raise…
-      front:0.45,        // …up to just behind the rod line (past this the normal kick path owns it)
-      maxVX:10,            // ball |v.x| must be under this (sideways/loitering — enough x-speed reaches the feet on its own)
+      front:0.48,        // …up to just behind the rod line (past this the normal kick path owns it)
+      maxVX:30,            // ball |v.x| must be under this (sideways/loitering — enough x-speed reaches the feet on its own)
       maxSpeed:65,        // total ball speed cap for entering/holding a safe-raise
       abortT:3.0          // give up after this long and fall back to the normal path (kept under deadball.stallT 3.6)
    },
@@ -833,6 +871,61 @@ ai:{
                                                 //   fires when a man can actually connect. Looser values let the rod
                                                 //   kick at a ball off to the side, whiff, and (on a slow ball with a
                                                 //   short cd) hammer it again — the side-miss-repeat bug.
+
+   // --- strike gate: contact-range check for AIMED swings ----------------------------------------
+   //     alignSlow/alignFast above are a STATIC snapshot, read off the rod's DELAYED view of the ball
+   //     (aiView / DIFFS.reactDelay), and they were tuned for the normal kick — whose boot is on the
+   //     ball almost the instant it commits. An AIMED swing is slower: passShot contacts at .08–.20s.
+   //     Stack the two lags (~.25s perception + ~.20s swing) and the AI was committing passes to where
+   //     the ball had been nine units earlier — by contact it had rolled between two men. Result: a
+   //     swing at nothing, or a clip off the SIDE of a foot box that still resolves as a hit in
+   //     collideRod and then collects the pass aim-assist, so a deflection reads as a deliberate pass.
+   //     strikeOn (ai.js) replays the style's REAL swing curve, advances the REAL ball to each sample,
+   //     slides the men on too, and asks footBoxDist whether a boot is genuinely there. Reach +
+   //     front-face + z-centred, all three required, or the action is refused and the rod plays an
+   //     ordinary kick instead. ONLY the listed styles are gated — the plain swing is deliberately
+   //     absent, so the AI's clearing reflex is untouched.
+   //     Debug: press C then L to trace a rod; refusals log as GATE:PASS / GATE:TRAPSHOT with the
+   //     measurement that failed.  on:false restores pre-gate behaviour exactly. ---
+   strikeGate:{
+      on:true,
+      styles:['pass','trapShot'], // kick styles that must clear the gate. Remove a name to leave that
+                                //   action ungated; the plain kick is never gated (see above).
+      samples:9,                // arc samples across the contact window (9 ≈ 15ms apart on a pass swing).
+                                //   This runs only when a pass/trap shot is already being considered — a
+                                //   handful of times a second at most — so buy the resolution: coarse
+                                //   sampling has to be paid for with a bigger `pad`, and pad is what lets
+                                //   near-misses through.
+      lead:0.02, lag:0.02,      // widen the sampled window this far either side of powFrom..powTo (s), so a
+                                //   contact landing just outside the power window still counts. lead can
+                                //   never reach back past the windup — a backswing brush is not a pass.
+      pad:0.2,                  // slack on footBoxReach (1.9): the ball may sit this far outside true
+                                //   contact distance and still count. It exists ONLY to cover the gap
+                                //   between arc samples, so keep it small — at 0.55 a ball lofted clean
+                                //   over the boot, or hanging off its corner, still read as a pass. Raise
+                                //   it (or samples) if the AI turns shy about passing.
+      faceDot:0.25,             // contact normal, dir-relative, must be at least this FORWARD. ~1 = dead in
+                                //   front of the boot, ~0 = a pure z-side clip, <0 = behind it. This is the
+                                //   number that kills "it hit the side of the player and counted".
+      zFrac:0.5,                // ball must be within this fraction of the boot's true z half-reach
+                                //   (footBox.z 1.35 + BALL_R×footBoxReach 1.9 = 3.25 → ±1.63u). The FULL
+                                //   reach is a corner touch: physics registers it, but the ball leaves
+                                //   sideways off the edge of the boot, which is the phantom pass. Sits just
+                                //   outside alignSlow (1.2) on purpose, so it never fights the kick gate —
+                                //   it re-tests it on the TRUE ball at the moment of contact.
+      maxBallSpeed:70,          // above this the ball is moving too fast to be PLACED by a soft aimed swing;
+                                //   the rod falls back to an ordinary kick rather than a hopeful pass
+      slideLead:true,           // predict the men's continuing slide across the swing (false = assume they
+                                //   stop dead the moment the rod commits)
+      groundY:0.05,             // ball counts as ROLLING within this of the floor, so its projected travel
+                                //   decays at physics.floorFric instead of airFric
+      useReal:true,             // run the GEOMETRY on the true ball, not the rod's delayed view. Reaction lag
+                                //   belongs in WHEN a rod decides, not in whether the decision is physically
+                                //   possible; false = gate on perception too (rods then pass even less)
+      faceOnContact:true        // …and again at contact time (collideRod): refuse the PASS aim-assist on a
+                                //   side/back graze or any capsule (leg) hit — that is a deflection, not a pass
+   },
+
    wallReach:2.6, wallSlack:0.7,              // wall-hug rescue. A ball jammed against a side wall sits BEYOND the
                                                 //   outermost man's centrable z-range (that man is pinned at ±maxOff),
                                                 //   so dz can never fall under alignSlow even though the leg/capsule
@@ -852,7 +945,7 @@ ai:{
                                               //   NOT a cap on human seats — pickActiveRods raises the cap to the seat
                                               //   count when a team has more seats than this, so every held rod is live.
    pairCommit:0.3,                            // min seconds a rod stays in the active pair before it can be swapped
-   manHyst:1.8,                               // a different man must beat the current one by this many z-units to steal aim
+   manHyst:2.1,                               // a different man must beat the current one by this many z-units to steal aim
    retargetDead:0.1,                          // desired slide must differ from current target by this (z) before we re-aim
    errLerp:7.0,                               // rate the wandering aim error drifts toward its new target (per s)
    slideAccel:600                             // AI rod slide acceleration cap (u/s²) — kills instant direction flips
@@ -1166,7 +1259,7 @@ ai:{
     divisions:[            // tier order: 0 bottom .. 2 top
       {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
       {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'classic'},
-      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'strike',  table:'classic',  pitch:'royal'}
+      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'premierLeague',  table:'classic',  pitch:'royal'}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
     upPromote1:5, upPromote2:3, // upgrade parts: 1st-place promotion / 2nd-place promotion
@@ -1504,7 +1597,7 @@ ai:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
       mass:1.25,maxV:135,w:70,trail:'#ffffff',
       audio:{
-       kick:{noiseDur:.06,noiseFreq:500,noiseFreqScale:8,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
+       kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
              beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
        // Wall/floor TAP. noiseVol is the level of the QUIETEST tap that still gets through the
        // PHY.wallHitSnd gate; noiseVolScale is how fast it grows with impact speed. Keep the base
@@ -1609,7 +1702,7 @@ ai:{
                     on a small ball, half the cost). Raise if a weak GPU ever dips.
         near/far  — cube camera clip range; must span the table + room.
         intensity — envMapIntensity on the ball (reflection strength). */
-  ballReflect:{on:false,res:32,every:2,near:1,far:700,intensity:1},
+  ballReflect:{on:false,res:8,every:2,near:1,far:700,intensity:1},
 
   /* ---- debug / toggles -------------------------------------------------- */
   debug:{
@@ -1694,14 +1787,14 @@ ai:{
   // (used as the automatic fallback when a GLB mesh is missing).
   // `name` = display label in the pitch selector dropdown.
   pitches:{
-   pub_classic:      {glb:'pub_classic',     tex:'pitches/pitch_pub_classic.jpg',      name:'Pub Classic'},
-   classic:          {glb:'classic',         tex:'pitches/pitch_grass_1.jpg',          name:'Cork'},
-   royal:            {glb:'royal',           tex:'pitches/pitch_grass_2.jpg',          name:'Royal Grass'},
-   cyatron:          {glb:'cyatron',         tex:'pitches/pitch_cyatron.jpg',          name:'Cyatron Grid'},
+   pub_classic:      {glb:'pub_classic',     tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
+   classic:          {glb:'classic',         tex:'pitches/cork.jpeg',          name:'Cork'},
+   royal:            {glb:'royal',           tex:'pitches/royal.jpeg',          name:'Royal Grass'},
+   cyatron:          {glb:'cyatron',         tex:'pitches/cyatron.jpeg',          name:'Cyatron Grid'},
    neon:             {glb:'neon',            tex:'pitches/neon_nights.jpg',            name:'Neon Nights'},
-   verdantia:        {glb:'verdant',         tex:'pitches/pitch_verdantia.jpg',        name:'Verdantia'},
-   champions_green:  {glb:'champions_green', tex:'pitches/pitch_champions_green.png',  name:'Champions Green'},
-   champions_purple: {glb:'champions_purple',tex:'pitches/prime_champions_purple.png', name:'Champions Purple'},
+   verdantia:        {glb:'verdant',         tex:'pitches/verdantia.jpeg',        name:'Verdantia'},
+   champions_green:  {glb:'champions_green', tex:'pitches/champions_green.png',  name:'Champions Green'},
+   champions_purple: {glb:'champions_purple',tex:'pitches/champions_purple.png', name:'Champions Purple'},
    },
 
   /* ---- LED strip fx --------------------------------------------------- */

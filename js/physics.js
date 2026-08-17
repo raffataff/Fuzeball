@@ -347,7 +347,11 @@ function collideRod(b,r){
     // hit — a skill reward), but for AI rods on EVERY contact so they reliably aim in all modes.
     // aimAssist itself only acts on shots already moving goalward within its cone, so a defensive
     // touch (moving away) is untouched — this can't turn stray clears into shots.
-    if(!trapping&&(pow||(sweet&&SW.forceAssist)||!isUserRod(r)))aimAssist(b,r);
+    // passFaceOK (rods.js) is the CONTACT-TIME half of the strike gate: a pass swing that clips the
+    // SIDE or BACK of a boot (normal not pointing forward) still resolves as a hit here, but it is a
+    // deflection, not a pass, so the pass aim-assist must not bend it at the receiver. The ordinary
+    // goal-ward assist still runs — only r.passTo is suppressed for this contact.
+    if(!trapping&&(pow||(sweet&&SW.forceAssist)||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
@@ -403,7 +407,11 @@ function collideRod(b,r){
     // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    if(!trapping&&(pow||!isUserRod(r)))aimAssist(b,r);   // human: power window only; AI: every contact (goalward-only, see foot-box note)
+    // human: power window only; AI: every contact (goalward-only, see foot-box note). The pass assist
+    // is ALWAYS suppressed here: this is the rod capsule — the leg — not the boot. A ball that reaches
+    // the capsule fallback has slipped past the foot box entirely, so it is a graze off the side of
+    // the player by definition, and bending it toward a receiver is precisely the phantom pass.
+    if(!trapping&&(pow||!isUserRod(r)))aimAssist(b,r,true);
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    S.lastTouch=r.team;

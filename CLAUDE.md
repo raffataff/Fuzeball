@@ -164,6 +164,30 @@ Z (with prediction + a wandering error term), then decide to kick.
   coloured rows in the Match Setup panel (`#setDiffRed`, `#setDiffBlue`). Lets you, e.g.,
   set red=Rookie and blue=Legend to spectate a fish-vs-shark.
 
+### Reach zones — which action tests what (`inFootRange` and friends)
+
+Several actions need to answer *"would moving the rod right now hit the ball?"*, and they do **not**
+all use the same test. Mixing them up is how own-goals get written. All tuned in `CONFIG.ai`:
+
+| Zone | Extent (dir-relative x, z half-width) | Used by |
+|------|----------------------------------------|---------|
+| `inFootRange(r,b)` — "footStuck" | `underFootFront` 6.5 ahead, `footRangeBack` 7.0 behind, `footBox.z + BALL_R + clearMargin` ≈ 3.28 in z | vetoes `safeRaise` entry; gates the `clearLane` lift |
+| `inFootRange(r,b,underFootBack)` — "latchStuck" | same box, only **2.9** behind | drops the raise latch (`r.behindFlag`) once the ball is genuinely at the feet |
+| `heldFwd.xFront/xBack/zMargin` — drop-sweep zone | 5.2 ahead / 2.9 behind, own z margin | post-kick held-forward evade + the 'Drop Sweep' debug layer. **Deliberately decoupled** from the shared values above so it can be tuned alone |
+| `overFoot` + `overFootOffset` | 2.2 half-width, shifted 1.4 forward | "at the feet, strikeable" |
+| `inFrontMin` / `inFrontMax` | 2 … 6.3 ahead | a forward swing can reach it |
+| `sweepClips()` — **swept arc** | the actual rotating foot box, sampled along the rotation | vetoes trap entry |
+
+**The distinction that matters: static vs swept.** `inFootRange` is a *static* rectangle — "could a
+foot touch the ball from where everything sits right now". It cannot answer *"does the rotation I am
+about to start drag a boot through the ball"*, because a rotating box sweeps a region far larger than
+its own footprint. **Any action that turns the rod needs the swept test, not the rectangle.**
+
+**Why the trap can't just use `footStuck`.** `footRangeBack` (7.0) is deeper than the entire trap
+catch window (`trap.back` −5.8), so `!footStuck` on trap entry refuses **100%** of traps. That is why
+the trap block has no footStuck guard, and why a knock-back was possible until `sweepClips` was added
+(see 2026-08-15). The same trap applies to any future action with a window inside that rectangle.
+
 ### Two hands per team (`pickActiveRods`) — CONFIG.ai.hands (=3)
 
 A team may only **actively move `hands` rods at once** (2 = two human hands). `pickActiveRods`
@@ -348,6 +372,117 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-08-15
+- **PASSES FIRED AT A BALL THAT WASN'T THERE — the kick gate is a snapshot, and a pass lands a fifth
+  of a second later** (`js/ai.js` new `swingAngleAt`/`strikeProbe`/`strikeOn` + `footBoxDist` gained an
+  optional `foff`, `js/rods.js` new `styleCfg`/`passFaceOK`, `js/physics.js` both `aimAssist` calls,
+  `js/stats.js` `aimAssist(b,r,noPass)`, `js/config.js` new `ai.strikeGate`). Reported from play: rods
+  triggering a pass with the ball sitting *between* two men and out of contact range, and sometimes
+  "registering as a hit" because it caught the side of a player. Normal kicks were fine — which is the
+  clue to the whole thing.
+  - **The two lags compound, and only the AIMED swing feels them.** `canKick` is
+    `(overFoot||inFront) && aligned` — a STATIC snapshot, read off the rod's DELAYED view of the ball
+    (`aiView` / `DIFFS.reactDelay`, up to ~0.25s with a poor `rea` and fatigue). That is fine for the
+    normal curve, whose boot is on the ball almost the instant it commits. `passShot` contacts at
+    `powFrom..powTo` = **0.08–0.20s AFTER** the commit, because a pass is deliberately soft and slow.
+    ~0.45s of combined error is ~9 units of ball travel at midfield pace — more than the whole gap
+    between two men. The rod was passing to where the ball had been.
+  - **`aligned` (`alignSlow` 1.2) is not "in contact range", it is "was in the z-lane a moment ago".**
+    `inFront` is a 4.3u-wide x band (2..6.3), and nothing re-checked either at the moment of contact.
+  - **`strikeOn(r,ball,style)` predicts instead of snapshotting.** It replays the EXACT swing curve
+    `updateRods` will run — `swingAngleAt` is that chain lifted verbatim, so prediction and playback
+    cannot drift — advances the REAL ball to each sample (exponential friction integrated as
+    `∫e^(−k·s)ds`, ballistic in y, floored at `BALL_R`), advances the men's slide by `r.slideV` clamped
+    to the room left to `r.target`, and asks `footBoxDist` whether a live boot is genuinely there.
+    Three conditions, **all** required: **reach** (inside `footBoxReach` + `pad`), **face** (the contact
+    normal points FORWARD, dir-relative — a z-side clip reads ~0, one from behind reads negative), and
+    **centre** (within `zFrac` of the boot's true z half-reach, so no corner touches).
+  - **Sampling never starts before `KS.windup`.** During the pull-back the boot travels AWAY from the
+    ball; a "contact" there is the backswing brushing it, the opposite of a pass. `lead` can only widen
+    the window into the forward sweep.
+  - **`pad` is the dangerous knob, not `samples`.** Coarse sampling has to be paid for with a bigger
+    `pad`, and `pad` is exactly what lets near-misses through: at 0.55 a ball lofted clean over the
+    boot (`d` 2.17 against a true reach of 1.9) still read as a pass. Buy resolution instead —
+    `samples:9`, `pad:0.2`. The probe runs only when a pass/trap shot is already being considered, a
+    handful of times a second at most, so the resolution is free.
+  - **`zFrac:0.5` (±1.63u), not the full 3.25 z-reach.** The full reach IS a real contact — physics
+    registers it — but it is a corner touch and the ball leaves sideways off the edge of the boot. That
+    is the phantom pass. Sitting just outside `alignSlow` (1.2) means it never fights the kick gate; it
+    re-tests the same question on the TRUE ball at the moment of contact.
+  - **The second half of the fix is at CONTACT time** (`passFaceOK`, rods.js). A pass swing that clips
+    the side or back of a boot still resolves as a hit in `collideRod` — and then collected the pass
+    aim-assist, bending a stray deflection at the intended receiver, which is what made it *look*
+    deliberate. `aimAssist` gained `noPass`, which suppresses the pass TARGET only (the goal-ward assist
+    still runs, and `r.passTo` is left alone so a later clean contact in the same swing still passes).
+    **The rod-capsule fallback ALWAYS passes `noPass:true`** — reaching the capsule means the ball
+    slipped past the foot box entirely, so it is a graze off the leg by definition.
+  - **The normal kick is deliberately NOT gated.** Only styles in `strikeGate.styles`
+    (`['pass','trapShot']`) are tested; everything else returns `true` immediately. Clearing a loose
+    ball is the AI's most important reflex and it was never the complaint. A refused pass does not
+    cancel the swing — it just plays the ORDINARY kick, i.e. the behaviour that was already correct.
+  - **Measured, not eyeballed** (headless harness over the states where `canKick` is already true):
+    a settled ball (|v.z| ≤ 3) still passes **74–84%** of the time; one drifting at 25 u/s drops to
+    **15%** and at 40 u/s to **0%** — which is precisely the whiff case. Coverage is flat across the
+    whole `rel` window, so it isn't quietly killing the far end. Every legitimate trapped-ball position
+    (`rel` −3..+1, `dz` ≤ 1.6, at any trap angle) is allowed, so the trapShot gate is a pure safety net
+    — its call site already demands `tdz < alignZ` 1.1.
+  - Debug: press `C` then `L` to trace a rod; refusals log as `GATE:PASS` / `GATE:TRAPSHOT` carrying
+    the measurement that failed (`d`, `face`, `dz`, each against its limit, plus `t` and `man`).
+  - `strikeGate.on:false` restores pre-gate behaviour exactly.
+- **THE TRAP SWUNG ITS OWN BOOT THROUGH THE BALL — the catch had no guard on the rotation that
+  STARTS it** (`js/ai.js` new `footBoxDist`/`sweepClips`/`footHolds`/`trapAngle`, `js/rods.js` trap
+  angle branch, `js/world.js` rod init, `js/config.js` `ai.trap.sweep`). Reported from play: a rod
+  trapping a ball sitting behind a man sometimes knocked it backward instead of pinning it.
+  - **Entering a trap does not freeze the rod.** `updateRods` eases `r.angle` to `AIC.trap.angle`
+    (−0.5) the moment `r.act==='trap'`, and that rotation is a MOVING box: the foot box sits at rel
+    **+0.40** at rest and rel **−2.36** at −0.5, so every catch dragged a boot ~2.8u backward through
+    whatever stood in the path. The ball took the impulse along a goal-ward contact normal AND
+    `trap.holdGrip` 0.55 lerped the boot's own backward velocity into it — ~24 u/s at the start of
+    the ease. Not a bounce restitution could absorb; the grip actively pulled it back.
+  - **`inFootRange`/`footStuck` cannot express this, which is why the block was never gated on it.**
+    It is a STATIC rectangle whose back depth (`footRangeBack` 7.0) is DEEPER than the whole catch
+    window (`trap.back` −5.8), so `!footStuck` on entry refuses 100% of traps. The comment in the
+    trap exit branch already said as much ("a footStuck abort killed the trap one frame after it
+    began") — the missing piece was a test of the ARC, not of the footprint.
+  - **`sweepClips()` samples the swept arc**, rebuilding the real oriented foot box at each sample
+    via the new shared `footBoxDist()` — lifted verbatim out of `collideRod`'s foot-box pass so the
+    AI's prediction of a contact and the physics that resolves it cannot drift apart. It vetoes only
+    when a sample is in contact AND the boot drives INTO the ball along the normal AND that normal
+    points goal-ward. Two contact classes stay legal, and they are the traps worth keeping: the boot
+    RETREATING along the normal (no shove at all), and an impulse pointing upfield (the ball is ahead
+    of the boot, so the tilt closes a lip BEHIND it). The ball is advanced along the arc too
+    (`sweepT`), so one rolling into the swing is judged where it will be, not where it is now.
+  - **The guard alone would have killed the feature — the fixed target is the other half of the
+    bug.** With `trap.angle` pinned at −0.5 the boot ALWAYS has that 2.8u of travel to make, so a
+    strict veto left a usable band of rel −0.5…+0.9 — ~1.4u wide, most of it already owned by the
+    dribble's first refusal. `trapAngle()` therefore walks outward and picks the DEEPEST angle on the
+    way to `trap.angle` whose sweep stays clean, stores it on `r.trapA`, and `rods.js` eases to that
+    instead of the config value. Bands now: **rel −2.5…−1.0 → hold at 0** (flat boot — the ball is
+    already inside the resting box, so the men pin it and the rod never rotates at all);
+    **rel −0.5…+0.5 → the full −0.5 tilt** (boot already behind it, so the tilt closes a lip);
+    **deeper than ≈−3 → refused** as genuinely unreachable and dropped to the evade action, which
+    slides the rod off it exactly as before.
+  - **A flat boot pins fine — the hold was never the angle.** It is `holdRest` 0 / `holdGrip` 0.55 in
+    `collideRod`, driven by `holdCfg(r)`, which keys off `r.act` and not off the rotation. The
+    dribble has always worked this way (see the note on the deliberately-absent `r.act==='dribble'`
+    branch in `updateRods`); the tilt only ever existed to REACH further back.
+  - **`footHolds()` killed a phantom trap on the way past.** A ball ahead of the boot (rel ≈ +1) used
+    to pass entry, and then the tilt moved the boot AWAY from it — the action held nothing and timed
+    out into a `trapShot` at air. The `tdz>holdZ` contact test only checks z, so it never caught
+    this. Entry now requires the chosen angle to actually reach the ball.
+  - `r.trapA` is declared in `world.js` and cleared at all six exits (four in `ai.js`, plus `kickRod`
+    and the full rod reset in `rods.js`) — a stale target would aim the next trap at the last one's
+    ball. Refusals log `TRAP-VETO` on the rod tracer.
+  - Tunables in `CONFIG.ai.trap.sweep`. **`pad`** (0.15) is the first lever if a knock-back still
+    slips through — it widens the near-miss margin; `pushDot` (0.2) sets how head-on a shove must be
+    to count; `clampSteps`/`floor` control the angle walk; `on:false` restores the old fixed-target
+    behaviour exactly. Measured cost 6.1µs worst case = **0.29% of one core** at 8 rods × 5 men ×
+    60fps, and that path only runs on frames where a trap is actually considered.
+  - Expect the trap to fire **noticeably less often**, and to keep the boot flat when it does take a
+    deep ball. That is correct. If it reads as the rod doing nothing, the lever is `trap.angle`
+    itself — shallower (≈−0.35) moves the resting box less and widens the band that gets a visible
+    tilt.
 
 ### 2026-08-07
 - **THE LEAGUE SESSION OWNS THE VENUE NOW, NOT THE MATCH — and the division `skin` was wired to

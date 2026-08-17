@@ -39,12 +39,30 @@ function rodSpeedMult(r){
   if(e.frozen>S.time)m*=KICK.freezeMult;
  return m;
 }
+/* The kick CURVE for a style NAME. Split out of kickStyleCfg so a decision taken BEFORE the swing
+   exists — ai.js' strike gate, which asks "if I swing a pass right now, will a boot actually be on
+   the ball?" — reads the SAME timings the swing will really run on, instead of guessing at them. */
+function styleCfg(style){
+ return style==='trapShot'?AIC.trapShot:(style==='pass'?AIC.passShot:KICK);
+}
 /* The kick CURVE in play. A named style resolves to its own block in CONFIG.ai; anything else
    (including a plain user swing) uses the main KICK block. ONE source of truth — updateRods
    drives the swing off it and collideRod reads the same power window / restitution from it, so a
    new style is a config block plus a line here, not a hunt through three files. */
 function kickStyleCfg(r){
- return r.kickStyle==='trapShot'?AIC.trapShot:(r.kickStyle==='pass'?AIC.passShot:KICK);
+ return styleCfg(r.kickStyle);
+}
+/* Was a contact a real FRONT-face strike, or a graze off the side / back of the boot? nx is the
+   contact normal's world-x component, which collideRod already computes in both its foot-box and
+   capsule passes; dir-relative it reads ~+1 for a ball sitting square in front of the boot, ~0 for a
+   z-side clip, and negative for one behind. A PASS is a deliberate, aimed action, so bending a side
+   clip toward the receiver with the pass aim-assist is exactly what made stray deflections read as
+   intentional passes ("it registered as a hit — it caught the side of the player"). This gates
+   NOTHING but r.passTo: shots, clears and every human kick resolve exactly as before. */
+function passFaceOK(r,nx){
+ const SG=AIC.strikeGate;
+ if(!SG||!SG.on||!SG.faceOnContact)return true;
+ return nx*r.kickDir>=SG.faceDot;
 }
 /* The BALL-CONTROL actions. While one is live (and no swing is in flight) the boot stops being a
    passive surface: collideRod reads holdRest/holdGrip from the returned block instead of the normal
@@ -68,7 +86,7 @@ function kickRod(r, style, aimAt){
  r.raise=false;r.kickT=0;r.act=null;r.kickStyle=style||null;
  r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;    // fresh post-kick held-evade budget + escape direction for this swing
- r.trapMan=-1;r.trapDir=0;                         // a swing ends any trap carry (the ball is being released)
+ r.trapMan=-1;r.trapDir=0;r.trapA=null;            // a swing ends any trap carry (the ball is being released)
  r.dribMan=-1;r.dribZ=0;r.dribZ0=0;                // …and any dribble carry, for the same reason
  r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.passTo=aimAt||null;                             // pass target for this swing only
@@ -80,7 +98,7 @@ function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
    r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
-  r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.laneDir=0;r.laneCd=0;
+  r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
@@ -124,7 +142,12 @@ function updateRods(dt){
      else{a=0;r.kickT=-1;r.kickStyle=null;r.passTo=null;if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
      r.angle=a*r.kickDir;
   }else if(r.act==='safeRaise'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.safeRaise.angle*r.kickDir,Math.min(1,AIC.safeRaise.lerp*dt));}
-  else if(r.act==='trap'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.trap.angle*r.kickDir,Math.min(1,AIC.trap.lerp*dt));}
+  /* The trap eases to r.trapA — the per-ball angle ai.js picked at entry (trapAngle), NOT the raw
+     AIC.trap.angle. That target is the deepest tilt whose swept boot does not shove the ball toward
+     our own goal, so for a ball already sitting inside the resting box it is 0: the men pin it flat
+     and the rod never rotates at all. Falling back to the config angle keeps this correct if a trap
+     is ever set without a computed target (guard disabled, or a save from before r.trapA existed). */
+  else if(r.act==='trap'){r.heldFwd=false;r.angle=lerp(r.angle,(r.trapA!=null)?r.trapA:AIC.trap.angle*r.kickDir,Math.min(1,AIC.trap.lerp*dt));}
   // NOTE: r.act==='dribble' is deliberately absent from this chain. The dribble is NOT a trap — it
   // works the ball with the men DOWN AT REST, so it must fall through to the rest branch below and
   // leave the angle alone. It sets r.raise=false, so it lands on the final `else` (ease toward 0).
