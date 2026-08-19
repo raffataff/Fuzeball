@@ -12,6 +12,11 @@ addEventListener('keydown',e=>{
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
+ // PHOTO MODE (F1) takes the keyboard. Deliberately placed AFTER the keys[] write — photo.js reads
+ // that same map for its held WASD/arrow camera moves, so the bookkeeping has to happen either way;
+ // it's only the rod ACTIONS below that must not fire while a shot is being framed. photo.js binds
+ // its own listener (F1/Esc and the rest), and this file never has to know what any of them do.
+ if(S.photo)return;
  // The save key is tested FIRST because every OTHER key skips the replay — without this it
  // would be swallowed by the skip and the clip would end where you asked to keep it.
  if(S.phase==='replay'){if(e.code===REPLAY.save.key)replaySaveClip();else replaySkip();return;}
@@ -44,23 +49,26 @@ addEventListener('keyup',e=>{keys[e.code]=false;
  if(S.freeRoam)return;
  if(e.code==='ShiftLeft'||e.code==='ShiftRight'){const ur=devRod('kbd');if(ur)ur.raise=false;}});
 const cvs=$('game');
+// Every mouse path below is gated on S.photo for the same reason as the keyboard: in photo mode the
+// canvas is a viewfinder, and drag/click/wheel belong to the camera rig (photo.js), not to a rod.
 cvs.addEventListener('mousemove',e=>{
- if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
+ if(S.photo||S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
  const r=devRod('mouse');if(!r)return;
  r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens;
 });
 cvs.addEventListener('mousedown',e=>{
+ if(S.photo)return;
  if(S.phase==='replay'){replaySkip();return;}   // click skips the goal replay
  if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
  const r=devRod('mouse');if(!r)return;
  if(e.button===0)kickRod(r);
  if(e.button===2)r.raise=true;
 });
-addEventListener('mouseup',e=>{if(!S.freeRoam&&e.button===2){const ur=devRod('mouse');if(ur)ur.raise=false;}});
+addEventListener('mouseup',e=>{if(!S.photo&&!S.freeRoam&&e.button===2){const ur=devRod('mouse');if(ur)ur.raise=false;}});
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('wheel',e=>{if(!S.freeRoam&&S.phase==='play'){const ms=devSeat('mouse');if(ms)seatStep(ms,e.deltaY>0?1:-1);}});
+addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'){const ms=devSeat('mouse');if(ms)seatStep(ms,e.deltaY>0?1:-1);}});
 function userControlUpdate(dt){
- if(S.freeRoam)return;
+ if(S.photo||S.freeRoam)return;
  const r=devRod('kbd');
  if(r){
   let dz=0;
@@ -118,6 +126,7 @@ function tcSwerveFromAxes(gp){
 }
 addEventListener('gamepadconnected',e=>{console.log('gamepad connected:',e.gamepad.id);});
 function gamepadUpdate(dt){
+ if(S.photo)return;                                    // photo mode: a resting stick must not creep a rod out of shot
  if(!$('options').classList.contains('hidden'))return; // options screen owns the pad (live tester)
  const pads=navigator.getGamepads?navigator.getGamepads():[];
  S.seats.forEach(s=>{s.tcMult=1;});                    // reset every frame; a seat with a live pad rewrites it below

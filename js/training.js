@@ -89,13 +89,13 @@ function trnSetPlacing(v){
 /* Window-CAPTURE listeners so they beat input.js's canvas handlers (which would kick/
    slide the rod): while placing, a canvas click drops the ball instead. R-click cancels. */
 addEventListener('mousedown',e=>{
- if(!TRN.on||!TRN.placing||e.target!==cvs)return;
+ if(!TRN.on||!TRN.placing||S.photo||e.target!==cvs)return;
  e.stopPropagation();e.preventDefault();
  if(e.button===0){const p=trnRayPoint(e);if(p){trnPlace(p.x,p.z);Au.ui();}}
  else trnSetPlacing(false);
 },true);
 addEventListener('mousemove',e=>{
- if(!TRN.on||!TRN.placing||e.target!==cvs)return;
+ if(!TRN.on||!TRN.placing||S.photo||e.target!==cvs)return;
  e.stopPropagation();
  const p=trnRayPoint(e);
  if(p){trnEnsureRing();trnRing.position.x=p.x;trnRing.position.z=p.z;trnRingVis(true);}
@@ -105,6 +105,7 @@ addEventListener('mousemove',e=>{
 addEventListener('wheel',e=>{if(TRN.on&&e.target&&e.target.closest&&e.target.closest('#trnPanel'))e.stopPropagation();},{capture:true,passive:true});
 addEventListener('keydown',e=>{
  if(!TRN.on||S.phase==='menu')return;
+ if(S.photo)return;   // photo mode owns P/O/G/T — its panel is up and this one is hidden (js/photo.js)
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(e.code==='KeyT'){$('trnPanel').classList.toggle('hidden');Au.ui();}
  if(e.code==='KeyP')trnToggleFreeze();

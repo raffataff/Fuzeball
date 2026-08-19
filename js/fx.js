@@ -160,6 +160,11 @@ function confetti(w){
  }
 }
 function fxUpdate(rdt){
+ // Photo mode's freeze (F1) stops the SIM, but particles, trails, the LED pulse and the drop ring
+ // all run off wall-clock rdt — leave them going and a "frozen" goal explosion still drifts apart
+ // under the shutter. Zeroing rdt holds the whole fx layer on the exact frame you froze, which is
+ // the difference between catching a blast and photographing its smoke.
+ if(S.photo&&S.photo.freeze&&S.photo.freezeFx)rdt=0;
  for(const s of sprites){if(!s.visible)continue;
   s.userData.life-=rdt;
   if(s.userData.life<=0){s.visible=false;continue;}
@@ -251,6 +256,7 @@ function cycleCam(d){
  for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui();return;}}
 }
 function cameraUpdate(rdt){
+ if(S.photo)return;   // photo mode owns the camera outright (js/photo.js phApply) — no lerp, no shake
  if(S.freeRoam){
   camera.rotation.order='YXZ';
   camera.rotation.set(S.camPitch,S.camYaw,0);

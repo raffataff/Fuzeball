@@ -109,9 +109,33 @@ function replaySndUpdate(absNow,zk){
 /* ===== playback state ===== */
 // sndI = cursor into the sound log (see replaySndUpdate). keep = this replay's recording has
 // been promoted to a file. sting = the goal horn has already been re-fired for this replay.
+// camSaved/camSave = free-roam parking spot stashed on the way in (see replayCamStash).
 const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,
  shot:0,lastShot:-1,fov0:0,snap:false,ghosts:null,hasLook:false,sndI:0,keep:false,sting:false,
+ camSaved:false,camSave:new THREE.Vector3(),
  look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3()};
+
+/* ===== free-roam handoff =====
+   The broadcast camera doesn't need this: cameraUpdate re-derives its placement from the shot
+   table every frame, so it lerps home on its own the instant playback lets go. FREE ROAM is
+   different — the camera position IS the state, and nothing regenerates it, so a replay that
+   flew off to the corner crane would leave the spectator dumped there with no memory of where
+   they'd parked. Stash the spot on the way in and put it back on the way out.
+   Only stashed when free roam is already on: entering free roam DURING a replay is the player
+   deliberately grabbing the camera where it stands, and yanking them elsewhere on the handback
+   would be the same bug in reverse. Rotation isn't stashed — S.camYaw/S.camPitch survive the
+   replay untouched and cameraUpdate re-applies them on the first frame back, which also means
+   looking around while the replay runs still counts. */
+function replayCamStash(){
+ RP.camSaved=!!S.freeRoam;
+ if(RP.camSaved)RP.camSave.copy(camera.position);
+}
+function replayCamRestore(){
+ // still-in-free-roam test: exiting mid-replay (Esc, lost pointer lock) hands back to the
+ // broadcast camera, which wants its own placement, not the stale roam spot
+ if(RP.camSaved&&S.freeRoam)camera.position.copy(RP.camSave);
+ RP.camSaved=false;
+}
 // replayReady = is there footage worth showing RIGHT NOW (nothing queued required). flow.js tests it
 // before committing a match-winning goal to the celebration hold, so a rally too short to replay
 // still cuts straight to the win screen.
@@ -282,6 +306,7 @@ function replayStart(){
  if(si===RP.lastShot)si=(si+1)%REPLAY_SHOTS.length;
  RP.shot=si;RP.lastShot=si;
  RP.fov0=camera.fov;
+ replayCamStash();                            // free-roam only — see replayCamStash
   replayGhosts();
   for(const g of RP.ghosts){g.typ=-1;replayGhostHide(g);g.trailT=0;}
  document.body.classList.add('replayOn');
@@ -294,6 +319,7 @@ function replayEnd(){
  Au.rate=1;Au.vol=1;                          // belt and braces: a skip can land between the set and
                                               // the reset inside replaySndUpdate
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
+ replayCamRestore();                          // put a free-roam spectator back where they were parked
   for(const g of RP.ghosts)replayGhostHide(g);
   for(const r of rods){r.pivot.position.z=r.offset;r.pivot.rotation.z=r.angle;}   // hand the pivots back to the live sim pose
  clipStop();                                  // writes the file iff it was promoted; async, lands a beat later
@@ -317,6 +343,7 @@ function replayAbort(){
  RP.on=false;
  Au.rate=1;Au.vol=1;
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
+ replayCamRestore();                          // same handback on a hard bail (menu quit / new match)
   if(RP.ghosts)for(const g of RP.ghosts)replayGhostHide(g);
  clipStop();RP.keep=false;                    // a quit mid-replay still writes a clip that was asked for
  document.body.classList.remove('replayOn');

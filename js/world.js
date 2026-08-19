@@ -241,9 +241,15 @@ function buildBallReflect(){
 function ballReflectOn(){return !!(renderer&&ballCubeRT&&cfg.reflections&&CONFIG.ballReflect.on);}
 // set (or clear, env=null) the cube envMap on every mesh material under a ball; needsUpdate only
 // flips on an actual change (null↔texture recompiles the shader, so we do it once, at ball birth).
+// envMapIntensity is NOT ours to keep: with envMap null the material falls back to scene.environment
+// and that same scalar still weights it, so the authored value is stashed once per material and put
+// back on the clearing path — else switching Reflections OFF would light the ball off the room bake
+// at the CUBE map's intensity (silent while intensity is 1, a brightness jump the moment it isn't).
 function setBallEnv(b,env){
  b.m.traverse(o=>{if(!o.isMesh)return;const ms=Array.isArray(o.material)?o.material:[o.material];
-  for(const m of ms){if(m&&m.envMap!==env){m.envMap=env;m.envMapIntensity=CONFIG.ballReflect.intensity;m.needsUpdate=true;}}});
+  for(const m of ms){if(!m||m.envMap===env)continue;
+   if(m.userData.baseEnvI===undefined)m.userData.baseEnvI=m.envMapIntensity;
+   m.envMap=env;m.envMapIntensity=env?CONFIG.ballReflect.intensity:m.userData.baseEnvI;m.needsUpdate=true;}});
 }
 function applyBallEnv(b){setBallEnv(b,ballReflectOn()?ballCubeRT.texture:null);}   // called from makeBall
 function refreshBallReflect(){if(!ballCubeRT)return;const env=ballReflectOn()?ballCubeRT.texture:null;for(const b of S.balls)setBallEnv(b,env);} // Options toggle

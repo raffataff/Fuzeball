@@ -27,7 +27,7 @@ table: team + claimed devices + held rod; `seatOf`/`seatRod`/`isUserRod`/`setSea
 `world.js` (three.js init/build/theme) ·
 `balls.js` · `rods.js` · `physics.js` · `ai.js` · `input.js` · `powerups.js` (+ dead-ball) ·
 `flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
-Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `main.js`.
+Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · `main.js`.
 
 These are **plain (non-module) scripts** sharing one global scope on purpose — top-level
 `const`/`let` in one file are visible in later files. This is what lets them work from
@@ -58,10 +58,22 @@ CONFIG. `cfg`/`saveCfg` (the persisted in-menu settings) also live here.
 - Keep replies concise and direct (owner preference).
 
 ### Verifying changes
-- A live browser session may not be available (the Linux sandbox sometimes fails to boot).
-  When it isn't, verify by careful re-reading of each edited function.
-- When the sandbox IS up, concatenate `js/*.js` in load order and run through Node's
-  `vm.runInNewContext` with browser globals stubbed to catch syntax/parse errors.
+- A live browser session may not be available (the Linux sandbox sometimes fails to boot). That
+  costs you the **browser**, not **Node** — a remote session has its own container that runs `node`
+  either way, and the repo can be staged into it. So "verify by careful re-reading" is the LAST
+  resort, not the fallback: the checks below need no browser and catch most of what re-reading misses.
+- `node --check <file>` per edited file catches syntax errors. For parse errors and for duplicate
+  top-level `const`s across the shared global scope, concatenate `js/*.js` in `index.html` order and
+  run it through `vm.runInNewContext` with browser globals stubbed (`document`, `localStorage`,
+  `THREE`, `navigator`).
+  - **Top-level `const`/`let` are lexical, NOT properties of the context** — `ctx.CONFIG` reads back
+    `undefined` and looks like a failure when the script ran fine. Append an explicit
+    `;globalThis.__out={…}` line to the source to get values out.
+  - `config.js` needs `core.js` prepended (it calls `clamp`).
+- A self-contained function can be string-sliced out of its file and rebuilt with `new Function` to
+  unit-test its BEHAVIOUR without booting three.js — cheap, and it catches logic that parses fine.
+  Pick inputs that would expose the bug: a knob sitting at its default of 1 hides every bug that is
+  a stray multiply or a misplaced assignment.
 
 ## Coordinate system & table geometry
 
@@ -231,7 +243,7 @@ Three levers, all tuned in `CONFIG.ai`:
 ## Other systems
 
 - **Input:** ←/→ or Q/E switch rod; ↑/↓ or mouse slide; Space/click kick; Shift/right-click
-  raise; 1–4 select rod; V cycle camera; M frame profiler; Esc pause; mouse wheel switch rod;
+  raise; 1–4 select rod; V cycle camera; M frame profiler; **F1 photo mode**; Esc pause; mouse wheel switch rod;
   **S (during a goal replay only) saves that replay as a .webm** — every OTHER key skips. Wired in the
   `input` section + `userControlUpdate` (which also does auto rod-switch when `cfg.auto`).
   Gamepad (`gamepadUpdate`): left stick slide, A/RT kick, X/LT raise, right-stick absolute rod
@@ -251,6 +263,21 @@ Three levers, all tuned in `CONFIG.ai`:
   sting, whistle, power-up, UI). No audio files.
 - **HUD:** `updateScoreUI`, `updateChips` (rod selector), `hudTick` (clock + active-effect
   chips). Menus: main menu, pause, win screen (with possession/kicks/top-speed stats).
+- **Photo mode (`F1`, `photo.js`, `CONFIG.photo`):** promo-still studio. In-match only. Freezes the
+  sim AND the wall-clock timers, drops the HUD + every dev panel, and hands the camera to an orbit
+  rig (target + dist + yaw/pitch/roll/fov, all on sliders with number boxes). `F` swaps orbit for
+  free-look — same rig, camera pinned, target moved. Aspect crop is a letterbox MASK over the live
+  view and the capture reproduces exactly what it frames (`phCropFov`). Capture is canvas-only at
+  pixel ratio 1 and up to 4× supersample, so the panel is never in the shot and `cfg.renderScale`
+  can't cap a still. 6 saved shots persist in `cfg.photoShots`. **`C`** is clean view — panel, crop
+  line, mask and guides all down, the state a screen recording needs; **`R`** records the CROP to a
+  webm through `js/capture.js` (`CONFIG.photo.record`), auto-stopping after one turntable revolution.
+  **`SHIFT+R`** renders the turntable OFFLINE, frame by frame, to a zipped image sequence
+  (`CONFIG.photo.seq`) — exact CFR, full resolution, no codec, and it loops seamlessly; that is the
+  one to use for footage going into an editor. A CLIP is bounded by `cfg.renderScale`; a STILL and a
+  SEQUENCE are not — see the 2026-08-19 entry.
+  Cross-module gate is **`S.photo`** (null when off) — `main.js`, `fx.js`, `input.js` and `training.js` test that and nothing else, so
+  a missing `photo.js` can't break the game. Same discipline as `S.trn`.
 
 ## Game state (`S`) & flow
 
@@ -372,6 +399,264 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-08-19
+- **PHOTO MODE COULD NOT SHOW YOU THE SHOT — the crop border had no off switch, and a screen
+  recording was the wrong tool anyway** (`js/photo.js`, `css/styles.css`, `js/capture.js`,
+  `js/config.js` new `photo.record`, `js/main.js`, new `tools/photo-record-harness.js`). Reported
+  while trying to screen-record the turntable: "even when I hide the grid and the UI, it still
+  shows the aspect border."
+  - **`.bare` was unreachable.** `#phCrop` carried `border:1px solid rgba(159,210,255,.42)`
+    unconditionally, escapable only through a `.bare` class set as
+    `!PH.aspect && !PH.thirds && !PH.cross` — and that first term means **the one state with no
+    crop to outline**. Pick 16:9 and the line is welded on. Mask, thirds and cross each had a
+    checkbox; the border never did, so this reads as a missing control rather than a bug. The
+    border is now transparent by default and painted by **`.line`**, a guide with its own checkbox.
+    The 1px transparent border stays so toggling the colour can never move the rect.
+  - **`C` = clean view**, and it had to be a THIRD state rather than a wider `H`. `H` hides the
+    PANEL — you are composing against the thirds and want the controls gone, which is a different
+    request from "put nothing on this screen". `PH.clean`/`PH.panelHid` both feed `phChromeSync`;
+    `H` no longer pokes `classList` directly, or the two would disagree. The crop LINE is
+    deliberately NOT in `G`'s cycle: it marks where the frame is, so it wants to stay up while you
+    work; `C` is what takes everything down at once.
+  - **THE REAL ANSWER IS THAT A SCREEN RECORDER IS THE WRONG TOOL — the crop is a MASK, not a
+    viewport.** Even with perfect chrome you would still be recording the letterboxed desktop at
+    window resolution and cropping it by hand. So photo mode records its own: **`R`** arms
+    `js/capture.js`'s MediaRecorder over an **off-screen canvas that the framed region of the game
+    canvas is blitted into each frame**. One `drawImage` per frame, the encode is off-thread, and
+    the webm IS the composition — panel, mask and guides are DOM and cannot land in it, the same
+    property that already makes goal clips clean footage.
+  - **The blit MUST run in the same task as `renderer.render`** — hence a second hook,
+    `phPostRender()`, immediately after it in `main.js`'s loop. The renderer has no
+    `preserveDrawingBuffer`, so the drawing buffer is only guaranteed intact until that task ends.
+    Exactly the constraint `phSnap`'s `toDataURL` works under, and the reason neither can be
+    deferred to a callback. Get this ordering wrong and you record black frames, intermittently.
+  - **A clip CANNOT beat `cfg.renderScale`, and the panel says so in pixels.** A still escapes the
+    render scale by re-rendering at pixel ratio 1 (that is why stills go through `phSnap` at all);
+    a video can't, without re-rendering every frame at a size the compositor then has to swallow.
+    So `phRecRect` reports the TRUE output — a nominal '1080p' over a 0.6 render scale is a lie the
+    file tells later. **For a stills-grade turntable, set render scale to 1 first.**
+  - **A take started with the turntable running stops itself after exactly one revolution** — that
+    IS the shot, and 360° at the default 9°/s is a 40s clip. The sweep accumulates from the same
+    term `phOrbit` was handed, so changing spin speed mid-take still lands on 360°. A free take
+    (spin off) runs until `R` again or `maxSec`. Unlike a goal clip — recorded speculatively on
+    every goal and binned unless promoted — this one is always written out: it only exists because
+    someone started it, so an exit or a fault saves what it got.
+  - **Framing is LOCKED while rolling.** The destination canvas is sized once and cannot be
+    re-shaped mid-stream, so the aspect select refuses and says why rather than silently squashing
+    the clip.
+  - **`clipStart` gained `(cv,opt)` and that second caller exposed a latent race.**
+    `MediaRecorder.stop()` is ASYNC: `clipStop` clears `CLIP.live` synchronously but `onstop`
+    (`clipFlush`) lands a beat later. With one caller that window was unreachable. With two, a
+    `clipStart` inside it would reassign `CLIP.chunks`/`rec` out from under the recorder still
+    flushing — and then the OLD recorder's `clipFlush` would read the NEW recording's state,
+    binning one clip and breaking the other. New **`CLIP.stopping`** refuses a start until the
+    flush lands. Losing one speculative goal-clip arming is nothing; corrupting both is not.
+    `audio:false` is the other new option — a camera move has no soundtrack, and the `Au.ui()`
+    click fires BEFORE the recorder attaches so it can't be the first thing on it.
+  - The **REC dot is the one piece of photo chrome that outlives clean view** — DOM, so never in
+    the clip, and with the panel down nothing else could tell you a take is running.
+  - **MP4 IS THE DELIVERABLE; WEBM WAS NEVER THE RIGHT DEFAULT** (`CONFIG.capture.mime` and new
+    `CONFIG.photo.record.mime`, `js/capture.js` `clipMime(list)`/`clipExt`/`clipContainer`). Asked
+    whether mp4 is possible and whether the codec is good enough for promo material and NLEs.
+    - **The codec was never the problem — the CONTAINER was.** VP9 at 16–24Mbps over a slow orbit
+      is visually fine. But **Premiere, Final Cut and After Effects do not import WebM at all**, and
+      Resolve only sometimes, so every clip meant an ffmpeg round trip before it could be cut. The
+      recorders write H.264/MP4 just as happily (Chrome 130+, Safari), so webm-first only ever
+      served Firefox — which still gets it from the fallback, without taxing everyone else.
+    - **`clipMime()` is per-LIST and cached per list.** It was one session-wide cached answer, which
+      cannot serve two callers wanting different containers. `clipStart` takes `opt.mime`.
+    - **`clipFlush` hardcoded `name+'.webm'` — a latent bug that MP4 detonates.** An MP4 payload
+      named `.webm` is precisely the file an NLE refuses and a player half-plays. The extension now
+      comes from **the CHUNK's own type** (`ch[0].type`), not from the mimeType we requested: a
+      browser may quietly ignore the request, and naming the file off the ASK would mislabel it.
+      `CLIP.mimeUsed` carries the fallback, since `clipFlush` runs long after `opt` is gone.
+    - **avc1 levels descend through the list** (`640033` High L5.1 → `64002A` High L4.2 → `42E01E`
+      Baseline L3.0 → bare `video/mp4`), so a 4K-capable encoder is asked first and an old one still
+      lands somewhere. The photo list omits the audio codec — `record.audio` is false, and naming
+      one can only narrow what `isTypeSupported` will admit.
+    - Photo `bitrate` 16→**24Mbps**: a turntable is slow, high-detail motion that gets SCALED and
+      GRADED later, the encode is off-thread, and the file is seconds long. Real-time encoders treat
+      it as a target, not a promise.
+    - The panel prints the container it will actually use **before** you record 40s of it.
+    - **KNOWN, and it is the real quality ceiling — a MediaRecorder capture is VFR.**
+      `captureStream(fps)` samples whenever the canvas changes, so a frame the game was late for is
+      held or dropped, and the clip carries variable frame timing that Premiere and Resolve both
+      handle badly. `renderScale` caps resolution on top. **Neither is fixable in a real-time
+      capture**; the fix is to render the turntable OFFLINE, frame by frame, since it is a frozen
+      sim plus a deterministic camera orbit and nothing about it needs to happen at wall-clock
+      speed. Not built — see the note at the end of this entry.
+  - **Not exercised live** (no browser), but `tools/photo-record-harness.js` runs **149
+    assertions** with no three.js: `phRecRect` across nine window/dpr/renderScale/aspect
+    combinations (centring, overhang clamping, even dimensions, the maxPx downscale, browser zoom,
+    a degenerate 40×30 window) asserting every time that the clip's aspect is the aspect that was
+    FRAMED; `phFrameSync`/`phChromeSync` class decisions including the exact state that was
+    previously unreachable; and `js/capture.js` end-to-end against a stubbed `MediaRecorder` for
+    `clipStart()` back-compat, the foreign-canvas path, and the flush-window refusal. Whole chain
+    also re-compiled as one script (no duplicate top-level names) and every `$('ph*')` lookup
+    audited against the ids the panel creates, and the container suite covers MP4 selection,
+    the Firefox fallback, a browser admitting nothing, a browser returning a container it was not
+    asked for, and per-list cache isolation; `phSeqSize`/`phSeqPlan` cover the frame budget, the
+    maxPx and GL-limit clamps, and that `n × step` is EXACTLY 360 so the loop closes; and the
+    zipStore suite walks the central directory back out, following every local-header offset and
+    re-checking every CRC against the stored bytes.
+    **Still unrun on metal for the sequence renderer specifically**: how long 300 frames at 1440p
+    actually takes, and whether a 2160p PNG job trips the heap before `maxBytes` does.
+    Still wants a real look at: whether 60fps blitting of a 2560-wide rect costs frames on a weak
+    GPU (`record.fps`/`maxPx` are the knobs), and whether Chrome's **fragmented** MP4 output imports
+    cleanly into the target NLE — if it ever balks, `ffmpeg -i in.mp4 -c copy out.mp4` remuxes it
+    losslessly, and flipping `record.mime` to the webm entries is the other escape hatch. The
+    offline renderer below sidesteps all of it and is the one to reach for when the clip is going
+    into a timeline; `R` stays the quick grab.
+  - **`zipStore` was validated against two INDEPENDENT implementations**, not just re-read: a
+    six-entry archive (empty entry, all 256 byte values, nested path, 400KB binary) written by the
+    real function and then opened by **python's `zipfile`** (`testzip()` verifies every CRC — all
+    bytes identical, method STORE, order preserved) and by **Windows' `Expand-Archive`**. The
+    harness keeps a parser of its own for regression, and it has teeth: dropping the name length
+    from the offset accumulator (`off+=30+nm.length+n`, the classic silent zip bug) fails 4 of its
+    assertions rather than producing a file that merely *looks* fine.
+  - **OFFLINE TURNTABLE RENDER — `SHIFT+R`** (`CONFIG.photo.seq`, `js/photo.js` `phSeqStart` and
+    friends, `js/capture.js` new `zipStore`). Built after the above: real-time capture is the wrong
+    tool for footage that is going into a timeline, and the reason is structural rather than
+    tunable. **A turntable is a FROZEN sim plus a deterministic camera orbit, so nothing about it
+    needs to happen at wall-clock speed.** Rendering frame by frame fixes all three ceilings at
+    once — **exact CFR** (frame i IS yaw i, whatever the machine was doing, against a MediaRecorder
+    clip whose held/dropped frames Premiere and Resolve both stumble on), **full resolution**
+    (each frame re-renders at pixel ratio 1 like a still, so `cfg.renderScale` stops mattering),
+    and **no codec at all** (an image sequence imports natively into every NLE).
+    - **The sweep is `360/n` per frame over `n` frames, so the last frame stops one step SHORT of
+      the first and the sequence LOOPS seamlessly** — no duplicate frame to trim. Worth knowing
+      because it is the one property a turntable is actually for, and rendering `n+1` frames to
+      "close the loop" is the obvious wrong move.
+    - **Two constraints shape the loop, and they're the same two as everywhere else in this file.**
+      The `drawImage` into the output canvas must be in the SAME TASK as `renderer.render` (no
+      `preserveDrawingBuffer`); the ENCODE is the slow part and happens after, off that task, via
+      `toBlob` on the 2D canvas. And the live renderer size is restored **before each `await`**, so
+      the rAF frame that lands in the gap draws the window normally — which is why the turntable
+      visibly previews while it renders, for free.
+    - **`phTick` returns early on `PH.seq`** and the keyboard/pointer handlers go inert, because the
+      render drives the rig itself; a spin or a key nudge landing between frames would corrupt the
+      sweep. `phSceneApply()` is re-called INSIDE each frame instead — `fxUpdate` re-shows the
+      markers in those same gaps, so without it the hidden cones come back in the output.
+      `photoGuard` is deferred too: exiting mid-loop would strand the renderer at the output size.
+    - **HEIGHT is the control, not a supersample multiplier** (720/1080/1440/2160) — that is how a
+      delivery spec is written — with the width following the CROP's aspect so the sequence is the
+      shot that was framed.
+    - **JPEG q0.92 is the default and PNG is the option**, which is the whole answer to "I don't
+      want a 10GB file": ~8× smaller and visually indistinguishable once the footage has been graded
+      and delivered as H.264. The panel prints **frames × resolution × estimated size BEFORE you
+      commit**, turns amber past a cap, and disables the button — `maxFrames` 1800 and `maxBytes`
+      ~1.2GB are REFUSALS, not clamps, since silently rendering something other than what the panel
+      promised is worse than not starting. Default job (1080p JPEG, 10s at 30fps) lands near 130MB.
+    - **A CANCEL discards; a cap or a fault keeps what it got.** Deliberately the opposite split
+      from the clip recorder: a cancel means "stop, I don't want this", and handing over a 700MB zip
+      nobody asked for misreads it — whereas a partial render that hit a limit is salvageable.
+    - **`zipStore` (capture.js) is STORE-only and that is not laziness** — the entries are already
+      compressed images, so DEFLATE would cost seconds of main thread for a percent. It assembles an
+      ARRAY of chunks for `Blob()` rather than one concatenated buffer: a half-gigabyte contiguous
+      `ArrayBuffer` is the allocation most likely to fail, and a Blob can be backed by disk. ZIP32
+      caps (4GB / 65535 entries) sit far above `seq`'s own.
+    - The zip carries a **README** with the frame rate, the loop property and the exact ffmpeg line,
+      because a folder of PNGs three months from now does not remember what fps it was meant to be.
+    - Progress is its own bottom-centre pill rather than a panel row — a render is usually started
+      from clean view, where the panel is down and nothing else could report it. `ESC` cancels.
+
+### 2026-08-17
+- **PHOTO MODE (F1) — a promo-still studio, not a debug view** (new `js/photo.js` + `css/styles.css`
+  photo block, new `CONFIG.photo`, new `S.photo` gate in `js/state.js`, hooks in `main.js` `loop()`,
+  `fx.js` `cameraUpdate`/`fxUpdate`, `input.js`, `training.js`, new `tools/photo-harness.js`).
+  Asked for: HUD hidden, rotation + position UI precise enough to hit an exact shot, and a way to
+  stop the match **without the pause screen** so stills aren't caught mid-motion.
+  - **The freeze had to be a third thing, not a reuse of either existing one.** `#pause` stops the
+    world but puts a menu over the shot; training's freeze is the right lever but only holds the
+    SIM. A still needs three clocks held: `physAcc` (same lever training pulls, applied after it so
+    photo wins), the **wall-clock block** in `loop()` — leave it running and the goal hold expires
+    while you compose, a replay opens under the panel, and the countdown serves a ball you didn't
+    ask for — and `fxUpdate`'s `rdt`, or a "frozen" goal explosion still drifts apart under the
+    shutter. Entering *from* `#pause` is handled: overlay down, phase restored to what it
+    interrupted, `togglePause()` again on the way out.
+  - **One rig, two modes.** Position is always derived from target + dist + yaw/pitch, so every
+    number on the panel means the same thing in both. Free-look is the same rig with the camera
+    pinned and the TARGET recomputed (`phLook`) — that invariant (rotating must not translate the
+    camera) is the one the harness leans on hardest, because a drift there turns composing into a
+    fight. `phAim` re-derives angles + distance the same way, so a Focus button in free-look aims
+    without shifting the shot.
+  - **The crop preview and the capture agree because of one line, and it isn't obvious.** A three.js
+    `fov` is VERTICAL, so rendering the crop's aspect at the same fov keeps the vertical extent and
+    *widens* the horizontal — you'd get back scenery the letterbox was hiding. What the mask
+    actually does is scale both extents by `(w/W, h/H)`, so the capture needs
+    `tan(f'/2) = tan(f/2)·h/H` at aspect `w/h`. Letterbox and pillarbox both fall out of that;
+    harness checks it against the mask's own extents at five window/aspect/lens combinations.
+  - **Capture is canvas-only at pixel ratio 1** — same reasoning as the clip recorder, and it's what
+    lets the panel, mask and guides live on top of the shot while you frame it. Pixel ratio 1 is
+    deliberate: a player on `renderScale` 0.6 still gets a full-res still, which the webm recorder
+    can't do because it reads the live backing store. `toDataURL` not `toBlob` (no
+    `preserveDrawingBuffer`, so the buffer is only guaranteed inside this task); base64 → Blob before
+    the download so a multi-MB `data:` URL never goes through an `<a href>`. Everything restores in a
+    `finally` and re-renders before the compositor sees the oversized frame, so a refused buffer
+    size leaves the live view untouched. `shadowBoost` re-allocates the directional shadow map at
+    the still's scale for the one frame — a 2048 map stretched over an 8K still is the single thing
+    that reads as *game screenshot* rather than *render*.
+  - **Scene hides are written per frame, from LAST in the loop.** `fxUpdate`/`sweetGuideUpdate` own
+    the markers and would put them straight back, so `phTick` runs after both. That ordering is also
+    what makes the restore free — stop writing and the owners re-show them next frame. Only ball
+    meshes and rod pivots (which nothing else writes per frame) are restored by hand, and rods go
+    back to `!r.trnHidden` so photo mode can't clobber a rod TRAINING hid.
+  - **`S.photo` is the whole cross-module contract** — null or `PH`, tested by four other files and
+    nothing else, exactly like `S.trn`. Guards are placed with care: `input.js`'s bails *after* the
+    `keys[]` write, because `photo.js` reads that same map for held WASD/arrow moves; only the rod
+    ACTIONS must not fire. `gamepadUpdate` bails at the top so a resting stick can't creep a rod out
+    of shot. `phTick` self-heals — a match that ends or is quit under the panel drops the mode and
+    hands the camera back rather than stranding it on the rig.
+  - **Not exercised live** (no browser), but `tools/photo-harness.js` boots `core`+`config`+`state`+
+    `photo` in `vm.runInContext` against a stubbed DOM and a minimal `THREE.Vector3` and runs **92
+    assertions**: `phWrap`, the offset→angle round-trip, the free-look and orbit invariants, `phAim`,
+    the crop rect, `phCropFov` vs the mask's extents, `phOutSize` clamping to the GL ceiling with the
+    aspect intact, `phMove`, every panel clamp, the full enter/exit/pause/self-heal lifecycle, scene
+    hide+restore, and the saved-shot round-trip through `cfg`. Also scanned for duplicate top-level
+    names across the loader chain (none) and audited every `$('ph*')` lookup against the ids the
+    panel actually creates. Still wants a real look: the panel's fit on a short window, and whether
+    4× is survivable on the weakest target GPU (it clamps, but the clamp is untested on metal).
+- **THE REFLECTIONS TOGGLE GATED THE BALL CUBE-MAP CORRECTLY AND IT WAS STILL DEAD — the master
+  switch was off and `res` had been left at 8** (`js/config.js` `ballReflect`, `js/world.js`
+  `setBallEnv`, `js/ui.js` `setReflect`). Asked whether the Options **Reflections** checkbox also
+  turns the *ball* reflections off. It does, at every site that matters — but the answer didn't
+  matter, because the feature hadn't been running at all.
+  - **The gate is sound, and it's three sites rather than one.** `ballReflectOn()` ANDs
+    `cfg.reflections`, and every path respects it: `applyBallEnv` at ball birth (`balls.js`) hands
+    the material `null` instead of the cube texture; `refreshBallReflect` walks `S.balls` and strips
+    the `envMap` off balls that already exist — so a mid-match toggle lands immediately, not on the
+    next serve; `updateBallReflect` early-returns so the 6-face pass stops burning GPU. No change
+    needed here.
+  - **`on:false, res:8` was an un-reverted experiment.** Neither TUNING.md nor the 2026-07-24 entry
+    that introduced the feature records it being switched off, and both still document `res:128` as
+    the ball-sized balance. Restored to `on:true, res:128`. **Dropping `res` is the wrong economy**:
+    the cost of the pass is the scene WALK (6 faces × object count, plus the shadow pass) and the
+    face size is nearly free next to it — 8 bought almost nothing and made the reflection a grey
+    mush. If `refl` bites on the `M` panel, `every:3` is the knob to reach for, not `res`.
+  - **`setBallEnv` wrote `envMapIntensity` on the CLEARING path too.** With `envMap` null a
+    `MeshStandardMaterial` falls back to `scene.environment` — and the same `envMapIntensity` scalar
+    still weights that fallback. So switching Reflections *off* stamped the cube map's intensity
+    onto the ball's room-bake lighting. Silent while `intensity` is 1; a brightness jump the moment
+    that knob moves. The authored value is now stashed in `m.userData.baseEnvI` on first touch and
+    put back when the cube map is unbound. Worth more than it looks: **the GLB clone's base material
+    is SHARED across ball instances** (unlike the cannonball warn shell, which owns its own), so one
+    stale write followed every ball of that type.
+  - **The Match Setup mirror skipped the preset bookkeeping.** `ui.js` `setReflect` set
+    `cfg.reflections`, `applyRoom()` and `refreshBallReflect()` but never `cfg.gfxPreset='custom'`,
+    which its Options twin (`optReflect2`) does. A preset is a BUNDLE of the four heavy knobs, so
+    moving one out from under it leaves the dropdown reading **HIGH** over a config that isn't.
+    The checkbox itself was never wrong — `syncDisplayUI()` repaints the Display tab from `cfg` on
+    every `openOptions` — only the label lied. Now flips the preset to custom and mirrors both
+    Options controls, for the case where both panels are already on screen.
+  - **Not exercised live** (no browser), but not merely re-read either — see *Verifying changes*,
+    which this prompted a rewrite of. `node --check` on all three files; `core.js`+`config.js`
+    through `vm.runInNewContext` with `CONFIG.ballReflect` read back as `{on:true,res:128,…}`; and
+    `setBallEnv` string-sliced out of the source and cycled on→off→off→on against a material with an
+    authored intensity of `0.35` and a cube intensity of `1.4` (deliberately NOT 1, which is what
+    hid the bug) — `0.35` restored on the way out, and the redundant second off fired no
+    `needsUpdate`, so no spurious recompile. Still wants a real look at a golden ball, and at the
+    `refl` bucket now that the pass is live again.
 
 ### 2026-08-15
 - **PASSES FIRED AT A BALL THAT WASN'T THERE — the kick gate is a snapshot, and a pass lands a fifth

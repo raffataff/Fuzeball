@@ -363,7 +363,7 @@ const RENDER_STEM={
  rocko:'rocko2',manJerry:'jerry',manrichie:'richie',womanMaria:'maria',womanKimi:'kimi',
  womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanAndroid:'jennyBot',
  womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
- alienKodus:'kodus',alienZargon:'zargon'};
+ alienKodus:'kodus',alienZargon:'zargon',animalAzlar:'azlar'};
 function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
 /* Stems that HAVE a team-parts matte exported. tools/render_team_masks.py prints this exact line
    at the end of a run — re-paste it rather than hand-editing.
@@ -377,7 +377,7 @@ function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render
    the in-game selection, so requesting them would cost a fetch to tint nothing. */
 const MASK_STEMS=new Set([
  'cyborg','deltaborg','irnman','mechaman','stormer','rocko2','jerry','richie','maria','kimi',
- 'talia','tanya','zaneesh','tamirok','grimlot','katum','kodus','zargon']);
+ 'talia','tanya','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
 /* Team-parts matte for that same render, from the same camera, with the matte baked into the ALPHA
    channel. Used as a CSS mask on the tint layer so the tape can colour the KIT and only the kit —
    skin, hair and eyes are excluded by construction, because they're separate materials in the

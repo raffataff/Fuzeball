@@ -26,6 +26,11 @@ let detectedHz=0;
    read each when it's off. The buckets they carve the frame into — sim / fx / refl / rend —
    are what the overlay attributes a slow frame to, so keep them paired and non-overlapping
    if this loop is ever restructured. */
+/* PHOTO MODE (F1, js/photo.js) holds BOTH clocks. The sim freeze is the same physAcc lever
+   training pulls, but a still also needs the wall-clock block held: leave it running and the goal
+   hold expires while you're composing, a replay opens under the panel, and the countdown ticks
+   down to a serve nobody asked for. Held here rather than inside each timer so there is one place
+   that says "the match does not advance while a photo is being taken". */
 function loop(t){
  requestAnimationFrame(loop);
  // Frame-rate limit (Options → Display · cfg.fpsCap): skip rAF ticks that arrive sooner than the target
@@ -44,17 +49,20 @@ function loop(t){
  if(active){
   const FIXED=1/SIM.hz;
   /* --- wall-clock timers (real time, once per frame) --- */
-  if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
-  // goal hold → instant replay if there's footage, else straight on. finishPendingWin() is the
-  // match-winning-goal path (flow.js): normally the replay's end routes there, this is the backstop
-  // for a win whose replay stopped being playable during the hold — the win screen can't be lost.
-  if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else if(!finishPendingWin())startCount(MATCH.recount);}}
-  else if(S.phase==='count'){
-   S.countT-=rdt;
-   const v=Math.ceil(S.countT);
-   if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.beep(880,.09,'square',.14);}
-   $('count').textContent=S.countT>3?'READY':(v>=1?String(v):'');
-   if(S.countT<=0){$('count').style.display='none';Au.beep(1400,.2,'square',.18);serve();}
+  // …all of them held while photo mode is up. See the note above loop().
+  if(!S.photo){
+   if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
+   // goal hold → instant replay if there's footage, else straight on. finishPendingWin() is the
+   // match-winning-goal path (flow.js): normally the replay's end routes there, this is the backstop
+   // for a win whose replay stopped being playable during the hold — the win screen can't be lost.
+   if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else if(!finishPendingWin())startCount(MATCH.recount);}}
+   else if(S.phase==='count'){
+    S.countT-=rdt;
+    const v=Math.ceil(S.countT);
+    if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.beep(880,.09,'square',.14);}
+    $('count').textContent=S.countT>3?'READY':(v>=1?String(v):'');
+    if(S.countT<=0){$('count').style.display='none';Au.beep(1400,.2,'square',.18);serve();}
+   }
   }
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);
   /* --- fixed-rate simulation (slow-mo just consumes sim-time slower) --- */
@@ -62,6 +70,9 @@ function loop(t){
   // training freeze: hold the sim (render keeps running so placement/camera stay live);
   // each queued step (Step button / O) releases exactly ONE fixed slice.
   if(S.trn&&S.trn.freeze){if(S.trn.stepQ>0){S.trn.stepQ--;physAcc=FIXED;}else physAcc=0;}
+  // photo freeze — same lever, applied LAST so it wins over training's. Unfreezing inside photo
+  // mode is deliberate (let a rally run to the pose you want, then re-freeze on it).
+  if(S.photo&&S.photo.freeze){if(S.photo.stepQ>0){S.photo.stepQ--;physAcc=FIXED;}else physAcc=0;}
   for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
   perfMark('p');
@@ -109,12 +120,20 @@ function loop(t){
  sweetGuideUpdate();
  if(S.phase!=='menu')hudTick(rdt);
  if(S.trn)trainingTick();               // training panel readout (ball pos/speed)
+ // photo mode (F1) — camera rig, key/turntable motion and the scene hides. LAST on purpose: it has
+ // to write AFTER fxUpdate and sweetGuideUpdate, which own the markers it hides and would put them
+ // straight back. That ordering is also what makes the restore free (see phSceneApply).
+ if(S.photo)phTick(rdt);
  perfAdd('p','fx');
  perfMark('p');
  updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating, no-op off)
  perfAdd('p','refl');
  perfMark('p');
  renderer.render(scene,camera);
+ // photo mode's clip recorder grabs its frame HERE and nowhere else: the renderer has no
+ // preserveDrawingBuffer, so the drawing buffer is only guaranteed intact for the rest of THIS
+ // task. Same constraint the still capture works under. No-op unless a take is rolling.
+ if(S.photo)phPostRender();
  perfAdd('p','rend');
  perfFrameEnd();
 }

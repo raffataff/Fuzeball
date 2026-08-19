@@ -68,7 +68,12 @@ function showScreen(id){
  hideScreens();
  el.classList.remove('hidden');
  scrCur=id;
- if(d.lay&&typeof layApplyScreen==='function')layApplyScreen(id);   // re-clamp every saved panel arrangement on this screen to the live window
+ // Re-clamp every saved panel arrangement on this screen to the live window. Called for EVERY
+ // screen, not just ones with a `lay` block: it is also where layout.js notices that an open
+ // layout editor has just been navigated away from and shuts it down (layEditGuard). Gate it on
+ // d.lay again and Esc-ing out of the league mid-edit strands the editor, because #home has no
+ // block to route the call through.
+ if(typeof layApplyScreen==='function')layApplyScreen(id);
  if(d.onShow)d.onShow(prev);
  return true;
 }

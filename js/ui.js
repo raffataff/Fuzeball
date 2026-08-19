@@ -32,7 +32,13 @@ function bindUI(){
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
  $('setGameTime').onchange=e=>{cfg.gameTime=+e.target.value;saveCfg();};
  $('setRoom').onchange=e=>{cfg.room=e.target.value;applyRoom();saveCfg();};
-  $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;applyRoom();refreshBallReflect();saveCfg();};
+  // mirror of the Options→Display 'Reflections' box, so it owes the same bookkeeping: a preset is a
+  // BUNDLE of the four heavy knobs, and moving one of them out from under it makes the label a lie.
+  // syncDisplayUI() repaints the Display tab from cfg on every openOptions, so the checkbox and the
+  // dropdown only need mirroring here for the case where both panels are already on screen.
+  $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';
+   applyRoom();refreshBallReflect();
+   if($('optReflect2'))$('optReflect2').checked=e.target.checked;if($('optPreset'))$('optPreset').value='custom';saveCfg();};
   $('setTable').onchange=e=>{cfg.table=e.target.value;applyTable();refreshSkinSelect();saveCfg();};
   $('setSkin').onchange=e=>{if(typeof selectSkin==='function')selectSkin(cfg.table,e.target.value);};
   // populate pitch select from the CONFIG.pitches registry
