@@ -26,8 +26,9 @@ and the layout editor's source of truth) · `audio.js`
 table: team + claimed devices + held rod; `seatOf`/`seatRod`/`isUserRod`/`setSeatCtrl`) ·
 `world.js` (three.js init/build/theme) ·
 `balls.js` · `rods.js` · `physics.js` · `ai.js` · `input.js` · `powerups.js` (+ dead-ball) ·
-`flow.js` (match flow) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
-Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · `main.js`.
+`flow.js` (match flow) · **`moments.js`** (saves / woodwork / goal classification) ·
+**`matchstats.js`** (the match ledger + the post-match sheet) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
+Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · **`props.js`** (prop library + InstancedMesh scatter — see the banner in that file for what instancing here is and is NOT for) · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · **`roomedit.js`** (F2 room editor — props + lighting, gated on `CONFIG.debug.roomEditor`) · `main.js`.
 
 These are **plain (non-module) scripts** sharing one global scope on purpose — top-level
 `const`/`let` in one file are visible in later files. This is what lets them work from
@@ -78,7 +79,10 @@ CONFIG. `cfg`/`saveCfg` (the persisted in-menu settings) also live here.
 ## Coordinate system & table geometry
 
 - **X** = long axis (goal to goal). **Z** = width. **Y** = up. Field surface at `y=0`.
-- `F = {L:120, W:68, wallH:8, goalHalf:11, goalH:8.5, goalDepth:9}`.
+- `F = {L:120, W:68, wallH:10, goalHalf:11, goalH:10.2, goalDepth:9}` — read from
+  `CONFIG.table`, which is the authority. `wallH` and `goalH` had both drifted from the
+  figures previously written here (8 / 8.5); anything reasoning about the crossbar needs the
+  live value, not this line.
 - Goals sit at `x = ±60` (±L/2). **Left goal net is red, right goal net is blue.**
 - Ball into the **right** goal → **team 0 (red) scores**; into the **left** goal →
   **team 1 (blue) scores**. (Easy to get backwards — double-check when touching scoring.)
@@ -279,6 +283,49 @@ Three levers, all tuned in `CONFIG.ai`:
   Cross-module gate is **`S.photo`** (null when off) — `main.js`, `fx.js`, `input.js` and `training.js` test that and nothing else, so
   a missing `photo.js` can't break the game. Same discipline as `S.trn`.
 
+- **Props (`props.js`, `CONFIG.props`, `assets/props/`):** a prop is one small GLB any room can
+  place, INSTANCED. **Read the banner at the top of `props.js` before optimising anything with
+  it** — it is not a draw-call fix and the numbers are in there: the pub backdrop is 69 draw calls
+  / 5.5k triangles but **~167 MB of texture**, so a room's cost is its texture budget, not its
+  mesh count. What instancing buys is (a) one upload shared by every room that places the prop and
+  (b) high counts, i.e. crowds. Workflow: drop `foo.glb` in `assets/props/`, run
+  `node tools/build_props_manifest.js` (a browser cannot list a directory, hence the manifest;
+  hand-tuned `fit`/`yaw` survive a re-run), then place it from `CONFIG.rooms.<id>.props`:
+  `{prop:'foo', at:[[x,y,z,yaw,scale],…]}` and/or
+  `{prop:'foo', scatter:{kind:'ring'|'grid'|'box'|'line', …}, jitter, scaleVar, tint:[…]}`.
+  **`fit` is a target HEIGHT** (not a bounding radius — the power-up loader uses radius, this
+  deliberately does not) and `ground:true` sits the base on y=0, so placements are floor
+  coordinates. **Every scatter is seeded** (`CONFIG.props.seed`, or per-spec) — a layout that
+  re-rolls per load cannot be art-directed. Lights inside a prop are STRIPPED (changing the scene
+  light count forces a whole-scene recompile — the `fxLightPool` rule). Prop groups live parallel
+  to `roomGroups`, never parented to the backdrop, because `applyRoom` decides the shared-ground
+  fallback from `roomGroups[id].children.length`. **An `InstancedMesh` shares its geometry and
+  material with the template, so `disposeRoomProps` frees the meshes and NOTHING else** — the
+  power-up `puOwn` trap in another costume.
+- **Room editor (`roomedit.js`, `CONFIG.debug.roomEditor`, default false):** **entered from a
+  ROOM EDITOR card on `#home`** (that card, and only it, is what the debug flag reveals — the
+  `roomEdit` route is always registered so a stale saved layout can't strand anyone) or with
+  **`F2`**. Both open a **picker screen** listing every room with its prop count and gain, plus a
+  table select, because the editor deliberately runs with **no match**: picking a room applies it,
+  `hideScreens()` clears the menu off the canvas, and you land in free roam with the panel up.
+  F2 during play is refused with a toast — a sim moving under you while you place furniture is the
+  thing this avoids. **`SCREENS.roomEdit.onHide` restores the player's own room/table**, so it
+  fires when you leave the editor AREA, not when you step back from the editor to the picker (the
+  scene behind the picker stays the room you were working on). Same stash-and-restore rule
+  league.js uses for a division venue, and for the same reason: without it, opening a room here
+  silently becomes the player's Kick Off setting the next time anything calls `saveCfg`. The stash
+  is taken ONCE, so picking three rooms in a row still restores the original.
+  Click an instance to select it: from an explicit `at` entry you get that PLACEMENT (arrows /
+  PageUp-Dn / brackets to nudge, Shift x10); from a `scatter` you get the SPEC, because individual
+  scatter instances are generated and the generator is the thing to edit.
+  **It edits specs and rebuilds** rather than moving matrices, so the data and the scene can never
+  disagree and the export cannot lie. **Nothing persists**: Export copies a paste-ready block for
+  `config.js`; a localStorage crash-backup exists but is only ever reapplied by clicking Restore.
+  Lighting tab writes the same `CONFIG.render` / `rooms.*.light` the loader reads — and
+  `reditRelight` restores each fixture's AUTHORED candela before re-running the transfer, or
+  dragging `gain` would compound and black the room out. Cross-module gate is **`S.redit`**, and
+  the file owns its own listeners (Esc `stopPropagation`s so input.js's `backScreen` can't skip
+  the picker), so a missing `roomedit.js` cannot break input.
 ## Game state (`S`) & flow
 
 - `S.phase`: `'menu' | 'count' | 'play' | 'goal' | 'pause' | 'win'`.
@@ -400,7 +447,542 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
 
+### 2026-08-20
+- **PROP LIBRARY + INSTANCING, AND A ROOM EDITOR ON TOP OF IT** (new `js/props.js`, new
+  `js/roomedit.js`, new `CONFIG.props`, new `CONFIG.debug.roomEditor`, new `S.redit`, new
+  `assets/props/`, new `tools/build_props_manifest.js`, new `tools/props-harness.js`, hooks in
+  `js/world.js` `applyRoom`, `js/models.js` `disposeRoom`+boot, `js/main.js`, `index.html`).
+  Asked for after the lighting work: a room editor, and "would it be able to use any objects
+  within a set folder and instance them around" — because filling the pub with chairs in Blender
+  "is adding lots of meshes".
+  - **MEASURED FIRST, AND THE MESH WORRY IS AIMED AT THE WRONG COST.** The pub backdrop is 47
+    meshes / **69 draw calls / 5,472 triangles**. Its five beams and three stools are 4 draw calls
+    out of 69 — instancing them saves nothing detectable. What that GLB actually costs is **16
+    textures: 44.7 MB in the file and ~167 MB uploaded to the GPU**; the arcade is 34.5k triangles
+    but **~216 MB** of texture. A 2048-square is 21 MB of VRAM however small its jpg is. **If a
+    room feels heavy the answer is texture size, and the `M` panel will say GPU/BROWSER.** Adding
+    chairs is close to free; adding another 2K map is not.
+  - **So the library was built for the two things that DO scale, and the entry says so up front**
+    (the banner in props.js repeats it, because "instancing makes it faster" is the assumption
+    someone will arrive with later):
+    · **SHARED ASSETS.** A prop is fetched, decoded and uploaded ONCE and every room reuses it.
+      Today each room GLB re-ships its own copy of everything it contains — which is exactly why
+      they are 45 MB each. Moving furniture out of the room file is the size win, not instancing.
+    · **COUNT.** Hundreds to thousands of copies — a crowd — is where instancing is the only
+      option. That is FEATURE-IDEAS 4.1 and it is what this is really for.
+  - **"ANY OBJECT IN A FOLDER" NEEDS A MANIFEST, AND THAT IS NOT A COP-OUT — a browser cannot list
+    a directory.** Over `file://` there is no index to fetch at all, and over http you would be
+    trusting the server's autoindex. So `tools/build_props_manifest.js` writes
+    `assets/props/manifest.json`: drop a `.glb` in, run it, the prop is placeable. It reads each
+    GLB's **accessor MIN/MAX bounds** for the authored size — no mesh decode — so the manifest
+    records every prop's real height, which is the number you need to pick a `fit`. **Existing
+    entries are preserved on re-run**, so hand-tuned `fit`/`yaw`/`scale` survive; deleted files are
+    dropped. `CONFIG.props.lib` overrides or extends it, so a prop can also be declared with no
+    build step at all.
+  - **A template is FLATTENED ONCE into (geometry, material) PARTS**, each carrying its transform
+    inside the prop. Placing it N times builds one `InstancedMesh` per PART, so a 3-mesh chair
+    placed 200 times is **3 draw calls, not 600**, and the prop's internal structure survives
+    because the instance matrix is `place x partLocal`. A multi-material mesh splits into one part
+    per material group.
+  - **`fit` IS A TARGET HEIGHT, NOT A BOUNDING RADIUS** (the power-up loader uses radius, and this
+    deliberately does not). Height is the dimension you actually know about a chair, and with
+    `ground:true` sitting the base on y=0, placements are plain floor coordinates rather than
+    "wherever the origin happened to end up in Blender". That is what makes a prop usable straight
+    out of the exporter whatever scale it was modelled at. The harness pins it — treating `fit` as
+    a radius fails an assertion.
+  - **EVERY SCATTER IS SEEDED, and that is a requirement rather than a nicety.** `ring` / `grid` /
+    `box` / `line`, all driven by a mulberry32 PRNG off `CONFIG.props.seed` (or a per-spec `seed`).
+    A crowd that re-rolls on every load **cannot be art-directed** — you can't screenshot it twice,
+    can't judge a change, and every "does this look right" becomes a coin toss. Change the seed to
+    reroll deliberately. Swapping the generator for `Math.random` fails a harness assertion.
+    `ring` carries `rows`/`rInner`/`rowRise` so a terraced stand is one spec, and
+    `face:'in'|'out'|<radians>` turns each instance toward or away from the centre — crowds want
+    `'in'`. `jitter`, `scaleVar` and a `tint` palette (per-instance `instanceColor`) break up the
+    regularity; **no palette means no `instanceColor` buffer is allocated at all.**
+  - **LIGHTS ARE STRIPPED OUT OF PROPS, and it is the same trap as everywhere else in this file.**
+    r128 bakes the scene's light COUNT into every material's program, so a prop arriving with a
+    lamp in it would force a whole-scene shader recompile the moment a room is shown — the exact
+    thing `fxLightPool` exists to prevent (2026-07-24). Stripped with a console warning naming the
+    prop; use an emissive material or borrow from `fxLightGet`. Dropping the strip fails an
+    assertion.
+  - **THE DISPOSAL TRAP, which is the power-up `puOwn` bug wearing a different hat.** An
+    `InstancedMesh` SHARES its geometry and material with the resident template, so freeing a
+    room's props must remove the instanced meshes and **nothing else** — a blanket
+    traverse-and-dispose would blank every future room that places the same prop. Only
+    `disposeProp()` may free those, and it refuses while any room still references the id.
+  - **Prop groups are PARALLEL to `roomGroups`, not parented to the backdrop.** `applyRoom`'s
+    "does this room have a backdrop" test reads `roomGroups[id].children.length`, and props hanging
+    off it would make an empty room look populated and suppress the shared ground+crowd fallback.
+    They are disposed alongside the room in `disposeRoom`, so LRU eviction still frees them.
+  - **`maxInstances` (2048) is a REFUSAL WITH A LOG LINE, not a silent clamp.** A typo in `n`
+    should cost a console warning, not a gigabyte of instance matrices.
+  - **ROOM EDITOR — `F2`, gated on `CONFIG.debug.roomEditor` (default false).** Cross-module gate is
+    **`S.redit`** (null when off), and the file owns its own listeners, so a missing `roomedit.js`
+    cannot break input — same discipline as `S.photo` / `S.trn`. **It owns no camera rig**: it turns
+    on the existing free roam (`fx.js`), which already has WASD/QE movement and mouse look.
+    · **It edits SPECS AND REBUILDS, rather than nudging instance matrices in place.** The authored
+      thing IS the spec list; editing matrices would leave the spec and the scene disagreeing the
+      moment a scatter is involved, and then **the export would be a lie**. A rebuild is a few ms at
+      these counts and this is not a hot path.
+    · **The selection rule falls out of that.** Clicking an instance from an explicit `at` entry
+      selects THAT placement and you move it (arrows/PageUp/brackets, Shift for x10). Clicking one
+      from a `scatter` selects the SPEC — individual scatter instances are generated, so there is
+      nothing meaningful to drag; you edit the generator instead. Instances are built in placement
+      order (`at` first, then the scatter), so an `instanceId` below `at.length` maps straight back.
+      `propBuildSpec` stamps `userData.specIndex` for exactly this.
+    · **No hidden save.** Edits are in memory; **Export** prints a paste-ready block for config.js
+      and copies it to the clipboard. A crash-backup is written to localStorage on every change but
+      is **only ever restored by clicking Restore** — a shadow layer that silently resurrects old
+      state over what config.js says is how an editor stops being trustworthy.
+    · **The lighting tab is the tuner the transfer fix earned** — gain, reach, hemi, dir, exposure
+      and the tone-mapping mode, all writing the SAME config the loader reads, plus a live readout
+      of what each baked fixture is delivering. **`reditRelight` restores each light's AUTHORED
+      candela before re-running the transfer**: the transfer is destructive (it overwrites
+      intensity), so without the stash, dragging the gain slider would compound — each pass
+      re-dividing an already-transferred value by d0² — and the room would collapse to black in a
+      few frames.
+    · **Bug caught while writing it, worth knowing generally:** the light sliders fire on `input`,
+      and the first cut rebuilt the whole section on each one — which **destroys the slider element
+      being dragged**. Only the readout refreshes now. Any live-tuning panel has this shape.
+    · **ENTERED FROM THE MAIN MENU, AND THE EDITOR RUNS WITH NO MATCH** (added after the first
+      cut, which only had F2 — reported as "i need the match to not be playing"). The problem was
+      structural rather than a missing key: the menu DOM sits OVER the canvas, so pressing F2 from
+      `#home` left you driving free roam behind an opaque screen, and the only way to see the room
+      was to start a match — which is exactly the sim you don't want running while you place
+      furniture. Now a **ROOM EDITOR card on `#home`** (revealed by the debug flag; the `roomEdit`
+      route itself is always registered, so a stale layout or a typed `showScreen` can't strand
+      anyone on an unreachable screen) opens a **picker screen** — every room with its prop count
+      and gain, plus a table select, since a room is always judged with a table under it. Picking
+      one applies the venue, calls `hideScreens()` (the same call `startMatchNow` uses) and drops
+      straight into the editor. F2 does the same from the menu and is REFUSED with a toast during
+      play.
+    · **The venue restore hangs off `SCREENS.roomEdit.onHide`, and the placement is the point.**
+      `hideScreens()` does not fire `onHide`, and `showScreen` only fires it when the screen
+      actually CHANGES — so entering the editor and stepping back to the picker both leave the
+      stash armed and the room applied (the scene behind the picker is still what you were
+      working on), while leaving the area entirely puts the player's own room and table back.
+      **The stash is taken ONCE**, so picking three rooms in a row still restores the original.
+      Without any of this, opening a room in the editor silently becomes the player's Kick Off
+      setting the next time anything calls `saveCfg` — the trap the 2026-08-07 league entry
+      documents, in a new place. `tools/roomedit-harness.js` pins it with **28 assertions** and
+      **three mutations** (re-stashing on every pick, dropping the restore, not clearing the
+      stash) that each break it; it also pins that the table is re-applied BEFORE the room, since
+      `applyRoom` re-parents the pitch into the live table group.
+  - **Not exercised live** (no browser), but `tools/props-harness.js` string-slices the pure
+    functions out of `props.js`, rebuilds them with `new Function` against a column-major Matrix4
+    and a recording InstancedMesh stand-in, and runs **69 assertions**: rng determinism and spread;
+    explicit placement defaults; every scatter shape including ring radius/rows/terracing,
+    `face:in` aiming at the centre and `face:out` being exactly opposite, grid extents and the 1x1
+    divide-by-zero, box containment, line spacing; seed reproducibility and per-spec override;
+    jitter bounds and that an unnamed axis is untouched; tint palette membership; **instance matrix
+    = place x partLocal** including a yaw rotating the part offset and a scale scaling it; the
+    instanceColor allocation rule; the cap; unknown props and empty specs; and `propFlatten`'s
+    fit/ground/zero-height/light-strip/multi-material paths. **It has teeth** — five mutations
+    (unseeded rng, ignoring the part transform, dropping the cap, `fit` as a radius, not stripping
+    lights) each break at least one assertion. `tools/build_props_manifest.js` was exercised
+    end-to-end against real GLBs: authored dimensions read correctly, hand-edited `fit`/`yaw`
+    preserved across a re-run, a deleted GLB dropped. Whole **39-module** chain re-compiled in one
+    scope (no duplicate top-level names — the 2026-08-02 `CUP` trap).
+  - **STILL WANTS A REAL LOOK AT — this is the half a harness cannot reach.** Every interactive path
+    is unrun: click-picking through `InstancedMesh.instanceId`, the capture-phase mousedown beating
+    input.js's kick handler, the panel's fit on a short window, and whether free roam plus a
+    left-hand panel is actually a comfortable way to place things. The lighting sliders are the
+    most likely to need a second pass.
+  - **DELIBERATELY NOT DONE:** the instanced CROWD itself (FEATURE-IDEAS 4.1) — the machinery is
+    now here and a stand is one `ring` spec with `rows`/`face:'in'`, but what a crowd member should
+    LOOK like (billboard, low-poly figure, a reused figurine) is an art call, and the idle sway and
+    stand-up-and-roar want the moments hooks from 2026-08-19 rather than a scatter. Also not done:
+    per-instance animation of any kind, prop LODs, and moving the existing furniture OUT of the
+    room GLBs into props — that is an asset job, and the honest first move for room size is the
+    texture budget, not the geometry.
+- **THE LIGHTING A ROOM WAS AUTHORED WITH NEVER REACHED THE SCREEN — a per-light clamp deleted the
+  key:fill ratio, a hard-coded cutoff deleted the key, and there was no tone curve to hold what was
+  left** (`js/models.js` new `applyRoomLights`/`applyEmissiveStrength` + 5 call sites, `js/world.js`
+  new `TONEMAP`/`toneMapMode`/`applyToneMapping` + renderer + shadow setup, new `CONFIG.render`,
+  `CONFIG.rooms.*.light` replacing `lightScale`, new `tools/roomlight-harness.js`). Everything below
+  is measured off the GLB JSON chunks, not estimated.
+  - **THE CLAMP DID NOT DIM A ROOM, IT DELETED ITS LIGHTING DESIGN — and that distinction is the
+    whole entry.** `c.intensity=Math.min(c.intensity*ls,4)` is per-light, so **any two lights over
+    the ceiling arrive EQUAL**. The saucer authors a 46199cd key and an 8153cd fill — a deliberate
+    5.7:1 — and at `lightScale` 0.0005 both landed on exactly 4.0. Worse, `lightScale` was then a
+    **dead knob**: above ~8000cd the clamp ate every change, so 0.0005 and 0.005 produced a
+    byte-identical result. That is pinned in the harness, because "the knob does nothing" is the
+    symptom that sends you looking in the wrong place.
+  - **The pub does NOT hit the clamp — its lights were killed by the OTHER bug, and it is worth
+    knowing they are separate.** Scaled by 0.0003 the pub's five fixtures land at 0.32–0.52, nowhere
+    near the ceiling, and their ratios were always intact. What broke the pub was the forced cutoff.
+  - **`distance` UNDER LEGACY FALLOFF IS NOT A PHYSICAL RANGE — it is a linear reach that hits
+    exactly zero at `d = distance`.** `physicallyCorrectLights` is false, so r128 runs
+    `pow(saturate(1 - d/distance), decay)`, verified against the vendored `three.min.js` rather than
+    assumed. The old code forced 260 (spot) / 180 (point). Consequences, both silent:
+    · the saucer's key hangs **209** units from the table, so `(1-209/260)^2 = 0.038` — it delivered
+      under 4% **of a value that had already been clamped**, i.e. the key light was doing nothing and
+      the FILL was outshining it. The design arrived inverted.
+    · the pub's fireplace (d0 **403**) and all three sconces (d0 **269**) sit BEYOND 180 and
+      delivered **exactly zero**. Only the pendant ever lit anything. Four of five fixtures were dead
+      and nothing said so.
+    A single constant cannot serve rooms of different sizes; that is the bug, not the number.
+  - **WHY NOT JUST FLIP `physicallyCorrectLights`, which is the obviously "correct" answer.** In this
+    r128 build that flag sets ONE shader define and touches only the point/spot distance term —
+    checked, there is no `scaleFactor`, so hemisphere and directional are unaffected and the blast
+    radius is genuinely small. But it is a RENDERER flag, so it would also rewrite the 2 `goalLights`
+    and the 5-strong `fxLightPool`, whose intensities are hand-tuned at ~5 call sites (goal flash,
+    ball glow, cannonball fuse, explosion, respawn swirl) against the legacy curve. Converting those
+    needs a reference distance per site, and the factors work out between **~37x and ~204x** depending
+    on the distance guessed — there is no single constant, so every one of them would be an unverified
+    guess on a visible effect. **The room lights are the only lights in the game whose values come
+    from an external tool, so the transfer is fixed where the transfer actually happens.**
+  - **What replaces it, in two derivations.** `base = candela / d0^2`, where `d0` is the fixture's own
+    world distance to the table (the table sits at the origin). **This one line is what makes the
+    transfer faithful**: Blender renders under inverse-square, so reproducing that RELATIONSHIP keeps
+    a near fill and a distant key at their true relative contribution instead of flattening both onto
+    one curve. It also drags the number into a human range — `gain` reads ~3, not ~0.0005.
+    · **The honest ratio at the table is the IRRADIANCE ratio, not the wattage ratio.** The saucer's
+      5.7:1 is raw candela; the fill is closer, so it earns some back and what Blender actually showed
+      at the table is **1.78:1**. The harness asserts the delivered ratio equals that, computed from
+      the GLB numbers rather than hardcoded — so this cannot silently drift into "preserve 5.7:1",
+      which would be MORE contrast than was ever authored.
+    · `distance = d0 * reach`, so the falloff at the table is **(1-1/reach)^decay — a CONSTANT**
+      (0.444 at the defaults). Scale-invariant on purpose: a pendant 97 up and a spot 209 up now land
+      on the same factor, so a room's brightness stops depending on how high its fixtures happen to
+      hang. Because that factor is known and fixed, `gain` is **linear in delivered light** and
+      therefore predictable — which is the actual fix for "you can't find the knob". The room still
+      gets falloff shaping (near walls brighter than far), which is why this keeps a cutoff at all
+      rather than setting `distance=0`. `reach:0` is that flat option if a room ever wants it.
+  - **The ceiling is now RATIO-PRESERVING and OFF by default.** If the brightest light exceeds `max`,
+    **every** light in that room scales by the same factor, so the relationship survives. Left at
+    `max:0` because with `gain` doing the work there is nothing for a guard to protect against — and
+    a ceiling that always bites makes `gain` dead exactly the way `lightScale` was dead. If you ever
+    turn it on, that is the trap to remember: **a knob upstream of a binding clamp is not a knob.**
+  - **NO TONE MAPPING AT ALL was the other half, and it is the bigger visual tell.** Only
+    `outputEncoding` was set; `toneMapping` was `NoToneMapping`, so everything over 1.0 clipped flat —
+    a spot pool, an emissive sign and a goal flash all landing on the same white. `CONFIG.render`
+    `toneMapping:'aces'` + `exposure:1.08` (ACES darkens the mid-range slightly, so a touch over 1
+    keeps the level familiar). **`'none'` restores the previous look exactly.** Applied to the PREVIEW
+    renderer too — `PRV` grades the customize turntable, the figurine thumbnails and the league setup
+    figure, and a preview graded differently from the game is a preview that lies about the finish.
+  - **`KHR_materials_emissive_strength` IS NOT IN r128's LOADER — but the value was never lost.**
+    Checked the vendored `GLTFLoader.js` extension table: absent. The saucer's alien glow panels
+    author strength 4, the pub's pendant bulb 6, and all of it arrived at 1. `addUnknownExtensionsToUserData`
+    parks every unhandled extension on `material.userData.gltfExtensions`, so the number is sitting
+    right there — `applyEmissiveStrength` reads it into **`emissiveIntensity`**, which multiplies
+    `emissive` in the shader so the authored COLOUR is untouched and only its strength scales.
+    · **Nine GLBs author it — both rooms, three tables, the explosion and swirl FX** — so it is hooked
+      at five load sites, not just the room loader. A room-only fix would have looked complete and
+      quietly left the tables and FX flat.
+    · **This and tone mapping are the same fix.** Strength 4 pushes emissive well past 1.0, which
+      without a curve to roll it off just clips to white — supporting the extension while clipping
+      would have changed nothing you could see.
+    · Materials are de-duped through a `Set`: a GLB material is shared across meshes, so a per-mesh
+      apply would cube a strength-3 glow to 27. Dropping that guard fails a harness assertion.
+  - **Shadow map, while in there:** `bias`/`normalBias` were never set (three.js defaults them to 0),
+    and the shadow camera covered 160x140 for a table spanning ~138x68 including goal depth — most of
+    the map spent on empty space. Now `CONFIG.render.shadow`, extents sized to the table. Room meshes
+    are `castShadow=false`, so nothing outside the table casts and the tighter box loses nothing.
+    **Both are cosmetic and blind-tuned** — see the live-look list below.
+  - **Room configs retuned, because two of them were compensating for dead fixtures.** `lightScale` is
+    gone; `rooms.*.light.gain` replaces it, plus hemi 0.9→0.62 / dir 0.7→0.5 on the saucer (those were
+    carrying the room while its key delivered 4%) and dir 0.8→0.55 on the pub (four of its five
+    fixtures now contribute for the first time). Arcade's `lightScale` was **decoration** — its GLB
+    has no punctual lights at all — and is dropped with a comment saying so.
+    · **The gains shipped DERIVED (saucer 3.2, pub 16) and were then tuned DOWN in play to 0.8 and
+      3.0.** Recorded because the ratio matters more than the numbers: both rooms landed ~4-5x below
+      the blind estimate, which is the size of error to expect from deriving a level without seeing
+      it — and it is exactly why `gain` was made linear. Do not "restore" the derived values.
+  - **Delivered at the table AT THE DERIVED GAIN (three.js intensity units), printed by the harness:**
+    saucer key **1.498** / fill 0.844 — a key that outshines its fill, where before the key managed
+    0.15 against a fill of 0.49. Pub pendant **0.820**, sconces 0.118 each, fire 0.076 — against
+    0.128 / **0** / **0**. Scale these by the live gain (they are linear in it) — the shipped config
+    now runs well below this; the point of the figures is the RELATIONSHIP, not the absolute level.
+  - **Not exercised live** (no browser), but not merely re-read either — `tools/roomlight-harness.js`
+    string-slices both functions out of `models.js`, rebuilds them with `new Function` and runs **56
+    assertions** against the real GLB fixtures: the old clamp collapsing 5.7:1 to 1:1 and inverting
+    key/fill; the old dead `lightScale`; the pub's two exact zeros; the new delivered ratio matching
+    inverse-square; scale invariance across a 90 vs 210 fixture; `gain` being linear; the ceiling
+    preserving ratio where a per-light clamp flattens it; `minDist`, `reach:0`, no-lights, a
+    directional inside a room glb, and every emissive path (shared material, junk strengths, no
+    emissive channel, null root, off switch). **It has teeth** — six deliberate mutations (restoring
+    the per-light clamp, dropping the `1/d0^2` term, a fixed cutoff, no `minDist`, no shared-material
+    guard, and per-light normalisation inside the ceiling) each break at least one assertion. Whole
+    37-module chain also re-compiled in one scope (no duplicate top-level names — `TONEMAP`,
+    `toneMapMode`, `applyToneMapping`, `applyRoomLights`, `applyEmissiveStrength` all confirmed, the
+    2026-08-02 `CUP` trap), and the five tone-mapping constants checked against the vendored r128.
+  - **STILL WANTS A REAL LOOK AT.** `gain` is now **settled in play** (saucer 0.8, pub 3.0 — see above),
+    so what is left is: whether ACES at exposure 1.08 reads as richer or just darker, and whether the
+    previews still match the game; the shadow `bias`/`normalBias`, which can trade acne for
+    peter-panning and were picked blind; and whether the pub's fireplace and sconces over-warm the
+    table, given they contributed nothing before and are effectively new light.
+  - **DELIBERATELY NOT DONE**, each its own job: **no room light casts shadows** (the pendant over the
+    pub table and the saucer spot cast nothing — shadows still come from a directional light nowhere
+    near them; needs a shadow-caster budget decision, not a flag); **room lights are not pooled**, so a
+    venue change alters the scene light count and forces a whole-scene shader recompile — exactly what
+    `fxLightPool` already solves for FX, and the same trap the 2026-07-24 entry documents; **per-room
+    `envMapIntensity`**, which is a near-free mood knob but has to walk every material; and the crowd
+    (1,400 canvas dots on a cylinder, FEATURE-IDEAS 4.1).
+  - **On the room-builder idea:** worth it, but in this order. A tuner built on top of the old
+    transfer would have been sliders dragging against a clamp — the knob has to mean something before
+    a UI for it is worth having. `gain` is now linear and predictable, which is the property a tuner
+    needs to be built on.
 ### 2026-08-19
+- **THE WIN SCREEN WAS THREE NUMBERS, AND THE MATCH IT SUMMARISED WAS NEVER MEASURED** (new
+  `js/matchstats.js`, new `CONFIG.matchStats`, `js/state.js` `freshStats`, hooks in `js/physics.js`
+  ×3, `js/rods.js` ×2, `js/balls.js` ×2, `js/flow.js`, new win-screen markup + `css/styles.css`
+  block, `js/ui.js`, new `tools/matchstats-harness.js`). FEATURE-IDEAS 1.4. `MSTAT.on:false`
+  restores the old three-number panel byte-for-byte and drops the tab bar with it.
+  - **IT IS DELIBERATELY INDEPENDENT OF `CONFIG.moments.on`, AND THAT IS THE ONE STRUCTURAL CALL IN
+    THE WHOLE FEATURE.** Every counter could have been read off moments' `b.tc`/`b.shot` records —
+    they carry team, role, swing and time already, and reusing them would have saved a small object
+    write per contact. But `momContact` early-returns on `momOn()`, which folds in `MOM.on`, the
+    play phase AND the training gate. Hang the ledger off it and flipping a COSMETIC toggle silently
+    empties the stat sheet, with nothing to point at — the worst class of bug to go looking for. So
+    matchstats keeps its own `b.msc` (last contact) / `b.mss` (last SWING), which also makes the
+    order of `momContact` and `msContact` at the two `S.lastTouch` sites free. **Saves and woodwork
+    are the exception and stay in moments.js**: they ARE that event, and detecting them twice could
+    only produce two counters that disagree.
+  - **ON TARGET IS `momOnTarget()` AND MUST STAY SO.** The keeper-save notice and the on-target
+    column answer the same question, so they must not be able to disagree about a given shot. That
+    reuse also inherits the trap the moments entry documents: **there is no short-landing rejection
+    in that projection, and adding one kills the column.** A shot spends 0.4–1.0s crossing the table
+    and free-fall over that is 20–125 units, so a ballistic projection puts every ground shot struck
+    more than ~16u out below the pitch. The harness pins it — a rolling strike from the DEFENSIVE
+    third must read on target, and re-adding the rejection fails 5 of its assertions.
+  - **A SHOT AND AN ON-TARGET SHOT ARE MEASURED BY DIFFERENT TESTS, on purpose.** "Attempt" is
+    local: goalward off the boot at `shotVX` (26 u/s) with the straight line landing within
+    `shotWide` (3.0) goal half-widths of centre. Without that second term every clearance and every
+    switch of play is a shot and the column means nothing; with it, a ball sprayed past ±33 of a
+    68-wide table is correctly not an attempt. Dropping the gate fails the harness.
+  - **ONE ATTEMPT PER SWING, NOT PER CONTACT** — `r.msSw`, cleared in `kickRod` beside `kickHit`.
+    A ball rattling along a boot resolves across several substeps and would otherwise log four
+    shots off one swing. **Deliberately NOT keyed off `r.kickHit`**, even though that flag already
+    means "first contact of this swing" and is set on the line after: that would make the count
+    depend on the ORDER of two statements in another file.
+  - **A PASS IS A TEAMMATE ROD RECEIVING WHAT ANOTHER OF ITS RODS STRUCK — not the AI's `pass`
+    kick style.** Keying it to the style would count only the AI, since a human has no pass verb
+    yet (2.2), and would miss the clearance that finds a teammate, which every stat sheet ever
+    printed counts. The receiving touch needn't be a swing — trapping it is receiving it — but the
+    PLAYED touch must be, or a ball ricocheting off your own defender to your midfield reads as
+    build-up play. Credit goes to the rod that played it. An opponent touch in between overwrites
+    `b.msc`, so the chain breaks with no extra bookkeeping, and `msReset` (called from `syncBall`,
+    like `momReset`) breaks it on any teleport.
+  - **"POSSESSION BY THIRD" BECAME TERRITORY, and that is a readability call rather than a
+    shortcut.** Possession split by team AND third is six numbers; nobody reads six numbers. Where
+    the BALL spent the match is three, it fits one bar, and it's the figure broadcasts actually
+    show. `terr` is in WORLD-X order, so `terr[0]` is the third team 0 DEFENDS — which is why the
+    key names the TEAMS rather than saying attacking/defensive, words that only mean something once
+    you already know which way each side is kicking. dt is SPLIT between live balls rather than
+    read off `S.balls[0]`: in multi-ball the first ball is an arbitrary pick.
+  - **The per-rod bucket is cached ON the rod against the IDENTITY of `S.stats`.** `msSlide` runs
+    once per rod per sim step — 8 × 120/s — and a string concat plus a map lookup there is exactly
+    what turns up on the `M` panel. `freshStats` hands out a NEW object every match, so `r.msBFor
+    === S.stats` is what stops last match's bucket being written into; caching on `r.msB` alone
+    fails 3 harness assertions. `MS_ZERO` (the renderer's empty-rod fallback) is FROZEN because it
+    is handed out — one stray `+=` would poison every empty rod at once.
+  - **Rod distance and territory are PLAY-PHASE gated**, like possession already was: the AI
+    shuffling back into shape during a goal celebration is not work anybody did.
+  - **The rally clock ends on a goal or an out, NOT on a dead-ball re-drop.** A re-drop doesn't stop
+    play, it moves the ball somewhere it can be played from. `msRallyEnd` is also called in
+    `endMatch` so a clock-out or a forfeit closes the last rally, and it's idempotent.
+  - **`msGoal` derives the own goal itself**, by the same rule `momKind` uses (last CONTACT a swing
+    by the conceding side), rather than taking `momGoal`'s verdict — same independence argument, and
+    the two agree by construction. Credit reads the last SWING (`b.mss`), so a goal that deflected
+    in off a defender stays the striker's, which is the fair call and the one `momKind` also makes.
+    Like `momGoal` it MUST run before `removeBall` — the records hang off the ball.
+  - **UI: the sheet is MIRRORED COMPARISON BARS, and the bar is the whole point.** A column of
+    paired numbers with nothing between them is the thing nobody reads. One track split at the
+    ratio point (not two half-width bars — the split IS the reading), each half growing from the
+    OUTSIDE IN so the two read as two teams meeting in the middle. **0 v 0 leaves the track empty
+    rather than splitting 50/50**, because a flat half-and-half bar reads as "even", which nil-nil
+    is not. Nine rows, then territory, then a scorers strip, then the two facts that belong to the
+    MATCH rather than to either team.
+  - **RODS is a TAB, not a fourth block.** It exists to make upgrade spending feel earned, not to be
+    the first thing you see, and eight rows of seven columns under the comparison sheet is a wall.
+    Built on the existing generic `.scrTab*` chrome. Saves in that table read the TEAM total because
+    the save detector is GK-only by design — a second per-rod counter could only ever disagree.
+  - **`--t0`/`--t1` are set inline from `teamCol()`, NOT read from `--c0`/`--c1`.** Those root vars
+    are only repainted for a LEAGUE match (`league.js`), so a quick match on a custom kit colour
+    would have drawn the sheet in the default red and blue while the title beside it — which
+    already used `teamCol` inline — was correct.
+  - **`#win` had to gain `overflow-y:auto` + `justify-content:safe center`.** The screen is a centred
+    flex column with no overflow rule, which clips at BOTH ends, so a sheet taller than the viewport
+    would lose the title and the buttons. Same fix `#menu` needed when co-op grew the seat cards;
+    `safe center` degrades to flex-start only when it doesn't fit.
+  - **The league/cup payout strip moved OUT of `#winStats` into its own `#winRewards`** — it was
+    grid cells with `style="grid-column:1/4"` inside the stat grid, which cannot survive the grid
+    being replaced, and it belongs outside the tabs so it reads from either one.
+  - **Units are derived, not guessed:** `MOM.goal.kmh` (0.35) converts u/s → km/h and km/h = m/s ×
+    3.6, so one table unit is 0.35/3.6 = 0.097222 m. The harness asserts the relationship rather
+    than the number, so retuning the pace conversion can't silently leave distances wrong.
+  - **Not exercised live** (the browser pane wouldn't display, so nothing was seen rendered), but
+    not merely re-read either. `tools/matchstats-harness.js` boots `core`+`config`+`state`+
+    `moments`+`matchstats` in one `vm` context against a recording DOM stub and runs **144
+    assertions**: the shot gate across speed, spray width, wrong-way strikes, passive touches, both
+    teams, a ground shot from the defensive third, a lob that lands short (on target) and one that
+    clears the bar (not); the pass chain against time-out, an opponent touch, a self-touch, a
+    passive origin, a trapped reception and a teleport; own goal vs deflection vs no-record-at-all;
+    territory bucketing, goal-line clamping, multi-ball splitting and phase gating; the rally max;
+    the bucket cache's cross-match safety; and the sheet's markup, percentages, unit conversions,
+    the 0-v-0 rule, tab state and both off switches. **It has teeth** — eight deliberate mutations
+    (dropping the swing latch, self-passes, a 50/50 empty bar, crediting the last contact instead of
+    the last swing, full-dt multi-ball, dropping the play gate, dropping the identity check on the
+    cache, calling a passive deflection an own goal, dropping `shotWide`, re-adding the short-landing
+    rejection) each fail between 1 and 5 assertions. Whole 37-module chain also re-compiled in one
+    scope (no duplicate top-level names — `MSTAT` confirmed non-`undefined`, the 2026-08-02 `CUP`
+    trap), and every selector in the new CSS block checked against the markup `msWinRender` actually
+    emits, in a real browser — no rule matching nothing (the 2026-08-04 `.lgLast` trap) and no
+    generated class without a rule.
+  - **Still wants a real look at:** the sheet's PROPORTIONS at a real viewport width, which is the
+    one thing a zero-width pane can't report; whether ~780px of win screen wants the row padding
+    trimmed on a 720p window; and whether `shotVX` 26 / `shotWide` 3.0 read right against a played
+    match — a shot count that lands near the kick count means `shotWide` is too generous.
+  - **Left open, and it is the other half of FEATURE-IDEAS 1.4:** the league TOP-SCORER table and
+    per-rod SEASON stats. `S.stats.scorers` and `S.stats.rods` are exactly the shape those want,
+    but they die with the match — persisting them is a `LG` save-format change in `lgRecord` plus a
+    lobby panel, which is its own job rather than a line here.
+- **THE GAME NOW KNOWS WHAT JUST HAPPENED — saves, woodwork, and a goal banner that describes the
+  SHOT instead of picking one of six strings at random** (new `js/moments.js`, new `CONFIG.moments`,
+  `js/physics.js` five hooks, `js/flow.js` `onGoal`, `js/state.js`, `js/balls.js`, `js/audio.js` new
+  `Au.react`, `index.html`, new `tools/moments-harness.js`). FEATURE-IDEAS 1.1, plus the shot-keyed
+  slice of 1.3 that falls out of measuring the shot. `MOM.on:false` restores the old behaviour
+  exactly — the flat `HYPE` pick, the scoring team's colour, no chip beyond the golden ×2.
+  - **THE ONE THING THAT WOULD HAVE KILLED IT SILENTLY IS THE OBVIOUS FORM OF THE ON-TARGET TEST.**
+    "Project the ball to the goal plane, reject it if it lands short" reads as correct and is
+    catastrophic here: a shot spends **0.4–1.0s** crossing the table and free-fall over that is
+    **20–125 units**, so a plain ballistic projection puts every GROUND shot struck more than ~16u
+    out well below the pitch. The GK sits 7.5u off its line and the DEF row 22.5u out, so a `y<0`
+    rejection refuses **every shot from the defensive half onward** — i.e. the keeper never saves
+    anything and the feature does nothing, with no error to point at. Only the CROSSBAR may rule a
+    shot out; a ball that would "land" short is on the deck, and a ball on the deck bounces
+    (`floorRest`) and keeps coming. The floor clamp on the reported `y` changes no verdict — it
+    just stops a −120 turning up in a readout. Re-introducing that one term fails **10** of the
+    harness's assertions, which is the whole reason the harness exists.
+  - **SAVES ARE GK-ONLY, and that is a design line rather than an oversight** (owner's call). The
+    keeper is the one rod whose entire job this is. Credit the DEF too and the notice fires every
+    rally — an event that happens constantly stops being an event. The harness pins it with a DEF
+    in a state otherwise IDENTICAL to the saving GK's; widening the role test to include DEF fails
+    exactly that assertion and nothing else.
+  - **GOAL-LINE CLEARANCE IS A MODIFIER ON THE SAVE, NOT ITS OWN DETECTOR — because of the
+    geometry, not to save code.** The GK rod sits at x=±52.5 with `ARM` 6.3, so a fully-swung
+    keeper foot reaches x≈58.8 against a line at ±60. **No other rod can be within 15u of the
+    line.** A standalone clearance detector would therefore either never fire or double-banner on
+    top of the save it already is. So a save inside `save.lineDist` of the line reads **OFF THE
+    LINE** with a deeper pinch, and that is the whole feature.
+  - **THE SAVE VERDICT IS DEFERRED BY EXACTLY ONE SIM STEP, and it has to be.** Announcing at
+    contact time shouts SAVE over a shot the keeper got a fingertip to which is still going in —
+    the notice would land a beat before the goal banner contradicting it. `momSaveTest` therefore
+    only ARMS `b.savePend`; `momStep` resolves it against the POST-contact velocity at the end of
+    that step. Still on target for the same end = a touch, not a save. Still on target for the
+    OTHER end = he thumped it upfield, which is a save.
+  - **`b.onT` is recomputed once per SIM STEP, never per substep, and that is what makes it the
+    right thing to judge a save on.** Every contact inside a step reads the projection from BEFORE
+    that step — i.e. the pre-contact ball — with no need to capture velocity before the impulse
+    rewrites it. `momContact` likewise runs BEFORE the `S.lastTouch=r.team` it sits on, because the
+    save test reads the PREVIOUS contact record and would otherwise read its own.
+  - **A backpass the keeper collects is not a save; a deflection off his own defender is.** The
+    first cut suppressed any save where the previous contact was the same team, which quietly ate
+    the most common save in the game — a shot that clips your own DEF on the way through. The test
+    is `b.tc.team===r.team && b.tc.swing`: a deliberate ball back, not a ricochet.
+  - **Woodwork fires off the post/crossbar contacts `goalFrameCollide` ALREADY resolves** — the
+    gasp was the only thing that hit was missing. Gated three ways: an impact threshold (a ring,
+    not a nudge), a per-ball cooldown (a ball rattling post-to-bar is ONE moment, not four), and
+    **in front of the line only** — the same collider is rung by a ball loose in the goal box after
+    an over-the-bar lob rolls down the back of an upright, and that is a dead ball being fiddled
+    with, not a near miss. Not gated on being on target: a post rung from a wild angle is still
+    woodwork, and the impact threshold is the filter that matters.
+  - **The time-pinch is the point of the whole tier and it needed no new machinery.**
+    `S.timeScale = MOM.<kind>.pinch`, and `main.js` already ramps it back at `.9/s`. `min()`, so a
+    shallower pinch can't undo a deeper one still recovering. Phase-gated to `play`, so it can
+    never fight `MATCH.goalSlowmo`.
+  - **SPEED AT THE LINE WAS FREE, AND IT IS THE HONEST NUMBER.** `onGoal` is called from inside
+    `stepBall` the instant the position test passes, so `b.v` at the top of it IS the velocity at
+    the line — nothing has touched the ball since it crossed. Hence `momGoal` MUST run before
+    `removeBall`, which frees the mesh two lines down. Classification is first-match-wins:
+    ownGoal → woodwork → curler → screamer → topBins → longRange → deflected → scrappy → default.
+    **Curler deliberately outranks screamer**: spin is the rarer event, and a rocket that also bent
+    is better described as a curler than as one more screamer. **Own goal outranks everything**,
+    including a post-and-in that also matches woodwork.
+  - **Distance is measured from `b.shot` (the last SWING), not `b.tc` (the last contact).** A ball
+    deflected 5u out after a strike from the halfway line is a long-range goal, not a tap-in.
+    Own-goal likewise needs the last contact to be a SWING by the conceding side: a passive
+    deflection off a defender is the attacker's goal and falls through to `deflected`, which is the
+    fair call.
+  - **The chip is always at most two segments — `<line> · <pace>`.** The golden ball's `×2` is
+    information rather than flavour, so it takes the line slot outright and the classification
+    stands down. Pace uses the same `×0.35` the win screen already uses, so the two can't disagree.
+    The match-WINNING goal keeps its own `GOLDEN GOAL` / `MATCH WINNER` sub — the format outranks
+    the flavour on that one goal — but still takes the own-goal accent if that's what it was.
+  - **Saves go on `notice` (tier 2), not `banner`.** A 66px stop-the-world banner over live play
+    with the ball still bouncing is obstructive, and `fx.js`'s own tier comment already says notice
+    is for "a live event the player already SAW". An own goal takes `MOM.ogCol` rather than either
+    team's colour — neither side wants to own it.
+  - `Au.react(kind)` is **deliberately minimal**: `ooh` and `groan` only, hardcoded like
+    `goal()`/`boom()` rather than in CONFIG (match chrome, not per-ball-type character). The
+    `noise` primitive can't do it — its attack is pinned at 4ms and a gasp is entirely in the
+    swell — so it builds its own graph with a band sweep across the envelope, which is what
+    carries the meaning: an intake of breath rises, a groan falls. Gated on `cfg.ambience` with the
+    bed. **`roar` / `hush` / the tension ramp / home-crowd bias are FEATURE-IDEAS 1.2 and are not
+    done.** Not tapped by `replay.js` either, which is correct — crowd is celebration, not footage,
+    same call as `whistle`/`goal`.
+  - `freshStats()` gains `saves[2]` / `woodwork[2]` because the detectors produce them for free.
+    They now feed the post-match sheet (FEATURE-IDEAS 1.4, entry above) — they are still detected
+    HERE and only here, because they ARE this tier's event.
+  - **THE CURLER TEST WAS WRONG ON ITS FIRST OUTING, AND THE FIX IS THE MEASURE, NOT THE NUMBER**
+    (`CONFIG.moments.goal.spinCurl` -> `curlDeg`, new `b.curl` accumulated in `stepBall`'s Magnus
+    block, reset per swing in `momContact`). Reported from play: it fired on shots that were
+    "pretty straight". It was `|b.spin| > 0.5`, and the arithmetic says that can only misfire —
+    the Magnus term turns the ball at `spin x PHY.spinTurn` (0.4) rad/s, so spin 0.5 is **11°/s**
+    and over a ~0.6s flight bends the path about **7°**, i.e. invisible, while `KICK.spinGain`
+    banks ~0.3 of spin per contact off an ordinary sliding strike. The threshold was cleared
+    constantly by shots that never bent.
+    - **RAW SPIN IS THE WRONG SIGNAL IN BOTH DIRECTIONS, so raising the number would only have
+      moved the misfires around.** Spin at the line says nothing about the path: a late graze in
+      front of goal leaves a big spin value on a ball that flew dead straight, and a genuine early
+      curler has mostly DECAYED (`spinDecay` .74) by the time it crosses. What the eye judges is
+      total heading change, which the Magnus block is already computing per substep — so it now
+      banks it (`b.curl+=a`, one add inside a branch that already exists) and the classifier reads
+      **degrees of path bent**. That also makes the knob self-describing: 10 = slight, 18 = clearly
+      bent, 30 = a banana.
+    - **`b.curl` resets on every SWING, not on every contact.** The question is "did THIS shot
+      bend", not "how far has this ball turned since kick-off". A passive deflection deliberately
+      does NOT reset it — a deflection adds nothing to `b.curl` anyway (only the Magnus rotation
+      does), and the shot it came off is still the thing being described.
+    - **`abs(sum)`, not `sum(abs)` — which is what keeps a knuckleball out of the curler pool.**
+      The knuckle ball type re-kicks its spin to fresh random values mid-flight, so a weave
+      cancels to a small net bend. That is correct: a knuckleball isn't a curler.
+    - Harness gained the case that caused this: **big spin on a straight path must NOT be a
+      curler**, and no spin left on a path that DID bend still must be. Reverting to the raw-spin
+      test fails 5 assertions.
+  - **NEW `MOM.debug` — the real gap wasn't config coverage, it was VISIBILITY.** Every input to
+    the classifier was already a knob; none of them was observable from the pitch, which is how the
+    curler test ran a whole session misfiring. `true` console.tables one row per goal — each rule,
+    the measurement, the CONFIG path of the knob it was tested against, and whether it fired — plus
+    a line of context (spin at the line, who struck it and from where, last touch swing/passive,
+    woodwork). Console only and deliberately never a toast: dev chatter must not land on screen.
+    Play one match with it on and the wrong column is obvious.
+  - **THRESHOLDS ARE A FIRST CUT AND `curlDeg` STILL WANTS A REAL MATCH BEHIND IT.** The kick-log traces
+    in this file put a normal strike at ~44 u/s off the boot and a sweet hit at ~89, decaying
+    across the table — `spFast` 62 / `spSlow` 22 come off that. Nothing measures typical spin at
+    the line — 18° is derived from the flight-time arithmetic above rather than measured, so it is
+    the first number to check with `MOM.debug` on. If every goal still reads as a curler, that's
+    the knob; the readout will say by how much.
+  - Found on the way past: **`F.goalH` is 10.2 and `F.wallH` is 10** — this file said 8.5 and 8.
+    Corrected in the geometry section above. The harness derives its over-the-bar fixtures from
+    `F.goalH` rather than a literal for exactly that reason.
+  - **Not exercised live** (no browser), but `tools/moments-harness.js` boots `core`+`config`+
+    `moments` in one `vm` context against a stubbed `S`/`notice`/`Au`/`teamCol` and runs **104
+    assertions**: the projection across ground shots, lobs over and under the bar, wide, too slow,
+    too far ahead, behind the line, both ends, and the big-goal widen on the correct end only; the
+    save gate against DEF/MID/wrong-end-GK/backpass/own-deflection/cooldown/near-line; the deferred
+    verdict in all three outcomes; the woodwork threshold, cooldown and behind-the-line refusal;
+    every classifier boundary AND the combinations where two rules both match, so the priority
+    order is pinned; and the chip's format, colour, golden-ball case and both off switches.
+    **It has teeth** — re-adding the `y<0` term fails 10 assertions, letting DEF save fails 1,
+    and swapping the ownGoal/woodwork order fails 1. Whole 36-module chain also re-parsed in one
+    scope (no duplicate top-level names; `MOM` confirmed non-`undefined`, the 2026-08-02 `CUP`
+    trap). **Note the harness has to hand its aliases out via an explicit `globalThis.__c={...}`:**
+    `MOM`/`F`/`BALL_R` are top-level `const`s, so `ctx.MOM` reads back `undefined` and every
+    threshold silently becomes `NaN` — which the first run did, and it looked like passing tests.
+    Still wants a real look at: whether the pinch reads as drama or as a stutter at 60fps, and
+    whether the save notice fires often enough to feel earned without being constant.
 - **PHOTO MODE COULD NOT SHOW YOU THE SHOT — the crop border had no off switch, and a screen
   recording was the wrong tool anyway** (`js/photo.js`, `css/styles.css`, `js/capture.js`,
   `js/config.js` new `photo.record`, `js/main.js`, new `tools/photo-record-harness.js`). Reported

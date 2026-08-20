@@ -41,6 +41,9 @@ const SCREENS={
    panels:['menuKitPanel0','menuTeamPanel','menuKitPanel1']},
   {key:'menuRules',wrap:'#menuTab_rules .panelWrap',btn:'menuRulesEditLayout',
    panels:['menuSetupPanel','menuTablePanel','menuAudioPanel']}]},
+ // Dev tool. Registered like any other screen so Esc and the router work on it for free; the
+ // CARD that reaches it is what's gated on CONFIG.debug.roomEditor, not the route itself.
+ roomEdit:{back:'home'},
  customize:{back:'menu'},             // only reachable from the Kick Off kit panel
  lgSlots:{back:'home'},
  lgSetup:{back:'lgSlots'},

@@ -33,8 +33,11 @@ function physics(dt){
   b.trailT-=dt;
   if(b.trailT<=0&&sp>CONFIG.fx.trailSpeed){b.trailT=.022;spawnTrail(b);}
   rollProbe(b);   // sustained-contact audio (see below) — position-only, reads the settled state
+  momStep(b);     // moments.js: re-arm the on-target projection off the settled velocity, and
+                  // resolve a save the keeper made during this step now the outcome is known
  }
  if(S.stats&&S.lastTouch>=0&&S.phase==='play')S.stats.poss[S.lastTouch]+=dt;
+ msTick(dt);   // matchstats.js: territory (ball position by third) + the rally clock
 }
 /* ================= contact AUDIO gating =================================
    An impact is an EVENT, a roll is a STATE — the same split every shipped physics game draws
@@ -90,6 +93,8 @@ function stepBall(b,h){
  if(b.spin){
   const a=clamp(b.spin*PHY.spinTurn*h,-PHY.spinMax,PHY.spinMax),cs=Math.cos(a),sn=Math.sin(a),vx=v.x,vz=v.z;
   v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
+  b.curl+=a;   // moments.js: total heading change since the last swing — this IS how much the ball
+               // visibly bent, which raw b.spin is not (see the curlDeg note in CONFIG.moments.goal)
   b.spin*=Math.exp(-PHY.spinDecay*h);
   if(Math.abs(b.spin)<PHY.spinCut)b.spin=0;
  }
@@ -253,13 +258,13 @@ function goalFrameCollide(b,h){
   if(p.y<GH+pr)for(let sz=-1;sz<=1;sz+=2){
    const dx=p.x-gx,dz=p.z-sz*gh,dd=Math.hypot(dx,dz);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,nz=dz/dd;p.x+=nx*(pr-dd);p.z+=nz*(pr-dd);
-    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn,b.t.audio?.post);}}
+    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn,b.t.audio?.post);momWood(b,-vn,0);}}
   }
   // crossbar: horizontal cylinder along z at (gx, goalH), z∈[-gh,gh]
   if(Math.abs(p.z)<gh+pr){
    const dx=p.x-gx,dy=p.y-GH,dd=Math.hypot(dx,dy);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
-    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post);}}
+    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post);momWood(b,-vn,1);}}
   }
   // net roof: solid top over the goal box (behind the line). A ball flagged as an over-the-bar lob
   // (b.overBar for this end) is caught at ANY depth below the roofline so a fast drop can't tunnel
@@ -355,7 +360,7 @@ function collideRod(b,r){
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
-    S.lastTouch=r.team;
+    momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js: per-ball contact record (reads the PREVIOUS one, so it goes first) · matchstats.js keeps its OWN record, so the order of the two is free
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
      {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
@@ -414,7 +419,7 @@ function collideRod(b,r){
     if(!trapping&&(pow||!isUserRod(r)))aimAssist(b,r,true);
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
-   S.lastTouch=r.team;
+   momContact(b,r);msContact(b,r);S.lastTouch=r.team;
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
     {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact (capsule graze) of this swing — capsule can't be a sweet hit
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){

@@ -124,6 +124,7 @@ function loop(t){
  // to write AFTER fxUpdate and sweetGuideUpdate, which own the markers it hides and would put them
  // straight back. That ordering is also what makes the restore free (see phSceneApply).
  if(S.photo)phTick(rdt);
+ if(S.redit)reditTick();                 // room editor self-heal (venue changed under the panel)
  perfAdd('p','fx');
  perfMark('p');
  updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating, no-op off)

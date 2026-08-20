@@ -86,6 +86,7 @@ const PRV={r:null,bw:0,bh:0,w:0,h:0,dpr:0,scratch:null,
   PRV.r=new THREE.WebGLRenderer({antialias:true,alpha:true});
   PRV.r.setPixelRatio(1);                    // we hand it device pixels directly
   PRV.r.outputEncoding=THREE.sRGBEncoding;
+  applyToneMapping(PRV.r,false);   // same grade as the game, or previews lie about the finish
   PRV.r.setScissorTest(true);                // so clear() only touches the active sub-viewport
   return PRV.r;
  },
@@ -129,12 +130,35 @@ const PRV={r:null,bw:0,bh:0,w:0,h:0,dpr:0,scratch:null,
  }
 };
 
+/* Tone mapping — what happens to light values ABOVE 1.0.
+   Without it (r128 defaults to NoToneMapping) anything brighter than white clips flat: a
+   spot pool, an emissive sign and a goal flash all land on the same white, so brightness
+   stops carrying information and the image reads as a raw WebGL demo. It is also the other
+   half of KHR_materials_emissive_strength support (models.js) — a strength of 4 has nowhere
+   to go without a curve to roll it off.
+   Changing toneMapping edits a shader define, so every material needs a recompile; this is
+   called once from initThree, and again only if something actually changes it at runtime.
+   CONFIG.render.toneMapping:'none' restores the previous look exactly. */
+const TONEMAP={none:THREE.NoToneMapping,linear:THREE.LinearToneMapping,reinhard:THREE.ReinhardToneMapping,
+  cineon:THREE.CineonToneMapping,aces:THREE.ACESFilmicToneMapping};
+function toneMapMode(){const R=(typeof CONFIG!=='undefined'&&CONFIG.render)||{};
+ const m=TONEMAP[R.toneMapping];return m===undefined?THREE.ACESFilmicToneMapping:m;}
+function applyToneMapping(r,recompile){
+ if(!r)return;
+ const R=(typeof CONFIG!=='undefined'&&CONFIG.render)||{};
+ const tm=toneMapMode(),ex=(R.exposure===undefined?1:R.exposure);
+ const changed=(r.toneMapping!==tm);
+ r.toneMapping=tm;r.toneMappingExposure=ex;              // exposure is a uniform — free to change any time
+ if(changed&&recompile&&scene)scene.traverse(o=>{const m=o.material;if(!m)return;
+  (Array.isArray(m)?m:[m]).forEach(x=>{if(x)x.needsUpdate=true;});});
+}
 function initThree(){
  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
  renderer.setSize(innerWidth,innerHeight);
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
  renderer.outputEncoding=THREE.sRGBEncoding;
+ applyToneMapping(renderer,false);   // set before any material exists, so nothing needs recompiling
  scene=new THREE.Scene();
  camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,700);
  camera.position.set(0,92,86);camera.lookAt(0,0,2);
@@ -142,7 +166,13 @@ function initThree(){
  dirLight=new THREE.DirectionalLight(0xffffff,1.05);
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
  dirLight.shadow.mapSize.set(2048,2048);
- const sc=dirLight.shadow.camera;sc.left=-80;sc.right=80;sc.top=70;sc.bottom=-70;sc.far=260;
+ /* bias/normalBias fight shadow acne — both were 0 (three.js defaults, never set). The extents
+    were 160x140 for a table spanning ~138x68 incl. goal depth, so most of the shadow map was
+    spent on empty space. Room meshes are castShadow=false, so nothing outside the table casts. */
+ const SH=Object.assign({bias:-0.0002,normalBias:0.35,left:-76,right:76,top:46,bottom:-46,far:260},
+  (typeof CONFIG!=='undefined'&&CONFIG.render&&CONFIG.render.shadow)||{});
+ dirLight.shadow.bias=SH.bias;dirLight.shadow.normalBias=SH.normalBias;
+ const sc=dirLight.shadow.camera;sc.left=SH.left;sc.right=SH.right;sc.top=SH.top;sc.bottom=SH.bottom;sc.far=SH.far;
  scene.add(dirLight);
  teamMat[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,roughness:.45,metalness:.15});
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
@@ -464,6 +494,10 @@ function buildRods(){
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
+     // match stats (js/matchstats.js): msSw = the one-attempt-per-swing latch, cleared in kickRod.
+     // msB/msBFor = this rod's stat bucket, cached against the IDENTITY of the S.stats it belongs
+     // to — freshStats hands out a new object per match, which is what makes the cache safe.
+     msSw:false,msB:null,msBFor:null,
      removedUntil:[]};
     rods.push(r);
     dressRod(r,tid);                                  // hang the rod's hardware visual (GLB set or primitive)
@@ -689,10 +723,14 @@ function applyRoom(onReady){
   const on=!!(roomGroups[id]&&roomGroups[id].children.length);
   for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&on);}
   const fill=!on&&rm.backdrop!==false;   // backdrop:false = a TRUE void (bg + fog only), no stand-in
+  // props are a SEPARATE group per room (see js/props.js) — deliberately not parented to
+  // the backdrop, whose children.length is what decides the shared-ground fallback above
+  if(typeof propGroups!=='undefined')for(const pid in propGroups)propGroups[pid].visible=(pid===id);
   if(groundMesh)groundMesh.visible=fill;
   if(crowdMesh)crowdMesh.visible=fill;
  };
  show();setRoomEnv(id,rm);
+ if(typeof buildRoomProps==='function')buildRoomProps(id,rm,show);
  if(wantGlb&&typeof ensureRoom==='function'){
   ensureRoom(id,()=>{                                    // GLB resident: reveal it + upgrade env to the real reflection bake
    show();setRoomEnv(id,rm);

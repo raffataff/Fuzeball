@@ -32,7 +32,18 @@ Plus a visual tier, because two of the biggest "is this hand-made?" tells are si
 
 ## Tier 1 — Reaction & feedback. Cheapest wins, biggest perceived jump.
 
-### 1.1 The game doesn't know when something exciting happened
+### 1.1 The game doesn't know when something exciting happened  — **DONE 2026-08-19**
+
+> Built as `js/moments.js` + `CONFIG.moments`. Saves are **GK-only** by decision (a DEF block
+> fires nothing — crediting the defence makes the notice constant), and goal-line clearance is
+> a **modifier on the save** rather than its own detector: the keeper's foot reaches x≈58.8
+> against a line at ±60 and no other rod gets within 15u, so a standalone detector could never
+> fire without double-banner-ing the save it already is. SCREAMER became a full classifier
+> keyed to the measured speed **at the line** plus spin, strike distance, placement and
+> woodwork recall, with the pace on the chip in km/h — i.e. it also delivers the shot-keyed
+> slice of 1.3. Crowd audio is a minimal `Au.react` (`ooh`/`groan`) only; **1.2 is still open**.
+> Saves/woodwork are banked into `freshStats()` but the win screen is untouched — that's 1.4.
+
 
 Nothing in the codebase detects a **save**, a **near miss**, or **woodwork**. `hitPost` in
 `physics.js` already computes the exact post/crossbar contact and calls `Au.post()` — that is a
@@ -74,10 +85,20 @@ picks the pool from context you already track (`S.score`, `S.suddenDeath`, `b.t.
 `S.stats.topSpeed`, last-touch chain). Target ~60 lines total. The `state.js` comment already sets
 the right bar — *"Commentary, not narration"* — keep it.
 
-### 1.4 Match stats are three numbers
+### 1.4 Match stats are three numbers  — **DONE 2026-08-19**
 
-`freshStats()` returns `{kicks, poss, topSpeed}`, and the win screen shows exactly that. For a game
-with a league, a cup and a stat-build economy, that's the weakest screen in the build.
+> Built as `js/matchstats.js` + `CONFIG.matchStats` + a two-tab win screen. Tracked: shots, shots
+> on target, passes completed, saves, woodwork, hardest hit, rod distance, territory by third,
+> longest rally, and per-rod goals / shots / on-target / kicks / distance. **MATCH** is a mirrored
+> comparison bar per stat plus a territory bar, a scorers strip and the two match-level facts;
+> **RODS** is the per-rod table. Deliberately INDEPENDENT of `CONFIG.moments.on` (it keeps its own
+> per-ball contact record) so the sheet can't quietly empty itself when the drama tier is off;
+> saves and woodwork are still detected once, by 1.1, because they ARE that event.
+> **Possession by third became TERRITORY** — six numbers split by team AND third is unreadable, and
+> where the ball actually spent the match is the figure people look at.
+> **Still open from this item: the league top-scorer table and per-rod SEASON stats.**
+> `S.stats.scorers` and `S.stats.rods` are the shape those want, but they die with the match —
+> persisting them needs a `LG` save-format change in `lgRecord`, which is its own job.
 
 Track: **shots, shots on target, saves, woodwork, passes completed, longest rally (s), possession by
 third, hardest hit (km/h), distance travelled per rod, per-rod goals.** All of it falls out of hooks

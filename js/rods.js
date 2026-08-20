@@ -91,8 +91,9 @@ function kickRod(r, style, aimAt){
  r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.passTo=aimAt||null;                             // pass target for this swing only
  r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
+ r.msSw=false;                                     // match-stats shot latch: ONE attempt per swing, not one per contact (matchstats.js msContact)
  stExertKick(r);                                   // stamina channel B: the swing costs THIS rod (stats.js)
- if(S.stats)S.stats.kicks[r.team]++;
+ msKick(r);                                        // matchstats.js: team + per-rod kick count
 }
 function resetRodRotation(){
  for(const r of rods){
@@ -177,6 +178,7 @@ function updateRods(dt){
    r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
    r.offset+=r.slideV*dt;
   }
+  msSlide(r,Math.abs(r.offset-prevOff));              // matchstats.js: rod work done, in table units
   r.slideV=(r.offset-prevOff)/dt;                     // keep slideV in sync across control handoff
   r.angVel=(r.angle-r.prevAngle)/dt;
   r.vz=(r.offset-r.prevOffset)/dt;

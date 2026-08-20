@@ -31,6 +31,11 @@
    Math.random()-filled a fresh AudioBuffer per hit (~2k random() calls), hundreds of times
    a second. Everything now plays random slices of one shared 3s buffer built at init. */
 
+/* Crowd reaction shapes (Au.react). f0->f1 is the band sweep across the whole envelope, which is
+   what carries the MEANING: an intake of breath rises, a groan falls. Hardcoded here rather than in
+   CONFIG because these are match chrome like goal()/whistle(), not per-ball-type character. */
+const AUREACT={ooh:{f0:620,f1:930,q:1.7,a:.16,d:.52,v:.17,exc:.30},
+               groan:{f0:470,f1:235,q:1.4,a:.22,d:.80,v:.16,exc:.12}};
 const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
  rl:null, // [floor, wall] roll voices, or null when CONFIG.audioMix.roll.on is false
@@ -205,6 +210,25 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
    this.env(g,c.currentTime,at,de-i*ds,gv*(1-i*(ak.falloff??.18)));o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+de+.14/R);});
   this.noise(ak.noiseDur??.03,ak.noiseFreq??3200,v*(ak.noiseVolScale??.5),J.pitch);this.exc=Math.min(1,this.exc+.25);},
 
+/* Crowd REACTION — a shaped swell over the bed, not another impact one-shot. Au.exc only ever
+    swells AFTER a loud contact; this is the crowd responding to something that made NO noise of its
+    own — a shot that missed, a keeper who got there. The noise primitive can't do it: its attack is
+    pinned at 4ms, and a gasp is entirely in the swell.
+    Gated on cfg.ambience with the bed — turn the crowd off and they stop reacting too.
+    Two shapes only; roar / hush / the tension ramp are still to come (FEATURE-IDEAS 1.2). */
+ react(kind){
+  if(!this.ctx||!this.nbuf||!cfg.ambience)return;
+  const K=AUREACT[kind];if(!K)return;
+  const R=this.rate>0?this.rate:1,a=K.a/R,d=K.d/R;
+  if(!this.vgate('react',a+d))return;
+  const c=this.ctx,t0=c.currentTime,s=c.createBufferSource();
+  s.buffer=this.nbuf;s.loop=true;                       // 3s buffer, but loop so a slowed replay can't run it dry
+  const f=c.createBiquadFilter();f.type='bandpass';f.Q.value=K.q;
+  f.frequency.setValueAtTime(K.f0*R,t0);f.frequency.linearRampToValueAtTime(K.f1*R,t0+a+d);
+  const g=c.createGain();this.env(g,t0,a,d,K.v*this.vol);
+  s.connect(f);f.connect(g);g.connect(this.mg);s.start(t0);s.stop(t0+a+d+.1);
+  this.exc=Math.min(1,this.exc+K.exc);                  // and it leaves the bed lifted behind it
+ },
  goal(){if(!this.ctx)return;const c=this.ctx;
   [220,277,330].forEach(fr=>{const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';
    o.frequency.setValueAtTime(fr,c.currentTime);o.frequency.linearRampToValueAtTime(fr*.8,c.currentTime+.95);

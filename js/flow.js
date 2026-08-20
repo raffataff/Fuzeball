@@ -115,6 +115,12 @@ function onGoal(team,b){
  if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
  b.scored=true;
  const val=b.t.value||1;
+ // Classify the goal BEFORE removeBall: b.v is the velocity at the LINE (onGoal is called from
+ // inside stepBall, so nothing has touched the ball since it crossed) and the mesh is freed two
+ // lines down. M carries the sub chip — what the shot actually was, plus its pace — and the
+ // banner accent, which an own goal takes off the scoring team. See js/moments.js.
+ const M=momGoal(team,b);
+ msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit + the longest-rally clock. Same constraint as momGoal — both read records that hang off the ball, and removeBall frees it three lines down.
  S.score[team]+=val;
  goalFx(team,b);
  updateScoreUI(team);
@@ -129,7 +135,9 @@ function onGoal(team,b){
   // (feature/cfg off, rally too short, another ball still live) falls through to the immediate
   // endMatch below — byte-identical to the old behaviour.
   if(REPLAY.winner&&!S.balls.length&&replayReady()){
-   banner(teamName(team)+' GOAL',S.suddenDeath?'GOLDEN GOAL':'MATCH WINNER',1.9,teamCol(team));
+   // the winner keeps its own sub — the FORMAT outranks the flavour on this one goal — but an
+   // own goal still takes the neutral accent rather than the beneficiary's colour
+   banner(teamName(team)+' GOAL',S.suddenDeath?'GOLDEN GOAL':'MATCH WINNER',1.9,M.col);
    resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
    replayQueue(team);S.pendingWin=team;return;
   }
@@ -137,8 +145,7 @@ function onGoal(team,b){
  }
  // accented in the SCORING team's colour — the old fixed blue glow made every goal look the same
  // and clashed with --c1, so a blue goal and a red goal read identically.
- banner(teamName(team)+' GOAL',
-  val>1?'GOLDEN BALL · ×2':HYPE[Math.floor(Math.random()*HYPE.length)],1.9,teamCol(team));
+ banner(teamName(team)+' GOAL',M.sub,1.9,M.col);
  if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
   replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay + footage length)
 }
@@ -167,6 +174,7 @@ function outOfBounds(b){
  // from (S.serveAt → serve()), so belting it off the table out of your own corner isn't a free 60u
  // transfer up the pitch. b.cur is the true sim position (b.m.position carries the render lerp).
  const ox=(b.cur||b.m.position).x;
+ msRallyEnd();   // the ball leaving play ends the rally, same as a goal (matchstats.js)
  removeBall(b);Au.whistle();
  // Only the ball that actually ENDS the rally sets the restart spot — in multi-ball the others are
  // still live and their exit says nothing about where play stopped.
@@ -182,19 +190,20 @@ function endMatch(w){
  $('winTitle').textContent=teamName(w)+' WINS!';
  $('winTitle').style.color=teamCol(w);
  $('winScore').textContent=S.score[0]+' — '+S.score[1];
- const st=S.stats,tp=(st.poss[0]+st.poss[1])||1;
- $('winStats').innerHTML=
-  '<span class="l">'+Math.round(st.poss[0]/tp*100)+'%</span><span class="m">Possession</span><span class="r">'+Math.round(st.poss[1]/tp*100)+'%</span>'+
-  '<span class="l">'+st.kicks[0]+'</span><span class="m">Kicks</span><span class="r">'+st.kicks[1]+'</span>'+
-  '<span class="m" style="grid-column:1/4;text-align:center">Top ball speed: '+Math.round(st.topSpeed*.35)+' km/h</span>'+
-    (wasLg?(S.lg.cup
-      ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+S.lg.banner+'</span>'+ // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
-       // parts/champ are stamped by cupRecord just above. Winning a cup tie used to pay nothing and
-       // SAY nothing until the final, so three rounds out of four ended on a bare round name.
-       (S.lg.champ?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">'+CUP.name.toUpperCase()+' WINNERS · +'+S.lg.parts+' upgrade parts</span>'
-        :S.lg.parts?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">Through to the next round · +'+S.lg.parts+' upgrade parts</span>':'')
-      :'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">+'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts</span>'+
-       (w===0&&S.score[1]===0?'<span class="m" style="grid-column:1/4;text-align:center;color:var(--gold)">Clean sheet · +'+CONFIG.league.upCleanSheet+' upgrade parts</span>':'')):'');
+ msRallyEnd();      // a clock-out / forfeit ends the last rally without a goal or an out
+ msWinRender();     // matchstats.js owns both stat tabs — see the sheet block at the foot of that file
+ // The league/cup REWARDS strip stays here: it's the one part of the win screen that knows about
+ // the league bridge, and it sits outside the tabs so it's readable whichever tab is open.
+ const lgLine=t=>'<span>'+t+'</span>';
+ $('winRewards').innerHTML=!wasLg?'':(S.lg.cup
+   ?lgLine(S.lg.banner)+   // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
+    // parts/champ are stamped by cupRecord just above. Winning a cup tie used to pay nothing and
+    // SAY nothing until the final, so three rounds out of four ended on a bare round name.
+    (S.lg.champ?lgLine(CUP.name.toUpperCase()+' WINNERS · +'+S.lg.parts+' upgrade parts')
+     :S.lg.parts?lgLine('Through to the next round · +'+S.lg.parts+' upgrade parts'):'')
+   :lgLine('+'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts')+
+    (w===0&&S.score[1]===0?lgLine('Clean sheet · +'+CONFIG.league.upCleanSheet+' upgrade parts'):''));
+ $('winRewards').classList.toggle('hidden',!wasLg);
  $('btnWinContinue').classList.toggle('hidden',!wasLg); // league: Continue → lobby
  $('btnRematch').classList.toggle('hidden',wasLg);      // league: no rematches
  $('win').classList.remove('hidden');

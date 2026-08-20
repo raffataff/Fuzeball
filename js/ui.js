@@ -96,6 +96,8 @@ function bindUI(){
     else{S.score=[0,fl];lgRecord(1);gotoMenu();openLeague();}
   };
  $('btnForfeitCancel').onclick=()=>{$('lgForfeit').classList.add('hidden');togglePause();};
+ $('winTabMatch').onclick=()=>{msWinTab('match');Au.ui();};   // post-match sheet tabs (js/matchstats.js)
+ $('winTabRods').onclick=()=>{msWinTab('rods');Au.ui();};
  $('btnRematch').onclick=()=>startMatch(S.mode,S.rodLockRole);
  $('btnWinMenu').onclick=()=>gotoMenu();
  refreshKitUI();

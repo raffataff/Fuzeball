@@ -79,7 +79,7 @@
 
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.26</div>
+  <div class="tagline">v0.1.27</div>
 
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
@@ -87,7 +87,26 @@
     <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Sandbox &middot; place balls &middot; practice</div></div>
     <div class="modeCard opts" id="btnHomeOptions"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></div><div class="big">OPTIONS</div><div class="sub">Controls &middot; audio &middot; display</div></div>
   </div>
+  <div class="modeRow devRow hidden" id="homeDevRow">
+    <div class="modeCard dev" id="btnRoomEdit"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5V19a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19V9.5z"/><path d="M8.5 20.5v-6h7v6"/><path d="M10.5 11.2h3"/></svg></div><div class="big">ROOM EDITOR</div><div class="sub">Dev &middot; props &middot; lighting</div></div>
+  </div>
   <div class="foot">Table football, taken far too seriously</div>
+</div>
+
+<!-- ROOM EDITOR (dev tool; the card that reaches this is hidden unless CONFIG.debug.roomEditor) -->
+<div id="roomEdit" class="screen hidden">
+  <button class="backBtn" id="roomEditBack">&#9664;</button>
+  <div class="scrTitle">ROOM EDITOR</div>
+  <div class="lgSub" id="roomEditSub">pick a room to open</div>
+  <div class="panelWrap">
+    <div class="panel" id="roomEditPanel">
+      <h3>Rooms</h3>
+      <div class="reRooms" id="roomEditList"></div>
+      <div class="row"><label>Viewed on table</label><select id="roomEditTable"></select></div>
+      <div class="reNote">Opens the room with no match running. Edits live in memory — use
+        <b>Export</b> in the editor panel to keep them. <b>F2</b> reopens this screen.</div>
+    </div>
+  </div>
 </div>
 
 <!-- KICK OFF -->
@@ -499,7 +518,17 @@
 <div id="win" class="screen hidden">
   <h2 id="winTitle">RED WINS!</h2>
   <div id="winScore">5 — 3</div>
+  <!-- Post-match stat sheet (js/matchstats.js). MATCH is the comparison sheet; RODS is the
+       per-rod deep dive — a tab rather than a fourth block because it exists to make upgrade
+       spending feel earned, not to be the first thing you read. Both are filled by msWinRender;
+       #winRewards sits OUTSIDE the tabs so a league payout is readable from either. -->
+  <div class="scrTabs" id="winTabs">
+    <button class="scrTabBtn on" id="winTabMatch">Match</button>
+    <button class="scrTabBtn" id="winTabRods">Rods</button>
+  </div>
   <div id="winStats"></div>
+  <div id="winRods" class="hidden"></div>
+  <div id="winRewards" class="hidden"></div>
   <div class="btnRow">
     <button class="btn hidden" id="btnWinContinue">Continue ▶</button>
     <button class="btn" id="btnRematch">Rematch</button>
@@ -580,15 +609,22 @@
   if(FILE||/^https?:\/\//i.test(url))return url;
   return url+(url.indexOf('?')<0?'?v=':'&v=')+STAMP;
  }
- if(DEV)console.log('%cFuzeball DEV — scripts cache-busted, every reload is fresh','color:#5a8cff');
+ if(DEV){
+  // The STYLESHEET was never stamped, only the scripts — so a CSS change could sit behind a
+  // cached copy while every js file reloaded fresh, which reads as "my change did nothing".
+  var lk=document.querySelector('link[rel=stylesheet]');
+  if(lk)lk.href=stamped(lk.getAttribute('href'));
+  console.log('%cFuzeball DEV — scripts + css cache-busted, every reload is fresh','color:#5a8cff');
+ }
+ // index.html ITSELF cannot cache-bust itself. If markup looks stale, hard-reload (Ctrl+F5).
 
  var boot=[
   {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
-  'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js',
+  'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/photo.js','js/main.js'
+  'js/customize.js','js/props.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/photo.js','js/roomedit.js','js/main.js'
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;

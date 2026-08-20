@@ -47,6 +47,109 @@ const CONFIG = {
   warnT:5          // clock pulses red + ticks in the last N seconds
  },
 
+ /* ---- moments (js/moments.js) ----------------------------------------
+    The game reacting to what just happened: woodwork, keeper saves, and a goal
+    banner whose copy is picked from what the shot ACTUALLY was rather than at
+    random. Everything here is measured from state physics already computes —
+    the speed is b.v at the instant the goal test passes, i.e. the true speed at
+    the line. on:false restores the old flat-HYPE behaviour exactly.
+    ---------------------------------------------------------------------- */
+ moments:{
+  on:true,
+  inTraining:false,   // fire in the training sandbox too (off: a pinch would fight freeze/step)
+
+  /* On-target projection. Straight-line ballistic to the goal plane — this is a
+     "was that a shot at goal" test, not a physics oracle, so the spin curve is
+     deliberately not modelled. Recomputed once per SIM STEP (not per substep). */
+  target:{
+   maxT:1.6,        // ignore a projection further ahead than this (s) — a slow roller isn't a shot
+   minVX:12         // ball must be closing on the goal faster than this in x (u/s)
+  },
+
+  /* Woodwork. Fires off the EXISTING post/crossbar contacts in goalFrameCollide. */
+  wood:{
+   minImp:26,       // contact normal speed to count as a ring rather than a nudge (u/s)
+   cd:0.6,          // per-ball lockout — a ball rattling post-to-bar is ONE moment, not four (s)
+   recall:2.5,      // a goal within this long of the ring reads as "off the post and in" (s)
+   pinch:0.45,      // S.timeScale dip (main.js ramps it back at .9/s — no new machinery)
+   dur:1.2          // notice dwell (s)
+  },
+
+  /* Keeper saves. GK ONLY — a DEF block fires nothing, by design: the keeper is
+     the one rod whose whole job this is, and crediting the defence too makes the
+     notice constant instead of an event. */
+  save:{
+   minSpeed:24,     // incoming |v.x| to count as a shot worth saving (u/s)
+   lineDist:6.0,    // contact within this of the goal line reads as OFF THE LINE
+   pinch:0.5,
+   linePinch:0.35,  // deeper dip — the rarest and loudest of the two
+   dur:1.2,
+   cd:1.0           // per-ball lockout: one save per shot, not one per substep contact
+  },
+
+  /* Goal classification */
+  goal:{
+   spFast:90,       // at the line: screamer (u/s)
+   spSlow:10,       // at the line: scrappy / trickles in (u/s)
+   curlDeg:30,      // spin curl: at least this many degrees of side-spin on the ball (deg)
+   longDist:45,     // struck this far from the goal line = from distance (u)
+   topY:0.62,       // top-bins: y above this fraction of goalH...
+   topZ:0.55,       // ...and |z| beyond this fraction of the goal half-width
+   showSpeed:true,  // append the measured pace to the sub chip
+   kmh:0.35         // u/s -> km/h, same conversion the win screen already uses
+  },
+
+  /* Tuning aid */
+  debug:false,
+
+
+  lines:{
+   ownGoal:['INTO HIS OWN NET','OH NO','DISASTER','WHAT HAS HE DONE'],
+   woodwork:['OFF THE POST AND IN','IN OFF THE UPRIGHT','VIA THE WOODWORK','THE POST COULD NOT SAVE HIM'],
+   curler:['CURLER','BENT IT ROUND','SWERVED IN','WHIPPED IT'],
+   screamer:['SCREAMER','UNSTOPPABLE','RIPPED IT','ABSOLUTE ROCKET'],
+   topBins:['TOP BINS','UPPER 90','ROOF OF THE NET','POSTAGE STAMP'],
+   longRange:['FROM DISTANCE','ALL THE WAY','FROM DOWNTOWN','HE SAW HIM OFF HIS LINE'],
+   deflected:['DEFLECTED IN','TOOK A TOUCH','WICKED DEFLECTION','OFF THE DEFENDER'],
+   scrappy:['SCRAPPY','TRICKLES IN','SCRUFFY BUT IT COUNTS','THEY ALL COUNT']
+  },
+  ogCol:'var(--gold)'   // own-goal banner accent — neither team's colour claims it
+ },
+
+ /* ---- match stats */
+ matchStats:{
+  on:true,          // false: freshStats still allocates, the sheet falls back to the old three-number panel
+
+  /* SHOT = a SWING contact that sends the ball goalward and roughly at the goal.
+     One per swing (the swing latch, not per contact), so a ball rattling along a
+     boot across four substeps is one attempt. */
+  shotVX:26,        // goalward speed off the boot to count as an attempt at all (u/s)
+  shotWide:3.0,     // ...and the straight-line projection must land within this many goal
+                    // half-widths of centre (3.0 x 11 = +/-33 of a 68-wide table). Wider than
+                    // that is a clearance or a switch of play, not a shot.
+  /* ON TARGET is momOnTarget() — the SAME projection the keeper-save detector uses,
+     on purpose: the save notice and the on-target column must never disagree about
+     whether a given shot was going in. A shot too slow for that test to project
+     (MOM.target.maxT) simply isn't on target, which is the fair call. */
+
+  passT:2.5,        // a teammate rod receiving the ball within this long of a SWING by another
+                    // of its own rods = one completed pass (s). Longer than this and the ball
+                    // wandered there; it wasn't played there.
+
+  thirds:3,         // territory buckets across the long axis. The BAR is generated from this, so
+                    // another count works; the key only names the two ends plus a single middle,
+                    // so anything other than 3 leaves the interior segments unlabelled.
+
+  /* Units. The game's own scale: MOM.goal.kmh (0.35) converts u/s -> km/h, and
+     km/h = m/s x 3.6, so one unit is 0.35/3.6 = 0.0972 metres. Derived rather
+     than guessed — if the pace conversion is ever retuned, retune this with it. */
+  m:0.097222,   // = kmh/3.6
+  kmh:0.35,
+
+  barGrow:0.55,     // comparison-bar grow animation (s). 0 = bars appear at full width.
+  barStagger:0.045  // ...per row, so the sheet fills top-down instead of all at once (s)
+ },
+
  /* ---- frame profiler (js/perf.js · M key) ----------------------------- */
  perf:{
   pub:500,        // ms between panel repaints (shows the worst frame since the last)
@@ -103,7 +206,7 @@ const CONFIG = {
    // Unreachable pockets where the dead-ball timer runs faster. Each entry covers
    // all four corners: |x|>xMin AND |z|>zMin. Optional `mult` overrides zoneMult.
    deadzones:[
-    {xMin:46, zMin:16.}   // corner pockets
+    {xMin:46, zMin:15.7}   // corner pockets
    ]
   },
   arena:{
@@ -130,7 +233,7 @@ const CONFIG = {
    seg:{loop:200,profile:10} // mesh resolution: samples around the perimeter / up the profile
    },
    deadzones:[
-    {xMin:46, zMin:16.30}   // corner pockets
+    {xMin:46, zMin:15.7}   // corner pockets
    ]
   },
   circuit:{                                  // flat shape with a solid walled goal end
@@ -146,7 +249,7 @@ const CONFIG = {
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
    rods:{folder:'assets/tables/circuit/rods/'},   // circuit rods (not built yet -> shared set)
    deadzones:[
-    {xMin:46, zMin:16.}   // corner pockets
+    {xMin:46, zMin:15.7}   // corner pockets
    ]
   }
  },
@@ -287,7 +390,7 @@ ai:{
       carryLead:1.2,     // how far past the ball in z the trapping man aims while carrying
       holdZ:2.8,         // z-distance from the man above which the trap is lost
       carryMult:0.5,     // rod slide-speed multiplier while carrying
-      abortT:3.4          // give up after this long (s, keep under deadball.stallT)
+      abortT:3.0          // give up after this long (s, keep under deadball.stallT)
    },
    // Trap-shot kick curve: the scoop released from a trapped ball.
    trapShot:{
@@ -938,7 +1041,7 @@ ai:{
   audioMix:{
    master:0.55,
    limiter:{on:true,threshold:-7,knee:8,ratio:10,attack:0.004,release:0.15},
-   voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3}},
+   voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3},react:{gap:0.25,max:2}},
    jitter:{pitch:0.16},
    roll:{
     on:false,
@@ -1065,7 +1168,8 @@ ai:{
   /* ---- debug / toggles -------------------------------------------------- */
   debug:{
    useBallModel:true,  // true = use the ball GLB, false = a generated sphere
-   fractureFx:true      // false = skip the explosion GLBs and vanish instantly
+   fractureFx:true,     // false = skip the explosion GLBs and vanish instantly
+   roomEditor:true     // true = F2 opens the room editor (js/roomedit.js)
   },
 
  /* ---- power-up types ------------------------------------------------- */
@@ -1076,6 +1180,91 @@ ai:{
    {key:'big',label:'BIG GOAL',col:0x7dff8a}
  ],
 
+ /* ---- renderer / light transfer -----------------------------------------
+    How authored lighting gets from Blender onto the screen. Two separate jobs:
+
+    toneMapping  What happens to values ABOVE 1.0. With 'none' (the old behaviour)
+                 anything brighter than white clips flat — a lit room's highlights
+                 all land on the same white and the image reads as a raw WebGL demo.
+                 'aces' rolls the top end off instead. 'none' restores the old look
+                 byte-for-byte. Changing this recompiles every material, so it is
+                 read once at boot (setToneMapping handles a live change).
+    exposure     Stop adjustment on top. ACES darkens the mid-range slightly vs no
+                 tone mapping, so a touch over 1 keeps the overall level familiar.
+
+    roomLight    The watts->screen transfer for KHR_lights_punctual baked into a
+                 room GLB. Defaults here, per-room overrides in rooms.*.light.
+      gain       THE brightness knob for a room, in ordinary three.js intensity
+                 units: roughly "how bright is this room's key light AT THE TABLE".
+                 Readable on purpose — see the note on `base` in models.js.
+      reach      Distance cutoff as a multiple of each light's own distance to the
+                 table. Scale-invariant: a lamp 90 units up and one 210 units up
+                 both land on the same falloff at the table, so a room's look does
+                 not depend on how high its fixtures happen to be authored. The
+                 falloff AT THE TABLE is a known constant, (1-1/reach)^decay, which
+                 is what makes `gain` mean something. 0 = no cutoff (flat, no falloff).
+      decay      Falloff exponent. Legacy (non-physically-correct) falloff is
+                 pow(1 - d/distance, decay) — NOT inverse-square. See models.js.
+      minDist    Floor on distance-to-table, so a fixture near the origin cannot
+                 divide by ~0 and blow up.
+      max        Ratio-preserving ceiling on the brightest light in a room. 0 = off.
+                 When it bites, EVERY light in that room scales by the same factor,
+                 so the authored key:fill relationship survives. A per-light clamp
+                 (what this replaces) flattens two different lights onto one value
+                 and silently destroys the lighting design.
+
+    shadow       Directional key-light shadow map. `bias`/`normalBias` fight acne;
+                 the extents are sized to the table rather than the old 160x140,
+                 which is mostly empty space spending shadow resolution on nothing.
+    -------------------------------------------------------------------------- */
+ render:{
+   toneMapping:'reinhard',        // 'none' | 'aces' | 'reinhard' | 'cineon' | 'linear'
+   exposure:1.08,
+   roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
+   shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260 }
+ },
+
+
+ /* ---- props (assets/props/) ----------------------------------------------
+    Small GLBs any room can place, INSTANCED — see the banner in js/props.js for
+    what this is and is not for (short version: it buys shared assets and high
+    counts, not draw calls; a room's real cost is texture memory).
+
+    Adding a prop: drop <name>.glb in assets/props/ and run
+        node tools/build_props_manifest.js
+    which writes assets/props/manifest.json. `lib` below overrides or extends that
+    manifest, so a prop can also be declared by hand with no build step.
+
+      folder/manifest  where props live, and the generated index (absent = lib only)
+      seed             base seed for every scatter — change it to reroll ALL of them.
+                       Scatters are deterministic on purpose: a crowd that re-rolls
+                       per load cannot be art-directed or screenshotted twice.
+      maxInstances     per-spec cap. A typo in `n` should cost a console line.
+      defaults         applied to every lib entry:
+        fit            target HEIGHT in world units (0 = keep the authored size).
+                       Height, not bounding radius — it is the dimension you actually
+                       know about a chair, and it makes a prop usable straight out of
+                       Blender whatever scale it was modelled at.
+        ground         true = sit the prop's base on y=0, so placements are floor
+                       coordinates rather than "wherever the origin happened to be".
+        yaw/scale      default rotation / extra multiplier.
+
+    A room places props with rooms.<id>.props — an array of specs:
+      {prop:'stool', at:[[x,y,z,yaw,scale], ...]}            explicit
+      {prop:'stool', scatter:{kind:'ring'|'grid'|'box'|'line', ...},
+                     jitter:{x,z,ry}, scaleVar:0.1, tint:[0xrrggbb, ...]}
+    `tint` needs a material that reads vertex colour; `face:'in'|'out'|<radians>`
+    turns each instance toward or away from the scatter centre (crowds want 'in').
+    -------------------------------------------------------------------------- */
+ props:{
+   on:true,
+   folder:'assets/props/',
+   manifest:'manifest.json',
+   seed:1,
+   maxInstances:2048,
+   defaults:{ fit:0, scale:1, yaw:0, ground:true },
+   lib:{}     // e.g. stool:{src:'pub_stool.glb', fit:11}
+ },
  /* ---- rooms / locations --------------------------------------------------
     The environment around the table, independent of the table shape and pitch.
       bg / fog     backdrop colour + fog depth [near,far]
@@ -1084,7 +1273,10 @@ ai:{
       backdrop     false = show nothing behind the table, just bg + fog
       reflect      true = bake the reflection env-map from the glb; false = use `env` below
       env          synthetic reflection cube: {shell, panels:[[hex,x,y,z,w,h],…]}
-      lightScale   multiplier for punctual lights baked into the glb (absent = 1)
+      light        per-room override of CONFIG.render.roomLight for the KHR_lights_punctual
+                   baked into the glb — {gain,reach,decay,minDist,max}. `gain` is the knob:
+                   roughly how bright this room's key light lands AT THE TABLE. (Replaces the
+                   old `lightScale`, which was a raw watts multiplier fighting a hidden cutoff.)
       led          optional per-room override of CONFIG.leds
     ---------------------------------------------------------------------- */
   rooms:{
@@ -1099,24 +1291,32 @@ ai:{
    },
    saucer:{
       name:'Flying Saucer', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:true,
-      lightScale:0.0005,
-      bg:0x05060f, fog:[210,440],
-      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9},
-      dir:{color:0xffffff,int:0.7,pos:[45,100,35]},
+      // gain replaces the old lightScale — see CONFIG.render.roomLight. The GLB's
+      // 46k-candela Table_Spotlight was arriving CLAMPED to the same value as the
+      // 8k-candela fill, then attenuated to ~4% by a forced 260-unit cutoff — so the
+      // key light was doing essentially nothing and the fill was outshining it.
+      light:{gain:0.8},
+      bg:0x05060f, fog:[210,540],
+      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.2},
+      dir:{color:0xffffff,int:0.5,pos:[45,100,35]},
       led:{idle:'rainbow'}
    },
    pub:{
       name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
-      lightScale:0.0003,          // GLB punctual lights: watts → three.js intensity multiplier
+      // The fireplace and all three sconces sat FURTHER from the table than the old
+      // forced 180-unit cutoff, so they contributed nothing at all — only the pendant
+      // lit anything. All five are live now; dir eased to make room for them.
+      light:{gain:3.0},
       bg:0x120c07, fog:[190,410],
-      hemi:{sky:0xffd9a3,ground:0x140a04,int:0.6},
-      dir:{color:0xffcf95,int:0.8,pos:[40,90,30]},   // eased down; the glb's own lights add more
+      hemi:{sky:0xffd9a3,ground:0x140a04,int:1.17},
+      dir:{color:0xffcf95,int:0.81,pos:[40,90,30]},   // eased down; the glb's own lights add more
       env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
       led:{idle:'rainbow',color:0xffb454}
    },
+   
    arcade:{
       name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:true,
-      lightScale:0.0003,
+      // no KHR_lights_punctual in this GLB — lit by hemi/dir + emissive only
       bg:0x05060f, fog:[200,430],
       hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.66},
       dir:{color:0xd6b8ff,int:0.9,pos:[45,100,35]},
@@ -1400,7 +1600,7 @@ const BALL_R=CONFIG.physics.ballR, ROD_H=CONFIG.physics.rodH, PLAYER_H=CONFIG.ph
 const AUMIX=CONFIG.audioMix;
 const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
       PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay,
-      CAPTURE=CONFIG.capture, PHOTO=CONFIG.photo;
+      CAPTURE=CONFIG.capture, PHOTO=CONFIG.photo, MOM=CONFIG.moments, MSTAT=CONFIG.matchStats;
 const RODDEFS=CONFIG.rods.defs, DIFFS=CONFIG.diffs, BALL_TYPES=CONFIG.ballTypes,
        PU_TYPES=CONFIG.puTypes, ROOMS=CONFIG.rooms, CUP=CONFIG.league.cup;
 const pCount=CONFIG.fx.particleCount;

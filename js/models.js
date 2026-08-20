@@ -29,6 +29,10 @@ let respawnSwirlTemplate=null;  // {scene, clips} — the shared swirly respawn-
    Groups for EVERY table are still created here: applyTable's visibility loop walks tableGroups,
    and buildTable/buildArenaTable put each table's procedural fallback inside its own group. */
 function loadTableModel(){
+ // Prop index first: applyRoom below may place props, and propLib() needs the manifest to
+ // resolve an id. A missing manifest is legal (CONFIG.props.lib still works), so this never gates.
+ if(typeof loadPropManifest==='function'&&!loadTableModel._props){loadTableModel._props=1;
+  loadPropManifest(()=>{if(typeof applyRoom==='function')applyRoom();});}
  const eager=!!(CONFIG.tableAssets&&CONFIG.tableAssets.preloadAll);
  const cur=(typeof cfg!=='undefined'&&CONFIG.tables[cfg.table])?cfg.table:'classic';
  for(const id in CONFIG.tables){
@@ -102,6 +106,7 @@ function loadSkin(id,skinId,cb){
     else if(n.startsWith('goal_frame'))hasFrame=true;                            // custom posts: hide the primitive front frame
    });
    (skinHasFrame[id]=skinHasFrame[id]||{})[skinId]=hasFrame;
+   applyEmissiveStrength(gltf.scene);               // r128 ignores KHR_materials_emissive_strength
    grp.add(gltf.scene);gltf.scene.updateMatrixWorld(true);
    registerBigGoalMeshes(gltf.scene);               // wire baked frame + end-walls into the big-goal widen
    if(T.collision==='bowl')registerArenaMorph(gltf.scene); // bowl shells open via SDF re-projection
@@ -212,6 +217,125 @@ function registerBigGoalMeshes(root){
 /* Load ONE room's backdrop GLB into roomGroups[id]. Lazy + idempotent: a no-op if the room has no
    glb, it's already resident, or a fetch is in flight. cb runs on success, failure, and every
    no-op, so applyRoom can gate on it. */
+/* ===== GLB light + emissive transfer =====================================
+   Everything an artist authors in Blender has to survive the trip to the screen.
+   Two things did not, and both were silent.
+
+   --- 1. EMISSIVE STRENGTH ---
+   KHR_materials_emissive_strength is NOT in r128's GLTFLoader extension table, so
+   a material authored at strength 4 arrived at strength 1 and the loader said
+   nothing. The value is not lost though: addUnknownExtensionsToUserData parks every
+   extension the loader does not handle on material.userData.gltfExtensions, so the
+   number is sitting right there and only needs applying. emissiveIntensity is the
+   correct target — it multiplies `emissive` in the shader, so the authored COLOUR
+   stays intact and only its strength scales. Nine GLBs in this project author it
+   (both rooms, three tables, the explosion + swirl FX).
+
+   Note this only READS as intended with tone mapping on: strength 4 pushes the
+   emissive well past 1.0, which without a tone curve clips to flat white — i.e.
+   supporting the extension and CONFIG.render.toneMapping are the same fix.
+
+   --- 2. PUNCTUAL LIGHT INTENSITY ---
+   glTF carries candela. Blender authors under inverse-square. three.js r128 with
+   physicallyCorrectLights=false does NOT use inverse-square — it uses
+       pow( saturate( 1 - d/distance ), decay )
+   which is a LINEAR reach that hits exactly zero at d=distance. Two consequences
+   the old code walked straight into:
+
+     * A per-light `Math.min(intensity*scale, 4)` clamp. The saucer authors a 46199cd
+       key and an 8153cd fill — a deliberate 5.7:1 ratio. Both landed on 4. Any two
+       lights over the ceiling become EQUAL, so the clamp does not dim a room, it
+       deletes its lighting design. Fixed by normalising the room as a GROUP: if the
+       brightest light exceeds `max`, every light scales by the same factor and the
+       relationships survive. (max:0 = off, which is now the default — with `gain`
+       doing the work there is nothing for a ceiling to protect against.)
+
+     * A forced distance of 260 (spot) / 180 (point). Those are constants, and rooms
+       are not the same size. The saucer's key hangs 209 units from the table, so
+       (1 - 209/260)^2 = 0.038: it delivered under 4% and read as unlit. The pub's
+       fireplace and all three sconces sit BEYOND 180 and delivered exactly zero.
+       Tuning lightScale could not fix either, because above ~8000cd the clamp ate
+       the change first — which is precisely why the knob felt dead.
+
+   What replaces it. Two derivations, in this order:
+
+     base = candela / d0^2      (d0 = the light's own distance to the table)
+       This is the one line that makes the transfer faithful. It reproduces the
+       inverse-square RELATIONSHIP Blender rendered under, so a near fill and a
+       distant key keep their true relative contribution at the table instead of
+       being flattened onto one falloff curve. It also drags the number into a
+       human range: `gain` reads ~3 rather than ~0.0005.
+       NB the honest ratio at the table is therefore the IRRADIANCE ratio (saucer
+       1.78:1), not the raw wattage ratio (5.7:1) — the fill is closer, so it earns
+       back some of the difference. That is what Blender showed.
+
+     distance = d0 * reach      (falloff at the table = (1-1/reach)^decay, a CONSTANT)
+       Scale-invariant on purpose: a pendant 97 units up and a spot 209 units up now
+       land on the same falloff at the table, so a room's brightness stops depending
+       on how high its fixtures happen to hang. Because that factor is constant and
+       known, `gain` finally means something you can predict. The room itself still
+       gets falloff shaping — near walls brighter than far ones — which is why this
+       keeps a cutoff at all rather than setting distance=0.
+
+   Why not just flip physicallyCorrectLights and get true inverse-square everywhere:
+   it is a RENDERER flag, so it would also rewrite the 2 goalLights and the 5-strong
+   fxLightPool, whose intensities are hand-tuned at ~5 call sites against the legacy
+   curve. Converting those needs a reference distance per site and each one is a
+   visible effect (goal flash, ball glow, explosion, respawn swirl) — the conversion
+   factors work out between ~37x and ~204x depending on the distance guessed, so
+   there is no single constant and every site would be an unverified guess. The room
+   lights are the only lights in the game whose values come from an external tool, so
+   the transfer is fixed where the transfer actually happens. */
+function applyEmissiveStrength(root){
+ if(!root||CONFIG.render&&CONFIG.render.emissiveStrength===false)return;
+ const seen=new Set();
+ root.traverse(o=>{
+  const ms=o.material;if(!ms)return;
+  (Array.isArray(ms)?ms:[ms]).forEach(m=>{
+   if(!m||seen.has(m))return;seen.add(m);
+   const ex=m.userData&&m.userData.gltfExtensions&&m.userData.gltfExtensions.KHR_materials_emissive_strength;
+   if(!ex)return;
+   const s=ex.emissiveStrength;
+   if(typeof s!=='number'||!isFinite(s)||s<0||s===1)return;
+   if(!m.emissive)return;                       // only lit materials carry emissive
+   m.emissiveIntensity=(m.emissiveIntensity===undefined?1:m.emissiveIntensity)*s;
+   m.needsUpdate=true;
+  });
+ });
+}
+/* Transfer a room GLB's baked punctual lights. Called with the room still detached,
+   so world matrices are forced up to date first — d0 is a WORLD distance and the
+   whole derivation above hangs off it. */
+function applyRoomLights(room,R){
+ const D=(CONFIG.render&&CONFIG.render.roomLight)||{};
+ const C=Object.assign({gain:1,reach:3,decay:2,minDist:20,max:0},D,(R&&R.light)||{});
+ room.updateMatrixWorld(true);
+ const lights=[];const p=new THREE.Vector3();
+ room.traverse(c=>{if(c.isLight)lights.push(c);});
+ if(!lights.length)return lights;
+ lights.forEach(l=>{
+  l.castShadow=false;                                  // no room light casts shadows yet — see CLAUDE.md
+  l.getWorldPosition(p);
+  // d0: how far this fixture is from the play area. The table sits at the origin.
+  const d0=Math.max(p.length(),C.minDist);
+  if(l.isPointLight||l.isSpotLight){
+   l.intensity=l.intensity/(d0*d0)*C.gain;             // inverse-square relationship, then the room's knob
+   l.decay=C.decay;
+   l.distance=C.reach>0?d0*C.reach:0;                  // 0 = no cutoff (flat)
+  }else{
+   l.intensity*=C.gain;                                // directional/ambient inside a room glb: no falloff to derive
+  }
+ });
+ // Ratio-preserving ceiling. Scales the WHOLE room by one factor so the authored
+ // key:fill relationship cannot be flattened the way a per-light clamp flattens it.
+ if(C.max>0){
+  let mx=0;lights.forEach(l=>{if(l.intensity>mx)mx=l.intensity;});
+  if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity*=k);
+   console.log('room lights normalised x'+k.toFixed(3)+' (peak '+mx.toFixed(2)+' > max '+C.max+')');}
+ }
+ return lights;
+}
+
 const roomLoading={};   // room id -> [pending cbs] while its backdrop GLB is in flight
 /* Rooms whose GLB came back 404. WITHOUT this a room pointing at a file that isn't there is
    re-fetched on EVERY applyRoom — and applyRoom runs on every venue change, so a missing backdrop
@@ -235,16 +359,10 @@ function ensureRoom(id,cb){
  new THREE.GLTFLoader().load(url,gltf=>{
   try{
    const room=gltf.scene;
-   const ls=R.lightScale||1;
-   room.traverse(c=>{
-    if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}                     // backdrop, not a shadow caster
-    else if(c.isLight){                                                        // KHR punctual lights baked into the glb
-     // Blender watts arrive as candela (~54x the wattage) — scale by the room's lightScale,
-     // clamp as a guard, and give point/spot a falloff (glTF omits range -> distance 0 = infinite).
-     c.castShadow=false;c.intensity=Math.min(c.intensity*ls,4);
-     if(c.isPointLight||c.isSpotLight){if(!c.distance)c.distance=c.isSpotLight?260:180;c.decay=2;}
-    }
-   });
+   room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}});   // backdrop, not a shadow caster
+   applyEmissiveStrength(room);                    // r128 does not support KHR_materials_emissive_strength
+   const rl=applyRoomLights(room,R);               // candela -> screen; see the block above
+   if(rl.length)console.log('room "'+id+'" lights: '+rl.map(l=>(l.name||l.type)+' '+l.intensity.toFixed(3)+(l.distance?'@'+l.distance.toFixed(0):'')).join(', '));
    room.visible=false;scene.add(room);
    roomGroups[id]=room;
    console.log('room "'+id+'" loaded ('+R.glb+')');
@@ -261,6 +379,7 @@ function ensureRoom(id,cb){
    dispose is safe. NEVER call on the room currently visible. */
 function disposeRoom(id){
  const room=roomGroups[id];if(!room)return;
+ if(typeof disposeRoomProps==='function')disposeRoomProps(id);   // instanced props go with the room
  scene.remove(room);delete roomGroups[id];
  const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
  disposeModelTemplate(room);
@@ -383,13 +502,13 @@ function loadExplosionModels(onReady){
   const done=()=>{if(--left<=0)onReady();};
   if(ballSrc){
    new THREE.GLTFLoader().load(ballSrc,
-    gltf=>{ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    gltf=>{applyEmissiveStrength(gltf.scene);ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('cannonball explosion GLB missing ('+ballSrc+')');done();});
   }
   if(swirlSrc){
    new THREE.GLTFLoader().load(swirlSrc,
-    gltf=>{respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    gltf=>{applyEmissiveStrength(gltf.scene);respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('respawn swirl GLB missing ('+swirlSrc+')');done();});
   }
@@ -406,7 +525,7 @@ function ensureExplosionModel(id,cb){
   if(!m||!m.explosionSrc){if(cb)cb();return;}                       // figurine has no shatter GLB — keeps original instant-vanish
   explosionLoading[id]=true;
   new THREE.GLTFLoader().load(m.explosionSrc,
-   gltf=>{delete explosionLoading[id];
+   gltf=>{delete explosionLoading[id];applyEmissiveStrength(gltf.scene);
     explosionTemplates[id]={scene:gltf.scene,clips:gltf.animations};
     if(typeof warmFractureTemplate==='function')warmFractureTemplate(explosionTemplates[id]); // precompile now, off the game loop
     if(cb)cb();},

@@ -27,7 +27,13 @@ function makeBall(key){
   const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,knuckT:0,overBar:0,cT:[-1e9,-1e9,-1e9],
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
-   prev:new THREE.Vector3(),cur:new THREE.Vector3()};
+   prev:new THREE.Vector3(),cur:new THREE.Vector3(),
+   // moments (js/moments.js): live on-target projection, a pending save verdict, the last
+   // contact + last SWING records, and the woodwork/save latches. momReset clears the lot.
+   onT:null,savePend:null,tc:null,shot:null,wood:0,woodCd:0,saveCd:0,curl:0,
+   // match stats (js/matchstats.js): its OWN last-contact / last-SWING records, kept separate from
+   // tc/shot above so the ledger doesn't inherit moments' momOn() gate. msReset clears them.
+   msc:null,mss:null};
   // Glow lights (fire/knuckle) BORROW from the resident fx light pool (world.js) rather than
   // scene.add-ing a fresh light — a new light would change the scene's light count and force a
   // whole-scene shader recompile (the hitch on "a different ball type is served"). b.light may be
@@ -49,7 +55,7 @@ function makeBall(key){
 }
 // call after ANY hard set of m.position outside physics (serve, redrop, split, NaN redrop):
 // snaps the interp buffers to the mesh so the ball appears at the new spot without streaking there.
-function syncBall(b){b.overBar=0;b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);}
+function syncBall(b){b.overBar=0;b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);momReset(b);msReset(b);}
 // Per-frame visual warning for a live cannonball: while the detonation timer is
 // inside the warn window, pulse the ball's outline shell + a bleed light red,
 // snapping to a sharp flash right on each countdown beep and decaying until the
@@ -114,6 +120,7 @@ function serve(){
  if(key!=='classic')notice(BALL_TYPES[key].name,1.5,BALL_TYPES[key].trail);
  setBallTag(key);
  S.phase='play';S.lastTouch=-1;
+ msRallyReset();   // matchstats.js: a serve starts a new rally (the longest-rally clock)
 }
 
 function cannonballUpdate(dt){
