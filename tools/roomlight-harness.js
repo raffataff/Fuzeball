@@ -25,7 +25,7 @@ const THREE={Vector3:V3};
 function mkLight(o){
  return {name:o.name,isLight:true,
   isPointLight:o.type==='point',isSpotLight:o.type==='spot',isDirectionalLight:o.type==='dir',
-  intensity:o.intensity,distance:0,decay:1,castShadow:true,_p:o.pos,
+  intensity:o.intensity,distance:0,decay:1,castShadow:true,_p:o.pos,userData:{},
   getWorldPosition(v){v.x=o.pos[0];v.y=o.pos[1];v.z=o.pos[2];return v;}};
 }
 function mkRoom(lights){

@@ -83,14 +83,56 @@
 
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" id="btnKickOff"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg></div><div class="big">KICK OFF</div><div class="sub">Quick match &middot; pick your side</div></div>
+    <div class="modeCard daily" id="btnDaily"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3.2" y="5" width="17.6" height="16" rx="2"/><path d="M3.2 9.7h17.6"/><path d="M8 3v4M16 3v4" stroke-linecap="round"/><path d="M8.6 14.8l2.3 2.3 4.5-4.5" stroke-linecap="round"/></svg></div><div class="big">DAILY</div><div class="sub">One challenge &middot; everyone, today</div></div>
     <div class="modeCard league" id="btnLeague"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5z"/><path d="M7 5.2H4.4v1.6a3 3 0 0 0 3 3M17 5.2h2.6v1.6a3 3 0 0 1-3 3"/><path d="M12 14v3.2M8.8 20.5h6.4l-.7-3.3H9.5z" stroke-linecap="round"/></svg></div><div class="big">LEAGUE</div><div class="sub">Season &middot; upgrades &middot; glory</div></div>
-    <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Sandbox &middot; place balls &middot; practice</div></div>
+    <div class="modeCard training" id="btnTraining"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg></div><div class="big">TRAINING</div><div class="sub">Free play &middot; skill trials</div></div>
     <div class="modeCard opts" id="btnHomeOptions"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.7M12 18.7v2.7M21.4 12h-2.7M5.3 12H2.6M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9M18.6 18.6l-1.9-1.9M7.3 7.3 5.4 5.4" stroke-linecap="round"/></svg></div><div class="big">OPTIONS</div><div class="sub">Controls &middot; audio &middot; display</div></div>
   </div>
   <div class="modeRow devRow hidden" id="homeDevRow">
     <div class="modeCard dev" id="btnRoomEdit"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5V19a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19V9.5z"/><path d="M8.5 20.5v-6h7v6"/><path d="M10.5 11.2h3"/></svg></div><div class="big">ROOM EDITOR</div><div class="sub">Dev &middot; props &middot; lighting</div></div>
   </div>
   <div class="foot">Table football, taken far too seriously</div>
+</div>
+
+<!-- DAILY CHALLENGE — top-level route (js/screens.js), rendered from the date by js/trials.js.
+     The panel body is built by renderDaily() on every show, because what it says depends on the
+     date and on whether today has been cleared. -->
+<div id="daily" class="screen hidden">
+  <button id="dailyBack" class="optGear backBtn" title="Back">&#9664;</button>
+  <h2 class="scrTitle">DAILY CHALLENGE</h2>
+  <div class="tagline">One setup a day &middot; the same for everyone</div>
+  <div class="trnStub">
+    <div class="panel" id="dailyPanel"></div>
+  </div>
+</div>
+
+<!-- TRAINING — the SECTION the #home card opens (js/screens.js). Two routes under it: the
+     existing free-play sandbox (js/training.js) and Skill Trials (FEATURE-IDEAS 3.2). The back
+     button carries optGear as well as backBtn: backBtn only sets left/right, so the positioning
+     and the button chrome both come from optGear. -->
+<div id="training" class="screen hidden">
+  <button id="trainingBack" class="optGear backBtn" title="Back">&#9664;</button>
+  <h2 class="scrTitle">TRAINING</h2>
+  <div class="tagline">Practise freely &middot; or take on a trial</div>
+  <div class="modeRow trnRow">
+    <div class="modeCard training" id="btnTrnSandbox"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="4.2"/><ellipse cx="12" cy="17.6" rx="7.5" ry="2.6" stroke-dasharray="2.6 2.4"/><path d="M12 13.4v1.6" stroke-linecap="round"/></svg></div><div class="big">SANDBOX</div><div class="sub">Place the ball &middot; launch &middot; freeze &amp; step</div></div>
+    <div class="modeCard trials" id="btnTrnTrials"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="13.6" r="7.4"/><path d="M12 9.8v3.8l2.5 1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.7 2.9h4.6M12 2.9v3.3" stroke-linecap="round"/><path d="M19.1 6.4l1.4-1.4" stroke-linecap="round"/></svg></div><div class="big">TRIALS</div><div class="sub">Fixed challenges &middot; beat the clock</div></div>
+  </div>
+</div>
+
+<!-- SKILL TRIALS — the route exists now, the list is the next step (FEATURE-IDEAS 3.2). Not
+     wrapped in .panelWrap: that carries min-width:1200px for the multi-panel flow layout, which
+     a single narrow panel would sit marooned inside. -->
+<div id="trials" class="screen hidden">
+  <button id="trialsBack" class="optGear backBtn" title="Back">&#9664;</button>
+  <h2 class="scrTitle">SKILL TRIALS</h2>
+  <div class="tagline">Fixed setup &middot; fixed seed &middot; beat the clock</div>
+  <div class="trnStub">
+    <div class="panel" id="trialsPanel">
+      <h3>Trials</h3>
+      <div class="trnEmpty">NO TRIALS YET<span>Every trial runs on a fixed seed, so each attempt replays the same ball, the same opponent and the same bounce. The list is on its way.</span></div>
+    </div>
+  </div>
 </div>
 
 <!-- ROOM EDITOR (dev tool; the card that reaches this is hidden unless CONFIG.debug.roomEditor) -->
@@ -371,6 +413,8 @@
     <div class="panel optPanel">
       <h3>Controller</h3>
       <div class="row"><label>Control mode</label><select id="optCtlMode"><option value="classic">Classic</option><option value="total">Total Control</option></select></div>
+      <div class="row" id="optChargeRow"><label>Charge with</label><select id="optChargeBtn"><option value="rt">RT / R2</option><option value="kick">A / ✕ (hold)</option><option value="both">Either</option></select></div>
+      <div class="optHint" id="optChargeHint"></div>
       <div id="optTC" class="hidden">
         <div class="czSlide"><label>Base speed</label><input type="range" id="optTCBase" min="0.3" max="1.2" step="0.05"><span class="czVal" id="optTCBaseV"></span></div>
         <div class="czSlide"><label>LT fine</label><input type="range" id="optTCFine" min="0.05" max="1" step="0.05"><span class="czVal" id="optTCFineV"></span></div>
@@ -445,13 +489,17 @@
         <b>L-STICK / D-PAD</b><span>slide players</span>
         <b>A</b><span>kick</span>
         <b>X</b><span>raise players</span>
+        <b>LT (hold)</b><span>finesse — soft, aimed</span>
+        <b>LT + A</b><span>pass to a teammate</span>
+        <b>RT (hold)</b><span>power — wind up, release to shoot</span>
         <b>LB / RB</b><span>switch rod</span>
         <b>R-STICK</b><span>rod angle</span>
         <b>B</b><span>sweet-spot guide</span>
         <b>Y</b><span>camera view</span>
         <b>START</b><span>pause</span>
       </div>
-      <div class="optHint" id="optCtlRefTC">In <b>Total Control</b> the triggers become the slide-speed modifier — LT for fine steps, RT for fast — so kick is A only and raise is X only, and the free right-stick axis bends the shot.</div>
+      <div class="optHint">The triggers are one axis — <b>LT finesse ◀ ▶ RT power</b> — and holding both cancels back to a normal swing. A charge has a <b>sweet band</b>: the marker over your rod swells gold and the charge tick brightens when you are in it. Hold past it and the rod trembles, the shot loses power and it sprays.</div>
+      <div class="optHint" id="optCtlRefTC">In <b>Total Control</b> the same two triggers ALSO size the slide step — LT fine, RT fast — and the right stick becomes the swing: pull back and flick forward. Hold <b>both triggers</b> with the stick pulled back to charge that swing, and the free right-stick axis bends the shot.</div>
     </div>
   </div>
   </div><!-- /optTab_controls -->
@@ -470,8 +518,9 @@
         <h3>Effects</h3>
         <div class="row"><label>Ball trails</label><input type="checkbox" id="optTrails"></div>
         <div class="row"><label>Particles</label><input type="checkbox" id="optParticles"></div>
+        <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
         <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
-        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
+        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
@@ -621,10 +670,10 @@
  var boot=[
   {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
   {srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
-  'js/core.js','js/config.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
-  'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/input.js',
+  'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
+  'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/props.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/photo.js','js/roomedit.js','js/main.js'
+  'js/customize.js','js/props.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/photo.js','js/roomedit.js','js/main.js'
  ];
  function loadOne(item,done){
   var srcs=(typeof item==='string')?[item]:item.srcs,i=0;

@@ -106,7 +106,11 @@ function loop(t){
     for(const r of rods){
      if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
     r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
-    r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha);
+    // r.trem is the overcharge tremble (js/shots.js) and it is added HERE, on the DISPLAY pose, not
+    // in r.angle. angVel is differenced from r.angle, so a shaking boot in the sim would kick the
+    // ball it is resting against — an own-goal generator dressed as a readout. The control the
+    // player is losing is already modelled, as shotCtl.
+    r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha)+(r.trem||0);
    }
    fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
    respawnSwirlUpdate(rdt); // spawn/advance/fade the pre-respawn swirl for removed players

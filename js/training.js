@@ -106,6 +106,7 @@ addEventListener('wheel',e=>{if(TRN.on&&e.target&&e.target.closest&&e.target.clo
 addEventListener('keydown',e=>{
  if(!TRN.on||S.phase==='menu')return;
  if(S.photo)return;   // photo mode owns P/O/G/T — its panel is up and this one is hidden (js/photo.js)
+ if(S.trial)return;   // a Skill Trial hides this panel and owns the run — freeze/step/place would trivialise it
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(e.code==='KeyT'){$('trnPanel').classList.toggle('hidden');Au.ui();}
  if(e.code==='KeyP')trnToggleFreeze();
@@ -221,23 +222,35 @@ function trainingEnter(){
  $('hint').innerHTML='T — panel · P — freeze · O — step · G — click-place<br>SPACE / click — kick · SHIFT / R-click — raise · V — camera · C — debug';
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
+ // A queued Skill Trial (js/trials.js) takes the sandbox over from here — it re-places the ball,
+ // hides this panel and applies its own rod/AI setup, so the sandbox toast isn't wanted. trialArm
+ // returns true only when it actually armed one, which is what keeps this a one-line typeof guard
+ // with no reference to trials.js state: a missing trials.js leaves the sandbox exactly as it was.
+ if(typeof trialArm==='function'&&trialArm())return;
  toast('TRAINING','place · launch · tune — no scoring',2.2);   // tier 3: sandbox chrome, not a match event
 }
 /* Goal in training (routed from onGoal): fx + optional score tick, then the ball resets
    to the last placed spot so a shot is instantly repeatable. Never ends the match. */
 function trainingGoal(team,b){
  b.scored=true;
+ // BEFORE removeBall — the trial reads b.mss (matchstats' last SWING) to credit the rod that
+ // struck it, and the mesh plus its records are freed a few lines down.
+ if(S.trial&&typeof trialGoal==='function')trialGoal(team,b);
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
  goalFx(team,b);
  removeBall(b);
  notice(teamName(team)+' GOAL',1.1,teamCol(team));
- if(!S.balls.length){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
+ // A FINISHED trial keeps the table as it was: dropping a fresh ball behind the result card reads
+ // as the run still going. Any other case (sandbox, or a trial still in progress) respawns so the
+ // next shot is instantly repeatable.
+ if(!S.balls.length&&!(S.trial&&S.trial.done)){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
 }
 /* The last live ball left play without a goal (cannonball detonation etc) — respawn at the
    last placed spot so the sandbox never drops into the match goal-hold/serve flow. */
 function trainingBallGone(){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
 /* Torn down from gotoMenu — restores every hidden rod and clears the cross-module gate. */
 function trainingExit(){
+ if(S.trial&&typeof trialExit==='function')trialExit();   // drop the trial gate before the sandbox one
  trnSetPlacing(false);
  TRN.on=false;S.trn=null;TRN.freeze=false;TRN.stepQ=0;
  rods.forEach(r=>{r.trnHidden=false;r.pivot.visible=true;});
@@ -246,6 +259,9 @@ function trainingExit(){
 }
 /* Per-frame readout (main loop, only while S.trn is live). */
 function trainingTick(){
+ // Trial first, and ABOVE the panel guard: the trial owns its own HUD, so it must tick even
+ // though the sandbox panel it sits behind is hidden.
+ if(S.trial&&typeof trialTick==='function')trialTick();
  if(!trnBuilt)return;
  const b=trnBall(),el=$('trnInfo');
  el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  · FROZEN':'')):'no ball';
@@ -275,4 +291,16 @@ function trnAngTick(){
   '<span>stam</span><b>'+(fat*100).toFixed(1)+'%</b><span>exert</span><b>'+(r.exert||0).toFixed(1)+'</b>/'+KF.full;
  trnNeedle.setAttribute('transform','rotate('+(-a*D).toFixed(2)+')');
 }
-(function(){const b=$('btnTraining');if(b)b.onclick=()=>startMatch('training');})();
+/* The #home TRAINING card opens the SECTION now (js/screens.js) rather than launching straight
+   into the sandbox — the sandbox is one of two routes under it. Au.init() rides these gestures
+   because WebAudio needs a user gesture and this card no longer reaches startMatch's own Au.init()
+   on the way past. The #trials CONTENT belongs to a later step, but its NAVIGATION lives here
+   because the Training screen owns both its cards. */
+(function(){
+ const nav=(id,to)=>{const b=$(id);if(b)b.onclick=()=>{Au.init();Au.ui();showScreen(to);};};
+ nav('btnTraining','training');
+ nav('btnTrnTrials','trials');
+ const sb=$('btnTrnSandbox');if(sb)sb.onclick=()=>startMatch('training');
+ const bk=$('trainingBack');if(bk)bk.onclick=()=>{showScreen('home');Au.ui();};
+ const bt=$('trialsBack');if(bt)bt.onclick=()=>{showScreen('training');Au.ui();};
+})();

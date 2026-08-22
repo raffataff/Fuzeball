@@ -15,7 +15,13 @@
 
 /* Live? Training is OFF by default: a time-pinch fights freeze/step, and the
    sandbox is for tuning a swing, not for being told about it. */
-function momOn(){return MOM.on&&S.phase==='play'&&(!S.trn||MOM.inTraining);}
+/* A TRIAL COUNTS AS A MATCH HERE, and that is deliberate rather than an oversight in the training
+   gate. MOM.inTraining is off because a time-pinch fights the sandbox's freeze/step — but a trial
+   disables both of those, and it NEEDS this tier: woodwork and saves are detected here and nowhere
+   else, and S.stats.woodwork/saves are what a stat objective reads. Without this clause a woodwork
+   trial is silently unwinnable. momGoal still never fires in a trial (onGoal returns early for
+   training), so the goal banner stays the trial HUD's job. */
+function momOn(){return MOM.on&&S.phase==='play'&&(!S.trn||MOM.inTraining||!!S.trial);}
 
 /* Clear every per-ball record. Called from syncBall, i.e. after ANY hard set of
    the position (serve, re-drop, split, NaN recovery) — a shot record that
@@ -156,7 +162,9 @@ function momKind(team,b,sp,p){
  if(sp<G.spSlow)return'scrappy';
  return'default';
 }
-function momPick(a){return a[Math.floor(Math.random()*a.length)];}
+// Seeded (js/rng.js) on its own 'line' stream. Cosmetic - but a RECORDED run should read back
+// identically, and it costs nothing to keep the banner text in the reproducible set.
+function momPick(a){return rngPick(RNG.line,a);}
 /* Builds the goal banner's sub chip and accent colour. MUST be called before
    removeBall — b.v is the velocity at the line and the mesh is freed a line later.
    Chip is always at most two segments: <line> then the pace. The golden ball's x2

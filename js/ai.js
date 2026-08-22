@@ -8,6 +8,10 @@
 // than frame-perfect. The existing 'react' low-pass smoothing still rides on top as hand wobble.
 // Buffer length covers CONFIG.ai.reactMax seconds; back-index is clamped to what's recorded.
 const REACT_LEN=Math.max(1,Math.ceil(AIC.reactMax*SIM.hz)+1);
+/* This rod's SEEDED random stream (js/rng.js), keyed on r.idx so it is the ROD's own sequence:
+   a trial that hides two rods, or a rod that never rolls, cannot shift another rod's numbers
+   the way one shared stream would. Same shape as rand(), so the call sites read as they did. */
+function aiR(r,a,b){return rngR(rngAi(r.idx),a,b);}
 function ensureHist(b){
  let h=b.hist;
  if(!h){h=b.hist=new Array(REACT_LEN);for(let i=0;i<REACT_LEN;i++)h[i]={x:0,y:0,z:0,vx:0,vy:0,vz:0};b.histW=0;}
@@ -645,7 +649,7 @@ function passPick(r,bx,bz){
   r.aiBVZ=lerp(r.aiBVZ,best.v.z,k);
   // Wandering aim error DRIFTS toward a fresh target instead of snapping — smooth motion.
   r.aiErrT-=dt;
-  if(r.aiErrT<=0){r.aiErrT=rand(AIC.errEvery[0],AIC.errEvery[1]);r.aiErrTarget=rand(-D.err,D.err)*stErr(r);r.aiGoalZ=rand(-1,1);r.aiIQ=Math.random()<clamp((D.iq||0)*stIQ(r),0,1);}
+  if(r.aiErrT<=0){const R=rngAi(r.idx);r.aiErrT=rngR(R,AIC.errEvery[0],AIC.errEvery[1]);r.aiErrTarget=rngR(R,-D.err,D.err)*stErr(r);r.aiGoalZ=rngR(R,-1,1);r.aiIQ=R()<clamp((D.iq||0)*stIQ(r),0,1);}
   r.aiErr=lerp(r.aiErr,r.aiErrTarget,Math.min(1,AIC.errLerp*dt));
   const dir=r.team===0?1:-1;
   let pz=r.aiBZ;
@@ -918,7 +922,7 @@ function passPick(r,bx,bz){
      if((open||timeUp)&&tdz<TR.alignZ&&r.kickT<0&&r.cd<=0&&strikeOn(r,best,'trapShot')){
       if(dbgLogRod===r)dbgRod(r,'TRAPSHOT',(open?'lane open':'hold expired')+' clr='+ev.best.clr.toFixed(1)+' rel='+relReal.toFixed(1)+' tdz='+tdz.toFixed(2)+' carried='+(bp.z-r.trapZ0).toFixed(1));
       kickRod(r,'trapShot');                // scoop shot with dedicated trap power window
-      r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
+      r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
       r.trapMan=-1;r.trapDir=0;r.trapA=null;shot=true;
      }else if(timeUp){                      // held long enough but never squared up — give the ball back
       r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;
@@ -1028,7 +1032,7 @@ function passPick(r,bx,bz){
      +(wantPass?' → '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1):''));
     if(wantPass)kickRod(r,'pass',{x:pk.x,z:pk.z});
     else kickRod(r);
-    r.cd=D.cd*stCd(r)*rand(AIC.cdSlow[0],AIC.cdSlow[1]);
+    r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
     r.dribMan=-1;r.dribCd=DR.cd;dshot=true;
    }else{
     /* WORK IT: aim the man a short lead PAST the ball toward the target, capped by the cumulative
@@ -1170,7 +1174,7 @@ function passPick(r,bx,bz){
    }
    if(aimAt&&dbgLogRod===r)dbgRod(r,'PASS','→ '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1)+' shotClr='+r.aimEv.best.clr.toFixed(1));
    kickRod(r,aimAt?'pass':null,aimAt);
-   r.cd=D.cd*stCd(r)*(slow?rand(AIC.cdSlow[0],AIC.cdSlow[1]):rand(AIC.cdFast[0],AIC.cdFast[1])); // rea stat trims recovery
+   r.cd=D.cd*stCd(r)*(slow?aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]):aiR(r,AIC.cdFast[0],AIC.cdFast[1])); // rea stat trims recovery
   }
  }
 }

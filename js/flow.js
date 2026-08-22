@@ -42,6 +42,10 @@ function startMatchNow(mode,rodLockRole){
  S.userTeam=mode==='roster'?(S.roster.length?S.roster[0].team:-1)
   :(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
  S.rodLockRole=mode==='roster'?null:(rodLockRole||null);
+ // Seed the sim's random surface (js/rng.js) BEFORE anything draws from it - clearPU below is
+ // the first consumer. seedNext is consumed here, like serveAt, so a trial's seed can't leak
+ // into the next match; with nothing set it's the wall clock and play is as varied as ever.
+ S.seed=(S.seedNext!=null)?(S.seedNext>>>0):(Date.now()>>>0);S.seedNext=null;rngSeed(S.seed);
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;S.pendingWin=null;
  S.serveAt=null;   // a restart spot left over from the last match must not aim its first kickoff
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];

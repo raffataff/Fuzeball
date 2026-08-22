@@ -94,15 +94,20 @@ function userControlUpdate(dt){
    polled once per rendered frame from the main loop. Buttons are edge-detected
    via gpPrev so a held button fires once. Menus still use the mouse; this
    drives in-match play + pause/resume, which is the controller baseline a
-   Steam build needs. Layout: left-stick Y / d-pad ↕ = slide · A(0) or RT(7) =
-   kick · X(2) or LT(6) = raise (hold) · LB(4)/RB(5) or d-pad ↔ = switch rod ·
-   Y(3) = camera · Start(9) = pause.
-   TOTAL CONTROL mode (cfg.padControlMode='total'): the triggers stop being
-   raise/kick and become an analog slide-speed modifier — LT eases toward
-   cfg.padTCFine (precision steps), RT toward cfg.padTCFast (fast moves),
-   neither = cfg.padTCBase middle-ground. Kick = A only, raise = X only. The
-   right stick still angles the rod on its bound axis; the OTHER right axis is
-   the swerve line — its deflection is stored on the rod (r.tcSpin) and
+   Steam build needs. Layout: left-stick Y / d-pad ↕ = slide · A(0) = kick ·
+   X(2) = raise (hold) · LB(4)/RB(5) or d-pad ↔ = switch rod · B(1) = sweet-spot
+   guide · Y(3) = camera · Start(9) = pause.
+   THE TRIGGERS ARE MODIFIERS, NOT DUPLICATE BUTTONS (js/shots.js). LT(6) and RT(7)
+   used to be a second raise and a second kick — duplicates of X and A. They are now
+   one analog AXIS, RT depth − LT depth: finesse ← 0 → power, colouring the swing and,
+   in classic, holding the charge (cfg.padChargeBtn). With CONFIG.shots.on false they
+   go back to being the duplicate kick/raise they were, which is what makes that flag
+   a true off switch.
+   TOTAL CONTROL mode (cfg.padControlMode='total'): the same two triggers ALSO scale the
+   slide step — LT eases toward cfg.padTCFine (precision), RT toward cfg.padTCFast, neither
+   = cfg.padTCBase — so each trigger means one thing across both jobs. The right stick angles
+   the rod on its bound axis (and its pull-back is the wind-up, armed by holding both triggers);
+   the OTHER right axis is the swerve line — its deflection is stored on the rod (r.tcSpin) and
    physics.js bends the ball with it on contact. */
 const gpFree={};   // button edge state for pads NO seat has claimed — they can still hit Start/skip
 function gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);}
@@ -129,7 +134,11 @@ function gamepadUpdate(dt){
  if(S.photo)return;                                    // photo mode: a resting stick must not creep a rod out of shot
  if(!$('options').classList.contains('hidden'))return; // options screen owns the pad (live tester)
  const pads=navigator.getGamepads?navigator.getGamepads():[];
- S.seats.forEach(s=>{s.tcMult=1;});                    // reset every frame; a seat with a live pad rewrites it below
+ // reset every frame; a seat with a live pad rewrites both below (shots.js shotHoldUpdate).
+ // The hold has to be reset HERE rather than in updateRods: this polls once per rendered frame
+ // and updateRods runs up to sim.maxSteps times inside one, so a reset there would drop the grip
+ // after the first sim step. Above the no-pads bail, so unplugging a pad releases the boot.
+ S.seats.forEach(s=>{s.tcMult=1;const hr=seatRod(s);if(hr&&hr.hold)hr.hold.on=false;});
  let first=-1;for(let i=0;i<pads.length;i++)if(pads[i]){first=i;break;}
  if(first<0)return;
  // Global actions (pause / replay skip) fire from ANY pad but only ONCE per frame — two players
@@ -152,11 +161,19 @@ function gamepadUpdate(dt){
   padSeatUpdate(dt,gp,seat,just);
  }
 }
-/* One seat's pad, for one frame. Everything below was the body of gamepadUpdate; the only change
-   is that the rod, the raise-hold latch and the Total-Control multiplier come off the SEAT rather
-   than off module globals, so N pads drive N rods independently. */
+/* One seat's pad, for one frame. The rod, the raise-hold latch and the Total-Control slide
+   multiplier come off the SEAT rather than off module globals, so N pads drive N rods independently.
+
+   ORDER MATTERS HERE and it is not the order this function used to run in. The right-stick ANGLE is
+   read BEFORE the kick button now, because js/shots.js needs that stick value: in Total Control the
+   stick's pull-back IS the wind-up, and the charge state it produces decides whether the kick button
+   press this frame is a swing or the release of one. Slide, then angle, then shots, then buttons. */
 function padSeatUpdate(dt,gp,s,just){
  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
+ // A rod this seat has let go of (switched away, match over) must not keep a live wind-up: the
+ // charge would sit armed on a rod the AI is now driving and turn up on its next contact.
+ if(s.shotRod&&s.shotRod!==r)shotReset(s.shotRod);
+ s.shotRod=r;
  if(!r){s.padRaise=false;return;}
  const DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
  // TC SPEED: the analog triggers scale how many units the SLIDE STEP covers per frame (slideMult).
@@ -166,6 +183,9 @@ function padSeatUpdate(dt,gp,s,just){
  // the rod always tracks its target at full user speed. Fine mode must not make the rod feel like
  // syrup — it just moves the target in finer increments; the rod still snaps to it crisply. RT's
  // boost (>1) still raises the cap so big fast steps aren't clipped. Untouched pad → tcMult 1.
+ // LT WINNING THE TIE IS ALSO WHAT MAKES THE CHARGE CHORD USABLE: both triggers held is the Total
+ // Control wind-up, and it lands on the FINE step size, which is exactly what you want while lining
+ // a charged shot up. No special case — it falls out of the order these two lerps were already in.
  let slideMult=1;
  if(TC){
   const trig=i=>{const b=gp.buttons[i];return b?(b.value||(b.pressed?1:0)):0;};
@@ -189,21 +209,18 @@ function padSeatUpdate(dt,gp,s,just){
  }
  if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
  if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);
- if(just[0]||(!TC&&just[7]))kickRod(r);              // A / RT (RT only in classic — in TC it's the speed trigger)
- if(just[1])toggleSweetGuide(s);                     // ○ (B) — sweet-spot guide, on THIS seat's rod
- if(just[3])cycleCam(1);                             // Y
- if(just[4]||just[14])seatStep(s,-1);                // LB / d-pad ← (skips rods another seat holds)
- if(just[5]||just[15])seatStep(s,1);                 // RB / d-pad →
  // ANGLE: ABSOLUTE rod tilt — the stick's *position* maps straight to a target angle, so a partial
  // push holds a partial angle (rate control snapped to the extremes). Axis is configurable — 'ry' =
  // right-stick up/down (axis 3), 'rx' = right-stick left/right (axis 2). Deflection past the deadzone
  // is rescaled to 0..1 (no jump off centre), inverted + sens-scaled, then split about rest: one side
  // eases toward the forward strike angle, the other toward the raised-back angle. Centre = feet down.
- let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0;
+ // sd is that same signed value hoisted out for shots.js: −1 fully pulled back … +1 fully forward.
+ let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0,sd=0;
  if(Math.abs(rs)>DZ){
   if(cfg.padAngleInvert)rs=-rs;
   let d=(Math.abs(rs)-DZ)/(1-DZ)*Math.sign(rs);      // 0 at deadzone edge → ±1 at full deflection
   d=clamp(-d*cfg.padAngleSens,-1,1);                 // sens scales reach; sign keeps the old push direction
+  sd=d;
   r.padAngleTarget=(d>=0?d*KICK.strikeA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
   r.padAngleOn=true;
  }else{r.padAngleTarget=0;r.padAngleOn=false;}
@@ -213,11 +230,27 @@ function padSeatUpdate(dt,gp,s,just){
  // through the strike bends the shot. Angle control above is untouched: one stick, both effects.
  if(TC){r.tcSpin=tcSwerveFromAxes(gp);}
  else if(r.tcSpin)r.tcSpin=0;
+ /* SHOTS (js/shots.js): the trigger axis, the charge, and the swing a charge release fires. Returns
+    true when it fired one this frame, so the kick edge below cannot fire a second. */
+ const fired=shotPadUpdate(dt,gp,s,r,TC,sd);
+ // A: kick. RT is the alternate kick ONLY while shots are off — with them on it is the power side of
+ // the modifier axis (and, in classic, the input that holds the wind-up), and a trigger that both
+ // colours a swing and fires one cannot do either legibly.
+ // shotCharge(r) is -1 unless a wind-up is live, so a plain tap is the plain swing — but with one
+ // held it makes the kick button a SECOND release for it. Two ways to let a classic charge go (the
+ // trigger, or this) is the ergonomics you reach for without being told, and without it the press
+ // fired an uncharged swing out of the wound-back angle and threw the charge away.
+ if((just[0]&&!fired&&shotKickPress(TC))||(!TC&&just[7]&&!shotsOn()))shotFire(r,shotPadAxis(gp),shotCharge(r));
+ if(just[1])toggleSweetGuide(s);                     // ○ (B) — sweet-spot guide, on THIS seat's rod
+ if(just[3])cycleCam(1);                             // Y
+ if(just[4]||just[14])seatStep(s,-1);                // LB / d-pad ← (skips rods another seat holds)
+ if(just[5]||just[15])seatStep(s,1);                 // RB / d-pad →
  // raise is a HOLD; only write r.raise from the pad while its button is down or we just released
  // it, so a connected-but-idle pad never clobbers keyboard/mouse raise. If the right stick is
- // actively driving the angle, skip the binary raise so it doesn't fight.
- const raise=gpDown(gp,2)||(!TC&&gpDown(gp,6));      // X / LT (LT only in classic — in TC it's the precision trigger)
- if(!r.padAngleOn){if(raise){r.raise=true;s.padRaise=true;}else if(s.padRaise){r.raise=false;s.padRaise=false;}}
+ // actively driving the angle, or a wind-up is being held, skip the binary raise so it doesn't fight.
+ // LT is the alternate raise only while shots are off — with them on it is the finesse trigger.
+ const raise=gpDown(gp,2)||(!TC&&gpDown(gp,6)&&!shotsOn());
+ if(!r.padAngleOn&&!r.chgSrc){if(raise){r.raise=true;s.padRaise=true;}else if(s.padRaise){r.raise=false;s.padRaise=false;}}
 }
 function toggleFreeRoam(){
  S.freeRoam=!S.freeRoam;

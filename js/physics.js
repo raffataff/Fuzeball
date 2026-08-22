@@ -81,13 +81,13 @@ function stepBall(b,h){
  const p=b.m.position,v=b.v;
  // safety: if physics ever produces a non-finite state, re-drop this ball instead of poisoning the sim.
  if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.z)||!isFinite(v.x)||!isFinite(v.y)||!isFinite(v.z)){
-  p.set(rand(-5,5),PHY.redropY,rand(-8,8));v.set(0,0,0);b.spin=0;syncBall(b);return;}
+  p.set(rngR(RNG.nan,-5,5),PHY.redropY,rngR(RNG.nan,-8,8));v.set(0,0,0);b.spin=0;syncBall(b);return;}
  // knuckleball: erratic flutter — periodically re-kick the side-spin to a fresh random value so the
  // flight path weaves unpredictably. Energy-safe: spin only rotates the horizontal velocity below.
  if(b.t.knuckle){
   b.knuckT-=h;
-  if(b.knuckT<=0){const K=b.t.knuckle;b.knuckT=rand(K.every[0],K.every[1]);
-   b.spin=clamp(b.spin+rand(-K.kick,K.kick),-K.max,K.max);}
+  if(b.knuckT<=0){const K=b.t.knuckle,KR=RNG.knuck;b.knuckT=rngR(KR,K.every[0],K.every[1]);
+   b.spin=clamp(b.spin+rngR(KR,-K.kick,K.kick),-K.max,K.max);}
  }
  // spin/Magnus curve: rotate the horizontal velocity by a small angle (pure rotation = no energy added = stable).
  if(b.spin){
@@ -308,7 +308,9 @@ function collideRod(b,r){
     p.x+=nx*(reach-d);p.y+=ny*(reach-d);p.z+=nz*(reach-d);
    const cwx=bcx+clx*sa+cly*ca,cwy=bcy-clx*ca+cly*sa,cwz=fz+clz;
    const cvx=-(cwy-ROD_H)*r.angVel,cvy=(cwx-r.x)*r.angVel,cvz=r.vz;
-   const vn=(b.v.x-cvx)*nx+(b.v.y-cvy)*ny+(b.v.z-cvz)*nz;
+   // cvz is scaled and cvx/cvy are not: the SWING transfers in full, the SLIDE only pushes.
+   // See CONFIG.kick.slidePush — slidePush 1 is the old expression exactly.
+   const vn=(b.v.x-cvx)*nx+(b.v.y-cvy)*ny+(b.v.z-cvz*KICK.slidePush)*nz;
    if(vn<0){
      // tracer only: the ball's OWN normal speed before the impulse rewrites b.v. vn is exactly
      // (ball·n − foot·n), so logging both halves shows whether a contact was driven by the swing
@@ -336,6 +338,12 @@ function collideRod(b,r){
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
+    /* PLAYER SHOT (js/shots.js). r.shotOn is the whole cross-module contract — undefined without
+       that file, so a missing shots.js cannot change a single contact. It is what a charged or
+       trigger-modified swing is worth ON TOP of the deeper arc the wind-up already produced, and it
+       is the only way a Total Control STICK swing can carry a charge at all: that path never calls
+       kickRod, so there is no style block for it to have been written into. */
+    if(r.shotOn)jm*=r.shotPow;
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
@@ -347,7 +355,10 @@ function collideRod(b,r){
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
     // tiny imperfection prevents pixel-perfect side-to-side oscillations
     const jit=Math.abs(jm)*FOOT_JITTER;
-    b.v.x+=(Math.random()-.5)*jit;b.v.y+=(Math.random()-.5)*jit*.3;b.v.z+=(Math.random()-.5)*jit;
+    // seeded (js/rng.js) on its OWN stream: this draws per man per substep, so sharing one with
+    // anything slower would make that consumer's numbers depend on the contact count.
+    const JR=RNG.jit;
+    b.v.x+=(JR()-.5)*jit;b.v.y+=(JR()-.5)*jit*.3;b.v.z+=(JR()-.5)*jit;
     // aim-assist bends a shot goalward: for the HUMAN only on a clean strike (power window or sweet
     // hit — a skill reward), but for AI rods on EVERY contact so they reliably aim in all modes.
     // aimAssist itself only acts on shots already moving goalward within its cone, so a defensive
@@ -356,7 +367,12 @@ function collideRod(b,r){
     // SIDE or BACK of a boot (normal not pointing forward) still resolves as a hit here, but it is a
     // deflection, not a pass, so the pass aim-assist must not bend it at the receiver. The ordinary
     // goal-ward assist still runs — only r.passTo is suppressed for this contact.
-    if(!trapping&&(pow||(sweet&&SW.forceAssist)||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
+    // r.shotOn joins the gate because a deliberate shot must be AIMED whatever its timing: a Total
+    // Control stick swing has kickT<0, so `pow` is false for the whole of it. shotSpray then bends
+    // it back by however much control was lost — after the assist, so a wild shot is not first
+    // sprayed and then quietly corrected. One contact spends the shot (shotConsume).
+    if(!trapping&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
+    if(r.shotOn){shotSpray(b,r);shotConsume(r);}
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
@@ -392,7 +408,7 @@ function collideRod(b,r){
   if(d>R)continue;
   if(d<1e-4){nx=r.kickDir;ny=0;nz=0;d=1;}else{nx/=d;ny/=d;nz/=d;}
   const cvx=-(cy-ay)*r.angVel,cvy=(cx-ax)*r.angVel,cvz=r.vz;
-  const rvx=b.v.x-cvx,rvy=b.v.y-cvy,rvz=b.v.z-cvz;
+  const rvx=b.v.x-cvx,rvy=b.v.y-cvy,rvz=b.v.z-cvz*KICK.slidePush;   // slide damped, swing not — see the foot-box pass
   const vn=rvx*nx+rvy*ny+rvz*nz;
   p.x+=nx*(R-d);p.y+=ny*(R-d);p.z+=nz*(R-d);
   if(vn<0){
@@ -404,6 +420,7 @@ function collideRod(b,r){
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
+    if(r.shotOn)jm*=r.shotPow;                  // player shot — see the foot-box pass
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
@@ -416,7 +433,8 @@ function collideRod(b,r){
     // is ALWAYS suppressed here: this is the rod capsule — the leg — not the boot. A ball that reaches
     // the capsule fallback has slipped past the foot box entirely, so it is a graze off the side of
     // the player by definition, and bending it toward a receiver is precisely the phantom pass.
-    if(!trapping&&(pow||!isUserRod(r)))aimAssist(b,r,true);
+    if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);
+    if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;

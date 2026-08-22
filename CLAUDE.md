@@ -19,16 +19,43 @@ all game code is local.
 
 ### File map (`js/`, loaded in this order — see the script tags in `index.html`)
 
-`core.js` (helpers `$`,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · `screens.js`
+`core.js` (helpers `# CLAUDE.md — Fuzeball
+
+Context for working on this project in a fresh session. Read this first.
+
+## What it is
+
+**Fuzeball** is a 3D foosball (table football) game. No build step, no package manager,
+no local dependencies. It pulls **Three.js r128** and Google Fonts from CDNs at runtime;
+all game code is local.
+
+- **Entry point:** `index.html` — markup + `<link>` to `css/styles.css` + ordered
+  `<script>` tags for the `js/` modules. Open it in any modern browser (WebGL required).
+- **`fuzeball.html`** is the ORIGINAL monolith, kept untouched as a backup/reference.
+  It still runs on its own. Delete it once you're happy with the split.
+- **Config persistence:** in-menu settings save to `localStorage` under the key `fuzeball`.
+- **Ambition:** this may go to **Steam** if it's fun. It must feel performative and
+  hand-crafted — *do not let it look AI-generated*. Keep the existing dense, terse code
+  style; avoid generic boilerplate and over-commenting.
+
+### File map (`js/`, loaded in this order — see the script tags in `index.html`)
+
+,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · **`rng.js`**
+(seeded per-consumer random streams — CORE, not optional: physics/ai/balls/powerups hard-depend
+on it. Read its banner before adding a consumer, and note `rand()` in core.js is NOT seeded) ·
+`screens.js`
 (`SCREENS` registry + `showScreen`/`backScreen`/`hideScreens` — every screen you navigate to,
 and the layout editor's source of truth) · `audio.js`
 (`Au`) · `state.js` (`S`,`freshStats`,`HYPE`) · **`seats.js`** (`S.seats` — every human at the
 table: team + claimed devices + held rod; `seatOf`/`seatRod`/`isUserRod`/`setSeatCtrl`) ·
 `world.js` (three.js init/build/theme) ·
-`balls.js` · `rods.js` · `physics.js` · `ai.js` · `input.js` · `powerups.js` (+ dead-ball) ·
+`balls.js` · `rods.js` · `physics.js` · `ai.js` · **`shots.js`** (the player's kick VERBS — the
+trigger axis, the charge, the human pass; CORE, loaded between ai.js and input.js because it reads
+the first and the second runs through it) · `input.js` · `powerups.js` (+ dead-ball) ·
 `flow.js` (match flow) · **`moments.js`** (saves / woodwork / goal classification) ·
 **`matchstats.js`** (the match ledger + the post-match sheet) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
-Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · **`props.js`** (prop library + InstancedMesh scatter — see the banner in that file for what instancing here is and is NOT for) · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · **`roomedit.js`** (F2 room editor — props + lighting, gated on `CONFIG.debug.roomEditor`) · `main.js`.
+Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · **`props.js`** (prop library + InstancedMesh scatter — see the banner in that file for what instancing here is and is NOT for) · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`trials.js`** (Skill Trials + the daily — the run itself: pinned setup, sim-time clock, objective; gated on `S.trial`) · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · **`roomedit.js`** (F2 room editor — props, AUTHORED LIGHTS and room look, gated on
+`CONFIG.debug.roomEditor`; exports a paste-ready `CONFIG.rooms` block) · `main.js`.
 
 These are **plain (non-module) scripts** sharing one global scope on purpose — top-level
 `const`/`let` in one file are visible in later files. This is what lets them work from
@@ -146,7 +173,11 @@ spin, stuckT}`.
   2. **Rod capsule** (fallback): line segment from pivot to foot, radius `BALL_R+PRAD`.
      Only runs for men the foot box didn't already handle — avoids double-resolution.
   Both passes: restitution **0.32** normally, **0.46** during the kick power window for
-  meatier strikes. Sliding into the ball imparts side-spin. Split-ball spawn lives in both.
+  meatier strikes. **The contact point's velocity splits into a ROTATIONAL part (`cvx`,`cvy` — the
+  swing) and a SLIDE part (`cvz`), and only the slide is scaled, by `CONFIG.kick.slidePush`** —
+  so a kick transfers in full while a rod moved sideways into the ball merely pushes it. A held
+  contact (`holdCfg`: the AI's trap/dribble, or the player's L2) swaps in that block's
+  rest/grip instead. Sliding into the ball imparts side-spin. Split-ball spawn lives in both.
   A tiny `footJitter` velocity perturbation (configurable) prevents pixel-perfect
   side-to-side oscillations between adjacent men on the same rod.``
 - `ballBall(a,b)`: mass-weighted elastic collision, restitution 0.9.
@@ -248,6 +279,7 @@ Three levers, all tuned in `CONFIG.ai`:
 
 - **Input:** ←/→ or Q/E switch rod; ↑/↓ or mouse slide; Space/click kick; Shift/right-click
   raise; 1–4 select rod; V cycle camera; M frame profiler; **F1 photo mode**; Esc pause; mouse wheel switch rod;
+  **R restarts the run during a Skill Trial** (js/trials.js owns that key, gated on `S.trial`);
   **S (during a goal replay only) saves that replay as a .webm** — every OTHER key skips. Wired in the
   `input` section + `userControlUpdate` (which also does auto rod-switch when `cfg.auto`).
   Gamepad (`gamepadUpdate`): left stick slide, A/RT kick, X/LT raise, right-stick absolute rod
@@ -305,8 +337,9 @@ Three levers, all tuned in `CONFIG.ai`:
 - **Room editor (`roomedit.js`, `CONFIG.debug.roomEditor`, default false):** **entered from a
   ROOM EDITOR card on `#home`** (that card, and only it, is what the debug flag reveals — the
   `roomEdit` route is always registered so a stale saved layout can't strand anyone) or with
-  **`F2`**. Both open a **picker screen** listing every room with its prop count and gain, plus a
-  table select, because the editor deliberately runs with **no match**: picking a room applies it,
+  **`F2`**. Both open a **picker screen** listing every room with its prop count, its authored-light
+  count and its gain, plus a table select, because the editor deliberately runs with **no
+  match**: picking a room applies it,
   `hideScreens()` clears the menu off the canvas, and you land in free roam with the panel up.
   F2 during play is refused with a toast — a sim moving under you while you place furniture is the
   thing this avoids. **`SCREENS.roomEdit.onHide` restores the player's own room/table**, so it
@@ -315,17 +348,42 @@ Three levers, all tuned in `CONFIG.ai`:
   league.js uses for a division venue, and for the same reason: without it, opening a room here
   silently becomes the player's Kick Off setting the next time anything calls `saveCfg`. The stash
   is taken ONCE, so picking three rooms in a row still restores the original.
-  Click an instance to select it: from an explicit `at` entry you get that PLACEMENT (arrows /
-  PageUp-Dn / brackets to nudge, Shift x10); from a `scatter` you get the SPEC, because individual
-  scatter instances are generated and the generator is the thing to edit.
+  Click an instance to select it: from an explicit `at` entry you get that PLACEMENT (drag it, or
+  arrows / PageUp-Dn / brackets to nudge, Shift x10); from a `scatter` you get the SPEC, because
+  individual scatter instances are generated and the generator is the thing to edit.
   **It edits specs and rebuilds** rather than moving matrices, so the data and the scene can never
-  disagree and the export cannot lie. **Nothing persists**: Export copies a paste-ready block for
-  `config.js`; a localStorage crash-backup exists but is only ever reapplied by clicking Restore.
-  Lighting tab writes the same `CONFIG.render` / `rooms.*.light` the loader reads — and
+  disagree and the export cannot lie. **Nothing persists**: Export copies the WHOLE room block in
+  `CONFIG.rooms`' own shape and key order — paste it over the entry and that is the save step,
+  which is why those entries carry no inline comments; a localStorage crash-backup exists but is
+  only ever reapplied by clicking Restore.
+  **Four tabs**: PROPS (library + placed specs), LIGHTS, WORLD (gain/reach, hemi/dir + colours,
+  bg/fog, exposure/tone), EXPORT. A SELECTION block sits under them whatever tab is up, because
+  the thing you just clicked is the thing you want a slider for.
+  **LIGHTS is where the two kinds live** (see `CONFIG.rooms` for the spec):
+  · AUTHORED (`rooms.<id>.lights`) — add/delete/duplicate, drag by their marker, retype between
+    point/spot/dir, colour picker, int/dist/decay/angle/penumbra. **Plain three.js units, NOT the
+    candela transfer** — running a slider-set value through `gain/d0²` would make both knobs
+    meaningless. They borrow from `CONFIG.render.roomLightPool`, so adding or moving one **never
+    changes the scene's light count** and therefore never recompiles every material — the
+    `fxLightPool` rule, and the only reason a light gizmo is usable here.
+  · BAKED (KHR_lights_punctual inside the room GLB) — position lives in the model, so it is
+    read-only. Switch one off (`lightsOff`, by NAME, as intensity 0 rather than `visible=false`
+    so the count holds), or **DETACH** it into an authored copy at the same world position, which
+    is exact because the transfer has already run and the live intensity IS the delivered value.
+  **Markers** are drawn for both kinds (bulb + aim line + spot cone, `depthTest:false` and picked
+  BEFORE the props, since a bulb inside a lampshade is occluded from most angles). The spot cone
+  is traced to the FLOOR, not to the aim target — a GLB pendant aims ~1.5 units under itself and
+  a cone that long is invisible.
+  **Dragging**: LMB on the ground plane, shift-LMB for height, mode captured at mousedown. Below
+  `RE_MK.grazeDot` the ground plane is too edge-on to drag on (measured: a 140px drag threw a
+  light 170 units at ~5° above horizontal) and it falls back to the camera-facing plane, keeping
+  only x/z. **RMB-drag is mouse-look**, wired here because input.js only requests pointer lock
+  during a MATCH and this tool deliberately runs with none.
   `reditRelight` restores each fixture's AUTHORED candela before re-running the transfer, or
   dragging `gain` would compound and black the room out. Cross-module gate is **`S.redit`**, and
   the file owns its own listeners (Esc `stopPropagation`s so input.js's `backScreen` can't skip
-  the picker), so a missing `roomedit.js` cannot break input.
+  the picker), so a missing `roomedit.js` cannot break input. `tools/roomlights-harness.js` (159)
+  round-trips every real room block back through a parser and pins the pool's count invariant.
 ## Game state (`S`) & flow
 
 - `S.phase`: `'menu' | 'count' | 'play' | 'goal' | 'pause' | 'win'`.
@@ -333,6 +391,14 @@ Three levers, all tuned in `CONFIG.ai`:
 - Also: `score[2]`, `balls[]`, `ctrl`/`ctrlRods[]`, `active[2]` (each team's live rod pair) /
   `pairCd[2]` (pair commit timers), `eff[2]{boost,frozen,big}`, `lastTouch`, `stats`, `pu`,
   `shake`, `camMode`, `timeScale` (slow-mo on goals).
+- **Seeded sim rng** (`js/rng.js`): `S.seed` is the seed the LIVE match ran on — the number to
+  quote to reproduce a run. `S.seedNext` is a seed something wants the NEXT match to use (a trial,
+  today's daily); `startMatchNow` CONSUMES and clears it, exactly like `S.serveAt`, so it can
+  never leak into the match after. null = ordinary play, seeded from the wall clock.
+- **Cross-module gates on `S`, all null when off** and each tested by its own module plus a
+  handful of one-line hooks and nothing else: `trn` (training sandbox), **`trial`** (a Skill Trial
+  or the daily), `photo` (F1), `redit` (F2 room editor), `lg` (live league/cup match bridge). A
+  missing module must never be able to break a match — that is what these are for.
 - Flow: `startMatch` → `startCount` → `serve` → `play`; `onGoal`/`outOfBounds` → brief
   `goal` phase → re-count; `endMatch` on reaching `cfg.goals`. `loop(t)` caps `rdt` at .05.
 - **Fixed-timestep + render interpolation** (`main.js`): the sim (input/AI/rods/physics)
@@ -347,13 +413,127 @@ Three levers, all tuned in `CONFIG.ai`:
   the next step teleports the ball back.
 - `cfg` (persisted): `diffRed, diffBlue, diff` (legacy/fallback), `goals, theme, special, power,
   auto, sound, redName, blueName, redColor, blueColor, modelRed, modelBlue, redYaw, blueYaw,
-  metalness, roughness, glow, modelScale`. Themes: `classic` / `neon` / `royal`. On load,
+  metalness, roughness, glow, modelScale`. Written lazily by their own features rather than
+  declared in the defaults: `trnSpots` (sandbox slots), **`trials`** (`{<id>:{best,medal}}`, per-trial
+  personal bests), **`daily`** (`{date,best,medal,streak}` — the daily's record and streak; it is
+  deliberately NOT in `cfg.trials`, whose 'daily' key would be one best overwritten every day),
+  `photoShots`, `layouts`. Themes: `classic` / `neon` / `royal`. On load,
   missing `diffRed` / `diffBlue` are filled from the legacy `diff` (default `'pro'`); `diff`
   is then reset to `diffRed` to keep it meaningful as a "red's level" shorthand.
 
+## Player shot verbs (`shots.js`, `CONFIG.shots`)
+
+The player's move set was slide / kick / raise — ONE kick — while ai.js has had `trapShot`,
+`passShot`, a dribble and an aimed pass since 2026-07-28. `js/shots.js` is the human half: a
+modifier AXIS that colours a kick and a CHARGE that powers it. Controller only so far; the file is
+written device-agnostic so the keyboard/mouse port is a second caller, not a second implementation.
+
+- **THE AXIS IS ONE NUMBER**: `mod = RT depth − LT depth`, −1 (finesse) … +1 (power). Holding both
+  cancels toward 0, which is what a two-trigger chord ought to mean given each trigger's own
+  meaning — so the chord needs no special case, and in Total Control the same two triggers already
+  bend the SLIDE the same way round. One meaning per trigger, both modes.
+- **THE POWER IS THE ARC, and everything else is a trim.** `kickRod` captures `r.kickA0` and
+  `updateRods` ramps `kickA0 → strikeA` over a FIXED `strike`, so a deeper wind-up in a shorter
+  window is a genuinely faster foot: 20.0 rad/s shipped, 28.9 under RT, **54.4 rad/s** on a full
+  charge (343 u/s at the boot, 0.41u of travel per substep against a 1.9 ball radius). The anchors
+  therefore do NOT touch `rest`/`restPower`/`powFrom`/`powTo` — opening the power window would add
+  another ~1.9x and the multipliers a third helping of the same thing.
+- **THE WIND-UP CAN NEVER MAUL THE BALL.** `shotPullCap` walks the same ladder `trapAngle` does,
+  vetoing on `sweepClips` — plus its own `shotLegClips`, because `collideRod` also resolves against
+  the rod CAPSULE and sweepClips only tests the foot box. Measured: a ball 2.6 behind sits 2.26 from
+  the boot (clear) and inside `BALL_R+PRAD` of the shin.
+- **`r.shotOn` / `r.shotPow` / `r.shotCtl` is the whole cross-module contract** — three flat fields,
+  read by `collideRod` and `aimAssist` and nothing else. Flat because collideRod reads them per man
+  per substep; and that indirection is the only way a Total Control STICK swing can carry a charge
+  at all, since that path never calls `kickRod`. Consumed by the FIRST contact (`shotConsume`).
+- **Where the wind-up lives differs by mode, and only because of what the right stick is.**
+  · TOTAL CONTROL — the stick IS the rod, so the pull-back is already in the player's thumb. Both
+    triggers held WITH the stick back arms it; the player's own forward flick is the release. The
+    triggers otherwise scale how fast the rod TRACKS the stick (heavy under LT, snappy under RT).
+  · CLASSIC — a trigger has to hold it: `cfg.padChargeBtn` ('rt' default, or 'kick'/'both'). The
+    kick button also releases a live wind-up, so there are two ways to let one go.
+- **A tapped kick button with no trigger held is byte-identical to the kick that shipped** — it
+  fires on PRESS. Any scheme that charges on the plain kick button must defer the swing to RELEASE,
+  putting the tap's own duration (~60ms) in front of a contact that currently lands at ~17ms; that
+  is offered as `padChargeBtn:'kick'` and is deliberately not the default.
+- **The charge's SOUND is a held voice, not ticks** (`Au.mkCharge`/`chargeFeed`/`chargeVoice`, built
+  on the same fed-and-self-fading pattern as the roll layer): a sine gliding up, a noise bed opening,
+  and the fifth fading in across the band. Nothing has to stop it — stop feeding it and it fades,
+  so a quit mid-wind-up cannot leave it droning. The release (`chargeFire`) is a body sine dropping
+  in pitch, a down-sweeping air burst and a band-only snap, measured to peak under a third of
+  `Au.kick` while ringing ~3x longer than it.
+- **The sweet band is a flat maximum**: the arc saturates at `sweetFrom` (NOT sweetTo — see the
+  changelog) and `pullLerp` is fast enough that the ease has settled before the band opens. Outside
+  it, power falls and `shotCtl` opens `shotSpray` (a seeded, energy-conserving horizontal rotation)
+  and scales the aim assist down. **Tremble is DISPLAY ONLY** (`r.trem`, added on the render pivot
+  in main.js) — in the sim it would feed `angVel` and kick the ball it rests against.
+- **PASSING has its own chooser, `shotPassPick`, and must not use `passEval`.** passEval picks the
+  best receiver on the table, which is right for the AI because the AI dribbles onto the line first.
+  A human presses the button now, and the assist can bend a pass by 0.16 rad (~9°): a receiver 28
+  units square needs 43°, so the ball left with a PASS label and ran out for a goal kick. The
+  player's chooser scores the same lanes (`laneObs`/`lineClr`) by whether the bend is DELIVERABLE
+  (`pass.bendMult`) and returns null otherwise — LT+kick is then a plain soft touch.
+- **`CONFIG.shots.on:false` restores the pre-shots pad exactly** — RT kicks, LT raises, no charge,
+  no pass, no spray, `shotOn` never set. `js/shots.js` is CORE (between ai.js and input.js) and is
+  deliberately NOT typeof-guarded like `S.trn`/`S.photo`; physics only ever reads a plain field.
+- **THE HOLD (L2) is the player's half of `holdCfg`** (`CONFIG.shots.hold`, `shotHoldUpdate`). That
+  function turns `r.act==='trap'/'dribble'` into a dead sticky boot, but `r.act` is written only in
+  ai.js, below `if(isUserRod(r))continue;` — so a human boot could only ever be the passive touch
+  and there was no way to trap or carry by hand. LT now blends rest/grip/`carryMult` toward the
+  hold BY SQUEEZE DEPTH, into the ROD'S OWN block (`r.hold`, built in `buildRods`) because two
+  seats can hold two rods at different depths and `collideRod` reads it per man per substep. A
+  swing or a live wind-up cancels it, so L2+kick is still a full-strength pass.
+- Harness: `node tools/shots-harness.js` — **197 assertions, 18 mutations**; `node
+  tools/slidepush-harness.js` — **28** for the slide push and the hold.
+
+
 ## Current state / recent work
 
-Recently completed: adaptive substepping + anti-tunneling; energy-conserving spin/curve;
+**Most recent (2026-08-22): SLIDING INTO THE BALL NO LONGER PINGS IT OFF, AND L2 IS A GRIP** —
+new `CONFIG.kick.slidePush` (the fraction of a boot's SIDEWAYS motion that drives the contact
+impulse; the rotation is untouched, so a kick is bit-identical) and new `CONFIG.shots.hold` (the
+player's half of `holdCfg`, which was AI-only by construction). A full-tilt slide used to hand the
+ball the boot's WHOLE speed — 80 u/s, against the ~44 an ordinary struck shot leaves at — because
+the contact re-resolves every substep until the ball matches the boot, and `rest` bottoms out at 0
+so nothing in CONFIG could turn it down. Now 40% of the boot at every speed. Asserted in
+`tools/slidepush-harness.js` (28).
+
+Earlier: **THE PLAYER HAS SHOTS** — `js/shots.js` + `CONFIG.shots`: one modifier
+AXIS on the triggers (RT − LT, both held cancels), a CHARGE whose power is the deeper swing ARC it
+authors, and a PASS with its own deliverable-bend chooser. Controller only; the keyboard/mouse port
+is the next job. A tapped kick with no trigger held is still byte-identical to the one that shipped.
+See the section above and the 2026-08-22 entry — and note the five bugs the LIVE pass found, because
+every one is the kind that recurs: **power counted three times over**, **a sweet band whose peak sat
+outside it** (twice — once from the arc saturating at the wrong edge, once from the ease still
+settling), **a guard that watched the boot while the SHIN did the damage**, **a release reading the
+trigger axis one frame after the trigger came up**, and **an abandoned overcharge decaying back
+through the band and regaining full power**. Asserted in `tools/shots-harness.js` (197/18).
+
+Earlier: **THE ROOM EDITOR AUTHORS LIGHTS** — `CONFIG.rooms.<id>.lights` (plain
+three.js units, drawn from a resident `CONFIG.render.roomLightPool` so adding one never changes the
+scene's light count and never recompiles every material), `lightsOff` + DETACH for the fixtures
+baked into a room GLB, draggable markers for both kinds, RMB mouse-look, and an export that emits
+the WHOLE room block in config.js's own shape so authoring is edit → copy → paste. The `rooms`
+entries were restructured to BE that paste target (no inline comments — a paste would delete them).
+The crowd-dot cylinder is gone; rooms are dressed with props now. See the 2026-08-21 entry, and note
+the three bugs the live pass found, because all three are the kind that recur: **markers missing on
+entry** (the room GLB arrives async), **a grazing ground plane making a drag wildly oversensitive**,
+and **3dp rounding exporting a dim light as `int:0`**. Asserted in `tools/roomlights-harness.js`
+(159), which round-trips every real room block back through a parser.
+
+Earlier: **SKILL TRIALS + THE DAILY, built in five steps** — a seeded sim rng
+(`js/rng.js`) so a run can be reproduced at all; TRAINING split into a section with SANDBOX and
+TRIALS under it; the trial runner (`js/trials.js`, gated on `S.trial`); six trials and a generic
+match-ledger objective; and the daily challenge on its own `#home` card and screen. See the
+section above and the 2026-08-20 entries below — and note the two bugs that shaped it, because
+both are the kind that recur: **a trial spawning the ball inside the resting foot's contact box**
+(which started the clock before the player did), and **the spawn band being bounded at both ends**
+(clear of the boot, inside the rod's reach). Everything is asserted from live CONFIG in
+`tools/rng-harness.js` (38) and `tools/trials-harness.js` (337).
+**What none of it verifies: the NUMBERS.** Every medal threshold across the six trials is an
+unplayed first-cut guess.
+
+Earlier: adaptive substepping + anti-tunneling; energy-conserving spin/curve;
 meatier kicks (0.46 restitution in the power window); NaN guard; per-ball stuck recovery;
 goalie reduced 3→1 (1-2-5-3 layout); AI rewritten to swing at any reachable ball and keep
 men down to block; `redropBall` relocates; shorter dead-ball timers; **two-hands rule** (`pickActiveRods` — only 2 rods/team move at once, the
@@ -370,6 +550,48 @@ Half-extents: `{x=along leg, y=perpendicular, z=along rod}`; offset is team-rela
 velocity perturbation (default 0.003 of impact magnitude) prevents pixel-perfect
 side-to-side oscillations. Debug visual: wireframe box (45% opaque) + reach box
 inflated by `BALL_R` (18% opaque), updated per-frame to match physics world positions.
+
+## Skill Trials & the daily (`trials.js`, `CONFIG.trials`)
+
+A trial is **training mode with a rulebook**, not a mode of its own: it starts as
+`startMatch('training')` and adds ONE nullable gate, `S.trial`, which only trials.js and five
+one-line hooks in training.js ever test. training.js already owns rod show/hide, per-team AI off,
+ball placement, no match clock and goals that end nothing — the trial adds a pinned setup, a clock
+and an objective on top.
+
+- **Route:** `#home` → TRAINING → **TRIALS** (`SCREENS.trials`), and `#home` → **DAILY**
+  (`SCREENS.daily`, its own top-level card and screen).
+- **The clock is SIM time (`S.time`) and starts on your first SWING** (`S.stats.kicks[0]>0`, which
+  `msKick` increments from `kickRod`). Not wall clock, so a dropped frame can neither cost a medal
+  nor hand one over; not `S.lastTouch`, because a ball resting against a boot sets that on sim step
+  one — see the 2026-08-20 clock bug.
+- **A retry REPLAYS**: `trialReset` re-seeds from `S.seed`, so attempt 12 gets attempt 1's ball,
+  bounce and AI. That is what all of `js/rng.js` exists for.
+- **Objectives** (`goal.kind`): `goals` (n at the far end) · `roleGoals` (one struck by each named
+  rod of yours, credited off `b.mss`, matchstats' last SWING) · `stat` (n of any per-team MATCH
+  LEDGER counter — `woodwork`, `saves`, `passes`, `shots`, `onTarget`, `kicks` — polled once per
+  FRAME, never on the sim path). **Scoring does not complete a `stat` trial.**
+- **Medals are ELAPSED SIM SECONDS, lower is better, for both clock styles** — one metric, so a
+  stopwatch trial and a countdown one share the whole comparison path. A countdown only changes
+  what the HUD displays. This is also why there is no SURVIVE objective (see 2026-08-20).
+- **Two things are pinned per trial, for different reasons.** The TABLE (it picks the collision
+  model) is applied and the player's is PARKED — `saveCfg` writes `trialVenueHeld()` beside
+  `lgVenueHeld()`, or a trial would become their Kick Off setting. The DIFFICULTY (`diff`) is read
+  first by `teamDiff` and needs no parking, because nothing persists it.
+- **`momOn()` carries an explicit `||!!S.trial`** — woodwork and saves are detected in moments.js
+  and nowhere else, and they are what a `stat` objective reads. Don't tidy that clause away.
+- **The daily is a trial with different provenance.** `dailyBuild(date)` is PURE: it picks a
+  template by a hash of the DATE, copies the trial it names, rolls the ball spawn inside a declared
+  band and stamps a date-derived seed. `n`/`limit`/`medals` are NOT rolled — variety comes from
+  adding templates, not from rolling difficulty.
+- **A spawn band is bounded at BOTH ends and is only ~3 units wide**: foot-box far face + `BALL_R`
+  at the near end (inside it, `collideRod` fires immediately), `rod.x + CONFIG.ai.inFrontMax` at
+  the far end (past it the player cannot reach the ball). `tools/trials-harness.js` samples every
+  band against the live geometry.
+- **The harness asserts the trial DATA, not just the code** (337 assertions, 17 mutations). An
+  unwinnable trial — bronze past its own limit, a must-score rod that is hidden, a spawn inside a
+  boot or out of reach, a `stat` key that names nothing — fails as "I couldn't do it" rather than
+  as an error, so those are checked from live CONFIG. Run: `node tools/trials-harness.js`.
 
 ## Debug overlay (`C` key, `debug.js`)
 
@@ -447,7 +669,897 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
 
+### 2026-08-22
+- **SLIDING INTO THE BALL HIT IT HARDER THAN KICKING IT, and the player could not trap at all**
+  (new `CONFIG.kick.slidePush`, new `CONFIG.shots.hold`, `js/physics.js` both collision passes,
+  `js/rods.js` `holdCfg` + `resetRodRotation`, `js/world.js` rod init, `js/shots.js` new
+  `shotHoldUpdate`, `js/input.js` per-frame reset, `js/seats.js` `clearRodAI`, new
+  `tools/slidepush-harness.js`). Reported from play after the control work: "when I move a rod and
+  hit the ball — not kicking it, just sliding into it — it pings the ball off."
+  - **MEASURED IN THE LIVE ENGINE, and it is worse than the single-contact arithmetic says.** One
+    contact hands a classic ball ~0.81x the boot's speed, which reads like a survivable 66 u/s. But
+    the boot keeps sliding, so the contact RE-RESOLVES every substep until it reaches the fixed
+    point where `vn` is 0 — and that point is the ball travelling at **exactly the boot's speed**.
+    A full-tilt slide therefore put the ball out at **80 u/s** against the ~44 an ordinary struck
+    shot leaves at. Sliding was the hardest hit in the game. Driven on a real rod and a real ball
+    at `http://localhost:8123`: 100% of the boot before, 40% after.
+  - **THERE WAS NO KNOB, WHICH IS WHY THIS NEEDED A NEW ONE.** The impulse is
+    `-(1+rest)*vn/mass` and `rest` bottoms out at 0, so `(1+rest)` is never below 1 and even a
+    perfectly dead contact hands over the WHOLE closing speed. `grip` is the opposite of a damper —
+    it lerps the ball TOWARD the boot's velocity. Nothing in CONFIG could turn a slide down.
+  - **`slidePush` SCALES ONE TERM: `cvz`.** The contact point's velocity splits into a rotational
+    part (`cvx`,`cvy` — the swing) and a slide part (`cvz`), and only the slide is scaled. **That
+    split is the whole reason this is safe**: a button kick, an AI strike and a Total Control stick
+    flick are all rotation, so they transfer in full and are bit-identical either way (the harness
+    measures the delta at 0.0e+0). Gating on `r.kickT<0` instead would have gutted Total Control,
+    whose stick swing runs at `kickT` -1 the entire time — the same trap the shots entry below hit
+    with `pow`.
+  - **0.35, and the response is now flat-proportional**: 40% of the boot at EVERY speed, so a 20
+    u/s nudge trickles the ball at 8 and a full 80 u/s swipe pushes it at 32 — a firm sideways pass
+    that rolls ~77 units (v0/`floorFric`), i.e. it reaches the next rod. `slidePush:1` is the old
+    behaviour exactly.
+  - **A SIDE EFFECT WORTH KNOWING: ball type stopped changing how a slide feels.** At the fixed
+    point the impulse is 0, so `mass` drops out and every ball converges on the same 40%. Before,
+    mass was doing the damping — and for anything lighter than `1+rest` it AMPLIFIED: **fire
+    (mass 1) left an 80 u/s boot at 80.7**, faster than the thing that pushed it. That is energy
+    from nothing, and it is the same shape as the arena wall bug fixed on 2026-07-09 ("static
+    geometry reflection is mass-free now"). The strike still divides by mass, which is where that
+    term is meant to be a power knob.
+  - **THE HOLD (L2) — `holdCfg` WAS AI-ONLY BY CONSTRUCTION, and that is the whole second half.**
+    `holdCfg` turns `r.act==='trap'/'dribble'` into a dead sticky boot (`holdRest` 0 /
+    `holdGrip` 0.55). But `r.act` is written **only** in ai.js, and every action block there sits
+    below `if(isUserRod(r))continue;` — so a human boot could never be anything but the passive
+    touch, and there was no code path by which a player could trap or carry a ball. Now
+    `CONFIG.shots.hold` + `shotHoldUpdate` gives the player the same lever off LT.
+  - **IT IS PROGRESSIVE, NOT A SWITCH**, because the trigger is analog: squeeze depth blends
+    rest / grip / `carryMult` from their normal values to the configured hold. At the engage
+    threshold it is EXACTLY `kick.rest` / `stGrip` / full slide speed, so the grip eases in instead
+    of stepping. Measured live on a real rod: LT 0.30 -> grip 0.129, carry 0.942; LT 1.0 -> grip
+    0.55, carry 0.45.
+  - **IT IS THE ROD'S OWN BLOCK (`r.hold`, built in `buildRods`), NOT A CONFIG OBJECT.** Two seats
+    can hold two rods at different depths in the same frame, so a shared scratch object would give
+    `collideRod` whichever rod polled last — and `collideRod` reads it per man per substep, so
+    returning a fresh object was never an option either. Mutated in place, zero allocation.
+  - **`carryMult` COMES FOR FREE and is the real over-run knob.** `updateRods` already did
+    `{const H=holdCfg(r);if(H)ms*=H.carryMult;}` for the AI's carry, so the player's block slows
+    the rod through the line that was already there. It matters because a held ball leaves at
+    roughly `grip x boot speed`, so what stops it running away when you stop the rod is a slower
+    carry, not a stickier boot. 0.45: full stick under L2 is a 36 u/s shuffle putting the ball at 24.
+  - **SHARING LT WITH THE MODIFIER AXIS IS DELIBERATE.** LT already means finesse — the soft curve,
+    the pass, the fine slide in Total Control. A sticky boot is that same intent expressed
+    physically, so the trigger keeps ONE meaning. **L2+kick is still the pass**: `holdCfg` returns
+    null the instant a swing is in flight, so the release is at full strength and the grip resumes
+    after it. A live wind-up (`r.chg>=0`) also cancels it — you are charging to strike, not to
+    dribble, and a sticky boot would fight `shotPullCap`.
+  - **THE RESET IS PER FRAME AND LIVES BESIDE `tcMult`'s, for the same reason and one more.**
+    `gamepadUpdate` polls once per RENDERED frame while `updateRods` runs up to `sim.maxSteps`
+    times inside one, so a reset in updateRods would drop the grip after the first sim step. It is
+    placed ABOVE the `if(first<0)return` bail, which is the case that actually bites: **a pad
+    unplugged mid-match would otherwise leave its rod stickily gripping for the rest of the
+    session.** `shotReset` (rod handoff) and `clearRodAI` clear it too.
+  - **AI CONSEQUENCE, stated because it is not zero.** `slidePush` applies to every rod, not just
+    the player's — one rule, or the sim has two physics. A STATIONARY blocker is unchanged (`cvz`
+    is 0, and the ball's own arrival term is untouched), so passive blocking and the dead-absorber
+    behaviour are identical. What changes is that a rod sliding to intercept imparts less, and the
+    AI's own trap/dribble carry pushes the ball more gently. If the AI stops clearing well,
+    `slidePush` is the one number to raise.
+  - **Harness: `node tools/slidepush-harness.js` — 28 assertions.** It slices the REAL `collideRod`,
+    `holdCfg` and `shotHoldUpdate` out of their files rather than restating them, and drives a boot
+    through a ball substep by substep with the ball's own motion integrated, so depenetration and
+    the repeat contacts that produce the fixed point are included rather than assumed away. It pins
+    the proportional response, `slidePush:1` handing over 100% of the boot, the swing being
+    bit-identical, the hold's blend endpoints, both off switches, the swing/wind-up cancels, that
+    two rods get two blocks, and that no ball leaves a slide faster than the boot that pushed it
+    (which was false before, at 80.7).
+    - **Two of its own findings changed the numbers in this entry**: the fixed point (the 66 u/s
+      estimate was one contact, not a slide), and that a passive boot ALREADY kills a head-on
+      arriving ball given enough substeps — so the trap assertions measure the FIRST touch
+      (passive keeps 18% of a 60 u/s ball, L2 keeps 9%) rather than the final speed, which
+      measures nothing.
+  - **FOUND ON THE WAY PAST, by `tools/roomlights-harness.js` doing exactly its job: `CONFIG.rooms.arcade`
+    had drifted to a 6-space indent** and the harness's paste-format check therefore did not see it as a
+    room at all — it round-tripped `open`/`saucer`/`pub` and silently skipped the one entry that
+    actually authors lights. Re-indented to 3 spaces; the harness goes 157+2-failed to **161 passed**,
+    the extra four being arcade's own export/parse round trip including its three authored spots.
+    Worth knowing generally: **that harness keys on the emitted indent**, so a room re-indented by hand
+    (or by an editor) stops being checked rather than failing loudly, which is the same shape as the
+    2026-08-20 lesson about a hardcoded exemption being a hole in the check.
+  - **Exercised live** at `http://localhost:8123`: 42 modules clean, all 8 rods carrying a neutral
+    `hold` block, the full `shotPadUpdate` -> `shotHoldUpdate` chain driven with a synthetic pad
+    across seven trigger states, and the slide table above measured on a real rod and a real ball.
+    As on 2026-08-21, **rAF does not composite in the browser pane**, so nothing was seen
+    RENDERED — the loop was stepped by hand.
+  - **STILL WANTS A REAL LOOK AT, and both are feel rather than code.** Whether 0.35 leaves the
+    table lively enough — a slide pass is now a third of what it was, and 0.45-0.5 is the range to
+    try if passing feels underpowered. And whether L2 is comfortable to HOLD while dribbling, which
+    is the one thing neither the harness nor a synthetic pad can report; `carry` 0.45 is the knob if
+    the rod feels like syrup.
+  - **DELIBERATELY NOT DONE: the keyboard/mouse hold.** `shotHoldUpdate(r,depth)` is device-agnostic
+    and a K&M caller is one line, but a second writer needs a request/resolve pass or the two
+    devices fight over `r.hold` on a solo seat that holds both — and shots.js's K&M port is already
+    the stated next job. Keyboard players get the slide fix, not the grip.
+- **THE PLAYER HAS SHOTS NOW — a trigger AXIS that colours a kick, a CHARGE that powers it, and a
+  PASS** (new `js/shots.js`, new `CONFIG.shots`, new `cfg.padChargeBtn`, rod fields in
+  `js/world.js`, hooks in `js/rods.js` / `js/physics.js` x2 / `js/stats.js` x2 / `js/input.js` /
+  `js/main.js` / `js/fx.js` / `js/audio.js`, new `tools/shots-harness.js`). FEATURE-IDEAS 2.1 and
+  2.2, controller only — the keyboard/mouse port is deliberately the next job.
+  - **ONE MODIFIER AXIS, NOT TWO BUTTONS.** `mod = RT − LT`, and holding BOTH cancels toward
+    neutral — which is what a two-trigger chord should mean given each trigger's own meaning, so the
+    chord needs no special case anywhere. It also matches what those triggers already do in Total
+    Control (fine slide / fast slide), so each keeps exactly ONE meaning across both jobs. Classic
+    gives up RT-as-kick and LT-as-raise, which were only ever duplicates of A and X.
+  - **WHERE THE WIND-UP LIVES IS THE OWNER'S CALL AND IT SPLITS BY MODE, correctly.** In Total
+    Control the right stick IS the rod, so the pull-back is already in the player's thumb: both
+    triggers held with the stick back arms the charge and the forward flick is the release. In
+    classic there is no stick pull-back, so a trigger holds it (`cfg.padChargeBtn`, default RT).
+  - **THE ONE THING THAT MUST NOT REGRESS, and it shaped the whole binding: a tapped kick button
+    with no trigger held fires on PRESS, on CONFIG.kick's own curve, with shotOn false.** Charging
+    on the plain kick button means deferring every swing to RELEASE, which puts the tap's own
+    duration (~60ms) in front of a contact that currently lands at **kickT ~0.017**. That is offered
+    as `padChargeBtn:'kick'`/'both' and is deliberately not the default.
+  - **THE POWER IS THE ARC. Everything else is a trim, and the first cut had it three times over.**
+    `kickRod` already captures `r.kickA0` and `updateRods` ramps `kickA0 → strikeA` over a FIXED
+    `strike`, so a deeper wind-up in a shorter window is a genuinely faster foot — measured 20.0
+    rad/s shipped, 28.9 under RT, **54.4 on a full charge**. The first anchors ALSO opened the power
+    window (swapping rest 0.01 for restPower, ~1.9x) and ALSO carried a 1.75x charge multiplier and
+    a 1.22x axis one: about **10x** a normal kick, i.e. every number untunable and the clamp doing
+    all the work. The anchors now leave `rest`/`restPower`/`powFrom`/`powTo` alone entirely and the
+    two multipliers are trims (1.06 / 1.10). Pinned by the harness, because it is the decision the
+    whole block turns on.
+  - **THE SWEET BAND HAD TO BE MADE A BAND TWICE, and both were live findings.**
+    · The arc saturated at `sweetTo`, so power kept CLIMBING across the band and peaked one frame
+      before the overcook: **2.16x a plain tap mid-band against 2.73x fully overcooked** — holding
+      too long was the strongest shot in the game. It saturates at `sweetFrom` now, so the whole
+      band is a flat maximum.
+    · Then the EASE was still settling inside it. The rod eases toward the wind-up angle rather than
+      snapping (a snap would itself be a swing), so the arc delivered depends on how LONG you held
+      as well as on the charge, and at `pullLerp:9` a full overcook still won. It is a
+      RELATIONSHIP, not a taste: settling is `e^(-pullLerp·t)`, so 95% by the time the band opens
+      wants `pullLerp >= 3/(sweetFrom/rate)` = 10.7 here. 24 now, and the harness checks the
+      relationship rather than the number. After both: on a glancing contact tap **1.00x**, RT snap
+      1.80x, band low 3.05x, **band mid 3.79x (the peak)**, band top 3.58x, overcooked 2.63x.
+  - **THE WIND-UP CAN NEVER MAUL THE BALL — and the foot box is not the whole answer.**
+    `shotPullCap` walks the ladder `trapAngle` walks, vetoing on `sweepClips` (2026-08-15). Live,
+    that let a ball 2.6 behind the rod get dragged **4.14 units** toward our own goal while
+    `footBoxDist` reported no contact the whole way: `collideRod` also resolves against the rod
+    CAPSULE, and sweepClips only ever tests the FOOT BOX. New `shotLegClips` asks the same question
+    of the shin. Kept in shots.js rather than folded into sweepClips, which the trap shares.
+    Measured after: ball 2.0/2.6 behind pins the wind-up at 0 (drift 0.9/0.3, the pre-existing
+    depenetration of a ball already touching), 3.5 opens it slightly, 7+ is free — and **a ball in
+    FRONT never blocks it at any distance**, which is the case you actually charge from.
+  - **THE RELEASE FIRES ON THE AXIS THE WIND-UP WAS HELD AT (`r.chgMod`), not the live one.** In
+    classic the charge is held on RT, so at the instant of release RT is on its way UP: reading the
+    axis there gives 0, and a charged shot came out on a NEUTRAL curve with none of the power trim —
+    the power trigger doing nothing to the shot it had just spent half a second charging. Found live.
+  - **AN ABANDONED WIND-UP ONLY EVER FADES.** Power is flat across the band and falls off above it,
+    so a charge decaying down from an overcook passes back THROUGH the band: overcook deliberately,
+    let go, wait a fifth of a second, and the shot was worth full power again — a way round the very
+    timing the band exists to test. The release banks what it was worth (`chgRel`) and everything
+    after is a fade from there. Caught by the harness, not by eye.
+  - **PASSING IS FEATURE-IDEAS 2.2 AND IT NEEDED ITS OWN CHOOSER.** The obvious move is to call
+    `passEval` — the AI's — and the first cut did. It picks the best receiver on the TABLE, which is
+    right for the AI because the AI dribbles onto the line before it passes. A human presses the
+    button now, and `aimAssist` can bend a pass by `pass.assist` 0.16 rad (**~9°**): measured live, a
+    receiver 28 units square of the ball needs **43°**, so the ball left with a PASS label on it,
+    turned nine degrees and ran out for a goal kick. `shotPassPick` scores the SAME lanes (`laneObs`
+    / `lineClr` — one definition of "is this lane clear") by whether the bend is DELIVERABLE, and
+    returns null when none is, so LT+kick is then an honest soft touch. Measured after: lined up,
+    the ball reaches the receiver within **2.9 units**; 6 and 14 units off-line are refused.
+  - **A pass swings on `CONFIG.ai.passShot`, not a blend** — the AI's own tuned pass curve, so a
+    human pass and an AI pass are the same action rather than two things that look alike, and the
+    receiving window the ONE-TWO trial was designed around still holds when a player is passing.
+  - **TREMBLE IS DISPLAY ONLY** (`r.trem`, added on the render pivot in main.js's interp line). The
+    control being lost is already modelled — it is `shotCtl`, which scales the aim assist and opens
+    `shotSpray`. Put the shake in `r.angle` and it feeds `angVel = (angle-prevAngle)/dt`: a
+    trembling boot kicks the ball it is resting against, i.e. an own-goal generator dressed as a
+    readout.
+  - **THE AUDIO IS THE HALF THAT TEACHES THE BAND, and the first cut of it was a chiptune.** A
+    wind-up you can only SEE is one you time by luck, and the band is about 200ms wide — but the
+    first version ticked a SQUARE-wave beep whose rate climbed with the charge, and a train of
+    discrete square blips is exactly what makes a charge sound 8-bit. Reported as "too low bit
+    sounding", and the fix was structural rather than a new waveform: **a build-up is a STATE, not a
+    train of events**, which is the same distinction audio.js's ROLL layer is already built on.
+    · `Au.mkCharge` builds a resident voice — a sine gliding **110 → 300 Hz** (tension), a noise bed
+      whose lowpass opens **200 → 1500 Hz** (air gathering), and the FIFTH above the sine faded in
+      only across the band, so "you are in it" is a consonance arriving rather than a beep. The
+      overcook bends that same partial flat and wobbles the level: the tremble, made audible.
+    · **It is FED per frame (`Au.chargeFeed`) and fades itself when the feeding stops** — which also
+      answers the objection that put the first cut on one-shots. There is no `chargeEnd` to forget
+      on a quit or a match that ends mid-wind-up, because there isn't one; measured, the voice goes
+      0.078 → 0.005 in half a second with nothing calling anything, sweeping DOWN in pitch as it
+      goes, which is what a dissipating charge should sound like.
+  - **THE RELEASE HAD TO RING ON PAST THE KICK, and that is a TAIL problem, not a volume one.**
+    "Feeling like a charge has just exploded out, but subtle" — so `Au.chargeFire` is three short
+    layers under the contact's own kick, all scaled by the charge: a body sine dropping 150 → 52 Hz
+    (the weight), a bandpass noise sweeping **DOWN** 2100 → 420 Hz (a down-sweep reads as release
+    where the build-up's up-sweep read as tension), and a bright snap fired ONLY from inside the
+    band. Rendered offline and measured against `Au.kick`, which peaks at **0.43 and is gone in
+    50ms**: the first cut matched that 80ms decay and read as a second click, so the decays were
+    lengthened (body 0.14 → 0.26, air 0.20 → 0.34) and the air given a 14ms attack so it blooms.
+    Now **peak 0.13 — under a third of the kick — ringing for 140ms**, i.e. quieter than the impact
+    and lasting longer than it. Subtle is level; satisfying is tail.
+    · The snap needed a **Q of 3**: at `noise()`'s default 0.9 it measured 13% brighter than a
+      bandless release, i.e. the band was not actually distinguishable. Measured in its OWN band it
+      is now **2.83x** — the crude broadband metric was simply the wrong measurement, swamped by the
+      air layer.
+    · A flinch (under `fireMin`) makes no discharge at all, and the peak scales 0.03 / 0.11 / 0.19
+      across small / mid / full charges.
+  - The visual rides the existing per-seat indicator cone (already built, already seat-tinted): it
+    dips toward the rod as the charge builds, swells gold across the band and goes red once
+    overcooked. No new geometry.
+  - **A POWER SWING COSTS STAMINA EVEN THOUGH A HELD ROD IS EXEMPT BY DEFAULT.** `kickFat.userDrain`
+    is false because a human swing is not cooldown-gated and mashing would nerf your own rod in
+    seconds — but then RT is strictly better than not holding it. So a held rod banks the EXTRA
+    above an ordinary swing and nothing more: mashing stays free, leaning on the power trigger does
+    not.
+  - **Exercised live** at `http://localhost:8123`. Worth knowing for the next session: **rAF does
+    not run in the browser pane** (the 2026-08-21 compositing problem), so `S.time` never advances
+    and a match sits at 'count' forever — but the loop can be stepped BY HAND
+    (`gamepadUpdate`/`updateRods`/`physics` at `1/CONFIG.sim.hz`) with `navigator.getGamepads`
+    replaced by a synthetic pad, and that runs the REAL code against real rods, a real ball and the
+    real `sweepClips`. Five of the findings above came out of it and none of them would have come
+    out of re-reading.
+  - **Not exercised at all: an actual controller.** Everything above was driven through a synthetic
+    pad object. Analog trigger travel on a real DualSense/Xbox pad, whether `mod.dead` 0.08 sits
+    above its resting noise, and whether the charge is comfortable to HOLD are all unrun.
+  - **STILL WANTS A REAL LOOK AT, and the first one is a design question rather than a bug: the
+    ball's speed clamp eats the charge on a clean strike.** `BALL_TYPES.classic.maxV` is 135 and a
+    plain centred tap already produces **141 uncapped** — so at a clean contact a tap, an RT snap, a
+    sweet charge and an overcook all leave at exactly maxV and the whole system is invisible. Its
+    value is on IMPERFECT contacts (the glancing table above: 1.00x → 3.79x) and on reach. Whether
+    that reads as "the charge does nothing" in play, and whether a charged shot should be allowed
+    past the clamp, is a balance call and deliberately not made here.
+  - **STILL UNHEARD ON SPEAKERS:** every level in `CONFIG.shots.charge.tone` was set against offline
+    renders and a spectrum, not by ear on real monitors. The three that will move first are `vol`
+    0.10 (how present the wind-up is under the crowd bed), `snapVol` 0.13 (whether the band's ping
+    cuts through a busy rally) and `wobDepth` 0.30 (whether the overcook wobble reads as tension or
+    as a fault). `tone.on:false` drops the whole layer.
+  - **Also unplayed:** every threshold in `CONFIG.shots` is a first cut. `rate` 1.6 puts the band at
+    0.28–0.49s, `spray` 0.16 rad is 4.1° at a classic RT charge's 0.55 control and 7.4° overcooked,
+    and `pass.bendMult` 1.4 (~13°, about 6 units of slack over a 30-unit MID→ATT ball) is the knob
+    that decides whether passes feel offered or withheld.
+  - **DELIBERATELY NOT DONE:** the keyboard/mouse port (the stated next step — `shotFire` /
+    `shotPadUpdate` are already the only two entry points, and K&M needs its own answer to "what
+    holds the wind-up" since a mouse has no analog trigger); FEATURE-IDEAS 2.1's **rollover/snake**
+    (raise+kick within a window) and the sweet-spot payout; and any HUD charge meter beyond the
+    marker — a per-seat bar is a co-op layout question, not a line here.
+
+### 2026-08-21
+- **FOG IS A DISPLAY OPTION NOW** (`cfg.fog`, new `applyFog()` in `js/world.js`, `#optFog` in the
+  Effects panel, `js/options.js` sync + handler, one hint in the room editor). Asked for: a fog
+  toggle in Display Options, switchable in-game.
+  - **It is a real off, not a distance pushed to infinity.** Whether a scene has fog is a shader
+    DEFINE (`USE_FOG`), so `scene.fog=null` is the only way to actually remove it  and flipping
+    it recompiles every material, exactly like the shadows toggle. So it is paid the same way:
+    ONE function owns it and the recompile fires only when the state actually MOVES. Measured
+    live by summing `material.version` across the scene's 353 materials: a real toggle costs one
+    sweep, and **re-applying the same state, or changing venue with the toggle untouched, costs
+    zero**  which matters because `applyRoom` calls `applyFog()` on every venue change.
+  - **`applyRoom` no longer builds the fog itself**; it calls `applyFog()`, which reads the LIVE
+    room's `bg`/`fog`. That is what makes turning fog back on after two room changes pick up the
+    room you are actually standing in rather than the one it was switched off in.
+  - **Not a preset member.** The Graphics presets bundle the four heavy knobs (resolution,
+    shadows, reflections, fps cap + reduced fx); fog is a LOOK, so like ball trails and particles
+    it does not flip the preset to 'custom'. It sits in the Effects panel for the same reason.
+  - The room editor's fog near/far boxes are already `if(scene.fog)`-guarded, so they keep writing
+    the room (and exporting correctly) but cannot preview while fog is off  which now says so,
+    because a live control that silently does nothing is the kind of thing you debug twice.
+- **THE ROOM EDITOR CAN AUTHOR LIGHTS NOW — grab them, add them, delete them, and paste the
+  result straight back into config.js** (`js/roomedit.js` rewritten, new `CONFIG.rooms.<id>.lights`
+  / `lightsOff`, new `CONFIG.render.roomLightPool`, `js/world.js` pool + `applyAuthoredLights`,
+  `js/models.js` `lightsOff`, new `tools/roomlights-harness.js`). Asked for after the editor
+  shipped: "i need more control over the lights… grab and move them… some kind of visual that
+  shows where they are… add/remove… it should be a well featured editor", plus "the copy settings
+  layout doesnt fit well the room config layout", and "i dont need the crowd/dots thing".
+  - **THE POOL IS WHAT MAKES A LIGHT GIZMO POSSIBLE AT ALL, and it is the one structural call
+    here.** r128 bakes the scene's light COUNT into every material's program, so creating a light
+    when one is added would recompile the whole scene — per click, in a tool where you click a lot.
+    So authored lights BORROW from a resident pool, exactly like `fxLightPool` and the two
+    `goalLights` already do. Verified live: adding three lights and dragging them left the scene
+    on **23 lights throughout**.
+    · **SIZED FROM THE CONFIG, which is what makes it free to ship**: the per-type MAXIMUM over
+      every room's `lights` (not the sum — a sum would allocate 6 point lights to serve a room
+      that never shows more than 4), plus `pad` spare slots allocated **only when
+      `CONFIG.debug.roomEditor` is on**. A build whose rooms author no lights allocates NOTHING.
+    · **`pad` is PER TYPE (point 4 / spot 3 / dir 1), and that was a correction made off a live
+      reading.** The first cut was a scalar 6 and the boot line said `6 point, 6 spot, 6 dir` —
+      18 resident lights, every one of them evaluated by every material, to give headroom for
+      editing. A room wants several lamps and almost never several suns. Now 8.
+  - **AUTHORED LIGHTS ARE IN PLAIN THREE.JS UNITS AND DO NOT GO THROUGH THE CANDELA TRANSFER.**
+    That transfer (`applyRoomLights`, and the whole 2026-08-20 lighting entry) exists to rescue
+    Blender's watts-as-candela export. A light you just placed on a slider is ALREADY in screen
+    units, so running it through `gain/d0²` would make both knobs meaningless and make them fight
+    each other. Baked = transferred, authored = literal. Stated in `CONFIG.rooms` because it is
+    the first thing someone will try to "fix".
+  - **TWO KINDS OF LIGHT, and the difference is the whole of the lighting UI.** A BAKED
+    KHR_lights_punctual lives in the GLB, so the editor cannot move it and pretend that survives a
+    reload. What it can do is switch one off (`lightsOff`, by name) or **DETACH** it — copy it into
+    an authored light at the same world position, and switch the baked one off.
+    · **Detach is EXACT, not approximate, and that is why it is safe to offer.** The transfer has
+      already run by the time we read the light, so its live intensity IS the delivered screen
+      value. Measured on the pub pendant: `0.34586795721648944` in, `0.3459` out — the swap is
+      invisible the frame it happens.
+    · **`lightsOff` sets intensity 0 rather than `visible=false`** — hiding a light changes the
+      count and recompiles every material, and flicking a lamp on and off must not cost that. It
+      is applied AFTER the ratio-preserving ceiling, or a silenced fixture would drag the peak
+      down onto the lights that are still lit.
+    · A fixture with no NAME in the glb refuses to detach and says why, because `lightsOff` keys
+      on the name and there would be nothing to export.
+  - **THE MARKERS.** Every fixture gets a bulb in its own colour — authored bright and draggable,
+    baked dimmer and read-only — plus a line to the aim point and a wire cone for a spot's throw.
+    They draw with `depthTest:false` at a high `renderOrder`, and **picking tests them BEFORE the
+    props**, which is the same decision twice: a bulb inside a lampshade is occluded from most
+    angles, and a light you can only click by flying inside the fixture is a light you stop using.
+    The reach ring is SELECTION-ONLY — a 260-unit wire circle around every lamp at once is a room
+    you cannot see past.
+    · **The cone runs to the FLOOR, not to the aim point, and that came out of a live reading.**
+      The pub's pendant aims at a target hanging **1.47 units** under the bulb, so pos→target draws
+      a cone about one unit long: invisible, and useless for the one thing a cone is for. Now the
+      beam is traced to y=0 when it points downward — for that pendant, 97.08 units with an 81-unit
+      pool radius, which is the circle of light you are actually placing.
+    · Marker size is driven by DISTANCE TO CAMERA (clamped). One world size is either a speck on
+      the ceiling or a boulder on the rug, because fixtures hang at 100-400 and props sit on 0.
+  - **DRAGGING, and the pathology that had to be measured before it could be fixed.** Plain LMB
+    drag moves on the ground plane through the object; shift-drag moves height on a camera-facing
+    plane. But **lights are exactly where a grazing ground plane bites**: they hang high, so you
+    fly up to eye level with one, and then the floor is nearly edge-on and one pixel is worth
+    metres. Measured at ~5° above horizontal: a 140px drag threw a light **170 units**. Below
+    `grazeDot` (0.25, ~14°) the drag now uses the CAMERA-FACING plane — never edge-on by
+    construction — and keeps only its x/z. The same 140px drag now moves 18 units, against 29 at a
+    mid angle and 34 top-down, i.e. proportionate at every angle. Top-down the two planes coincide,
+    so the intuitive "follows the cursor across the floor" behaviour is untouched.
+    · The MODE is captured at mousedown, not read live: the plane is anchored where the grab
+      started, so re-picking it mid-gesture would make the thing jump the moment you touched shift.
+    · A spot's AIM POINT is its own draggable marker, because a spot you cannot point is half a
+      light.
+  - **MOUSE-LOOK IS WIRED HERE, and it was missing entirely.** Free roam reads `S.camYaw/camPitch`,
+    which input.js only writes under pointer lock — and it only REQUESTS pointer lock during a
+    match (`S.phase!=='menu'`). The editor deliberately runs with no match, so it had WASD movement
+    and no way to turn the camera. RMB-drag look, owned by this file (contextmenu is already eaten
+    on the canvas), which also leaves LMB free for select-and-drag — the convention every other 3D
+    editor uses.
+  - **THE EXPORT IS THE WHOLE ROOM BLOCK NOW, in config.js's own shape and key order**, so
+    authoring is: edit live, press COPY, replace the block. It was `JSON.stringify(…,null,1)` over
+    a partial object — quoted keys, double quotes, colours as decimals — which is a format you have
+    to hand-translate before it can be pasted, i.e. not a save step at all.
+    · **Colour-valued keys emit as `0x` hex.** A colour written as `16750899` is one nobody can
+      read, compare or nudge by hand, which is most of what you do to a colour in a config file.
+    · **`CONFIG.rooms` entries were restructured to BE the paste target** — the explanatory
+      comments that used to sit inside pub/saucer/arcade are gone, because the first paste would
+      delete them. They are in the rooms banner now, where a paste cannot reach them, and the
+      banner says so. Every room gained `lights:[]` and `props:[]` so the target exists.
+    · **Small magnitudes keep more decimal places, and this one would have shipped as a silent
+      blackout.** 3dp is right for a coordinate and wrong for a dim light: the pub's fire delivers
+      0.032 and a low-gain room can go an order below that, so a detached fixture at 0.0004 would
+      export as `int:0` — the paste switches it off and the room comes back darker than the one you
+      tuned. Anything under 0.01 now keeps six places.
+  - **THE HARNESS TESTS THE CLAIM, NOT THE CODE PATH** (`tools/roomlights-harness.js`, **159
+    assertions, 10 mutations**). The export claims to be paste-ready, and the only honest test of
+    that is to PARSE the emitted text back and compare it to the room it came from — a format that
+    is merely close enough to LOOK right is exactly the failure mode, and it costs a night's work
+    when it bites. So: every real `CONFIG.rooms` entry is exported, parsed back and deep-compared
+    key by key, plus a synthetic room carrying every awkward shape (nested panel arrays with a
+    leading hex, a tint palette, multi-row `at`, an apostrophe in a name). The pool half asserts
+    the count never moves across room switches, that a re-drive is idempotent (the editor calls it
+    on every slider tick), and that a released light goes out.
+    · **Two of its own assertions were found to be decoration and fixed.** The sum-vs-max mutation
+      had NO TEETH because the fixture data made sum and max the same number; and the
+      "numbers not rounded" mutation stopped applying the moment `reFmtNum` grew a second branch,
+      then quietly passed. `mutate()` now REFUSES a mutant identical to its source, so a drifted
+      anchor reports itself instead of scoring a point — the rng harness's stale-mutation line is
+      the same failure, still open.
+  - **THE CROWD DOTS ARE GONE** (`buildCrowd` → `buildGround`). 1,400 canvas dots on a cylinder
+    were the stand-in backdrop for a room with no GLB; a room is dressed with PROPS now, which is
+    the thing that can actually be art-directed. The shared ground plane it shared a builder with
+    stays — that is the real fallback. Swept out of `fx.js` (its per-frame rotation), `applyRoom`,
+    and the stale comments in `config.js`, `models.js`, `arena.js` and `rng.js` (which cited it as
+    an example of cosmetic randomness deliberately left on `Math.random`).
+  - **A REAL BUG THE LIVE PASS CAUGHT, and it would have been the first thing reported: no light
+    markers on entry.** `reditEnter` runs the moment the venue is applied, but `ensureRoom` is
+    ASYNC, so the first `reditMarkers()` sees zero baked fixtures and you land in the editor with
+    no light visuals — which reads as the feature being broken rather than as a race. `reditTick`
+    now watches the room GROUP IDENTITY, an O(1) test per frame (a traverse there would not be),
+    covering both the backdrop finishing its download and a room swap.
+  - **Exercised live** at `http://localhost:8123` (`.claude/launch.json` runs a static server; the
+    browser PANE would not composite, so nothing was seen RENDERED and everything below was driven
+    through the page's own JS): boot clean with the pool at 4/3/1; open pub → 5 baked fixtures,
+    6 markers, 5 pickable; add point/spot/dir with the scene light count pinned at 23; drag through
+    the REAL mousedown/mousemove/mouseup handlers at three camera angles plus shift-drag and snap;
+    pick an authored light, a baked fixture and empty sky; detach the pendant intensity-exact;
+    export then parse back; and the venue stash/restore in both directions (exit to the picker
+    keeps the room applied, leaving the area puts the player's back).
+    **Worth knowing for the next headless session: `renderer.render()` is what calls
+    `scene.updateMatrixWorld()`, so with rAF stopped every marker raycasts at the ORIGIN** and
+    picking silently returns null — call `scene.updateMatrixWorld(true)` first, or it looks like a
+    broken pick when it is a stopped loop.
+  - **STILL WANTS A REAL LOOK AT — what is left is all visual.** Whether the bulb markers read at a
+    glance against a lit room (flat unshaded spheres with depth test off: unambiguous, possibly
+    loud); whether the four-tab panel fits a short window with the always-on selection block under
+    it; whether the spot cone at 0.14 opacity survives the pub's warm walls; and the drag FEEL,
+    which is the one thing a harness cannot report.
+  - **DELIBERATELY NOT DONE:** no shadow-casting room lights (still the 2026-08-20 gap — it needs a
+    shadow-caster budget decision, not a flag); no rotate/scale gizmo handles (arrows and the number
+    boxes cover it, and a real gizmo is its own job); no multi-select; no undo stack beyond the
+    crash-backup; and the BAKED fixtures still change the scene's light count on a venue swap —
+    only pooling those too would fix it, and detaching now offers a way around it per room.
 ### 2026-08-20
+- **THE DAILY GOT ITS OWN HOME CARD AND SCREEN — it was two clicks down and nobody found it**
+  (`index.html` home card + `#daily`, `js/screens.js` route, `js/trials.js` `renderDaily` +
+  `trialObjText`, `css/styles.css` daily block, harness 324 -> **337**). Reported immediately after
+  step 5: "I can't see it."
+  - **IT WAS A ROW AT THE TOP OF `#trials`, i.e. home -> training -> trials -> read the list.** For
+    the one piece of content that changes every day and exists purely to be a reason to open the
+    game, that is the wrong depth — it was competing for attention with six static rows on a screen
+    you only reach deliberately. Now: a **DAILY card on `#home`**, fifth in the row, opening a
+    **`#daily` screen** of its own.
+  - **The screen is rendered from the DATE on every show** (`SCREENS.daily.onShow=renderDaily`),
+    not built once — what it says depends on the day AND on whether today is cleared, and quitting
+    a run returns HERE (`S.fromScreen`), which is the exact moment the tick has just changed.
+  - **Completed state is a tick and a green rail on the header**, plus the time, the medal and the
+    streak as plain rows. The button relabels PLAY -> PLAY AGAIN, because a cleared daily is still
+    replayable for a better time — it just can't move the streak again.
+  - **REMOVED from the trials list rather than shown in both places.** Two homes for one thing is
+    two things to keep in step, and the one that made it hard to find in the first place.
+  - **THAT DELETION LEFT DEAD CSS, AND THE AUDIT'S EXEMPT LIST WAS HIDING IT.** `.trlDaily` and
+    `.trlPill.live` stopped matching anything the moment the row went — the 2026-08-04 `.lgLast`
+    trap exactly — but `trlDaily` was on the audit's "built by concatenation, trust it" list, so
+    the check passed. Both rules are gone and the exemption with them. **A hardcoded exemption in a
+    dead-code check is a hole in that check**; the list now carries a note saying so.
+  - **Two more self-inflicted checker bugs worth knowing**, both the same shape — a slice that ran
+    to end-of-file. The audit's trials-CSS block was `css.slice(indexOf('/* ===== skill trials'))`,
+    so the newly-appended daily block was swallowed into it and its rules were checked against the
+    wrong emitter. Bounded now. The lesson: **an open-ended slice in a checker silently changes
+    meaning every time something is appended after it.**
+  - **`trialObjText` is shared by the daily panel and the trials list**, so the two can never
+    describe one trial differently — and the list gained the objective in place of a bare
+    "no time limit". Pinned by 8 assertions including one per shipped trial, because a kind with no
+    branch there renders a blank row.
+  - **`.homeRow` widened 1040 -> 1180** for a fifth card (5x212 + 4x14 = 1116); below that it wraps
+    3+2. The intro's per-card stagger needed a `:nth-child(5)` or the new card would animate with
+    no delay while the other four cascaded.
+  - **The card is what `CONFIG.trials.daily.on` hides; the ROUTE stays registered either way** —
+    the roomEdit precedent, so a stale back-target can't strand anyone on an unreachable screen.
+  - **`SCREENS.daily.onHide` also restores the parked table**, because a daily can now be started
+    from here as well as from the list. `trialTableRestore` is idempotent, so both hooks are safe.
+  - Harness 337 assertions / 17 mutations; the router walk covers home -> daily -> home, that
+    `hideScreens` takes `#daily` down, and that a quit returns to it.
+  - **STILL WANTS A REAL LOOK AT:** five cards on one row at a real viewport (it wraps 3+2 under
+    1180px), and whether the tick + green rail reads as "done today" at a glance.
+- **THE DAILY CHALLENGE — step 5, the last one, and it is a TRIAL WITH DIFFERENT PROVENANCE
+  rather than a second mode** (`js/config.js` new `CONFIG.trials.daily`, `js/trials.js` the daily
+  block + two call sites, `css/styles.css` daily card, `tools/trials-harness.js` 185 -> **324**
+  assertions, 12 -> **17** mutations). FEATURE-IDEAS 3.3.
+  - **`dailyBuild(date)` IS PURE, and that is the entire feature.** It picks a template by a hash
+    of the DATE, copies the trial that template names, rolls the ball spawn inside a declared band
+    and stamps a date-derived seed. Same date in, same challenge out, on any machine, with no
+    server — which is what makes "everyone gets the same problem today" true at all. It returns an
+    ORDINARY spec: every line of the runner is unaware it came from here.
+  - **The date stream is seeded from `rngHash` DIRECTLY, never from the match rng.** It has to
+    resolve while sitting on the list screen, long before `startMatchNow` seeds anything, and it
+    must give the same answer whatever the last match's seed happened to be. Pinned by an assertion
+    that scrambles `S.seed` and rebuilds the same day.
+  - **THIS IS THE CONSUMER THE AVALANCHE IN `rngHash` WAS KEPT FOR** (2026-08-20, step 1). The
+    input is a run of CONSECUTIVE date strings and the template pick is a raw `hash % n` with no
+    PRNG in between to launder it — exactly the case the step-1 measurement said the avalanche
+    protects. It was kept then on the strength of that argument; this is it arriving.
+  - **WHAT IS ROLLED AND WHAT IS NOT — the call that keeps the feature honest.** The spawn and the
+    seed vary; `n`, `limit` and `medals` come from the named trial UNCHANGED. Rolling difficulty
+    is the obvious next idea and it is the one that breaks it: thresholds authored for "3 goals in
+    45s" mean nothing against a rolled 6, and nothing in the game would tell the player today's was
+    the unfair one. Variety comes from ADDING templates. The mutation that rolls `n` breaks 28
+    assertions.
+  - **THE SPAWN BANDS ARE DERIVED, NOT PICKED BY EYE, and they are only ~3 units wide.** A spawn
+    must clear the resting foot box AND stay inside the rod's strike reach:
+    lower = foot-box far face + `BALL_R` (inside it, `collideRod` fires on sim step one — the
+    clock bug from earlier today); upper = `rod.x + CONFIG.ai.inFrontMax` (past it the player
+    cannot reach the ball at all). ATT [25.80, 28.80], DEF [-34.20, -31.20], MID [-4.20, -1.20].
+    **A naive band would have shipped unplayable days**: my first cut ran to x=31, which is 2.2
+    units beyond what the ATT rod can reach.
+  - **The harness SAMPLES every band across its whole area** (13x13 per template), not just its
+    corners, against the live geometry — foot clearance AND reach, the latter including the z
+    SLIDE range, since a rod reaches a z only if some man can be slid onto it. Widening a band past
+    what the rods can do now fails there rather than handing somebody an impossible day.
+  - **The reach check went in for ALL trials, not just dailies** — it is the second half of the
+    lesson from the clock bug, and the six authored trials are checked by it too.
+  - **A DAILY'S RECORD LIVES IN `cfg.daily`, NOT `cfg.trials`.** Its id is 'daily' every single
+    day, so the per-trial map would hold one "best" quietly overwritten by whichever day was
+    easiest — and there would be nowhere to hang the streak.
+  - **The streak moves on the FIRST completion of a day only**; later attempts can improve the time
+    and must not bump it. It is also only shown when it is LIVE (last completion today or
+    yesterday) — a number from a run that already ended is a lie. `dailyPrev` steps back from
+    MIDDAY, because stepping from midnight lands on the wrong day under some DST shifts and would
+    silently break a streak once or twice a year.
+  - **Harness: 324 assertions, 17/17 mutations.** The daily set covers purity across two builds and
+    across a scrambled match rng, 28 consecutive days all building with distinct seeds and varying
+    templates and spawns, authored difficulty surviving the roll, every band sampled for clearance
+    and reach, month- and year-boundary date arithmetic, and the full streak table (start, slower
+    retry, faster retry, next day, missed day, live-vs-dead display) — plus an END-TO-END
+    completion, because the streak assertions drive `dailyRecord` directly and would all pass even
+    if the runner never called it. New mutations: rolling the difficulty, a fixed seed, a repeat
+    completion bumping the streak, a missed day continuing it, and a daily writing into the
+    per-trial map.
+  - **STILL WANTS A REAL LOOK AT:** the thresholds, same as every other trial — and now one thing
+    more, which is whether the daily reads as worth returning for when the underlying six are
+    already beaten. That is a question about the RITUAL, not the code, and only playing it on
+    consecutive days answers it.
+  - **DELIBERATELY NOT DONE.** No leaderboard, no server, and no attempt to make the local best
+    tamper-proof — it is a number in localStorage and pretending otherwise would be theatre. No
+    catch-up or streak freeze. And no history beyond the current streak: past days are not stored,
+    which also means editing the template list only ever changes days nobody has a record of.
+- **SKILL TRIALS: WIDER CATALOGUE — step 4. Three new trials, a generic LEDGER objective, and the
+  first trial with a live opponent** (`js/moments.js` momOn clause, `js/league.js` `teamDiff`,
+  `js/trials.js` stat objective + per-spec AI, `js/config.js` three trials + spec doc,
+  `css/styles.css` #trials scroll, `tools/trials-harness.js` 128 -> **185** assertions,
+  9 -> **12** mutations). Six trials now: SNAP SHOT, KEEPER'S NIGHTMARE, THE FULL SET,
+  RATTLE THE FRAME, ONE-TWO, THE WALL.
+  - **ONE NEW OBJECTIVE KIND COVERS FIVE TRIAL IDEAS.** `{kind:'stat',stat,n}` reads any per-team
+    counter in the MATCH LEDGER — `woodwork`, `saves`, `passes`, `shots`, `onTarget`, `kicks` —
+    so a woodwork trial and a passing trial are config, not code. It is POLLED once per frame in
+    `trialTick` rather than hooked at each detector: the counters already exist, matchstats and
+    moments already maintain them, and polling adds nothing to the sim path (the FEATURE-IDEAS
+    watch-out). `freshStats()` in `trialReset` is what zeroes them per attempt.
+  - **SCORING DOES NOT COMPLETE A STAT TRIAL, and that is the subtle half.** In RATTLE THE FRAME a
+    goal is simply how you get the ball back for another attempt at the post. `trialGoal` has an
+    explicit no-op branch for it. The mutation that removes that branch had NO TEETH until the
+    assertion was made to score enough goals to actually reach the target — a test that cannot
+    fail against a broken build is decoration, which is worth remembering when adding kinds.
+  - **`momOn()` NOW FIRES IN A TRIAL, and without it RATTLE THE FRAME is silently unwinnable.**
+    Woodwork and saves are detected in moments.js and nowhere else, and `momOn()` gates on the
+    training mode — `MOM.inTraining` is off because a time-pinch fights the sandbox's freeze/step,
+    but a trial disables both. So the gate gained an explicit `||!!S.trial`. **Don't tidy that
+    clause away**: `S.stats.woodwork`/`saves` are exactly what a stat objective reads. `momGoal`
+    still never fires in a trial (`onGoal` returns early for training), so the goal banner stays
+    the trial HUD's job.
+  - **A LIVE OPPONENT PINS ITS DIFFICULTY, AND `teamDiff` IS THE ONLY PLACE THAT CAN.** `ai` in the
+    spec turns a team's AI on; `diff` is read FIRST by `teamDiff` (js/league.js), ahead of the
+    league branch and ahead of `cfg.diffRed/diffBlue`. Without it a trial plays at whatever the
+    player last picked in Kick Off and two players' medal times are not comparable. **Unlike the
+    table, this needs no parking** — nothing persists it, so there is nothing to leak and nothing
+    to restore. The harness refuses any trial that enables an AI without pinning `diff`.
+  - **THE WALL is the first trial whose opponent moves**, and it is only a fair test because of
+    step 1: the keeper's wander, aim and IQ rolls come off its own per-rod seeded stream, so
+    attempt 12 faces attempt 1's keeper.
+  - **ONE-TWO's rod pair is chosen from the pass window, not by feel.** A pass counts when a
+    teammate rod receives what another STRUCK within `MSTAT.passT` (2.5s). MID and ATT sit 30
+    units apart, which an ordinary ~44 u/s strike covers in ~0.8s — comfortably inside it. A
+    deeper pair would start losing passes to the timeout with nothing on screen explaining why.
+  - **Every new spawn was checked against the foot geometry BEFORE shipping**, using the check the
+    2026-08-20 clock bug earned: ONE-TWO's ball sits at x=-3 against a MID at -7.5, a gap of 3.10
+    on a contact radius of 1.9. The first cut at x=-4 would have cleared by only 0.2.
+  - **`#trials` scrolls now.** `.screen` is a centred flex column with no overflow rule, which
+    clips at BOTH ends — so a growing catalogue would lose the title and the back button before it
+    lost a row. Same fix `#menu` needed for co-op seat cards and `#win` for the stat sheet.
+  - **Harness: 185 assertions, 12/12 mutations.** New data checks: the objective kind is one of the
+    three supported, a `stat` key names a REAL counter (checked against a live `freshStats()`
+    rather than a hand-kept list that could drift), a positive target, and a pinned `diff` whenever
+    an AI is enabled. New behaviour checks: the stat key comes from the spec, progress tracks the
+    ledger, goals never complete a stat trial, the OPPONENT's column never counts for you, the
+    limit still applies, `ai` comes from the spec and does not leak into the next trial. New
+    mutations: a stat trial completing on goals, the AI block ignored, and a stat objective reading
+    the opponent column (which breaks 5).
+  - **STILL WANTS A REAL LOOK AT, and it is now the whole of what is left:** every threshold in all
+    six trials is unplayed. RATTLE THE FRAME's 3-in-75s is the least informed guess in the file —
+    woodwork needs `minImp` 26 to register, so a soft dink off the post counts for nothing, and
+    nobody has checked how hard three deliberate posts actually is. THE WALL's 15s gold assumes a
+    'pro' keeper is beatable roughly every 5s from the ATT rod.
+  - **DELIBERATELY NOT DONE: a SURVIVE objective** ("don't concede for 45s"). It is the one obvious
+    kind that does not fit, because the medal metric is ELAPSED SECONDS, LOWER IS BETTER — and a
+    survive trial completes at exactly its limit every time, so every run would score identically
+    and every medal would be gold. Doing it properly means a second scoring direction through the
+    whole comparison path (medals, bests, the HUD), which is a real change rather than a new entry
+    in a list. Also still not done: the daily (step 5), and per-trial leaderboards of any kind.
+- **TRIALS: THE CLOCK STARTED BEFORE YOU DID — a trial spawns the ball at the feet, and "at the
+  feet" means INSIDE the resting foot's contact box** (`js/trials.js` clock signal + two guards,
+  `js/config.js` two spawns, `js/training.js` respawn guard, `tools/trials-harness.js` +18
+  assertions / +4 mutations). Reported after the first playtest of SNAP SHOT: scoring "didn't
+  handle completing properly".
+  - **THE MEASUREMENT, because the prose numbers were not enough.** SNAP SHOT spawned the ball at
+    x=25 in front of the red ATT rod at x=22.5. At rest the foot box centre sits at
+    `r.x + footBoxOff.y` = 22.9 with an x half-extent of `footBox.y` = 1.0, so it spans
+    **[21.9, 23.9]** — and the ATT rod has 3 men at spacing 18.5, i.e. `baseZ=[-18.5,0,+18.5]`, so
+    there is a man at **exactly z=0**, which is where the ball was. Gap from ball centre to box
+    surface: **1.10 against a BALL_R of 1.9**. The ball spawned 0.8 units INSIDE the boot.
+  - **So `collideRod` fired on sim step ONE**, which set `S.lastTouch` — and the clock keyed off
+    `S.lastTouch>=0`. **The timer therefore started the instant the trial loaded**, and the time
+    you were scored on was however long you spent getting your bearings. SNAP SHOT has no limit,
+    so it never failed; it just handed back a nonsense time and no medal. That is what "doesn't
+    handle completing properly" was.
+  - **THE FIX IS THE SIGNAL, NOT THE SPAWN.** The clock now starts on `S.stats.kicks[0]>0` — a
+    SWING. `msKick` (called from `kickRod`) increments it once per swing and is gated on
+    `S.stats` alone rather than on `msOn()`, so it is live in training and **a ball resting
+    against a boot can never produce one**. Moving the spawn alone would have left the next trial
+    to rediscover this; `S.lastTouch` is simply the wrong question to ask.
+  - **The spawn moved anyway** (25 -> 26.5 for both trials that used it, clear by 0.7), because a
+    ball that visibly jumps as the trial loads is wrong regardless — depenetration shoves it out
+    to the contact radius on the first step.
+  - **AND THE HARNESS NOW ASSERTS IT, which is the part worth copying.** A new data check rebuilds
+    the analytic foot box from live CONFIG (`arm`, `rodH`, `footT`, `footBox`, `footBoxOff`,
+    `footBoxReach`, and each rod's derived `baseZ`) and refuses any trial whose spawn is inside a
+    VISIBLE rod's contact radius. **It carries its own self-test** — the shipped x=25 must read as
+    in contact (1.10) and x=26.5 must read as clear (2.60) — because a geometry check that cannot
+    fail is worse than none. Retuning `footBox` or the rod layout now fails HERE rather than in
+    play.
+  - **A SECOND HOLE FELL OUT OF THE REPRO: completing with no swing at all banked a 0.00s gold.**
+    A raise or a slide can nudge a ball and neither increments `kicks`, so `TRL.run` could still
+    be false at the finish — and `secs` 0 is a record nothing can ever beat. An untimed run now
+    completes but takes no medal and writes no best. Unreachable in these three trials (you cannot
+    walk a ball up the table without kicking it), but a records feature should not have a
+    zero-time hole in it at all.
+  - **Two more found while in there.** `trialFinish` read `TRL.secs` as banked by `trialTick`, but
+    a goal resolves INSIDE the sim step while the tick runs once per FRAME — up to a frame stale
+    on the number the medal is read from; it recomputes now (still clamped to the limit, or the
+    timed-out path reports a hair past its own deadline). And `trnSetRodShown` writes
+    `TRN.hidden[]`, which is the SANDBOX's persisted hide list — so **the rods a trial hid were
+    still missing the next time you opened the sandbox**, with nothing on that screen to explain
+    why. Stashed on arm, restored on exit.
+  - **A finished trial no longer respawns the ball.** `trainingGoal` dropped a fresh one behind
+    the result card, which reads as the run still being live.
+  - **WHY THE 110-ASSERTION SUITE MISSED ALL OF THIS, which is the lesson.** It called `trialGoal`
+    DIRECTLY. Everything between the goal and the card — `onGoal` -> `trainingGoal` -> `trialGoal`,
+    and the frame ordering where a goal resolves mid-sim-step but the tick runs after — was
+    unexercised, and so was every physical consequence of the spawn position. The stubs were
+    faithful to the functions and silent about the geometry. **Reproducing the real call order in
+    the real frame order is what found it**; the fix then went in as assertions (now 128) and
+    mutations (now 9/9, including "the clock keys off any contact instead of a swing", which
+    breaks 9).
+  - **STILL WANTS A REAL LOOK AT:** the medal thresholds, which have never been played and are
+    still first-cut guesses — now more so, since the clock finally measures what it was meant to.
+- **SKILL TRIALS RUN NOW — step 3, and a trial is TRAINING MODE WITH A RULEBOOK rather than a new
+  mode** (new `js/trials.js`, new `CONFIG.trials`, new `S.trial`, `js/training.js` five one-line
+  hooks, `js/config.js` `saveCfg` parking, `css/styles.css` new block, new
+  `tools/trials-harness.js`). FEATURE-IDEAS 3.2. Three trials ship: SNAP SHOT, KEEPER'S NIGHTMARE,
+  THE FULL SET.
+  - **THE ONE STRUCTURAL CALL: it reuses training.js instead of being its own mode.** training.js
+    already owns everything a trial needs — rod show/hide, per-team AI off, ball placement, no
+    match clock, no power-ups, goals that end nothing — and FIVE other files already gate on
+    `S.trn`. So a trial starts as `startMatch('training')` and adds ONE more nullable gate,
+    `S.trial`, which only trials.js and five one-line hooks in training.js ever test. A missing
+    trials.js cannot break a match; same discipline as `S.photo` / `S.trn` / `S.redit`.
+  - **THE CLOCK IS SIM TIME (`S.time`) AND THAT IS THE MOST LOAD-BEARING LINE IN THE FILE.**
+    `S.time` only advances inside main.js's fixed step, so a dropped frame — or a frame that banks
+    fewer steps than it should — can neither cost a medal nor hand one over. A wall clock would do
+    both. The harness mutation that swaps it for `Date.now()` breaks **13** assertions, which is
+    the right size of blast radius for it.
+  - **The clock starts on your FIRST TOUCH, not on a count-in.** No extra machinery (`S.lastTouch`
+    is already cleared at entry), and nobody loses a second getting their bearings. It also means
+    a player can sit and study the setup for free, which is correct for a puzzle.
+  - **A RETRY MUST REPLAY, NOT RE-ROLL** — `trialReset` re-seeds from `S.seed` (js/rng.js, step 1),
+    so attempt 12 gets attempt 1's ball, bounce and AI. Without that the medal times would be
+    comparing different games, and the whole of step 1 would have been for nothing.
+  - **THE OBJECTIVE READS EVENTS THE GAME ALREADY PRODUCES, and one of them was already live in
+    training while the other was not — worth knowing before extending this.** Goals arrive through
+    `trainingGoal` (the single hook every training goal passes), and WHICH ROD scored comes off
+    **`b.mss`** — matchstats' last-SWING record — because `msOn()` has no training gate. **moments
+    is dark in a trial**: `momOn()` folds one in, so woodwork and saves do not fire. That is fine
+    for these three and is exactly the flag a woodwork trial will have to flip. Deliberately not
+    flipped now — untestable without a browser, and not needed.
+  - **The hook is BEFORE `removeBall`**, because the records hang off the ball. Same constraint
+    `momGoal` and `msGoal` are already written under.
+  - **`trialTick` runs once per FRAME off `trainingTick`, never on the sim path** — the
+    FEATURE-IDEAS watch-out: per-frame work added to the sim costs ~7x more on exactly the frames
+    you can least afford. It is placed ABOVE that function's `if(!trnBuilt)return;`, or a trial
+    would stop ticking behind the sandbox panel it deliberately hides.
+  - **THE TABLE IS PINNED AND PARKED, AND THIS IS THE TRAP THIS REPO HAS NOW HIT THREE TIMES.**
+    The only venue property that changes the sim is the TABLE, because it picks the collision model
+    ('bowl' is a wholly different physics path; 'circuit' adds solid end walls) — skin/room/pitch
+    change no physics, so the player's stay. But setting `cfg.table` and then touching any Options
+    control makes it their permanent Kick Off setting, which is the 2026-08-07 league trap and the
+    2026-08-20 roomedit trap in a third costume. So `saveCfg` now writes the PARKED table
+    (`trialVenueHeld()`, beside `lgVenueHeld()`), the stash is taken **once** so three trials in a
+    row still restore the original, and the restore hangs off **`SCREENS.trials.onHide`** — which
+    fires on leaving trials LAND, not on starting a trial (`hideScreens` fires no hook) and not on
+    quitting back to the list (`showScreen` only fires `onHide` when the screen actually CHANGES).
+    Four harness assertions and a mutation cover it.
+  - **A hidden rod is still in the seat's switch list.** `seatBindRods` builds that list by TEAM
+    and knows nothing about `trnHidden`, so a trial that hides some of your own rods without
+    locking you would let Q/E hand you an invisible handle. `trialReset` filters `s.rods` down to
+    what is on the table, and refuses to empty it.
+  - **`S.teamStats=null` on start, and it is not paranoia** — `stHit`/`stGrip`/`aimAssist` scale
+    the HUMAN's kick too, so a league squad build would make a trial easier and every stored best
+    incomparable. It is already null outside a league match; setting it is the cheap guarantee.
+  - **Medals are ELAPSED SIM SECONDS, lower is better, for BOTH clock styles.** A countdown trial
+    only changes what the HUD displays, not what is scored — one metric, so a stopwatch trial and a
+    timed one can share the whole comparison path. Bests persist in `cfg.trials[id]`, which is why
+    a trial `id` must never be renamed, and why changing a trial's `seed` silently invalidates
+    every best stored against it.
+  - **THE HARNESS ASSERTS THE TRIAL DATA, NOT JUST THE CODE, AND THAT IS THE HALF WORTH COPYING.**
+    A trial whose bronze threshold sits past its own time limit, or that asks you to score with a
+    rod it has hidden, is UNWINNABLE — and nothing in the game would say so, because it fails as
+    "I couldn't do it" rather than as an error. So the suite walks every trial in CONFIG and
+    checks: unique id, a seed, a table that exists, a supported objective kind, ascending medal
+    thresholds, bronze inside the limit, a spawn inside the walls, every `'<team>|<role>'` key
+    naming a real rod, a locked role that is actually on the table, and every must-score role both
+    visible AND able to reach the goal.
+  - **THAT LAST CHECK CAME FROM MEASURING, AFTER NEARLY DESIGNING AN IMPOSSIBLE TRIAL.** The worry
+    was that a shot from a deep rod could not physically reach the far goal. Floor friction is
+    `exp(-floorFric*t)`, so a strike's MAXIMUM roll is **v0/floorFric** — about **125 units** off an
+    ordinary ~44 u/s contact, against a table only 120 long. It reaches; it just arrives slowly.
+    That is what makes THE FULL SET's DEF objective possible, and the harness asserts it from
+    `PHY.floorFric` rather than a literal, so retuning friction fails the check instead of silently
+    making a trial unwinnable.
+  - **Not exercised live** (no browser), but `tools/trials-harness.js` boots core+config+rng+state+
+    trials in one `vm` against stubs for the sandbox and runs **110 assertions**: the data checks
+    above; medal boundaries including exact-equal; setup application (AI off, only the declared rods
+    visible, ball at the trial spawn, fresh ledger, `lastTouch` cleared); the clock not running
+    before first touch and then tracking sim time; both objective kinds, including that a CONCEDED
+    goal never counts, a repeated role clears nothing, an unasked-for role clears nothing, a goal
+    with no swing record clears nothing, and a goal after the result does not re-finish it; the
+    limit firing as a FAILURE with the elapsed clamped and no medal, and `limit:0` never timing
+    out; bests written on completion, NOT overwritten by a slower run, overwritten by a faster one,
+    and never written by a failure; the table pin's stash-once/restore-original/no-churn/off-switch;
+    teardown leaving tick and goal inert; and a retry clearing the run while KEEPING the seed.
+    **It has teeth** — six mutations (a conceded goal counting, the stash re-taken every apply, a
+    best written regardless of time, a repeated role clearing a slot, a wall clock, a clock that
+    starts at entry) each break between 1 and 13 assertions.
+  - Also audited: every `$('…')` trials.js reads is created somewhere, every class it emits has a
+    CSS rule, every rule in the new block matches something it emits, and every `var(--…)` is
+    defined. **That caught one real gap** — `.trlRow.done` was emitted with no rule, the 2026-08-04
+    `.lgLast` trap inverted. 41-module chain compiles clean; the rng and router checks still pass.
+  - **STILL WANTS A REAL LOOK AT — and this is the half a harness cannot reach: the NUMBERS.**
+    Every medal threshold and every ball spawn is a first cut made without playing them. SNAP
+    SHOT's gold at 2s and KEEPER'S NIGHTMARE's 12s are guesses; if the first attempt at a trial
+    lands a gold, they are too soft. Also unrun: whether a static keeper is a satisfying obstacle
+    or just an annoyance, whether the top-centre HUD sits clear of the ball, and whether THE FULL
+    SET's slow deep shots read as a fun build-up or as waiting.
+  - **DELIBERATELY NOT DONE:** the daily (step 5 — `S.seedNext` is the hook and takes a date hash),
+    AI-involving trials, anything reading woodwork/saves (needs the `momOn` flag above), and a
+    wider catalogue. Three trials is enough to prove the spec shape, which is what this step was.
+- **TRAINING IS A SECTION NOW, NOT A DIRECT LAUNCH — step 2 of Skill Trials** (`index.html` two new
+  screens, `js/screens.js` two routes, `css/styles.css` new training-section block,
+  `js/training.js` card wiring). The `#home` TRAINING card opened the sandbox directly; it now
+  opens **`#training`**, which offers **SANDBOX** (the existing free-play mode, unchanged) and
+  **TRIALS**.
+  - **`#trials` IS REGISTERED NOW EVEN THOUGH IT HAS NO LIST YET, on the roomEdit precedent.** The
+    ROUTE always exists so a stray `showScreen` or a stale back-target can't strand anyone on an
+    unreachable screen; what a later step adds is the CONTENT. It carries an empty state rather
+    than a dead card, because a card that goes nowhere is worse than a card that says why.
+  - **`back:'training'` is the whole Esc story** — `backScreen()` walks the tree, so Esc out of
+    trials lands on the section and Esc again lands home, with no handler written anywhere.
+  - **`S.fromScreen` makes the return path correct for free.** `startMatchNow` stamps
+    `screenId()`, so quitting the sandbox now returns to `#training` (one click from another go)
+    rather than all the way to `#home` as it did when the card lived there. No code change — it
+    fell out of moving the launch point.
+  - **`Au.init()` moved onto the SECTION click.** The card used to reach `startMatch`'s own
+    `Au.init()`; it navigates now, so it initialises audio itself. Slightly better than before:
+    `startMatch` can defer through `ensureMatchAssets`, and a deferred `Au.init()` has lost the
+    user gesture WebAudio needs.
+  - **NOT wrapped in `.panelWrap`** — that carries `min-width:1200px` for the multi-panel flow
+    layout, and a single narrow panel sits marooned inside it. `.trnStub` is a 520px centred wrap.
+  - **The cards are sized like `.homeRow`, not the older three-across `.modeRow`**: this screen is
+    one click below the landing page and reads as a continuation of it, so the icon and headline
+    weight should match what was just clicked rather than shrink. Amber accent on TRIALS,
+    deliberately NOT `var(--gold)` — gold is the league's brand colour throughout the file and a
+    gold card here reads as league chrome (same call as `.scrTitle` vs `.lgTitle`).
+  - **Neither screen gets a `lay` block** — they're cards and one stub panel, not an arrangement.
+  - **FOUND, NOT FIXED (pre-existing, cosmetic):** `#roomEditBack` is `class="backBtn"` alone.
+    `.backBtn` only sets `left`/`right`/`font-size` — the positioning and the whole button chrome
+    come from **`.optGear`**, which that one is missing, so it renders as a default inline button
+    in the flow instead of a top-left chip. `#menuBack` has both and is the pattern to copy; the
+    two new back buttons here follow it. One-word fix on a dev screen, left alone as out of scope.
+  - **Not exercised live** (no browser), but the router was driven headlessly: `js/core.js` +
+    `js/screens.js` booted in a `vm` against a DOM stub whose `classList` records state, then
+    **27 assertions** — every id in `SCREENS` resolving to a real `id=` in index.html (a route with
+    no element makes `showScreen` return false and the click silently do nothing), the full
+    home→training→trials walk showing exactly one screen at a time, `backScreen` up both levels
+    and returning false at `#home`, `hideScreens()` clearing the stack the way `startMatchNow`
+    needs, and `gotoMenu`'s `showScreen(S.fromScreen)` landing back on `#training`. Plus: every id
+    the new wiring binds present exactly once in the markup, every new CSS class present in the
+    markup (the 2026-08-04 `.lgLast` trap — a class selector whose class isn't in the markup fails
+    silently and reads as a styling gap), `<div>`/`</div>` balance across the file, and every
+    `var(--…)` in the new block checked against `:root`. That last one caught a real one:
+    **`var(--font)` does not exist** (the tokens are `--font-ui` / `--font-body` / `--font-italic`),
+    and an undefined custom property makes the whole declaration invalid at computed-value time, so
+    it would have silently inherited and looked correct.
+  - **STILL WANTS A REAL LOOK AT:** the two cards at a real viewport (720px wrap, two 320px cards),
+    and whether the amber reads as distinct from the league gold on screen rather than in hex.
+- **THE SIM'S RANDOM SURFACE IS SEEDED NOW — step 1 of Skill Trials, and the thing that has to
+  exist before any of the rest is worth building** (new `js/rng.js`, new `CONFIG.rng`, new
+  `S.seed`/`S.seedNext`, hooks in `js/flow.js` `startMatchNow`, `js/ai.js` x4, `js/balls.js` x2,
+  `js/physics.js` x3, `js/powerups.js` x6, `js/moments.js`, a parameter rename in `js/props.js`,
+  new `tools/rng-harness.js`). FEATURE-IDEAS 3.2/3.3. `CONFIG.rng.on:false` restores the old
+  behaviour exactly.
+  - **A CHALLENGE YOU CANNOT REPRODUCE IS A COIN TOSS, and that is the whole justification.** The
+    fixed-timestep work (2026-07-16) had already done the harder half — the sim advances in
+    constant 1/120 slices, so frame rate cannot change an outcome. What was left was the random
+    draws, and a trial whose AI plays differently on every attempt is not a trial. Same for the
+    daily: "same seed, same table, same opponent build" is the entire feature.
+  - **THE SURFACE IS 13 SITES, NOT 6 — because `rand()` WRAPS `Math.random`.** Grepping
+    `Math.random` finds the AI's IQ roll, the foot jitter, `pickType`, the power-up type and the
+    re-drop zone. It MISSES `core.js`'s `rand(a,b)`, and that is where the ones that matter most
+    live: **the serve drop position, velocity and spin** (6 draws — the first thing a trial has to
+    reproduce), the AI's wander error and all three kick-cooldown jitters, the knuckleball flutter,
+    the NaN-guard re-drop, and the dead-ball re-drop's position AND velocity. Grep BOTH when
+    auditing this again.
+  - **PER-CONSUMER STREAMS, NOT ONE SHARED STREAM — the one structural call in the file.** On a
+    single stream every draw is POSITIONAL: retune a power-up timer, add one flutter, and every
+    later consumer's numbers shift, silently invalidating every stored best in the game. Eight
+    named streams (`RNG_TAGS`), each seeded `hash(tag,seed)`. The split inside them is not
+    tidiness either — `jit` draws per man per substep while `knuck` draws a few times a rally, so
+    one shared stream would make a knuckleball's flutter depend on how many boots the ball had
+    clipped. The harness pins it: collapsing them to one stream fails C2/C3.
+  - **THE AI GETS ONE STREAM PER ROD**, keyed on `r.idx` — which `buildRods` already sets, so no
+    new rod field. That is what makes a trial that HIDES rods safe: a hidden rod stops drawing, and
+    without per-rod streams every remaining rod's sequence would shift underneath it. Fails D2/D3
+    if `rngAi` ignores the index.
+  - **COSMETIC RANDOMNESS IS DELIBERATELY LEFT ON `Math.random`** — fx.js particles, audio.js
+    detune, replay.js's camera pick, world.js's 1,400 crowd dots, customize.js. Seeding them buys
+    nothing (they change no outcome) and costs the one thing that matters: a stream anyone can
+    shift by editing a particle count. **`RNG_TAGS` is a REGISTRY of what is seeded, not a
+    convenience.** `momPick` is the one cosmetic exception, on its own `line` stream, because a
+    recorded run should read back identically and it costs nothing.
+  - **NAMED SLOTS, NOT A STRING LOOKUP.** `RNG.jit` is read inside `collideRod`, per man per
+    substep, on exactly the slow frames that already bank 7 sim steps x 7 substeps — a key build
+    plus a Map get there is precisely the cost FEATURE-IDEAS warns about. A named property is as
+    cheap as `Math.random`. `rngFor(tag,idx)` is the escape hatch for a genuinely dynamic tag
+    (trials will want one) and caches, so a tag CONTINUES its sequence rather than restarting.
+  - **`rngSeed` CLEARS THE CACHED STREAMS, and that is load-bearing rather than tidy.** A cached
+    stream is mid-sequence; leaving one behind means the same seed produces a different run the
+    SECOND time it is used — i.e. retrying a trial would not replay it, which is the single failure
+    this whole file exists to prevent. Dropping the clear fails D1/F2/H2.
+  - **THE HASH AVALANCHE: THE OBVIOUS CLAIM ABOUT IT IS WRONG TWICE, and it took measuring to find
+    out.** The first cut of both the comment and its test asserted it stops two tags correlating.
+    It does not — the FNV loop plus the rotate already handles that, and `'pu'`/`'nan'` come out at
+    **r = -0.02 across 4000 seeds with the avalanche removed**. It also does nothing for a tag of
+    3+ characters (`'serve'` sits at 0.332 either way), **which is why the first version of the
+    test passed against a mutant with the avalanche stripped and made it look like dead code**.
+    What it actually protects is SHORT tags, and the mechanism is that every tag character is one
+    FNV round: a 1-2 character tag never gets enough rounds to launder the seed. Mean
+    `|hash(s)-hash(s-1)|` normalised to [0,1) is 1/3 when uncorrelated; drop the avalanche and
+    `'pu'` — a LIVE tag — falls to **0.267** and a one-character tag to **0.170**, half of uniform.
+    mulberry32 launders all of it for anything seeded THROUGH it, so no stream in the game can tell
+    the difference today; it is kept because `rngHash` is a general helper and the daily will hash
+    consecutive DATE strings, where a raw `hash % n` inherits the structure with no PRNG in the
+    way. **Pinned on a SHORT tag, deliberately (E4/E5).**
+  - **mulberry32, the same generator `props.js` scatters with** — one PRNG in the codebase means
+    one thing to reason about when a room layout and a trial run both have to be reproducible.
+  - **`S.seedNext` is the forward hook and it is CONSUME-ONCE, exactly like `S.serveAt`.** A trial
+    or the daily sets it; `startMatchNow` reads it, clears it and seeds. Leak it and the match
+    AFTER a trial would silently replay the trial's seed. Nothing sets it yet — that is step 3.
+    With nothing set the seed is the wall clock, so ordinary play is as varied as it has always
+    been. `S.seed` is the seed the live match ran on: the number to quote to reproduce a run, and
+    `CONFIG.rng.log` prints it at kickoff.
+  - **`js/rng.js` is CORE, loaded immediately after `config.js`, and deliberately NOT guarded the
+    way `S.trn` / `S.photo` / `S.redit` are.** Those are optional modules whose absence must not
+    break a match; this one physics/ai/balls/powerups hard-depend on, so a `typeof` guard would
+    only hide the failure one line later. Stated in its banner so the next person doesn't "fix" it.
+  - **`propPlacements(spec,rngSeed)` renamed its parameter to `baseSeed`.** `rngSeed` is a global
+    function now, and a parameter of that name shadows it inside that function — legal, and
+    currently harmless, but the next person to reach for it in there gets "rngSeed is not a
+    function" with nothing on screen explaining why.
+  - **REPO TRAP FOUND ON THE WAY, worth knowing before the next scripted edit: `js/` HAS MIXED
+    LINE ENDINGS.** 28 files are LF, 8 are CRLF (`config.js`, `state.js`, `flow.js`, `balls.js`,
+    `physics.js`, `moments.js`, `core.js`, `screens.js`), and `core.autocrlf` is true with no
+    `.gitattributes`. A multi-line search-and-replace written with `\n` matches the LF files and
+    **silently matches nothing in the CRLF ones** — three of this change's patches failed that way
+    on the first pass, and single-line patterns succeeded throughout, which is what makes it look
+    like a bad pattern rather than an encoding problem. Normalise the pattern to the file's own
+    ending, and check what you INSERTED didn't leave a CRLF file half-LF.
+  - **Not exercised live** (no browser this session), but not merely re-read either.
+    `tools/rng-harness.js` boots `core`+`config`+`rng` in one `vm` context and runs **38
+    assertions**: the generator's range, mean over 20k draws and the `||1` guard on state 0; same
+    seed reproducing, a re-seed mid-sequence restarting, uint32 coercion and a wall-clock-scale
+    seed; **interleaving order not shifting either stream**, 5,000 draws on one stream not shifting
+    another, and all 8 tags distinct; per-rod isolation across 8 rods; tag correlation across 600
+    seeds and raw-hash uniformity on 1- and 2-character tags; `rngFor`'s caching, determinism and
+    idx separation; `rngR` staying in a negative range, being centred and consuming EXACTLY one
+    draw; `rngPick`'s bias over 60k picks, its 1-element case and its one-draw guarantee; and the
+    off switch in both directions. **It has teeth** — five mutations (one shared stream, no cache
+    clear on re-seed, no avalanche, `rngAi` ignoring the rod index, `rngFor` not caching) each
+    break between 1 and 3 assertions. Whole **40-module** chain also re-compiled in one scope (no
+    duplicate top-level names — the 2026-08-02 `CUP` trap; `RNG`, `rngSeed`, `rngHash`, `rngMake`,
+    `rngAi`, `rngFor`, `rngR`, `rngPick`, `aiR` all clear), and every `RNG.<tag>` reference in
+    `js/` checked against `RNG_TAGS` — no undeclared tag, no declared tag unused.
+  - **STILL WANTS A REAL LOOK AT:** that ordinary play still FEELS varied (it is seeded from the
+    wall clock, so it should be indistinguishable, but that is an assertion about perception a
+    harness cannot make); and the `M` profiler over a busy rally, since `RNG.jit` replaced
+    `Math.random` on the hottest path in the game — a named property read should be a wash or
+    slightly faster, but it has not been measured on metal.
+  - **DELIBERATELY NOT DONE — this is step 1 of 5.** No trial, no Training sub-screen, no
+    `S.trial`, no objective evaluator, no daily. What this buys on its own is that two runs of the
+    same match seed now play out identically given identical input, which is the property every one
+    of those depends on. Also NOT done, and worth stating because it is the obvious next assumption:
+    this does **not** make a run replayable from a recording — that needs input capture on top, and
+    the fixed timestep plus this is what would make it possible.
 - **PROP LIBRARY + INSTANCING, AND A ROOM EDITOR ON TOP OF IT** (new `js/props.js`, new
   `js/roomedit.js`, new `CONFIG.props`, new `CONFIG.debug.roomEditor`, new `S.redit`, new
   `assets/props/`, new `tools/build_props_manifest.js`, new `tools/props-harness.js`, hooks in

@@ -39,6 +39,7 @@ const AUREACT={ooh:{f0:620,f1:930,q:1.7,a:.16,d:.52,v:.17,exc:.30},
 const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
  rl:null, // [floor, wall] roll voices, or null when CONFIG.audioMix.roll.on is false
+ ch:null, // the held charge voice (js/shots.js), or null when CONFIG.shots.charge.tone.on is false
 
  init(){if(this.ctx)return;try{
   this.ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -61,6 +62,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   this.crowd=c.createGain();this.crowd.gain.value=0;
   s.connect(f);f.connect(this.crowd);this.crowd.connect(this.mg);s.start();
   if(AUMIX.roll&&AUMIX.roll.on)this.rl=[this.mkRoll(),this.mkRoll()];
+  if(CONFIG.shots&&CONFIG.shots.charge.tone.on)this.ch=this.mkCharge();
  }catch(e){}},
 
  /* One shared noise buffer for every one-shot AND both roll voices. White + a brown
@@ -83,7 +85,92 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   s.connect(lp);lp.connect(bp);bp.connect(g);g.connect(this.mg);s.start();
   return {src:s,lp:lp,g:g,lvl:0,spd:0,want:0,cfg:null};},
 
- setOn(on){if(this.mg)this.mg.gain.value=on?AUMIX.master:0;if(!on)this.rollStop();},
+ /* THE CHARGE VOICE — a wind-up is a STATE, exactly like a roll, and it is built the same way for
+    the same two reasons. Sonically, discrete ticks are what make a charge read as a chiptune; a
+    held voice swept continuously reads as energy gathering. Structurally, a voice that is FED per
+    frame and fades when the feeding stops CANNOT leak — there is no chargeEnd to forget on a match
+    that ends mid-wind-up, which was the objection that put the first cut on one-shots. Nodes are
+    resident, so a charge allocates nothing and costs a handful of AudioParam writes while audible. */
+ mkCharge(){const c=this.ctx,T=CONFIG.shots.charge.tone;
+  const g=c.createGain();g.gain.value=0;g.connect(this.mg);
+  const o=c.createOscillator();o.type='sine';o.frequency.value=T.f0;o.connect(g);o.start();
+  const o5=c.createOscillator();o5.type='sine';o5.frequency.value=T.f0*1.5;
+  const fg=c.createGain();fg.gain.value=0;o5.connect(fg);fg.connect(g);o5.start();
+  const s=c.createBufferSource();s.buffer=this.nbuf;s.loop=true;s.playbackRate.value=.8;
+  const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=T.nf0;lp.Q.value=.7;
+  const ng=c.createGain();ng.gain.value=T.noiseVol;
+  s.connect(lp);lp.connect(ng);ng.connect(g);s.start();
+  return {g:g,o:o,o5:o5,fg:fg,lp:lp,lvl:0,k:0,want:-1,t:0};},
+
+ // shots.js reports the live charge here once per frame. MAX, like rollFeed: in co-op two seats can
+ // be winding up at once and one voice is indistinguishable from two at this scale.
+ chargeFeed(k,band){const v=this.ch;if(v&&k>v.want)v.want=k;},
+ chargeStop(){const v=this.ch;if(!v)return;v.lvl=0;v.k=0;v.want=-1;if(v.g)v.g.gain.value=0;},
+
+ /* Drive the voice toward whatever was fed, then clear the accumulator — so letting go of the
+    trigger simply stops feeding it and it sweeps DOWN and out on its own release time constant,
+    which is what a dissipating charge should sound like. k is smoothed as well as the level, or
+    the pitch would step on every frame the trigger depth moved. */
+ chargeVoice(dt){const v=this.ch;if(!v||!this.ctx)return;
+  // Idle is the common case by a mile — this runs every frame of every match and a charge is a
+  // second or two of it. Bail before the exp() when there is nothing to drive and nothing ringing.
+  if(v.want<0&&v.lvl<=0){v.want=-1;return;}
+  const T=CONFIG.shots.charge.tone,CH=CONFIG.shots.charge,
+   live=cfg.sound&&typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win',
+   fed=live&&v.want>=0,
+   tc=fed?T.attack:T.release,a=1-Math.exp(-dt/Math.max(1e-3,tc));
+  v.k+=((fed?v.want:0)-v.k)*a;
+  v.lvl+=((fed?Math.pow(clamp(v.k,0,1),T.curve)*T.vol:0)-v.lvl)*a;
+  v.want=-1;
+  if(v.lvl<1e-4){if(v.lvl!==0){v.lvl=0;v.k=0;v.g.gain.value=0;}return;}
+  v.t+=dt;
+  const over=CH.sweetTo>=1?0:clamp((v.k-CH.sweetTo)/(1-CH.sweetTo),0,1),
+   band=clamp((v.k-CH.sweetFrom)/Math.max(1e-3,CH.sweetTo-CH.sweetFrom),0,1),
+   f=T.f0+(T.f1-T.f0)*clamp(v.k,0,1);
+  v.g.gain.value=v.lvl*this.vol*(1+Math.sin(v.t*T.wobHz*6.2832)*T.wobDepth*over);
+  v.o.frequency.value=f;
+  v.o5.frequency.value=f*1.5*(1-over*T.overDetune);
+  v.fg.gain.value=band*T.fifthVol;
+  v.lp.frequency.value=T.nf0+(T.nf1-T.nf0)*clamp(v.k,0,1);},
+
+ /* The RELEASE. Three short layers rather than one, all scaled by the charge that went off, and all
+    landing ~17ms before the contact's own Au.kick so the two read as a single event: a body sine
+    dropping in pitch (the weight), a bandpass noise sweeping DOWN (the discharge — a down-sweep is
+    release where the build-up's up-sweep was tension), and a bright snap that fires ONLY from
+    inside the sweet band, so hitting it is something you hear rather than something you read. */
+ chargeFire(k,sweet){if(!this.ctx)return;
+  const T=CONFIG.shots.charge.tone,s=clamp(k,0,1);
+  if(s<T.fireMin)return;
+  const c=this.ctx,R=this.rate>0?this.rate:1,t=c.currentTime;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type='sine';o.frequency.setValueAtTime(T.bodyF0*R,t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(30,T.bodyF1*R),t+T.bodyD/R);
+  this.env(g,t,.004/R,T.bodyD/R,T.bodyVol*s*this.vol);
+  o.connect(g);g.connect(this.mg);o.start();o.stop(t+T.bodyD/R+.1);
+  const n=c.createBufferSource();n.buffer=this.nbuf;
+  const f=c.createBiquadFilter();f.type='bandpass';f.Q.value=.9;
+  f.frequency.setValueAtTime(T.airF0*R,t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(60,T.airF1*R),t+T.airD/R);
+  const ng=c.createGain();this.env(ng,t,T.airA/R,T.airD/R,T.airVol*s*this.vol);
+  n.connect(f);f.connect(ng);ng.connect(this.mg);
+  const span=this.nbuf.duration-T.airD/R-.05;
+  n.start(t,span>0?Math.random()*span:0,T.airD/R+.05);
+  // A high Q makes the snap a defined PING rather than a hiss — at the default 0.9 it measured only
+  // 13% brighter than a bandless release, i.e. the band was not audibly distinguishable at all.
+  if(sweet)this.noise(T.snapD,T.snapF,T.snapVol*s,0,T.snapQ);},
+
+ // The band edges. A soft SINE bloom with a 30ms attack — the point of this pass was that a blip is
+ // the chiptune tell, so the marker cannot be one either. Bright going in, dull and falling out.
+ chargeMark(good){if(!this.ctx)return;
+  const T=CONFIG.shots.charge.tone,c=this.ctx,R=this.rate>0?this.rate:1,t=c.currentTime,
+   d=T.markD/R,fr=(good?T.markFHi:T.markFLo)*R;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type='sine';o.frequency.setValueAtTime(fr,t);
+  if(!good)o.frequency.exponentialRampToValueAtTime(Math.max(40,fr*.7),t+d);
+  this.env(g,t,T.markA/R,d,T.markVol*this.vol);
+  o.connect(g);g.connect(this.mg);o.start();o.stop(t+d+.1);},
+
+ setOn(on){if(this.mg)this.mg.gain.value=on?AUMIX.master:0;if(!on){this.rollStop();this.chargeStop();}},
 
  /* Voice gate for one-shots: retrigger cooldown + concurrent cap, per sound key. This is the
     generic half of the fix — physics decides WHETHER a contact is an event, this decides
@@ -103,7 +190,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
  tick(dt){if(this.crowd){this.exc=Math.max(0,this.exc-dt*.3);
   const inMatch=typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win';
   this.crowd.gain.value=(cfg.ambience&&inMatch)?.05+this.exc*.28:0;}
-  this.rollTick(dt);},
+  this.rollTick(dt);this.chargeVoice(dt);},
 
  /* Physics reports rolling contact here, once per ball per surface per frame (rollProbe) and
     from the arena bowl's inelastic branch. MAX, not sum: a double-report is harmless, and the

@@ -94,7 +94,7 @@ function clearBalls(){while(S.balls.length)removeBall(S.balls[0]);}
 function pickType(){
  if(!cfg.special)return 'classic';
  let tot=0;for(const k in BALL_TYPES)tot+=BALL_TYPES[k].w;
- let r=Math.random()*tot;
+ let r=RNG.type()*tot;
  for(const k in BALL_TYPES){r-=BALL_TYPES[k].w;if(r<=0)return k;}
  return 'classic';
 }
@@ -110,9 +110,10 @@ function serve(){
  // whistle to wait out. S.serveAt is set by outOfBounds/cannonballUpdate and CONSUMED here, so a
  // restart can't leak into the next kickoff.
  const sz=(typeof S.serveAt==='number')?redropZone(S.serveAt):null;S.serveAt=null;
- b.m.position.set(sz?sz.x+rand(-sz.spread,sz.spread):rand(-SRV.spread,SRV.spread),SRV.dropY,rand(-SRV.zSpread,SRV.zSpread));
-  b.v.set(rand(-SRV.vel,SRV.vel),0,rand(-SRV.vel,SRV.vel));
-  b.spin=rand(-SRV.spin,SRV.spin);
+ const SR=RNG.serve;   // seeded (js/rng.js): the drop is the FIRST thing a trial has to reproduce
+ b.m.position.set(sz?sz.x+rngR(SR,-sz.spread,sz.spread):rngR(SR,-SRV.spread,SRV.spread),SRV.dropY,rngR(SR,-SRV.zSpread,SRV.zSpread));
+  b.v.set(rngR(SR,-SRV.vel,SRV.vel),0,rngR(SR,-SRV.vel,SRV.vel));
+  b.spin=rngR(SR,-SRV.spin,SRV.spin);
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
  // tier 2: the ball drops in front of you — the old 'SPECIAL BALL DROPPING' subtitle under a

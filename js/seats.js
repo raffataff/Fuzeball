@@ -42,6 +42,7 @@ function makeSeat(team,devs,lockRole){
   rods:[],ctrl:0,
   tcMult:1,        // live Total-Control slide multiplier for THIS seat's pad (was the global S.tcMult)
   padRaise:false,  // pad raise is a hold — per seat, or two pads would clobber each other's raise
+  shotRod:null,    // rod this seat drove LAST frame, so js/shots.js can clear a wind-up left on a rod it let go of
   padPrev:{}};     // per-seat button edge state (was the global gpPrev)
 }
 /* The default solo seat: one human, every device. Keeps a plain quick match byte-identical. */
@@ -112,6 +113,7 @@ function seatForDev(tok){
 function clearRodAI(r){
  if(!r)return;
  r.raise=false;r.behindFlag=false;r.act=null;r.heldFwd=false;
+ if(r.hold)r.hold.on=false;                 // …and any L2 grip: the AI drives this rod now
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;
  r.aiMan=-1;
  r.trapMan=-1;r.trapDir=0;

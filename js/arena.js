@@ -182,7 +182,7 @@ function applyTable(onReady){
  ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
  // show only the selected table's group (its skin sub-groups + primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
- // NOTE: the environment (room GLB + ground/crowd backdrop) is owned by applyRoom (world.js) now —
+ // NOTE: the environment (room GLB + shared ground backdrop) is owned by applyRoom (world.js) now —
  // it's a location, independent of the table. applyTable only touches the table itself.
  // the shared pitch plane rides inside whichever table group is active
  const grp=tableGroups[id]||primTable;

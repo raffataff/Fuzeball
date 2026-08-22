@@ -313,8 +313,14 @@ function applyRoomLights(room,R){
  const lights=[];const p=new THREE.Vector3();
  room.traverse(c=>{if(c.isLight)lights.push(c);});
  if(!lights.length)return lights;
+ // Fixtures the room switches off by name — usually because the editor DETACHED one into an
+ // authored rooms.<id>.lights entry that can be moved, and two copies of one lamp is one too
+ // many. intensity 0 rather than visible=false on purpose: hiding a light changes the scene's
+ // light count and recompiles every material, and a dev toggling a lamp should not pay that.
+ const off=new Set(((R&&R.lightsOff)||[]).map(s=>String(s).toLowerCase()));
  lights.forEach(l=>{
   l.castShadow=false;                                  // no room light casts shadows yet — see CLAUDE.md
+  l.userData.roomOff=off.has(String(l.name||'').toLowerCase());
   l.getWorldPosition(p);
   // d0: how far this fixture is from the play area. The table sits at the origin.
   const d0=Math.max(p.length(),C.minDist);
@@ -333,6 +339,9 @@ function applyRoomLights(room,R){
   if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity*=k);
    console.log('room lights normalised x'+k.toFixed(3)+' (peak '+mx.toFixed(2)+' > max '+C.max+')');}
  }
+ // Applied LAST so a silenced fixture cannot drag the ceiling above down onto the ones
+ // that are still lit — the peak must be measured over the lights that actually contribute.
+ lights.forEach(l=>{if(l.userData.roomOff){l.userData.roomOffInt=l.intensity;l.intensity=0;}});
  return lights;
 }
 
@@ -340,7 +349,7 @@ const roomLoading={};   // room id -> [pending cbs] while its backdrop GLB is in
 /* Rooms whose GLB came back 404. WITHOUT this a room pointing at a file that isn't there is
    re-fetched on EVERY applyRoom — and applyRoom runs on every venue change, so a missing backdrop
    cost a network round-trip per screen transition. Worse, applyRoom's "this room has no backdrop"
-   fallback (the shared ground plane + crowd) tests rm.glb, which is still set on a room whose file
+   fallback (the shared ground plane) tests rm.glb, which is still set on a room whose file
    is absent — so it never engaged and the room rendered as an empty void that CLAIMED, in the
    console, to be using the shared backdrop. roomHasGlb() is the honest test both paths read.
    Session-scoped: a reload re-tries, so dropping the file in during development still works. */

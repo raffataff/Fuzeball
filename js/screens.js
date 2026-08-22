@@ -44,6 +44,18 @@ const SCREENS={
  // Dev tool. Registered like any other screen so Esc and the router work on it for free; the
  // CARD that reaches it is what's gated on CONFIG.debug.roomEditor, not the route itself.
  roomEdit:{back:'home'},
+ // TRAINING is a two-route SECTION now rather than a direct launch: the #home card opens this,
+ // and the free-play sandbox (js/training.js) and Skill Trials sit under it. #trials is registered
+ // HERE rather than in a trials module, on the roomEdit precedent — the ROUTE always exists, so a
+ // stray showScreen or a stale back-target can't strand anyone on an unreachable screen; what a
+ // later step adds is the CONTENT. back:'training' is what makes Esc walk back one level.
+ training:{back:'home'},
+ trials:{back:'training'},
+ // The daily is its own TOP-LEVEL route rather than a row inside #trials: it is the one thing
+ // that changes every day, so burying it two clicks down (home -> training -> trials) is exactly
+ // how it goes unnoticed. Registered even when CONFIG.trials.daily.on is false — the CARD is what
+ // that flag hides, on the roomEdit precedent, so a stale back-target can't strand anyone.
+ daily:{back:'home'},
  customize:{back:'menu'},             // only reachable from the Kick Off kit panel
  lgSlots:{back:'home'},
  lgSetup:{back:'lgSlots'},

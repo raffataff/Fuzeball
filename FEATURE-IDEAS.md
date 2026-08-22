@@ -25,6 +25,7 @@ So the recommendations cluster into three things:
 1. **Make the game react to what just happened** (audio, commentary, near-misses, saves, stats).
 2. **Give the player a skill ceiling** (signature shots, passing, keeper play).
 3. **Give them a reason to come back** (achievements, trials, career texture).
+   *Trials and the daily (3.2/3.3) are BUILT as of 2026-08-20; achievements and career texture are not.*
 
 Plus a visual tier, because two of the biggest "is this hand-made?" tells are sitting right there.
 
@@ -111,7 +112,20 @@ per-rod season stats that make upgrade spending feel earned.
 
 ## Tier 2 — Skill ceiling. This is where the game becomes *a game you get good at*.
 
-### 2.1 Signature shots — the biggest single gameplay win available
+### 2.1 Signature shots — **CONTROLLER HALF BUILT 2026-08-22**
+
+> Shipped as `js/shots.js` + `CONFIG.shots`, on the pad only. The trigger AXIS (RT − LT, both held
+> cancels back to a normal swing) colours a kick soft or hard; holding the charge winds the rod back
+> and the power is the deeper ARC that produces, with a sweet BAND that is a flat maximum and an
+> overcook that costs power, control and a visible tremble. In Total Control the right stick's
+> pull-back IS the wind-up and both triggers arm it. See the "Player shot verbs" section in
+> CLAUDE.md and the 2026-08-22 changelog entry.
+>
+> **Still open from this item:** the keyboard/mouse port (the stated next step — a mouse has no
+> analog trigger, so K&M needs its own answer to "what holds the wind-up"); the **rollover/snake**
+> (raise + kick within a short window); and the sweet-spot PAYOUT — landing it is still invisible.
+
+#### The original note
 
 A keyboard player's entire move set today is *slide, kick, raise*. Real foosball's identity is its
 shots — the **pull shot**, **push shot**, **snake/rollover**, **tic-tac**. You've already built
@@ -138,7 +152,16 @@ Proposal — **charge & release**:
 This gives the AI's existing `trapShot`/`passShot` styles human counterparts, and turns the
 already-built trap behaviour into something a player can *counter* rather than just watch.
 
-### 2.2 Give the player passing
+### 2.2 Give the player passing — **CONTROLLER HALF BUILT 2026-08-22**
+
+> Deep finesse (LT held) + kick plays an aimed pass. It does NOT use the AI's `passEval`: that picks
+> the best receiver on the table, which is right for the AI because the AI dribbles onto the line
+> first, but `aimAssist` can only bend a pass ~9° and a human presses the button now — measured, a
+> receiver 28 units square needs 43° and the ball ran out for a goal kick. `shotPassPick` scores the
+> same lanes by whether the bend is DELIVERABLE and refuses otherwise, so the player has to line the
+> rod up. **Still open: the one-two bonus, and the keyboard/mouse port.**
+>
+> #### The original note
 
 `ai.js` has `passEval`, `passPick`, `passShot`, `dribble.pass`. Players have none of it. Add a pass
 input (a second button, or tap-vs-hold if buttons are tight) that plays a controlled ball to your own
@@ -192,21 +215,59 @@ Target ~30–40: *score from your own half · win without conceding · win from 
 one rally · score with all four rods in one match · win a cup · promote twice · 100 saves*. Persist in
 `cfg`. Wire to Steam achievements later in the Electron wrapper — the table is the same.
 
-### 3.2 Skill Trials (challenge mode)
+### 3.2 Skill Trials (challenge mode) — **BUILT 2026-08-20**
 
-`training.js` is a full sandbox — free ball placement, launcher, per-rod hide, freeze, single-step —
-with **no scoring on top of it**. That's a mode sitting 90% finished.
+*Shipped as `js/trials.js` + `CONFIG.trials`, reached via `#home` → TRAINING → TRIALS. See the
+"Skill Trials & the daily" section in CLAUDE.md for how it works, and the 2026-08-20 changelog
+entries for why each call was made.*
 
-Add a trial list with a timer and a local best: *score from your own half · 5 goals in 60s · beat the
-keeper 3 times running · survive 90s a rod down · 10 consecutive passes · hit the crossbar 3 times*.
-Bronze/silver/gold thresholds, feeds achievements, teaches the signature shots from 2.1 as a side
-effect. This is your tutorial without ever writing a tutorial.
+The original read: `training.js` is a full sandbox with **no scoring on top of it** — a mode sitting
+90% finished. That was right, and the build reused it wholesale: a trial is training mode plus one
+nullable gate (`S.trial`), a pinned setup, a sim-time clock and an objective.
 
-### 3.3 A fixed-seed daily challenge
+**What actually shipped:** six trials (SNAP SHOT · KEEPER'S NIGHTMARE · THE FULL SET · RATTLE THE
+FRAME · ONE-TWO · THE WALL), bronze/silver/gold thresholds, per-trial local bests in `cfg.trials`,
+and three objective kinds — `goals`, `roleGoals` (one struck by each named rod) and `stat` (n of any
+per-team match-ledger counter, so woodwork/passes/saves trials are config rather than code).
 
-One shared setup per day (same seed, same table, same opponent build), score it, keep a local best
-and a 7-day streak. No server needed. Trivial to build on top of 3.2, and it's the single best
-cheap reason to open the game tomorrow.
+**The prerequisite nobody would have guessed from this entry:** a trial you cannot reproduce is a
+coin toss, so the sim's random surface had to be seeded FIRST (`js/rng.js`, per-consumer streams,
+per-rod for the AI). That was a step of its own before any trial existed. The fixed-timestep work
+had already done the other half.
+
+**Still open from this idea:**
+- A **SURVIVE** objective ("don't concede for 45s") is deliberately absent — the medal metric is
+  elapsed seconds, lower is better, and a survive trial completes at exactly its limit every time,
+  so every run would score identically and every medal would be gold. It needs a second scoring
+  direction through medals/bests/HUD, which is a real change rather than a list entry.
+- **Feeding achievements** (3.1) — not wired, because 3.1 doesn't exist yet.
+- Per-trial leaderboards of any kind.
+- **Every medal threshold is an unplayed first-cut guess.** That is the one thing the 337-assertion
+  harness cannot check, and the first thing to fix by playing them.
+
+### 3.3 A fixed-seed daily challenge — **BUILT 2026-08-20**
+
+*Shipped inside `js/trials.js` (`CONFIG.trials.daily`), on its own `#home` card and `#daily`
+screen. "Trivial to build on top of 3.2" was accurate — it is a trial with different provenance,
+not a second mode.*
+
+`dailyBuild(date)` is PURE: it picks a template by a hash of the DATE, copies the trial that
+template names, rolls the ball spawn inside a declared band and stamps a date-derived seed. Same
+date in, same challenge out, on any machine, no server. Local best + streak in `cfg.daily`.
+
+**The call that keeps it honest:** the spawn and the seed vary; `n`, `limit` and `medals` come from
+the named trial UNCHANGED. Rolling difficulty is the obvious next move and it is the one that breaks
+it — thresholds authored for "3 goals in 45s" mean nothing against a rolled 6, and nothing on screen
+would tell the player today's was the unfair one. **Variety comes from adding templates.**
+
+**The trap worth remembering:** a rolled spawn band is bounded at BOTH ends — clear of the resting
+foot box at the near end (inside it, `collideRod` fires on sim step one) and inside the rod's strike
+reach at the far end. That leaves about 3 units of usable band per rod, and a naive band would have
+shipped days the player could not start. The harness samples every band against live geometry.
+
+**Still open:** no leaderboard, no server, no tamper-proofing (it is a number in localStorage and
+pretending otherwise would be theatre), no catch-up or streak freeze, and no history beyond the
+current streak.
 
 ### 3.4 Career texture in League
 
@@ -325,7 +386,12 @@ If you want the biggest change in how the game *feels* for the least structural 
    "hand-crafted" signals still missing from the visuals.
 4. **Real match stats + a proper post-match screen** (1.4). Unlocks the league top-scorer race and
    makes the stat builds legible.
-5. **Achievements + Skill Trials** (3.1–3.2). Retention, and the tutorial you never have to write.
+5. ~~**Achievements + Skill Trials** (3.1–3.2)~~ — **Skill Trials and the daily are DONE**
+   (3.2/3.3, 2026-08-20). **Achievements (3.1) is now the cheapest thing on this list and the
+   obvious next move**: the trials work built most of what it needs. `S.stats` already counts
+   goals/saves/woodwork/shots/onTarget/passes/kicks per team, `cfg.trials` and `cfg.daily` already
+   persist per-run records, `toast` already exists, and `js/rng.js` means an achievement can name a
+   reproducible run. What is left is the `ACH` table and the check hook.
 
 Music (4.6) sits outside that order because it's a decision, not a task — worth settling early since
 a synthesized approach shapes how `audio.js` grows.
@@ -344,6 +410,14 @@ a synthesized approach shapes how `audio.js` grows.
   `M` profiler after each addition.
 - **Every new number goes in `CONFIG`.** That discipline is why this codebase is still tunable at
   this size — new systems should each get their own block (`CONFIG.moments`, `CONFIG.momentum`,
-  `CONFIG.trials`, `CONFIG.crowd`).
+  `CONFIG.crowd`). `CONFIG.moments`, `CONFIG.matchStats`, `CONFIG.rng` and `CONFIG.trials` now exist
+  and are worth reading as worked examples of the shape.
 - **Guard new systems the way `S.trn` and `S.photo` are guarded.** One nullable gate on `S`, tested
-  by other files and nothing else, so a missing module can never break a match.
+  by other files and nothing else, so a missing module can never break a match. Live gates:
+  `trn` · `trial` · `photo` · `redit` · `lg`. **The exception is `js/rng.js`**, which is CORE and
+  deliberately NOT guarded — physics/ai/balls/powerups hard-depend on it, so a `typeof` guard would
+  only hide the failure one line later.
+- **A challenge you cannot reproduce is a coin toss.** Anything scored — a trial, the daily, a
+  future achievement that names a run — has to come off the seeded streams in `js/rng.js`, and its
+  clock has to be SIM time (`S.time`), never the wall clock. Note `rand()` in `core.js` is NOT
+  seeded: grep for both when auditing the random surface.

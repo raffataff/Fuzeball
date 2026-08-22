@@ -27,8 +27,17 @@ function stExert(r){const K=STC.kickFat;return (K.on&&K.full>0)?clamp((r.exert||
 function stExertKick(r){
  const K=STC.kickFat;
  if(!K.on)return;
- if(!K.userDrain&&typeof seatOf==='function'&&seatOf(r))return;
- r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per);
+ /* A held rod is exempt by default (userDrain) because a human swing is not cooldown-gated and a
+    player mashing kick would nerf their own rod within seconds. A POWER swing is the exception: the
+    trigger has to cost something or it is strictly better than not holding it, and control alone is
+    a cost you only feel on the shots you miss. So a held rod still banks the EXTRA above an ordinary
+    swing — mashing stays free, leaning on RT does not. */
+ const ex=r.shotExert||1;
+ if(!K.userDrain&&typeof seatOf==='function'&&seatOf(r)){
+  if(ex<=1)return;
+  r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per*(ex-1));return;
+ }
+ r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per*ex);
 }
 // Recovery. Ticked once per sim step from updateRods, alongside the rod's other cooldowns — the
 // same set of phases in which a swing can happen, so both halves of the channel run on one clock.
@@ -85,6 +94,12 @@ function aimAssist(b,r,noPass){
  const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
  let a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
  if(pass)a=Math.max(a,PS.assist);
+ /* A deliberate player shot carries a CONTROL figure (js/shots.js): 1 inside the charge's sweet
+    band, falling away either side of it and under the power trigger. It scales the bend, so a wild
+    swing is aimed LESS as well as sprayed more — one number driving both halves of "less control",
+    rather than a spray that an undiminished assist would keep quietly correcting. 1 for every AI
+    contact and every unmodified human one. */
+ if(r.shotOn)a*=clamp(r.shotCtl,0,1);
  if(a<=0)return;
  const dir=r.team===0?1:-1,v=b.v,p=b.m.position;
  if(v.x*dir<(pass?PS.assistMinVX:STC.assistMinVX))return;

@@ -13,10 +13,15 @@ const S={phase:'menu',mode:'red',userTeam:0,score:[0,0],balls:[],time:0,matchTim
  // out of play (or was blown up) comes back in that same third — same anti-exploit as the dead-ball
  // re-drop. null = a plain kickoff, which always drops centre. serve() consumes and clears it.
  serveAt:null,
+ // Seeded sim rng (js/rng.js). seed = the seed THIS match ran on - quote it to reproduce a run.
+ // seedNext = a seed something wants the NEXT match to use (a Skill Trial, tomorrow's daily);
+ // startMatchNow CONSUMES and clears it exactly the way it consumes serveAt, so a trial's seed
+ // can never leak into the match after it. null = ordinary play, seeded from the wall clock.
+ seed:0,seedNext:null,
  eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}],lastTouch:-1,lastSwitch:0,
  stats:null,pu:{obj:null,timer:10,type:null,spin:0},shake:0,camMode:0,camLookX:0,freeRoam:false,camYaw:0,camPitch:0,
   fromScreen:'home', // screen the live match was launched from — gotoMenu returns THERE (Kick Off for a quick match, home for training)
-  rodLockRole:null,teamStats:null,lg:null,trn:null,photo:null,redit:null,frac:[],swirl:[]}; // teamStats: per-team rod stat builds (stats.js) · lg: live league-match bridge (league.js) · trn: live training-mode bridge (training.js; null = off) · photo: live photo-mode bridge (photo.js, F1; null = off — every other file gates on this and nothing else) · redit: live room-editor bridge (roomedit.js, F2; null = off, dev tool gated on CONFIG.debug.roomEditor) · frac: live cannonball-fracture instances (fracture.js) · swirl: live respawn-swirl instances (fracture.js)
+  rodLockRole:null,teamStats:null,lg:null,trn:null,trial:null,photo:null,redit:null,frac:[],swirl:[]}; // teamStats: per-team rod stat builds (stats.js) · lg: live league-match bridge (league.js) · trn: live training-mode bridge (training.js; null = off) · photo: live photo-mode bridge (photo.js, F1; null = off — every other file gates on this and nothing else) · redit: live room-editor bridge (roomedit.js, F2; null = off, dev tool gated on CONFIG.debug.roomEditor) · frac: live cannonball-fracture instances (fracture.js) · swirl: live respawn-swirl instances (fracture.js)
 // THE MATCH LEDGER. Written by js/matchstats.js (and, for saves/woodwork, by the moment
 // detectors in js/moments.js — the same event, detected once). Read by the post-match sheet.
 // Every array is [team0,team1]; `terr` is by pitch third in WORLD-X order (left..right), so

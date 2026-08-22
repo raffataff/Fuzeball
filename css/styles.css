@@ -45,7 +45,9 @@ img.logo{display:block;max-width:460px;width:clamp(200px,40vw,460px);height:auto
    Four routes across one row. The stock .modeCard min-width of 280px only fits three, so the
    home row narrows the cards and lets them wrap to 2×2 rather than squeezing — four cards is
    the whole screen here, so they're given a bigger mark and headline to carry it. */
-.homeRow{max-width:1040px;flex-wrap:wrap;margin-bottom:26px}
+/* Five routes across one row now (DAILY joined them), so the wrap has to be wide enough for
+   5x212 + 4x14 of gap = 1116; below that it wraps 3+2, which is fine. */
+.homeRow{max-width:1180px;flex-wrap:wrap;margin-bottom:26px}
 .homeRow .modeCard{min-width:212px;max-width:242px;padding:24px 14px}
 .homeRow .modeCard .ico{height:44px;margin-bottom:14px}
 .homeRow .modeCard .ico svg{width:44px;height:44px}
@@ -591,21 +593,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .lgFigBox{width:600px;height:700px;border-radius:14px;overflow:hidden;isolation:isolate;position:relative;margin:0 auto 8px;background:rgba(0,0,0,.5);box-shadow:0 0 30px var(--tc),0 0 60px color-mix(in srgb,var(--tc) 35%,transparent),inset 0 0 16px rgba(0,0,0,.6);border:2px solid color-mix(in srgb,var(--tc) 50%,rgba(255,255,255,.1))}
 .lgFigImg{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
 .lgFigImg.flip{transform:scaleX(-1)}
-/* Team tint for the pre-match portrait. A flat sheet of --tc, cut to the figurine's team parts by
-   the Cryptomatte matte in --mask (tools/render_team_masks.py), composited in `color` blend mode:
-   the team colour supplies hue and saturation, the Cycles render underneath keeps its luminance.
-   That's why the kit still reads as lit — highlights stay white, folds stay dark — rather than
-   going flat the way an opaque overlay or a hue-rotate filter would.
-   mask-size:contain matches the portrait's object-fit:contain, so the two land on the same rect
-   even though the mask is exported at half resolution. --tintAmt dials the effect back if a
-   figurine's kit turns out too saturated (1 = full). */
-/* mask-image is NOT set here — tapeFig() in league.js puts it in the element's inline style.
-   That is not a style preference. A relative url() inside a CSS variable resolves against the
-   stylesheet that CONSUMES the variable, so `--mask:url(assets/renders/x.png)` read by this rule
-   asked the browser for css/assets/renders/x.png, which doesn't exist: every mask 404'd and no
-   figurine ever tinted. An inline mask-image resolves against the document, like the <img> beside
-   it. Everything that isn't a URL still belongs here. */
-.lgFigTint{position:absolute;inset:0;pointer-events:none;background:var(--tc);mix-blend-mode:color;opacity:var(--tintAmt,0.85);
+/* Team tint for the pre-match portrait */
+.lgFigTint{position:absolute;inset:0;pointer-events:none;background:var(--tc);mix-blend-mode:color;opacity:var(--tintAmt,0.65);
  -webkit-mask-size:contain;mask-size:contain;
  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
  -webkit-mask-position:center;mask-position:center}
@@ -937,6 +926,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #home.introIn .modeRow .modeCard:nth-child(2){animation-delay:.22s}
 #home.introIn .modeRow .modeCard:nth-child(3){animation-delay:.30s}
 #home.introIn .modeRow .modeCard:nth-child(4){animation-delay:.38s}
+#home.introIn .modeRow .modeCard:nth-child(5){animation-delay:.46s}
 #home.introIn .foot{animation:inFade .6s .55s both}
 @keyframes inRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @keyframes inFade{from{opacity:0}to{opacity:1}}
@@ -1111,3 +1101,92 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .reRoomCard .reMeta i{font-style:normal;color:#7fb0ff}
 .reNote{font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-mute);line-height:1.6;margin-top:8px}
 .reNote b{color:#9fc4ff}
+
+/* ===== training section (#training / #trials) =====
+   Sized like .homeRow rather than the older three-across .modeRow: this screen is one click below
+   the landing page and reads as a continuation of it, so the icon and headline weight should
+   match what the player just clicked, not shrink. Two cards, hence the narrower wrap. */
+.trnRow{max-width:720px}
+.trnRow .modeCard{padding:24px 16px}
+.trnRow .modeCard .ico{height:44px;margin-bottom:14px}
+.trnRow .modeCard .ico svg{width:44px;height:44px}
+.trnRow .modeCard .big{font-size:23px}
+/* Amber, deliberately NOT var(--gold): gold is the league's brand colour throughout this file and
+   a gold card here would read as league chrome (same call as .scrTitle vs .lgTitle). Trials are
+   medal-scored, so warm is right — just not THAT warm. */
+.modeCard.trials .ico{color:#ffa63a}
+.modeCard.trials:hover{border-color:#ffa63a;box-shadow:0 0 28px rgba(255,166,58,.5),inset 0 0 22px rgba(255,166,58,.16)}
+/* #trials scrolls: the list grows with the catalogue, and .screen is a CENTRED flex column with
+   no overflow rule, which clips at BOTH ends — so a long list would lose the title and the back
+   button before it lost a row. safe center degrades to flex-start only when it does not fit. Same
+   fix #menu needed when co-op grew the seat cards, and #win when the stat sheet arrived. */
+#trials{overflow-y:auto;justify-content:safe center;padding:24px 0}
+.trnStub{max-width:520px;margin:0 auto;padding:0 12px;width:100%}
+.trnEmpty{padding:16px 4px 8px;text-align:center;font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-mute)}
+.trnEmpty span{display:block;margin-top:10px;font-family:var(--font-body);font-size:var(--fs-body);letter-spacing:0;color:var(--tx-dim);line-height:1.55}
+
+/* ===== skill trials (js/trials.js) =====
+   The in-match HUD is top-centre and DELIBERATELY not another 14px glass card: it sits over live
+   play, so it reads as a stripe of information rather than a panel to interact with. It also
+   carries no backdrop-filter — a blurred layer over the canvas costs frames during the one mode
+   that scores you on time. Medal colours are shared by the HUD card and the list pills, so a
+   result and its row can never disagree about what a gold looks like. */
+#trlHud{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:24;pointer-events:none;
+ display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+#trlHud.hidden{display:none}
+.trlName{font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-mute)}
+.trlObj{font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-label);color:var(--tx-body)}
+.trlObj b{color:#2bff88;font-weight:400}
+.trlClock{font-family:var(--font-ui);font-size:34px;letter-spacing:.04em;color:var(--tx-bright);
+ text-shadow:0 3px 0 rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
+.trlClock.warn{color:#ff7a5a}
+.trlCard{margin-top:12px;padding:14px 26px;border-radius:14px;background:rgba(8,10,18,.86);
+ border:1px solid var(--edge);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.trlCard.hidden{display:none}
+.trlRes{font-family:var(--font-ui);font-size:26px;letter-spacing:.1em}
+.trlRes.ok{color:#2bff88} .trlRes.no{color:#ff7a5a}
+.trlSecs{margin-top:4px;font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-strong)}
+.trlMed{margin-top:6px;font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-head)}
+.trlMed.gold{color:#ffcf4d} .trlMed.silver{color:#cfd8e6} .trlMed.bronze{color:#d08a4d}
+.trlKeys{margin-top:10px;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-dim)}
+
+/* the list on #trials */
+.trlList{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.trlRow{padding:11px 13px;border-radius:10px;background:#0d1322;border:1px solid var(--edge);
+ cursor:pointer;pointer-events:auto;transition:transform .12s,border-color .15s,box-shadow .15s}
+.trlRow:hover{transform:translateX(3px);border-color:#ffa63a;box-shadow:0 0 20px rgba(255,166,58,.28)}
+/* A completed trial reads as completed BEFORE you reach the pill. A background wash rather than a
+   border or box-shadow: .trlRow:hover replaces box-shadow outright, so a shadow marker would
+   vanish under the cursor, and a border change would shift the row by a pixel. */
+.trlRow.done{background:linear-gradient(90deg,rgba(255,166,58,.10),#0d1322 42%)}
+
+/* ===== the daily challenge screen (#daily) =====
+   Amber throughout, tying it to the trials family rather than to the league's gold. */
+.modeCard.daily .ico{color:#ffa63a}
+.modeCard.daily:hover{border-color:#ffa63a;box-shadow:0 0 28px rgba(255,166,58,.5),inset 0 0 22px rgba(255,166,58,.16)}
+.dlyHead{display:flex;align-items:center;gap:12px;padding:12px 13px;margin:2px 0 12px;border-radius:10px;
+ background:#0d1322;border:1px solid var(--edge);box-shadow:inset 3px 0 0 #ffa63a}
+.dlyHead.done{box-shadow:inset 3px 0 0 #2bff88;background:linear-gradient(90deg,rgba(43,255,136,.09),#0d1322 46%)}
+.dlyTick{flex:0 0 34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:50%;
+ border:1px solid var(--edge);color:var(--tx-dim);font-size:16px}
+.dlyHead.done .dlyTick{color:#2bff88;border-color:#2bff8866}
+.dlyHeadT{min-width:0}
+.dlyHeadT b{display:block;font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-label);color:var(--tx-bright)}
+.dlyHeadT span{display:block;margin-top:4px;font-size:var(--fs-body);color:var(--tx-body);line-height:1.4}
+.dlyRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 2px;
+ border-bottom:1px solid rgba(255,255,255,.05)}
+.dlyRow label{font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-dim)}
+.dlyRow b{font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-label);color:var(--tx-strong);text-align:right}
+.dlyRow b.ok{color:#2bff88}
+.dlyPlay{width:100%;margin-top:14px}
+.dlyNote{margin-top:10px;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-dim);line-height:1.6;text-align:center}
+.trlRowTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.trlRowName{font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-label);color:var(--tx-bright)}
+.trlPill{font-family:var(--font-ui);font-size:var(--fs-micro);letter-spacing:var(--tr-micro);
+ padding:3px 8px;border-radius:99px;background:#151d31;border:1px solid var(--edge);color:var(--tx-mute)}
+.trlPill.gold{color:#ffcf4d;border-color:#ffcf4d55} .trlPill.silver{color:#cfd8e6;border-color:#cfd8e655}
+.trlPill.bronze{color:#d08a4d;border-color:#d08a4d55}
+.trlRowSub{margin-top:5px;font-family:var(--font-body);font-size:var(--fs-body);color:var(--tx-body);line-height:1.45}
+.trlRowMeta{display:flex;justify-content:space-between;gap:10px;margin-top:7px;
+ font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-dim)}
+.trlRowMeta i{font-style:normal;color:var(--tx-mute)}

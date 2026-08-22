@@ -8,7 +8,8 @@
 
 const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,
- padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false};
+ padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
+ padChargeBtn:'rt'};
 
 // Standard-layout button map for the live tester (index → label).
 const OPT_BTNS=[[0,'A'],[1,'B'],[2,'X'],[3,'Y'],[4,'LB'],[5,'RB'],[6,'LT'],[7,'RT'],
@@ -45,6 +46,7 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optReducedFx').checked=!!cfg.reducedFx;
  $('optTrails').checked=cfg.trails!==false;
  $('optParticles').checked=cfg.particles!==false;
+ $('optFog').checked=cfg.fog!==false;
  $('optFpsCap').value=String(cfg.fpsCap||0);
  $('optPhysQ').value=cfg.physQuality||'high';
  $('optShowFps').checked=!!cfg.showFps;
@@ -125,6 +127,16 @@ function updateOptLabels(){
 function updateTCVis(){                                    // TC sliders + tester swerve preview only make sense in Total Control mode
  const off=cfg.padControlMode!=='total';
  $('optTC').classList.toggle('hidden',off);$('optSwerve').classList.toggle('hidden',off);
+ /* The charge-input row is CLASSIC-only: in Total Control the right stick's pull-back is the
+    wind-up and the two triggers held together arm it, so there is nothing to choose. A live control
+    that silently does nothing is the thing you debug twice — same call as the room editor's fog
+    boxes, which now say so rather than sitting there inert. */
+ const shots=(typeof shotsOn==='function')&&shotsOn();
+ $('optChargeRow').classList.toggle('hidden',!off||!shots);
+ $('optChargeHint').classList.toggle('hidden',!shots);
+ $('optChargeHint').innerHTML=off
+  ?'<b>RT / R2</b> holds the wind-up and the kick button stays instant — nothing about a tapped kick changes. Moving the charge onto the kick button makes a tap fire on RELEASE, which costs you the length of your own tap before the ball is struck.'
+  :'In <b>Total Control</b> the wind-up is the right stick: pull back and hold <b>both triggers</b> to charge, flick forward to strike.';
 }
 function updateAxisLines(){                                   // highlight the bound axis on each well
  const tc=cfg.padControlMode==='total';
@@ -133,7 +145,8 @@ function updateAxisLines(){                                   // highlight the b
  $('optLLbl').textContent='L · '+(cfg.padSlideAxis==='ly'?'↕':'↔')+' slide';
  $('optRLbl').textContent='R · '+(cfg.padAngleAxis==='ry'?'↕':'↔')+' angle'+(tc?' + '+(cfg.padAngleAxis==='ry'?'↔':'↕')+' swerve':'');
  // TC hint names the actual axes in play, so rebinding the angle axis re-labels the swerve line.
- $('optTCHint').textContent='Hold LT = precision steps · RT = fast · A = kick · X = raise · right stick '
+ $('optTCHint').textContent='LT = precision steps + a softer swing · RT = fast steps + a harder one · BOTH, with the '
+  +'stick pulled back = charge · A = kick · X = raise · right stick '
   +(cfg.padAngleAxis==='ry'?'↔':'↕')+' = swerve line (bends the ball on contact) · angle stays '
   +(cfg.padAngleAxis==='ry'?'↕':'↔')+'. Triggers are analog — half-squeeze, half effect.';
 }
@@ -144,6 +157,7 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optDead').value=cfg.padDeadzone;
  $('optMouseSens').value=cfg.mouseSens;$('optKbdSens').value=cfg.kbdSens;
  $('optCtlMode').value=cfg.padControlMode;
+ $('optChargeBtn').value=cfg.padChargeBtn||'rt';
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
  $('optTCFast').value=cfg.padTCFast;$('optTCSwerve').value=cfg.padTCSwerve;
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
@@ -224,6 +238,7 @@ function bindOptions(){
  $('optMouseSens').oninput=e=>{cfg.mouseSens=+e.target.value;updateOptLabels();saveCfg();};
  $('optKbdSens').oninput=e=>{cfg.kbdSens=+e.target.value;updateOptLabels();saveCfg();};
  $('optCtlMode').onchange=e=>{cfg.padControlMode=e.target.value;updateTCVis();updateAxisLines();saveCfg();};
+ $('optChargeBtn').onchange=e=>{cfg.padChargeBtn=e.target.value;saveCfg();};
  $('optTCBase').oninput=e=>{cfg.padTCBase=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCFine').oninput=e=>{cfg.padTCFine=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCFast').oninput=e=>{cfg.padTCFast=+e.target.value;updateOptLabels();saveCfg();};
@@ -241,6 +256,9 @@ function bindOptions(){
  $('optReducedFx').onchange=e=>{cfg.reducedFx=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyReducedFx();saveCfg();};
  $('optTrails').onchange=e=>{cfg.trails=e.target.checked;saveCfg();};        // fx.js spawnTrail reads cfg.trails live
  $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live
+ // Deliberately does NOT flip the preset to 'custom': fog is a LOOK, not one of the four heavy
+ // knobs a preset bundles, so it is no more a preset member than ball trails are.
+ $('optFog').onchange=e=>{cfg.fog=e.target.checked;applyFog();saveCfg();};   // world.js: one recompile per real change
  $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
  $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset
  $('optShowFps').onchange=e=>{cfg.showFps=e.target.checked;saveCfg();};

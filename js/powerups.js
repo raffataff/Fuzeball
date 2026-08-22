@@ -9,7 +9,7 @@ function disposePU(){const o=S.pu.obj;if(!o)return;scene.remove(o);
  o.traverse(c=>{if(!c.isMesh||!c.userData.puOwn)return;
   c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();});
  S.pu.obj=null;S.pu.spin=0;}
-function clearPU(){disposePU();S.pu.timer=rand(PWR.firstDelay[0],PWR.firstDelay[1]);}
+function clearPU(){disposePU();S.pu.timer=rngR(RNG.pu,PWR.firstDelay[0],PWR.firstDelay[1]);}
 // The visual for one pickup: the type's GLB when it has one and it loaded, else the procedural
 // octahedron. Either way it's parented to a group whose y-rotation is the idle spin, so the model's
 // own resting yaw (md.yaw) lives one level down and survives it.
@@ -37,15 +37,16 @@ function makePUVisual(t){
  return g;
 }
 function spawnPU(){
- const t=PU_TYPES[Math.floor(Math.random()*PU_TYPES.length)];
+ const PR=RNG.pu;   // seeded (js/rng.js) - WHERE a pickup lands decides who reaches it first
+ const t=rngPick(PR,PU_TYPES);
  const g=makePUVisual(t);
- g.position.set(rand(-PWR.area.x,PWR.area.x),PWR.floatY,rand(-PWR.area.z,PWR.area.z));
+ g.position.set(rngR(PR,-PWR.area.x,PWR.area.x),PWR.floatY,rngR(PR,-PWR.area.z,PWR.area.z));
  if(ARENA_ON)arenaClampSpawn(g.position);
  S.pu.type=t;S.pu.obj=g;scene.add(g);
 }
 function collectPU(){
  const t=S.pu.type;
- const team=S.lastTouch>=0?S.lastTouch:(Math.random()<.5?0:1);
+ const team=S.lastTouch>=0?S.lastTouch:(RNG.pu()<.5?0:1);
   const nm=teamName(team);
  if(t.key==='boost')S.eff[team].boost=S.time+PWR.boost;
  if(t.key==='freeze')S.eff[1-team].frozen=S.time+PWR.freeze;
@@ -56,7 +57,7 @@ function collectPU(){
  notice(nm+' · '+t.label,1.2,team===0?'var(--c0)':'var(--c1)');
  Au.power();
  burst(S.pu.obj.position,new THREE.Color(t.col),new THREE.Color(0xffffff),60,40);
- disposePU();S.pu.timer=rand(PWR.respawn[0],PWR.respawn[1]);
+ disposePU();S.pu.timer=rngR(RNG.pu,PWR.respawn[0],PWR.respawn[1]);
 }
 function powerupUpdate(dt){
  if(S.trn)return;                        // training sandbox: no random power-ups mid-test
@@ -78,7 +79,7 @@ function powerupUpdate(dt){
 function redropZone(x){
  const R=DEAD.redrop,zs=R.zones;
  if(R.sameThird&&typeof x==='number'&&isFinite(x))for(const z of zs)if(z.from&&x>=z.from[0]&&x<=z.from[1])return z;
- return zs[Math.floor(Math.random()*zs.length)];
+ return rngPick(RNG.drop,zs);
 }
 // atX = the x the ball DIED at; defaults to its own live sim position (b.cur — the dead-ball case,
 // where the ball is still on the table). Pass it explicitly when the ball has already been taken out
@@ -90,8 +91,9 @@ function redropBall(b,atX){
  // carries its launch vx/vz the whole way down (air friction is negligible), so releasing it
  // AT the zone lets that drift carry it well past the zone and into a rod's men. Back-solve the
  // spawn point from the fall time so the target zone is where it touches down instead.
- const tx=z.x+rand(-z.spread,z.spread),tz=rand(-DEAD.redrop.z,DEAD.redrop.z);
- const vx=rand(-DEAD.redrop.vel,DEAD.redrop.vel),vz=rand(-DEAD.redrop.vel,DEAD.redrop.vel);
+ const DR=RNG.drop;   // seeded (js/rng.js) on its own stream - a re-drop is a restart a trial must reproduce
+ const tx=z.x+rngR(DR,-z.spread,z.spread),tz=rngR(DR,-DEAD.redrop.z,DEAD.redrop.z);
+ const vx=rngR(DR,-DEAD.redrop.vel,DEAD.redrop.vel),vz=rngR(DR,-DEAD.redrop.vel,DEAD.redrop.vel);
  const fallT=Math.sqrt(2*Math.max(DEAD.redrop.y-BALL_R,0)/GRAV);
  b.m.position.set(tx-vx*fallT,DEAD.redrop.y,tz-vz*fallT);
  b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null; // clear the stall tracker

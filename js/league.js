@@ -435,7 +435,15 @@ function goalTarget(){return S.lg?lgGoalCap():cfg.goals;}
 // Match time limit in SECONDS (0 = unlimited). Quick/AI matches read cfg.gameTime; league AND cup
 // matches read the save's own LG.gameTime.
 function gameTimeLimit(){return (S.lg?lgMins():(cfg.gameTime||0))*60;}
-function teamDiff(t){return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));} // league: builds are layered on baseDiff (per-division override via S.lg.diff)
+// A SKILL TRIAL PINS ITS OWN DIFFICULTY and is tested FIRST, because a trial whose opponent plays
+// at whatever the player last picked in Kick Off is not a trial — the medal times would not be
+// comparable between two players, or between one player before and after changing the setting.
+// Read straight off the spec rather than parked into cfg like the table is (js/trials.js): nothing
+// persists it, so there is nothing to leak and nothing to restore.
+function teamDiff(t){
+ if(S.trial&&S.trial.def&&S.trial.def.diff)return S.trial.def.diff;
+ return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff)); // league: builds are layered on baseDiff (per-division override via S.lg.diff)
+}
 /* Pre-warm the shatter GLBs for the two figurines in the player's NEXT league/cup match while the
    player is still sitting in the lobby, so the first cannonball kill of the match is a clone()+play()
    with no disk-load or shader-compile stall. Quick/AI matches are covered because main.js primes the

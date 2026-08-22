@@ -50,7 +50,11 @@ function styleCfg(style){
    drives the swing off it and collideRod reads the same power window / restitution from it, so a
    new style is a config block plus a line here, not a hunt through three files. */
 function kickStyleCfg(r){
- return styleCfg(r.kickStyle);
+ // r.kickCurve is a per-swing BLEND (js/shots.js) between CONFIG.kick and one of the shot anchors —
+ // the player's trigger axis, resolved once at kickRod time. It outranks the named style because a
+ // human swing has no fixed block to point at: its curve is the modifier they were holding. null
+ // for every AI swing and every unmodified human one, so those resolve exactly as they did.
+ return r.kickCurve||styleCfg(r.kickStyle);
 }
 /* Was a contact a real FRONT-face strike, or a graze off the side / back of the boot? nx is the
    contact normal's world-x component, which collideRod already computes in both its foot-box and
@@ -74,6 +78,12 @@ function passFaceOK(r,nx){
    One accessor rather than each of them spraying r.act tests through two files. */
 function holdCfg(r){
  if(r.kickT>=0)return null;                        // a swing in flight is a release, never a hold
+ /* THE PLAYER'S HOLD (L2) comes first, and the two can never collide: r.act is only ever written
+    by ai.js, which skips user rods outright, and r.hold is only ever written by a seat's pad. It
+    is the rod's OWN block (built in buildRods, refreshed per poll by shots.js shotHoldUpdate)
+    rather than a shared config object, because the values are blended by trigger depth and two
+    seats can be holding two rods at different depths in the same frame. */
+ if(r.hold&&r.hold.on)return r.hold;
  if(r.act==='trap')return AIC.trap;
  if(r.act==='dribble')return AIC.dribble;
  return null;
@@ -81,9 +91,11 @@ function holdCfg(r){
 /* aimAt (optional) — a {x,z} world point the outgoing strike should be bent toward instead of the
    goal (see aimAssist). Used by the pass. It rides on the rod because contact happens later, inside
    collideRod, mid-swing; cleared here so an un-aimed kick can never inherit a stale target. */
-function kickRod(r, style, aimAt){
+function kickRod(r, style, aimAt, curve){
  if(r.kickT>=0)return;
  r.raise=false;r.kickT=0;r.act=null;r.kickStyle=style||null;
+ r.kickCurve=curve||null;                          // per-swing blended curve (js/shots.js); null = use the style's block
+ r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;      // a swing IS the release: no wind-up survives it
  r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;    // fresh post-kick held-evade budget + escape direction for this swing
  r.trapMan=-1;r.trapDir=0;r.trapA=null;            // a swing ends any trap carry (the ball is being released)
@@ -99,7 +111,9 @@ function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
    r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
+  shotReset(r);                                    // charge/arming/tremble die with the rally (js/shots.js)
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
+  if(r.hold)r.hold.on=false;
   r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
@@ -140,7 +154,9 @@ function updateRods(dt){
      else if(T<KS.strike)a=rampA0+(KS.strikeA-rampA0)*((T-KS.windup)/(KS.strike-KS.windup));
      else if(T<KS.hold)a=KS.strikeA;
      else if(T<KS.drop)a=KS.strikeA*(1-(T-KS.hold)/(KS.drop-KS.hold));
-     else{a=0;r.kickT=-1;r.kickStyle=null;r.passTo=null;if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
+     else{a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;r.passTo=null;
+      shotDisarm(r);                                   // an uncontacted swing spends its charge anyway — see shots.js
+      if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
      r.angle=a*r.kickDir;
   }else if(r.act==='safeRaise'){r.heldFwd=false;r.angle=lerp(r.angle,AIC.safeRaise.angle*r.kickDir,Math.min(1,AIC.safeRaise.lerp*dt));}
   /* The trap eases to r.trapA — the per-ball angle ai.js picked at entry (trapAngle), NOT the raw
@@ -152,12 +168,23 @@ function updateRods(dt){
   // NOTE: r.act==='dribble' is deliberately absent from this chain. The dribble is NOT a trap — it
   // works the ball with the men DOWN AT REST, so it must fall through to the rest branch below and
   // leave the angle alone. It sets r.raise=false, so it lands on the final `else` (ease toward 0).
+  /* CHARGE WIND-UP (js/shots.js, classic pad only). Sits BELOW the right-stick branch on purpose:
+     if the player is driving the angle by hand the stick wins, because that is already a wind-up
+     and two authors of one angle is a fight. Above r.raise, because a charge is the more specific
+     intent. r.chgA is the sweepClips-capped target — it can never pull back through the ball. */
+  else if(shotPullAngle(r)!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.chgA,Math.min(1,SHOT.charge.pullLerp*dt));}
   else if(r.padAngleOn){                              // right-stick absolute angle: stick position IS the rod angle (1:1)
    // DIRECT control — snap the rod straight to the stick-mapped target so angVel = (angle-prevAngle)/dt
    // carries the stick's REAL speed into the strike (fast flick → big angVel → hard kick). Optional light
    // smoothing only if KICK.padAngleLerp>0; 0 (default) = fully direct, no lag, no capped swing speed.
    r.heldFwd=false;
-   r.angle=KICK.padAngleLerp>0?lerp(r.angle,r.padAngleTarget,Math.min(1,KICK.padAngleLerp*dt)):r.padAngleTarget;
+   /* The TRACKING RATE is what the Total Control triggers bend (shotTrackMult): LT makes the rod
+      heavy so a fast flick cannot become a hard hit, RT makes it snap so your flick arrives intact.
+      1 when no trigger is held, and the padAngleLerp>0 / ==0 split is preserved either way, so the
+      stick feel is untouched until a trigger is actually squeezed. */
+   const trk=shotTrackMult(r);
+   if(KICK.padAngleLerp>0||trk!==1){const rate=(KICK.padAngleLerp>0?KICK.padAngleLerp:SHOT.mod.directLerp)*trk;r.angle=lerp(r.angle,r.padAngleTarget,Math.min(1,rate*dt));}
+   else r.angle=r.padAngleTarget;
   }else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
    // Total Control's slide multiplier is per SEAT now (each pad has its own triggers), so it's

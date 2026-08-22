@@ -165,6 +165,20 @@ const CONFIG = {
   maxSteps:7     // max fixed steps per frame (drops the backlog after a stall)
  },
 
+ /* ---- seeded sim rng (js/rng.js) --------------------------------------
+    Pins the sim's random surface so a run can be REPRODUCED: a Skill Trial and the
+    fixed-seed daily (FEATURE-IDEAS 3.2/3.3) both need the same setup AND the same AI
+    on every attempt, and the fixed timestep had already done the other half of that.
+    Only sim-AFFECTING draws are routed - particles, audio detune and the replay camera
+    pick stay on Math.random, deliberately (see the banner in
+    rng.js: seeding them buys nothing and makes the streams shiftable by a cosmetic
+    edit). Read when a match SEEDS, so a change here takes effect at the next kickoff.
+    ---------------------------------------------------------------------- */
+ rng:{
+  on:true,     // false = every seeded site falls back to Math.random(), i.e. the old behaviour exactly
+  log:false    // console the seed at kickoff - the number you quote to reproduce a run
+ },
+
  /* ---- table geometry ------------------------------------------------- */
  table:{ L:120, W:68, wallH:10, goalHalf:11, goalH:10.2, goalDepth:9 },
 
@@ -191,7 +205,7 @@ const CONFIG = {
    name:'Classic',
    folder:'assets/tables/classic/',
    collision:'flat',                        // flat box walls
-   room:null,                               // no backdrop; uses the shared ground plane + crowd
+   room:null,                               // no backdrop; uses the shared ground plane
    defTheme:'classic',
    defSkin:'wood', // must match a skins entry
    skins:{
@@ -243,7 +257,7 @@ const CONFIG = {
    endWall:{
     h:16.2                                   // end-wall height; balls below this bounce back (see TUNING.md)
    },
-   room:null,                                // no backdrop; uses the shared ground plane + crowd
+   room:null,                                // no backdrop; uses the shared ground plane
    defTheme:'neon',                          // metadata only
    defSkin:'standard',
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
@@ -305,6 +319,21 @@ kick:{
    rest:0.01, restPower:0.8,      // passive touch / struck shot
    powFrom:0.03, powTo:0.2,       // swing-time window in which restPower is used instead of rest
    grip:0.08,                     // fraction of the foot's velocity lerped into the ball on contact
+   /* SLIDE PUSH — the fraction of a boot's SIDEWAYS (z) motion that drives the contact impulse.
+      THE ROTATION IS UNTOUCHED. The contact point's velocity splits into a rotational part
+      (cvx,cvy — the swing) and a slide part (cvz), and only the slide is scaled, so this cannot
+      soften a kick: a button swing, a Total Control stick flick and an AI strike all still
+      transfer in full. What it scales is the ONE contact the player makes by moving the rod into
+      the ball rather than striking it.
+      WHY IT HAD TO BE A NEW KNOB. The impulse is -(1+rest)*vn/mass and `rest` bottoms out at 0, so
+      even a perfectly dead contact hands the ball the boot's WHOLE closing speed — there was no
+      number anywhere in CONFIG that could turn a slide down. At KICK.userSpeed 80 a classic ball
+      left a sideways slide at 66 u/s against the ~44 an ordinary struck shot leaves at, i.e.
+      sliding into the ball hit it harder than kicking it, and a gentle nudge was impossible.
+      0.35 puts a full-tilt swipe at 27 u/s (a firm sideways pass — it rolls ~77 units, so it
+      reaches the next rod) and a 20% stick push at 6.5 (a trickle). Raise it toward 1 for a
+      livelier table; 1 IS the old behaviour, exactly. */
+   slidePush:0.35,
    // Bonus power for a clean strike in the centre of the foot, scaled by the acc stat.
    sweetSpot:{
       on:true,
@@ -320,6 +349,156 @@ kick:{
    tcSpinGain:0.5,                // Total Control pad: side-spin per unit of right-stick swerve
    sndFrom:18, hardHit:80, shakeDiv:400, // kick sound threshold / hard-hit sparks / shake scale
    splitVel:82, splitMax:3, splitAng:0.45, splitSep:3.2 // split-ball: speed, max balls, spread, z sep
+ },
+
+ /* ---- player shot VERBS (js/shots.js) ---------------------------------
+    The kick used to be one thing. This block is the modifier AXIS that colours it, and the
+    CHARGE that powers it up. `on:false` restores the pre-shots pad exactly (RT kicks, LT raises,
+    no charge, no pass) — it is the off switch, not a tuning value.
+
+    THE AXIS IS ONE NUMBER: mod = RT depth - LT depth, in -1 (finesse) .. +1 (power). Holding both
+    cancels toward 0, which is what a two-trigger chord SHOULD mean given each trigger's own
+    meaning, and it needs no special case anywhere. In Total Control the same two triggers already
+    modulate the SLIDE the same way round, so each trigger keeps exactly one meaning across both. */
+ shots:{
+  on:true,
+
+  mod:{
+   dead:0.08,        // trigger travel under this reads as untouched (analog triggers rest noisy)
+   /* The two ANCHOR curves a button swing blends toward. 0 on the axis is CONFIG.kick UNTOUCHED,
+      so an unmodified kick is byte-identical to the one that shipped. Only the keys listed here
+      are blended; anything else comes from CONFIG.kick.
+      THEY DELIBERATELY DO NOT TOUCH RESTITUTION OR THE POWER WINDOW (rest / restPower / powFrom /
+      powTo), and that is the tuning decision this whole block turns on. THE POWER IS THE ARC.
+      updateRods ramps kickA0 -> strikeA over a FIXED `strike`, so shortening the window and
+      deepening the wind-up is a genuinely faster foot: measured against the shipped 20.0 rad/s,
+      the hard anchor alone is 28.9 (1.44x) and a full charge under it is 54.4 rad/s — 343 u/s at
+      the boot, 2.72x, and still only 0.41u of travel per substep against a 1.9 ball radius.
+      Opening the power window on top of that would ALSO swap rest 0.01 for restPower, another
+      ~1.9x, and the impulse multipliers below would be a third helping of the same thing. One
+      channel, tuned once; the two multipliers here are trims on it. */
+   soft:{strike:0.115,strikeA:0.95, hold:0.26, drop:0.40},   //  8.3 rad/s — a controlled push
+   hard:{strike:0.045,strikeA:1.30, hold:0.24, drop:0.31},   // 28.9 rad/s — a snapped strike
+   softPow:0.80, hardPow:1.06,     // impulse TRIM at each end of the axis (the arc does the work)
+   softCtl:1.00, hardCtl:0.55,     // control at each end: scales aim-assist, and 1-ctl is the spray
+   hardExert:2.2,                  // stamina (stats.js kickFat) charged for a full-power swing
+   /* TOTAL CONTROL: the axis scales how fast the rod TRACKS the right stick instead of blending a
+      curve — there IS no curve, the stick is the swing. LT makes the rod heavy so a flick can't
+      produce a hard hit; RT makes it snap to the stick, so your flick speed arrives intact. */
+   softTrack:0.28, hardTrack:2.6,
+   directLerp:120                  // stand-in tracking rate when KICK.padAngleLerp is 0 (fully direct)
+  },
+
+  /* A deep finesse kick is not a soft kick — it is a PASS, aimed at a teammate by the same
+     passEval the AI has used since 2026-07-28. modAt is how far down the axis that starts.
+     A human pass swings on CONFIG.ai.passShot — the AI's own tuned pass curve, not a blend of the
+     anchors above — so the two cannot drift into meaning different things, and the receiving window
+     the ONE-TWO trial was designed around still holds when a player is the one passing. */
+  pass:{
+   on:true,
+   modAt:-0.55,      // axis at or below this turns the kick into an aimed pass
+   /* HOW FAR OFF-LINE A RECEIVER MAY BE, as a multiple of the aim assist's own bend
+      (CONFIG.ai.dribble.pass.assist, 0.16 rad ≈ 9°). This is the number that makes a human pass
+      mean something: the assist can only turn the ball so far, so a receiver further round than
+      that gets a pass that leaves with a label on it and sails past him — measured live at 43°
+      needed against 9° delivered. 1.4 ≈ 13°, i.e. roughly 6 units of lateral error over the 30 a
+      MID→ATT ball covers, so the player has to line the rod up first. That IS passing a foosball.
+      Raise it and passes start missing; drop it and they stop being offered. */
+   bendMult:1.4,
+   bendCost:4        // how hard a straighter lane is preferred over a clearer one
+  },
+
+  /* THE HOLD (L2) — the player's half of holdCfg, which until now was AI-ONLY. ai.js sets
+     r.act='trap'/'dribble' and rods.js's holdCfg turns those into a dead, sticky boot; but every
+     action block in ai.js sits below `if(isUserRod(r))continue;`, so a human boot could never be
+     anything but a passive touch (kick.rest 0.01 / kick.grip 0.08) and there was no way to trap
+     or carry a ball by hand at all.
+     IT IS PROGRESSIVE, NOT A SWITCH. The trigger is analog, so squeeze depth blends each value
+     from its normal setting to the one here — a feathered L2 is a light touch, a buried one is a
+     weld. Resolved once per pad poll into the rod's own `hold` block (js/shots.js
+     shotHoldUpdate), never allocated in collideRod, which reads it per man per substep.
+     IT SHARES LT WITH THE MODIFIER AXIS ON PURPOSE. LT already means finesse — the soft curve,
+     the pass, and the fine slide in Total Control. "Sticky boot" is that same intent expressed
+     physically, so the trigger keeps ONE meaning, and L2+kick is still the pass: holdCfg returns
+     null the moment a swing is in flight, so the release is at full strength and the grip resumes
+     after it. A live wind-up also cancels it — you are charging to strike, not to dribble. */
+  hold:{
+   on:true,
+   from:0.15,        // trigger depth (past mod.dead, rescaled 0..1) at which the grip starts
+   rest:0,           // restitution at full squeeze (0 = the boot kills the ball's relative speed)
+   grip:0.55,        // …and grip: the ball is lerped 55% toward the boot's own velocity, which is
+                     //   what CARRIES it. Kills a 60 u/s ball to ~5 against a still boot.
+   carry:0.45        // …and rod slide-speed multiplier: a dribble is a shuffle, not a swipe. This
+                     //   is the real over-run knob — the ball leaves at roughly grip x boot speed,
+                     //   so a slower carry is what stops it running away when you stop the rod.
+  },
+
+  charge:{
+   on:true,
+   /* CLASSIC ONLY — which input holds the wind-up. 'rt' (default) leaves the kick button firing on
+      PRESS, so a tap is exactly as instant as it has always been; RT held winds up and releases.
+      'kick' moves the charge onto the kick button, and a tap then fires on RELEASE — which costs
+      the tap's own duration (~60ms) in front of a contact that currently lands at ~17ms. That is a
+      real regression in feel, which is why it is a preference and not the default. 'both' arms
+      both inputs and pays the same cost. Total Control ignores this entirely: there the right
+      stick's pull-back IS the wind-up, and the two triggers held together are what arm it. */
+   rate:1.6,          // charge gained per second at a full pull-back / a full hold
+   decay:2.2,         // charge bled per second once the wind-up is abandoned
+   sweetFrom:0.45, sweetTo:0.78,   // the band that pays full power AND full control
+   /* Trims, again — the charge's real power is the deeper wind-up it authors (pullA), which reaches
+      2.05x the shipped swing rate on its own. What these do is make the BAND matter: full charge
+      inside it, and a fifth of it thrown away by holding on. */
+   powMin:1.00, powMax:1.10,       // impulse trim from 0 charge to the sweet band
+   overPow:0.80,                   // …and back down to this by full charge, held too long
+   ctlMin:0.55,                    // control at 0 charge (a snatched shot)
+   overCtl:0.35,                   // …and at full overcharge
+   spray:0.16,                     // rad of random heading error at zero control
+   minFire:0.10,                   // release under this charge fires the ORDINARY swing
+   stickBack:0.18,                 // Total Control: right-stick pull-back depth that counts as a wind-up
+   pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
+   /* THE EASE MUST SETTLE BEFORE THE BAND OPENS, and that is a RELATIONSHIP, not a taste. The rod
+      eases toward pullA rather than snapping to it (the snap would itself be a swing), so the arc
+      actually delivered depends on how long you have held as well as on the charge — and at the
+      first value tried (9) it was still settling well past the band, which made a full overcook the
+      strongest shot on the table even after the charge trim had been taken off it. Settling is
+      e^(-pullLerp x t), so 95% wants pullLerp >= 3 / (sweetFrom/rate) = 10.7 here; 24 leaves margin
+      and the harness checks the relationship rather than the number. */
+   pullLerp:24,                    // ease rate toward it
+   tapMax:0.11,                    // 'kick'/'both': a press shorter than this is a plain tap
+   trem:{amp:0.055, hz:34},        // overcharge tremble — DISPLAY ONLY (see the banner in shots.js)
+   /* THE SOUND OF THE WIND-UP. A build-up is a STATE, not a train of events: the first cut ticked a
+      square-wave beep whose rate rose with the charge, and a train of discrete square blips is
+      exactly what makes a charge sound like a chiptune. This is a HELD voice instead, fed per frame
+      and swept continuously — three layers, each doing one job:
+        · a sine gliding f0 -> f1, the tension;
+        · a noise bed whose lowpass opens nf0 -> nf1, the air gathering;
+        · the FIFTH above the sine, faded in only across the sweet band — so "you are in it" is a
+          consonance arriving rather than a beep, and the overcook bends that same partial flat
+          (overDetune) and wobbles the level (wobHz/wobDepth), which is the tremble made audible.
+      The RELEASE is three short layers under the contact's own kick, all scaled by the charge, so a
+      flinch is nearly silent and a sweet one lands as a soft whump: a body sine dropping in pitch,
+      a bandpass noise sweeping DOWN (a down-sweep reads as release where the build-up's up-sweep
+      read as tension), and a bright snap that fires ONLY from inside the band. */
+   tone:{
+    on:true,
+    vol:0.10, curve:0.75, attack:0.020, release:0.090,   // voice level, its shaping and its smoothing
+    f0:110, f1:300,                    // tension sine, glides up with the charge
+    fifthVol:0.055,                    // the fifth above it, faded in across the sweet band
+    noiseVol:0.045, nf0:200, nf1:1500, // air bed + the lowpass sweep that opens it
+    overDetune:0.055, wobHz:6.5, wobDepth:0.30,  // overcooked: a flat fifth and an audible unsteadiness
+    markVol:0.055, markA:0.030, markD:0.22, markFHi:880, markFLo:330,  // band edges — a soft bloom, never a blip
+    fireMin:0.08,                      // release quieter than this makes no discharge sound at all
+    /* THE DECAYS ARE LONGER THAN THE KICK'S ON PURPOSE, and that is the difference between a
+       discharge and a second click. Measured offline: Au.kick peaks at 0.48 and is gone in 40ms,
+       while this peaks at ~0.12 — a quarter of it — and rings on past it. Subtle is about LEVEL;
+       satisfying is about TAIL, so the tail is what got lengthened rather than the volume. airA
+       softens the air's attack so the discharge blooms instead of clicking; the body keeps a fast
+       attack, because that is the punch. */
+    bodyVol:0.17, bodyF0:150, bodyF1:52, bodyD:0.26,     // the weight
+    airVol:0.13,  airF0:2100, airF1:420, airD:0.34, airA:0.014,   // the discharge
+    snapVol:0.13, snapF:3400, snapD:0.045, snapQ:3.0     // the clean-strike reward, sweet band only
+   }
+  }
  },
 
  /* ---- AI behaviour --------------------------------------------------- */
@@ -922,16 +1101,7 @@ ai:{
   ring:{on:true, inner:2.6, outer:3.4, y:-2.8, opacity:0.55},  // ground halo (a model may opt out with ring:false)
   models:{
    on:true,                           // false = every pickup uses the procedural gem
-   /* Per model:
-        src     GLB path
-        fit     target bounding-sphere radius in world units (0 = keep the authored scale)
-        scale   extra multiplier on top of fit
-        yaw/tilt resting orientation (rad)
-        y       vertical nudge inside the pickup
-        spin    per-model idle spin (rad/s); omitted = the shared `spin` above
-        glow    emissive intensity baked in at load; glowCol overrides the colour
-        ring    false to drop the ground halo
-        shadow  false to stop it casting a shadow */
+
    boost :{src:'assets/fuzeball_powerup_boost.glb', fit:2.4, scale:1, yaw:0, tilt:0, y:0, glow:0.5, shadow:true},
    freeze:{src:'assets/fuzeball_powerup_frost.glb', fit:2.4, scale:1, yaw:0, tilt:0, y:0, glow:0.5, shadow:true}
    // `big` has no entry yet, so it keeps the gem.
@@ -1169,7 +1339,7 @@ ai:{
   debug:{
    useBallModel:true,  // true = use the ball GLB, false = a generated sphere
    fractureFx:true,     // false = skip the explosion GLBs and vanish instantly
-   roomEditor:true     // true = F2 opens the room editor (js/roomedit.js)
+   roomEditor:false     // true = F2 opens the room editor (js/roomedit.js)
   },
 
  /* ---- power-up types ------------------------------------------------- */
@@ -1213,6 +1383,22 @@ ai:{
                  (what this replaces) flattens two different lights onto one value
                  and silently destroys the lighting design.
 
+    roomLightPool  Resident lights that rooms.<id>.lights BORROW, so placing or moving an
+                 AUTHORED light never changes the scene's light count. r128 bakes that
+                 count into every material's program, so a light added mid-session would
+                 otherwise recompile the whole scene — the fxLightPool rule, and the
+                 thing that makes the room editor's light gizmo usable at all.
+                 The pool is SIZED FROM THIS CONFIG at boot: the per-type maximum over
+                 every room's `lights`, so it costs exactly what the heaviest room needs
+                 and a game whose rooms author none pays nothing.
+      pad        Spare slots, added ONLY when CONFIG.debug.roomEditor is on — headroom to
+                 add lights in the editor, which shipping players never pay for. PER TYPE,
+                 because they are not equally cheap or equally wanted: every resident light
+                 is evaluated by every material, and a room wants several lamps but almost
+                 never several suns. A scalar is accepted and applied to all three.
+      max        Hard ceiling per type. Every resident light costs every material a
+                 little, so a typo in a room's `lights` should cost a console line.
+
     shadow       Directional key-light shadow map. `bias`/`normalBias` fight acne;
                  the extents are sized to the table rather than the old 160x140,
                  which is mostly empty space spending shadow resolution on nothing.
@@ -1221,6 +1407,7 @@ ai:{
    toneMapping:'reinhard',        // 'none' | 'aces' | 'reinhard' | 'cineon' | 'linear'
    exposure:1.08,
    roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
+   roomLightPool:{ pad:{point:4,spot:3,dir:1}, max:12 },
    shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260 }
  },
 
@@ -1267,62 +1454,110 @@ ai:{
  },
  /* ---- rooms / locations --------------------------------------------------
     The environment around the table, independent of the table shape and pitch.
+
+    EVERY ENTRY BELOW IS A WHOLE-BLOCK PASTE TARGET. The room editor (F2 — js/roomedit.js)
+    exports one room in exactly this shape and key order, so authoring a room is: edit it
+    live, press COPY, replace the block. That is why these entries carry no inline prose —
+    a comment inside one would be destroyed by the first paste. Notes that used to live in
+    them are in ON THE LIGHTING below, where a paste cannot reach them.
+
+      name         label in the room dropdown and the editor's picker
       bg / fog     backdrop colour + fog depth [near,far]
       hemi / dir   scene lighting: ambient sky/ground + the key light
-      glb          optional backdrop model, relative to folder (null = shared ground + crowd)
+      glb          optional backdrop model, relative to folder (null = shared ground plane)
       backdrop     false = show nothing behind the table, just bg + fog
       reflect      true = bake the reflection env-map from the glb; false = use `env` below
       env          synthetic reflection cube: {shell, panels:[[hex,x,y,z,w,h],…]}
       light        per-room override of CONFIG.render.roomLight for the KHR_lights_punctual
-                   baked into the glb — {gain,reach,decay,minDist,max}. `gain` is the knob:
+                   BAKED INTO THE GLB — {gain,reach,decay,minDist,max}. `gain` is the knob:
                    roughly how bright this room's key light lands AT THE TABLE. (Replaces the
                    old `lightScale`, which was a raw watts multiplier fighting a hidden cutoff.)
+      lightsOff    names of baked GLB fixtures to switch off, e.g. because the editor has
+                   DETACHED one into an authored `lights` entry that can actually be moved.
+      lights       AUTHORED lights, placed in the editor and listed here — see below.
+      props        instanced prop placements — see CONFIG.props for the spec shape.
       led          optional per-room override of CONFIG.leds
+
+    AUTHORED LIGHTS (`lights`) — one object each, positions in world units, table at 0,0,0:
+      {type:'point', pos:[x,y,z], color:0xffb454, int:2.4, dist:260, decay:2}
+      {type:'spot',  pos:[x,y,z], look:[x,y,z], angle:0.55, penumbra:0.4, …as point}
+      {type:'dir',   pos:[x,y,z], look:[x,y,z], color, int}
+    `look` defaults to the table centre, which is what a room's key light is nearly always
+    pointed at. `int` matches the naming hemi/dir already use.
+
+    THE ONE THING TO KNOW ABOUT `int`: an authored light is in PLAIN three.js units and does
+    NOT go through the candela transfer that `light.gain` drives. That transfer exists to
+    rescue Blender's watts-as-candela export; a light you placed on a slider is already in
+    screen units, so running it through gain/d0^2 would make both knobs meaningless and make
+    them fight. Baked = transferred, authored = literal. Authored lights also BORROW from
+    CONFIG.render.roomLightPool, so adding one never recompiles the scene.
+
+    ON THE LIGHTING, i.e. what the per-room numbers below are recovering from. The old
+    transfer clamped every fixture individually, which does not dim a room — it DELETES its
+    lighting design, because any two lights over the ceiling arrive equal. The saucer's
+    46k-candela key and 8k fill both landed on 4.0, and a forced 260-unit cutoff then
+    attenuated the key to ~4%, so the fill was outshining it and `lightScale` was a dead
+    knob. The pub's fireplace and all three sconces sat beyond the forced 180-unit cutoff
+    and delivered EXACTLY ZERO — only the pendant ever lit anything. Both rooms' hemi/dir
+    were carrying the room to compensate and are eased accordingly; the arcade GLB has no
+    punctual lights at all, so its old lightScale was pure decoration.
     ---------------------------------------------------------------------- */
   rooms:{
    open:{
-      // backdrop:false is deliberate — 'Void' shows nothing behind the table.
       name:'Void', folder:'na', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
       bg:0x05060f, fog:[210,440],
       hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9},
       dir:{color:0xffffff,int:0.7,pos:[45,100,35]},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
+      lights:[
+         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
+         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+      props:[],
       led:{idle:'rainbow'}
    },
    saucer:{
       name:'Flying Saucer', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:true,
-      // gain replaces the old lightScale — see CONFIG.render.roomLight. The GLB's
-      // 46k-candela Table_Spotlight was arriving CLAMPED to the same value as the
-      // 8k-candela fill, then attenuated to ~4% by a forced 260-unit cutoff — so the
-      // key light was doing essentially nothing and the fill was outshining it.
       light:{gain:0.8},
       bg:0x05060f, fog:[210,540],
       hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.2},
       dir:{color:0xffffff,int:0.5,pos:[45,100,35]},
+      lights:[
+         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
+         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+      props:[],
       led:{idle:'rainbow'}
    },
    pub:{
       name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
-      // The fireplace and all three sconces sat FURTHER from the table than the old
-      // forced 180-unit cutoff, so they contributed nothing at all — only the pendant
-      // lit anything. All five are live now; dir eased to make room for them.
-      light:{gain:3.0},
+      light:{gain:3},
       bg:0x120c07, fog:[190,410],
       hemi:{sky:0xffd9a3,ground:0x140a04,int:1.17},
-      dir:{color:0xffcf95,int:0.81,pos:[40,90,30]},   // eased down; the glb's own lights add more
+      dir:{color:0xffcf95,int:0.81,pos:[40,90,30]},
       env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
+      lights:[
+         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
+         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+      props:[],
       led:{idle:'rainbow',color:0xffb454}
    },
-   
    arcade:{
       name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:true,
-      // no KHR_lights_punctual in this GLB — lit by hemi/dir + emissive only
-      bg:0x05060f, fog:[200,430],
-      hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.66},
-      dir:{color:0xd6b8ff,int:0.9,pos:[45,100,35]},
+      light:{gain:1.7,reach:1.5},
+      bg:0x5c5d60, fog:[170,465],
+      hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.47},
+      dir:{color:0xd6b8ff,int:0.86,pos:[45,100,35]},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
+      lights:[
+        {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
+        {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+      ],
+      props:[],
       led:{idle:'rainbow'}
-   }
+   },
   },
   // Legacy theme-key → room-id map, for old saves.
   themeToRoom:{classic:'open',royal:'pub',verdant:'open',neon:'arcade',cyatron:'arcade'},
@@ -1368,6 +1603,134 @@ ai:{
   speedMax:200,                      // launcher speed/loft clamp (keep ≤ ball maxV)
   clampMargin:2,                     // placed balls are clamped this far inside the walls
   ringColor:0x2bff88                 // click-place ghost ring + panel accent
+ },
+
+ /* ---- skill trials (js/trials.js) -------------------------------------
+    FEATURE-IDEAS 3.2. A trial is training mode with a rulebook on top: a pinned setup, a
+    sim-time clock and one objective. What makes it a CHALLENGE rather than a coin toss is
+    'seed' (js/rng.js) — every attempt replays the same ball, the same bounce, the same AI.
+
+    A TRIAL SPEC:
+      id      unique key. cfg.trials[id] stores the personal best, so DON'T rename one.
+      seed    the sim seed every attempt runs on. Change it and you have a different trial
+              wearing the same name — and every stored best silently becomes a lie.
+      table   pinned for the run, because the table picks the COLLISION MODEL ('bowl' is a
+              wholly different physics path; 'circuit' adds solid end walls). The player's
+              table is parked and handed back on the way out of trials land; skin/room/pitch
+              change no physics, so theirs are left alone.
+      ball    {type,x,z,vx,vy,vz} spawn — clamped inside the walls by training.js.
+      hold    role the player is locked to ('ATT'), or null to let them switch freely.
+      rods    {show:['<team>|<role>', …]}. Anything not listed is hidden and cannot be hit.
+              The player is ALWAYS team 0 in training mode, so 0|* is yours and 1|* is theirs.
+              A shown OPPONENT rod with the AI off is a static obstacle — that is the point.
+      ai      [team0,team1] AI on/off. Default [false,false]. An opponent rod with its AI OFF is
+              a STATIC obstacle; with it ON it is a real opponent — and then 'diff' matters.
+      diff    'rookie'|'pro'|'legend', pinned for the run (teamDiff, js/league.js reads it FIRST).
+              A trial whose opponent plays at whatever the player last picked in Kick Off is not
+              a trial: two players' times would not be comparable. Nothing persists it.
+      goal    one of:
+                {kind:'goals',n}            n goals at the far end
+                {kind:'roleGoals',roles:[…]} one goal struck by each named rod of yours
+                {kind:'stat',stat,n}        n of any MATCH LEDGER counter (S.stats[stat][0]) —
+                                            'woodwork','saves','passes','shots','onTarget','kicks'.
+                                            Scoring does NOT complete a stat trial; the counter does.
+      limit   seconds; 0 = stopwatch, no failure state.
+      medals  ELAPSED SIM SECONDS, lower is better — one metric serves both clock styles.
+
+    ON THE DISTANCES, because the obvious worry about them is wrong: floor friction is
+    exp(-0.35t), so a strike's MAXIMUM roll is v0/floorFric — about 125 units off an ordinary
+    ~44 u/s contact, against a table only 120 long. A shot from your own DEF rod therefore does
+    reach the far goal; it just arrives slowly. That is what makes the deep-rod objective in
+    'fullset' possible at all, and it is the number to redo if floorFric ever moves.
+    ---------------------------------------------------------------------- */
+ trials:{
+  on:true,
+  pinTable:true,     // apply the trial's table for the run, give the player's back on the way out
+  list:[
+   {id:'snap',name:'SNAP SHOT',blurb:'One ball, one empty net. How fast can you put it away?',
+    seed:10231,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'goals',n:1},limit:0,
+    medals:{gold:2,silver:3.5,bronze:6}},
+
+   {id:'keeper',name:"KEEPER'S NIGHTMARE",blurb:'Three past a keeper who never moves. Find the corners.',
+    seed:20477,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    goal:{kind:'goals',n:3},limit:40,
+    medals:{gold:12,silver:20,bronze:32}},
+
+   {id:'fullset',name:'THE FULL SET',blurb:'Score once with your defence, once with your midfield, once up front.',
+    seed:31889,table:'classic',
+    ball:{type:'classic',x:-34,z:0},
+    hold:null,rods:{show:['0|GK','0|DEF','0|MID','0|ATT']},
+    goal:{kind:'roleGoals',roles:['DEF','MID','ATT']},limit:90,
+    medals:{gold:40,silver:60,bronze:85}},
+
+   // Woodwork is detected in js/moments.js and NOWHERE else, and momOn() gates on the training
+   // mode — which is why it carries an explicit S.trial clause. Without that this trial counts
+   // nothing and is silently unwinnable, so don't "tidy" that clause away.
+   {id:'frame',name:'RATTLE THE FRAME',blurb:'Ring the woodwork three times. Posts and bar both count.',
+    seed:44021,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'stat',stat:'woodwork',n:3},limit:75,
+    medals:{gold:25,silver:40,bronze:65}},
+
+   // A pass is a teammate ROD receiving what another of yours STRUCK, within MSTAT.passT (2.5s).
+   // MID and ATT sit 30 units apart, which an ordinary strike covers in ~0.8s — comfortably
+   // inside that window, and the reason those two are the pair.
+   {id:'onetwo',name:'ONE-TWO',blurb:'Five completed passes between your midfield and your attack.',
+    seed:52733,table:'classic',
+    ball:{type:'classic',x:-3,z:0},
+    hold:null,rods:{show:['0|MID','0|ATT']},
+    goal:{kind:'stat',stat:'passes',n:5},limit:45,
+    medals:{gold:18,silver:28,bronze:40}},
+
+   // The first trial with a LIVE opponent. diff is pinned so the keeper plays the same for
+   // everyone; the seed makes its wander/aim rolls identical on every attempt (js/rng.js).
+   {id:'wall',name:'THE WALL',blurb:'Three past a keeper that actually moves.',
+    seed:61457,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    ai:[false,true],diff:'pro',
+    goal:{kind:'goals',n:3},limit:45,
+    medals:{gold:15,silver:25,bronze:40}}
+  ],
+
+  /* ---- the daily challenge (FEATURE-IDEAS 3.3) ------------------------
+     ONE setup per calendar day, identical for every player, with a local best and a streak.
+     Built on trials rather than beside them: dailyBuild() picks a template by a hash of the
+     DATE, copies the trial it names, rolls the ball spawn inside the template's band and stamps
+     a date-derived seed. Same runner, same HUD, different provenance. No server.
+
+     WHAT IS ROLLED, AND WHAT DELIBERATELY IS NOT. The spawn and the seed vary; `n`, `limit` and
+     `medals` come from the named trial UNCHANGED. Rolling difficulty is the obvious next idea and
+     it is the one that breaks the feature: thresholds authored for "3 goals in 45s" mean nothing
+     against a rolled 6, and nothing in the game would tell you today's was the unfair one.
+     Variety comes from ADDING templates, not from widening bands.
+
+     THE BANDS ARE DERIVED, NOT PICKED BY EYE, and they are narrow for a reason — a spawn has to
+     clear the resting foot box AND stay inside the rod's strike reach:
+       lower bound = foot box far face + BALL_R   (inside it, collideRod fires on sim step one —
+                     the 2026-08-20 clock bug, and the ball visibly jumps as the trial loads)
+       upper bound = rod x + CONFIG.ai.inFrontMax (past it the player cannot reach the ball at all)
+     For the ATT rod that is [25.80, 28.80]; for DEF [-34.20, -31.20]; for MID [-4.20, -1.20].
+     tools/trials-harness.js SAMPLES every band against the live geometry, so widening one past
+     what the rods can reach fails there rather than handing somebody an impossible day.
+     ---------------------------------------------------------------------- */
+  daily:{
+   on:true,
+   templates:[
+    {from:'snap',    ball:{x:[26.2,28.4], z:[-8,8]}},
+    {from:'keeper',  ball:{x:[26.2,28.4], z:[-8,8]}},
+    {from:'frame',   ball:{x:[26.2,28.4], z:[-6,6]}},
+    {from:'wall',    ball:{x:[26.2,28.4], z:[-8,8]}},
+    {from:'fullset', ball:{x:[-33.8,-31.6], z:[-6,6]}},
+    {from:'onetwo',  ball:{x:[-3.8,-1.6], z:[-6,6]}}
+   ]
+  }
  },
 
  /* ---- goal instant replay (js/replay.js) ------------------------------
@@ -1600,7 +1963,7 @@ const BALL_R=CONFIG.physics.ballR, ROD_H=CONFIG.physics.rodH, PLAYER_H=CONFIG.ph
 const AUMIX=CONFIG.audioMix;
 const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
       PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay,
-      CAPTURE=CONFIG.capture, PHOTO=CONFIG.photo, MOM=CONFIG.moments, MSTAT=CONFIG.matchStats;
+      CAPTURE=CONFIG.capture, PHOTO=CONFIG.photo, MOM=CONFIG.moments, MSTAT=CONFIG.matchStats, SHOT=CONFIG.shots;
 const RODDEFS=CONFIG.rods.defs, DIFFS=CONFIG.diffs, BALL_TYPES=CONFIG.ballTypes,
        PU_TYPES=CONFIG.puTypes, ROOMS=CONFIG.rooms, CUP=CONFIG.league.cup;
 const pCount=CONFIG.fx.particleCount;
@@ -1610,7 +1973,7 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
    Persisted player settings (localStorage). These are the in-menu options,
    distinct from the CONFIG tuning knobs above.
    ========================================================================= */
-let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
+let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,fog:true,table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
  // gameTime: match limit in minutes (0 = unlimited, first to `goals`). Timed matches
  // go to the team ahead at time-up, or sudden death on a tie.
  redName:'Team 1',blueName:'Team 2',redColor:'#ff4d5a',blueColor:'#3d8bff',
@@ -1630,6 +1993,9 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,table:'class
  // Total Control pad mode: LT eases the slide toward padTCFine, RT toward padTCFast,
  // neither held sits at padTCBase. The free right-stick axis adds side-spin on contact.
  padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
+ // Classic-mode charge input: 'rt' (RT holds the wind-up, the kick button stays instant),
+ // 'kick' (the kick button holds it, and a tap then fires on release) or 'both'.
+ padChargeBtn:'rt',
  mouseSens:1,kbdSens:1,
  // Per-screen panel arrangements from the Layout editor: screen-id -> {p:{elId:{x,y,w,h}},h}.
  layouts:{},
@@ -1689,13 +2055,15 @@ cfg.redYaw=clamp(cfg.redYaw||0,-Math.PI,Math.PI);cfg.blueYaw=clamp(cfg.blueYaw||
 /* Persist the player's settings. While a league/cup fixture is on screen its venue sits on
    the live cfg but belongs to the league save, so lgVenueHeld's values are written instead. */
 function saveCfg(){try{
- const v=(typeof lgVenueHeld==='function')&&lgVenueHeld();
+ // A league fixture's venue AND a skill trial's table are both PARKED rather than live: without
+ // this, touching any Options control during either would make its table the player's permanent
+ // Kick Off setting. Whichever is holding wins — they can't both be, since a trial can't start
+ // from inside a league match.
+ const v=((typeof lgVenueHeld==='function')&&lgVenueHeld())||((typeof trialVenueHeld==='function')&&trialVenueHeld());
  localStorage.setItem('fuzeball',JSON.stringify(v?Object.assign({},cfg,{table:v.table,room:v.room,pitch:v.pitch,skins:v.skins}):cfg));
 }catch(e){}}
 
-/* Physics quality presets (Options → Display). They trade contact resolution on fast shots
-   for CPU: a higher subTravel and lower subMax mean fewer collision passes per sim step.
-   All three keep travel well under BALL_R, so nothing tunnels. 'high' is the shipped feel. */
+/* Physics quality presets */
 const PHYS_Q={
  high:{subTravel:0.20,subMax:7},
  balanced:{subTravel:0.28,subMax:6},
@@ -1719,10 +2087,7 @@ function matSaveOrig(m){
  if(!m.userData.fbOrig)m.userData.fbOrig={metalness:m.metalness,roughness:m.roughness,
   emissive:m.emissive?m.emissive.getHex():null,emissiveIntensity:m.emissiveIntensity};
  return m;}
-/* Apply one team's finish to one material. Default mode restores the authored snapshot,
-   slider mode writes the per-team metalness/roughness/glow.
-     col     team colour written into emissive in slider mode; null leaves it to applyColors
-     isGlow  keeps the glow floors (roughness ≥.12, emissiveIntensity ≥.55) */
+
 function applyTeamFinish(m,t,col,isGlow){
  matSaveOrig(m);
  if(tmDefault(t)){const o=m.userData.fbOrig;

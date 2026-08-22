@@ -125,8 +125,11 @@ function propRng(seed){let a=(seed|0)||1;return function(){
 
 /* Turn one placement spec into a flat list of {p,ry,s,tint}. `at` is explicit
    placement; `scatter` generates. Both may appear — explicit entries come first. */
-function propPlacements(spec,rngSeed){
- const out=[],R=propRng(spec.seed===undefined?rngSeed:spec.seed);
+// baseSeed, NOT rngSeed: that is now a global function (js/rng.js) and a parameter of the same
+// name would shadow it here - legal, but the next person to reach for it inside this function
+// would get "rngSeed is not a function" with nothing on screen to explain why.
+function propPlacements(spec,baseSeed){
+ const out=[],R=propRng(spec.seed===undefined?baseSeed:spec.seed);
  const num=(v,d)=>(typeof v==='number'?v:d);
  const jit=(j,k)=>j&&j[k]?(R()*2-1)*j[k]:0;
  const pick=t=>(t&&t.length)?t[(R()*t.length)|0]:null;

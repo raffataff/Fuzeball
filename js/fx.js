@@ -178,7 +178,6 @@ function fxUpdate(rdt){
  if(any)pGeo.attributes.position.needsUpdate=true;
  goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
- if(crowdMesh)crowdMesh.rotation.y+=rdt*.01;
  if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);
  let fb=null;
  for(const b of S.balls)if(b.m.position.y>7&&b.v.y<0&&!b.scored){fb=b;break;}
@@ -195,10 +194,19 @@ function fxUpdate(rdt){
   const m=indicators[i],s=showInd?S.seats[i]:null,r=s?seatRod(s):null;
   if(!r){m.visible=false;continue;}
   m.visible=true;
-  m.position.set(r.x,ROD_H+9+Math.sin(S.time*5+i*1.7)*.8,r.offset);
-  const c=seatCol(s);                                   // parsing a hex string per frame is the
+  /* CHARGE READOUT (js/shots.js). The marker is the only per-seat thing already on screen above the
+     held rod, already tinted per seat and already built — so the wind-up gets its meter for the cost
+     of a scale and a colour, with no new geometry and nothing to dispose. It DIPS toward the rod as
+     the charge builds (the marker is being drawn back with the men), swells across the sweet band,
+     and goes red once the charge is overcooked. Charge -1 = every term below is the old expression. */
+  const k=shotCharge(r);
+  const band=k<0?-1:shotChargeBand(r);
+  m.position.set(r.x,ROD_H+9+Math.sin(S.time*5+i*1.7)*.8-(k>0?k*3.2:0),r.offset);
+  const c=(band===1)?'#ffd24d':(band===2?'#ff3b3b':seatCol(s));   // parsing a hex string per frame is the
   if(m.userData.col!==c){m.userData.col=c;m.material.color.set(c);}  // only real cost here — cache it
-  m.rotation.y+=rdt*2;
+  const sc=k<0?1:1+(band===1?.34+Math.sin(S.time*22)*.08:k*.28);
+  if(m.userData.sc!==sc){m.userData.sc=sc;m.scale.setScalar(sc);}
+  m.rotation.y+=rdt*(k<0?2:2+k*7);                      // it spins up as it winds up
  }
  bigGoalUpdate(rdt);
 }

@@ -7,7 +7,7 @@ let renderer,scene,camera,dirLight,hemiLight;
 // active room's led override (fx.js ledUpdate reads it); pmremGen is the shared PMREM baker.
 let activeRoom=null,roomEnvCache={},pmremGen=null,curLeds=CONFIG.leds;
 const teamMat=[null,null],teamGlow=[null,null];
-let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],crowdMesh,groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
+let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
 const fxLightPool=[];   // resident spare PointLights (see buildFxLightPool) — effect glows borrow from here so the scene's light count never changes
 // primLedMat = the PROCEDURAL led material built in buildTable. ledMat is repointed at whichever
 // skin GLB is showing (applySkin), so disposing an evicted skin would leave ledMat dangling on a
@@ -178,7 +178,7 @@ function initThree(){
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
-  buildTable();buildArenaTable();buildCrowd();buildFxPools();buildFxLightPool();buildBallReflect();
+  buildTable();buildArenaTable();buildGround();buildFxPools();buildFxLightPool();buildRoomLightPool();buildBallReflect();
   scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   applyDisplay();   // apply saved Display settings (render scale / shadows) at boot
@@ -207,6 +207,35 @@ function applyDisplay(){
   scene.traverse(o=>{const m=o.material;if(!m)return;
    (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
   _dispShadows=sh;
+ }
+}
+
+/* Scene fog (Options -> Display -> Fog), applied live.
+   WHETHER A SCENE HAS FOG IS A SHADER DEFINE (USE_FOG), not a uniform — so turning it off is not
+   a case of setting a distance to infinity, and flipping it recompiles every material in the
+   scene. That is the same cost the shadows toggle above pays, so it is paid the same way: one
+   function owns it, and the recompile fires ONLY when the state actually moves. applyRoom calls
+   this on every venue change, where the near/far come from the room and nothing has toggled, so
+   the common path never recompiles anything.
+
+   Fog OFF is a real look, not just a perf lever: it is what lets you see a room's far wall and
+   the props out at its edges, which is most of what a room is. The room editor's fog near/far
+   boxes write scene.fog directly and are already null-guarded, so they simply do nothing while
+   this is off. */
+let _dispFog=true;   // matches the fog-on starting state (cfg.fog defaults true)
+function applyFog(){
+ if(!scene)return;
+ const on=cfg.fog!==false, rm=activeRoom||CONFIG.rooms.open;
+ if(on){
+  const f=rm.fog||[200,430];
+  // Rebuilt rather than mutated, because turning fog back on finds scene.fog null.
+  if(scene.fog){scene.fog.color.set(rm.bg);scene.fog.near=f[0];scene.fog.far=f[1];}
+  else scene.fog=new THREE.Fog(rm.bg,f[0],f[1]);
+ }else scene.fog=null;
+ if(on!==_dispFog){
+  scene.traverse(o=>{const m=o.material;if(!m)return;
+   (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
+  _dispFog=on;
  }
 }
 
@@ -400,16 +429,13 @@ function buildGoalNet(g,bx,ghw,gh,mat){
  return [shell,cap];
 }
 
-function buildCrowd(){
+/* The stand-in backdrop for a room with no GLB (or one whose file is missing, or one still
+   downloading). A ground plane and nothing else: the ring of 1,400 canvas dots that used to
+   stand in for a crowd is gone — a room is dressed with PROPS now (js/props.js), which is the
+   thing that can actually be art-directed. */
+function buildGround(){
  groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(900,900),new THREE.MeshStandardMaterial({color:0x0b0e16,roughness:1}));
- groundMesh.rotation.x=-Math.PI/2;groundMesh.position.y=-44;scene.add(groundMesh); // hidden when the arena room backdrop is shown (applyTable)
- const cv=document.createElement('canvas');cv.width=512;cv.height=128;
- const c=cv.getContext('2d');c.fillStyle='#0a0c14';c.fillRect(0,0,512,128);
- for(let i=0;i<1400;i++){c.fillStyle='hsl('+Math.floor(Math.random()*360)+','+(40+Math.random()*40)+'%,'+(25+Math.random()*45)+'%)';
-  c.beginPath();c.arc(Math.random()*512,18+Math.random()*104,1.1+Math.random()*1.4,0,7);c.fill();}
- const ct=new THREE.CanvasTexture(cv);ct.wrapS=THREE.RepeatWrapping;ct.repeat.x=4;
- crowdMesh=new THREE.Mesh(new THREE.CylinderGeometry(210,210,90,48,1,true),new THREE.MeshBasicMaterial({map:ct,side:THREE.BackSide}));
- crowdMesh.position.y=10;scene.add(crowdMesh);
+ groundMesh.rotation.x=-Math.PI/2;groundMesh.position.y=-44;scene.add(groundMesh); // hidden when a room backdrop is shown (applyRoom)
 }
 
 function loadPlayerModel(onReady){
@@ -490,7 +516,15 @@ function buildRods(){
     const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
-     kickT:-1,kickStyle:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
+     kickT:-1,kickStyle:null,kickCurve:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
+     // player shot verbs (js/shots.js). chg = live charge 0..1 (-1 = not winding up); chgA is the
+     // WORLD wind-up angle sweepClips allowed; shotOn/Pow/Ctl is what the NEXT contact is worth and
+     // is the only thing physics.js reads; trem is display-only and is added on the render pivot.
+     chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
+     shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1,
+     // the player's L2 hold, in the shape holdCfg's consumers already read (CONFIG.ai.trap and
+     // .dribble). Per-rod and mutated in place — collideRod reads it per man per substep.
+     hold:{on:false,holdRest:KICK.rest,holdGrip:KICK.grip,carryMult:1},
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
@@ -616,6 +650,81 @@ function fxLightGet(color,dist){
    removing it would change the light count and reintroduce the recompile this pool prevents. */
 function fxLightPut(l){if(!l)return;l.intensity=0;l._fxFree=true;}
 
+/* --- authored room lights (rooms.<id>.lights) -----------------------------
+   The SECOND pool in this file, and for the same reason as the first: r128 bakes the
+   scene's light COUNT into every material's program, so creating a light when a room is
+   shown recompiles everything. The fx pool solved that for effects; this solves it for a
+   room's own fixtures — which is what makes the room editor's light gizmo usable, since
+   adding a light there would otherwise cost a whole-scene compile per click.
+
+   SIZED FROM THE CONFIG, so it costs exactly what the heaviest room needs and no more: the
+   per-type maximum over every room's `lights`, plus CONFIG.render.roomLightPool.pad spare
+   slots that are allocated ONLY when the room editor is enabled. A shipping build whose
+   rooms author no lights allocates nothing at all.
+
+   NOT to be confused with a room GLB's BAKED KHR_lights_punctual, which still arrive with
+   the model and still go through the candela transfer in applyRoomLights (models.js). An
+   authored light is in plain three.js units — see the note in CONFIG.rooms. */
+const roomLightPool={point:[],spot:[],dir:[]};
+function rlpNeed(){
+ const P=(CONFIG.render&&CONFIG.render.roomLightPool)||{};
+ const cap=P.max===undefined?12:P.max;
+ const n={point:0,spot:0,dir:0};
+ for(const id in CONFIG.rooms){
+  const c={point:0,spot:0,dir:0};
+  ((CONFIG.rooms[id]||{}).lights||[]).forEach(L=>{const t=rlpType(L);if(c[t]!==undefined)c[t]++;});
+  for(const t in n)if(c[t]>n[t])n[t]=c[t];
+ }
+ // Editor headroom, paid for only by a build with the editor switched on. Per type: every
+ // resident light is evaluated by every material, and a room wants several lamps far more
+ // often than it wants several suns.
+ const on=!!(CONFIG.debug&&CONFIG.debug.roomEditor);
+ const P2=(P.pad&&typeof P.pad==='object')?P.pad:{point:P.pad,spot:P.pad,dir:P.pad};
+ for(const t in n){const pad=on?(P2[t]===undefined?4:P2[t]):0;n[t]=Math.min(n[t]+pad,cap);}
+ return n;
+}
+function rlpType(L){const t=(L&&L.type)||'point';return t==='spot'?'spot':(t==='dir'||t==='directional')?'dir':'point';}
+function buildRoomLightPool(){
+ const n=rlpNeed();
+ for(let i=0;i<n.point;i++){const l=new THREE.PointLight(0xffffff,0,100);rlpAdd('point',l);}
+ for(let i=0;i<n.spot;i++){const l=new THREE.SpotLight(0xffffff,0,100,0.6,0.4,2);rlpAdd('spot',l);}
+ for(let i=0;i<n.dir;i++){const l=new THREE.DirectionalLight(0xffffff,0);rlpAdd('dir',l);}
+ const tot=n.point+n.spot+n.dir;
+ if(tot)console.log('room light pool: '+n.point+' point, '+n.spot+' spot, '+n.dir+' dir');
+}
+/* Every pooled light keeps its own target in the scene. A three.js SpotLight/DirectionalLight
+   aims at target.position and the target must be IN the scene graph or its matrix never
+   updates — the classic silent failure where a spot points doggedly at the origin. */
+function rlpAdd(t,l){
+ l.visible=true;l.intensity=0;l.castShadow=false;l._rlFree=true;
+ scene.add(l);
+ if(l.target){l.target.position.set(0,0,0);scene.add(l.target);}
+ roomLightPool[t].push(l);
+}
+function rlpGet(t){for(const l of roomLightPool[t])if(l._rlFree){l._rlFree=false;return l;}return null;}
+function rlpFreeAll(){for(const t in roomLightPool)for(const l of roomLightPool[t]){l.intensity=0;l._rlFree=true;}}
+/* Drive the pool from one room's `lights`. Called by applyRoom, and again by the editor on
+   every change — it is a full re-drive rather than a diff, so the pool can never disagree
+   with the spec list (the same "edit the data, rebuild" rule js/roomedit.js applies to props). */
+function applyAuthoredLights(rm){
+ rlpFreeAll();
+ const list=(rm&&rm.lights)||[];
+ let over=0;
+ list.forEach(L=>{
+  const t=rlpType(L),l=rlpGet(t);
+  if(!l){over++;return;}
+  const p=L.pos||[0,60,0];
+  l.position.set(p[0]||0,p[1]||0,p[2]||0);
+  l.color.set(L.color===undefined?0xffffff:L.color);
+  l.intensity=L.int===undefined?1:L.int;
+  if(t!=='dir'){l.distance=L.dist===undefined?0:L.dist;l.decay=L.decay===undefined?2:L.decay;}
+  if(t==='spot'){l.angle=L.angle===undefined?0.6:L.angle;l.penumbra=L.penumbra===undefined?0.4:L.penumbra;}
+  if(l.target){const k=L.look||[0,0,0];l.target.position.set(k[0]||0,k[1]||0,k[2]||0);l.target.updateMatrixWorld();}
+ });
+ if(over)console.warn('room lights: '+over+' over the pool — raise CONFIG.render.roomLightPool.pad/max');
+ return list.length-over;
+}
+
 function applyPitchModel(){
   if(!pitchModel)return;
   if(pitchGroup)return;  // idempotent — already built
@@ -697,7 +806,7 @@ function setRoomEnv(id,rm){
  if(roomEnvCache[key])scene.environment=roomEnvCache[key];
 }
 /* Apply the selected room/location: backdrop colour + fog, scene lighting, LED mood, reflection
-   env, and the backdrop geometry (a room GLB, or the shared ground plane + rotating crowd when it
+   env, and the backdrop geometry (a room GLB, or the shared ground plane when it
    has none). Rooms are independent of the table + pitch — any combination is valid. onReady (opt)
    fires once the room's GLB is resident (synchronous when cached / when the room has no GLB), so
    league/cup can gate kickoff on it like they do the table. */
@@ -705,7 +814,7 @@ function applyRoom(onReady){
  const id=CONFIG.rooms[cfg.room]?cfg.room:'open';
  const rm=CONFIG.rooms[id];activeRoom=rm;
  scene.background=new THREE.Color(rm.bg);
- scene.fog=new THREE.Fog(rm.bg,rm.fog?rm.fog[0]:200,rm.fog?rm.fog[1]:430);
+ applyFog();                                             // honours cfg.fog; reads THIS room's near/far
  if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
  if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
  // LED mood: merge the room's override over CONFIG.leds (fx.js ledUpdate reads curLeds). A 'hold'
@@ -715,7 +824,7 @@ function applyRoom(onReady){
  // Is a backdrop GLB worth waiting for? roomHasGlb (models.js) says no for a room with no glb AND
  // for one whose file 404'd, so a missing backdrop stops being re-fetched on every venue change.
  const wantGlb=(typeof roomHasGlb==='function')?roomHasGlb(id):!!rm.glb;
- // Show the active room's backdrop, hide the rest; the shared ground+crowd stand in whenever it
+ // Show the active room's backdrop, hide the rest; the shared ground plane stands in whenever it
  // ISN'T on screen — no glb, file missing, or still downloading. Recomputed INSIDE show() rather
  // than captured once: the old code read rm.glb up front, so a room whose GLB never arrived hid the
  // shared backdrop too and rendered as an empty void.
@@ -727,9 +836,9 @@ function applyRoom(onReady){
   // the backdrop, whose children.length is what decides the shared-ground fallback above
   if(typeof propGroups!=='undefined')for(const pid in propGroups)propGroups[pid].visible=(pid===id);
   if(groundMesh)groundMesh.visible=fill;
-  if(crowdMesh)crowdMesh.visible=fill;
  };
  show();setRoomEnv(id,rm);
+ applyAuthoredLights(rm);                                // rooms.<id>.lights — pooled, so no recompile
  if(typeof buildRoomProps==='function')buildRoomProps(id,rm,show);
  if(wantGlb&&typeof ensureRoom==='function'){
   ensureRoom(id,()=>{                                    // GLB resident: reveal it + upgrade env to the real reflection bake
