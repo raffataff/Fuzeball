@@ -669,6 +669,494 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
 
+### 2026-08-26
+- **ONE FILE PER PITCH — and it turned out two pitches had never worked** (new
+  `tools/pitch-split.mjs`, `CONFIG.pitches` rewritten + new `tableAssets.cachePitches`, `js/models.js`
+  new `pitchGroups`/`ensurePitch`/`disposePitch`/`prunePitches` replacing `loadPitchModel`,
+  `js/world.js` `drawField` rewritten + `applyPitchModel`/`indexPitchVariants`/`freePitchMeshGPU`
+  deleted, `js/arena.js`, `js/main.js`, `js/ui.js`, `js/debug.js`; new `tools/pitch-harness.js`).
+  - **THE ATLAS COST EVERY PITCH THE PRICE OF ALL EIGHT.** `assets/pitches/fuzeball_pitch.glb` was
+    32MB of **8 flat quads (12 triangles each) and 23 images** — a texture atlas wearing a mesh.
+    Booting into any pitch downloaded all of it and GLTFLoader decoded all 23 images to show three.
+    `drawField` then detached the seven you weren't using, which correctly held VRAM down and did
+    **nothing at all** about the fetch and the decode that had already happened. Per-variant weights
+    measured: neon 0.7MB, champions_green 0.8MB, cyatron 1.2MB, verdant 1.6MB, champions_purple
+    1.7MB, royal 4.2MB, classic 7.2MB, pub_classic 11.2MB.
+  - **EXPORTING EIGHT TIMES FROM BLENDER DOES NOT SPLIT AN ATLAS, and the file sizes say so
+    immediately.** The first attempt produced eight files of ~28MB each — 230MB where the original
+    was 32MB — because a glTF exporter embeds the images the SCENE references, not the ones the
+    selected mesh does. Every file still carried all 8 meshes, all 8 materials and all 22 images;
+    `pitch_cork.glb` and `pitch_neon.glb` differed only by a few KB of re-encoded image data. The
+    saving has to be made **after** the export, on the glTF: delete the other meshes, then `prune()`
+    what is left unreferenced. Without the prune the file is byte-for-byte the same size and the
+    whole exercise is decorative.
+  - **TWO PITCHES HAD BEEN SILENTLY SERVING THEIR JPEG FALLBACK FOR MONTHS, and the fix was in the
+    MATERIAL names all along.** Blender suffixes duplicate object names, so the atlas carried
+    `champions_green` AND `champions_green.001`, `verdant` AND `verdant.001` — and `ballKey()`
+    strips a trailing `.NNN`, collapsing each pair onto one key. So `CONFIG.pitches.champions_purple`
+    and `.pub_classic` matched no mesh and fell through to `loadPitchTex`. Their MATERIALS said
+    exactly what they were the whole time: `field_champions_purple`, `field_pub_classic`. The
+    splitter keys on the material, which is the only reason those two files can exist. **This is the
+    failure mode to fear here: not a crash, a pitch that looks nearly right.** The harness asserts
+    no two pitches share a `glb` and that every `glb` is on disk.
+  - **RESIDENCY IS NOW THE SHAPE ROOMS AND SKINS ALREADY HAD** — `ensurePitch` (idempotent, queues
+    concurrent asks, latches a 404 so a missing file is not re-fetched on every venue change),
+    `prunePitches` (LRU, active protected, `cachePitches:2` so an A/B keeps one warm), `disposePitch`.
+    Measured in the running game: boot fetches exactly one pitch GLB; A→B→A re-fetches nothing.
+  - **INACTIVE PITCHES ARE DETACHED, NOT HIDDEN, and that matters MORE now than it did.** three
+    walks invisible objects in `updateMatrixWorld`, and `renderer.compile()` uploads every material
+    it can reach regardless of `.visible` — which the staged venue swap now calls **on purpose**. A
+    merely-hidden pitch would be silently uploaded by the very warm that exists to make the swap
+    smooth.
+  - **BUG IN MY OWN FIRST CUT, caught by watching the network rather than by reading:** `drawField`
+    dressed the stand-in plane with the JPEG "while the GLB arrives", which reads as a nicety and is
+    **a second full-size download of the same pitch**. Boot fetched `pubClassic.jpeg` THREE times
+    (drawField runs from `startLoading`, twice from `applyTable`, and from `applyColors`) on top of
+    the 11.3MB GLB. The JPEG is now fetched only when the GLB did **not** land — at which point the
+    plane genuinely is the pitch. `buildTable`'s boot-time preload is gated the same way.
+  - **`drawField` takes an `onReady`**, so the pitch dropdown's loading veil (js/flow.js `venueLoad`)
+    stays up until the pitch is RESIDENT and the gate's `renderer.compile()` pays the upload before
+    anything is revealed. Synchronous when cached, like every other loader in the tree.
+  - `memLog` lists `pitches [...]` beside skins/rooms/envs, and `memTexCollect` walks every RESIDENT
+    pitch rather than the one on screen — an evicted-but-still-cached pitch is exactly what the audit
+    is for.
+  - **`tools/pitch-harness.js` — 35 assertions.** The stub's scene needed a real `traverse()`:
+    `ensurePitch` walks it to fix texture encodings inside a `try/catch`, so a scene without one
+    throws, the catch swallows it, and the pitch is never registered — the exact silent-failure shape
+    this suite exists to catch, reproduced by accident in the harness itself.
+  - **NOT DONE:** the pitch is still the only asset group excluded from KTX2, by choice — it fills
+    the screen for a whole match. Worth revisiting narrowly: `pub_classic` is 11.2MB of which
+    **8.7MB is a single 2752x1536 NORMAL map**, and `classic` is 5.5MB of normal. Normal and
+    metallicRoughness go to UASTC, which is near-lossless and is not the channel anyone looks at —
+    encoding the pitch's DATA maps only, leaving baseColor untouched, would cut those two by ~80%
+    with no change to the colour on screen.
+  - Worth knowing: `tools/slidepush-harness.js` is 25/3 against the working tree's `slidePush:0.85`
+    (was 27/1 at 0.5). Same category as before — a deliberate retune crossing thresholds the harness
+    was written around, not a regression.
+
+### 2026-08-25
+- **THE MENUS WERE RENDERING THE WHOLE GAME, EVERY FRAME, BEHIND A 94%-OPAQUE PANEL — and that is
+  most of why a room swap read as a freeze** (new `CONFIG.render.idle`, `js/world.js`
+  `renderDirty`/`renderIdleSkip` + `shadowDirty`, `js/main.js` `loop()`, plus `renderDirty` hooks in
+  `applyColors`/`applyFog`/`applyDisplay`/`drawField`/the resize listener; new
+  `tools/venueload-harness.js`). Reported as: "when I load the game and when I change rooms the game
+  really freezes whilst it loads everything… do we even load the room and table for the menu screen
+  background?"
+  - **WE DO, AND NOBODY CAN SEE IT.** `boot()` runs `buildRods(); applyTable(); applyRoom();
+    applyColors()` before the first menu is shown, and `loop()` ended in an **unconditional**
+    `renderer.render` with no phase test — so #home, Kick Off, the league lobby, Options and every
+    other screen sat on a live ~267-draw scene with a shadow pass and 22 figurines. Meanwhile
+    `.screen` (css/styles.css:32) is `rgba(7,9,15,.94)` at its 70% stop **plus**
+    `backdrop-filter:blur(6px)`. The whole scene buys a blurred smudge in the corners. Worse, the
+    frame budget was already spent when a venue swap wanted it.
+  - **MEASURED, headless chromium on swiftshader, 360x220, menu idle over 6s:** before, **115 rAF
+    ticks / 115 renders (19 fps)**; after, **353 ticks / 6 renders (59 fps, 2%)**. The tick count
+    tripling IS the result — the page got its main thread back by not drawing.
+  - **IT IS A THROTTLE, NOT AN OFF SWITCH, AND THAT IS THE DESIGN.** A pure dirty-flag is one
+    missed hook away from a stale frame that looks like a crash, and the hooks are spread over six
+    files. So a change buys `settle` (0.4s) at FULL rate, and the floor is `hz` (4), not zero —
+    anything we forgot to mark self-heals in 250ms, behind a 94% veil. `hz:0` is available and is
+    the unforgiving version.
+  - **`shadowDirty()` NOW CALLS `renderDirty()`**, which is what makes this cheap: every existing
+    structural hook (`applyRoom`, `applySkin`, `rebuildRodMen`, `buildRoomProps`, the sim step,
+    replay playback) marks the frame without being touched. Only the appearance-only changes that
+    move no casters needed their own call — kit colour, fog, render scale, pitch swap, resize.
+  - **NEVER SKIPS** a live phase, the room editor, photo mode, free roam, the debug overlay, or the
+    `M` profiler (you opened it to measure real frames). The customize turntable, the menu figurine
+    thumbnails and the league-setup preview are safe by construction — they draw on the separate
+    offscreen renderer (`PRV`, world.js), which this never touches.
+  - **BUG FOUND BY MEASURING, #1: AN EXACT FLOAT COMPARE ON THE CAMERA DEFEATED THE WHOLE THING.**
+    The first cut detected camera movement with `position.equals()`/`quaternion.equals()`.
+    `cameraUpdate` **lerps** toward a fixed target and `a+(b-a)*k` **asymptotes** — the last few
+    hundred frames differ only in the bottom bits of the mantissa, so the gate read "still moving"
+    and drew **100% of menu frames** with itself nominally on. Now two epsilons, `camEps` (0.01
+    world units) and `camRotEps` (1e-4 quaternion components), each a fraction of a pixel at the
+    match camera. Reasoning would not have found this; the headless run reporting 353/353 did.
+  - **BUG FOUND BY MEASURING, #2: `renderer.shadowMap.needsUpdate` IS POISON AS A DIRTY SIGNAL.**
+    It reads like the obvious extra safety net. r128's `WebGLShadowMap.render()` returns on
+    `enabled === false` **before** it clears the flag — so with **Options → Display → Shadows off**
+    the flag latches true the first time anything calls `shadowDirty()` and never comes down. A gate
+    reading it marks every frame dirty and does nothing at all, *for exactly the players who most
+    need it*. Dropped entirely; nothing is lost, because `shadowDirty()` calls `renderDirty()`
+    unconditionally, outside its own `autoUpdate` guard, which is the case the read was for.
+- **A VENUE SWAP NOW HAS SOMEWHERE TO HAPPEN — staged across frames behind the loading veil** (new
+  `CONFIG.venue`, `js/flow.js` `venueLoad` + refcounted `showMatchLoading`, `js/arena.js`
+  `selectSkin(id,skinId,onReady)`, `js/ui.js` all five venue controls, `js/options.js` the preset +
+  reflections, `js/league.js` `venueApply`/`lgVenueEnter`).
+  - **NOTHING YIELDED, SO THE BROWSER NEVER GOT A PAINT.** A room change ran GLB fetch+parse (the
+    pub's backdrop is ~45MB), a PMREM env bake, a whole-scene material recompile when the incoming
+    room's key-light configuration differs, a prop rebuild, and then handed the browser a first
+    frame carrying the entire texture upload — **all in one synchronous run off a `<select>`
+    change**. That is why it reads as the tab hanging rather than as something loading, and why
+    bolting a spinner on would have changed nothing: the spinner could not have been drawn either.
+  - **THE FIX IS NOT MAKING THE WORK FASTER, IT IS GIVING IT SOMEWHERE TO HAPPEN** — the same shape
+    as `#lgTape`. Veil up → **wait out its CSS fade** (skipping this is the obvious optimisation and
+    is wrong: the stall lands mid-transition and the veil freezes half-drawn) → run the caller's
+    work → **`renderer.compile(scene,camera)`** → one clean frame → veil down.
+  - **THE COMPILE IS THE LOAD-BEARING LINE.** It forces the shader link AND the texture upload three
+    otherwise defers to the first render, so the cost lands under the veil. `warmPropShaders`
+    (props.js) already proved the technique — it just **only ever ran for a room with props**, which
+    excludes `open`, `saucer` and `pub`, i.e. most of them.
+  - **This only works because every loader already took an `onReady`** that fires when its assets
+    are RESIDENT and resolves synchronously when they already are. `applyTable`/`applyRoom` had it;
+    `selectSkin` did not and now does.
+  - **COALESCED, NOT QUEUED.** Holding the arrow keys on the room dropdown fires a change per room;
+    queueing them would load every room between where you started and where you stopped. A request
+    arriving mid-swap REPLACES the pending one. Verified in-browser: four rapid changes → **two**
+    `applyRoom` calls, ending on the room actually selected.
+  - **THE VEIL IS REFCOUNTED NOW**, because a match start and a venue swap can both want it.
+    `startMatch` was an unbalanced caller — it called `showMatchLoading(false)` even on the
+    synchronous path, which was harmless while the call was a plain toggle and would have pulled the
+    veil off someone else's half-built room once it counted. It tracks `veil` and only lowers what
+    it raised.
+  - **League/cup pass `silent:true`**: `#lgTape` is already the loading screen there and a second
+    veil over it would hide the thing the tape exists to show. Same staging, same warm, no veil.
+    `lgVenueExit`'s background hand-back is silent for the same reason. **Walking into the lobby**
+    (`openLeague`/`openCup`) does get the veil — that path had no loading screen and did freeze.
+  - **`CONFIG.venue.maxT` (9s) is load-bearing**: every loader in the tree falls back on a miss, but
+    a hung fetch fires neither `load` nor `error`, and **a veil that never lifts is a worse bug than
+    the freeze it replaces**. A loader that throws lifts it too.
+  - **Both `on:false` switches are TRUE off switches** — `render.idle.on:false` restores
+    always-render exactly, and `venue.on:false` calls straight through synchronously **and skips the
+    warm**, because an escape hatch that still changes behaviour is not an escape hatch.
+- **A ROOM'S REFLECTION BAKE NOW OUTLIVES THE ROOM — an A/B toggle went from re-baking every time
+  to never** (new `CONFIG.tableAssets.cacheEnvs`, `js/world.js` new `envOrder`/`touchEnv`/`pruneEnvs`
+  + `setRoomEnv` rewritten, `js/models.js` `disposeRoom`, `js/debug.js` `memLog`; new
+  `tools/roomenv-harness.js`). The cheap half of the load-performance work left open on 2026-08-25.
+  - **THE TRADE WAS BACKWARDS.** `disposeRoom` freed the room group AND its PMREM bake, one line
+    apart, which reads as tidy bookkeeping. But the bake is an INDEPENDENT cubemap that holds no
+    reference back to the group — **measured: a 768x768 UnsignedByte render target, 2.25MB** — and
+    the group is 20-45MB of geometry and texture. With `cacheRooms:1` the old room is disposed on
+    every switch, so the small thing that costs a full PMREM pass to recreate was being thrown away
+    in order to free the large thing beside it.
+  - **MEASURED, headless, six swaps across three rooms after warm-up: 6 GLB bakes -> 0.** A PMREM
+    pass is six scene renders plus the blur convolution chain, so that is six of those removed from
+    the exact interaction a room picker exists for.
+  - **`glbReady` NOW ONLY DECIDES WHETHER WE CAN BAKE ONE, NOT WHETHER WE CAN USE ONE**, and that is
+    the visible half. Re-entering a room used to install the synthetic stand-in, then pop to the
+    real reflections a second later when the download landed. A cached bake is valid whether or not
+    its GLB is back, so the real reflections go straight on. Verified in-browser: every revisit
+    installs `glb:<room>` with no synthetic step in between.
+  - **BOUNDED BY ITS OWN LRU, AND SIZED ROOMS x 2 — NOT ROOMS.** A room can occupy two slots: its
+    `glb:` bake and the `syn:` stand-in it showed while downloading, which has to stay because
+    turning Reflections off in Options falls back to it. **Caught by measuring, not by reading:** at
+    a cap of 4 (one per room, which is what "four rooms, cache four" suggests) six swaps across
+    three rooms re-baked all three — a thrashing cache is indistinguishable from no cache. `cacheEnvs`
+    is 8, about 18MB to hold every reflection map in the game. The harness asserts
+    `cacheEnvs >= rooms*2`, so adding a fifth room fails loudly instead of quietly undoing this.
+  - **THE LEAK LESSON IS NOT LOST, IT MOVED.** `pruneEnvs` frees through `envDispose()`, never
+    `tex.dispose()` — a PMREM bake is a RENDER TARGET and freeing its texture alone leaves the
+    framebuffer allocated (2026-08-23). A mutation guard swaps the two and the suite catches it.
+  - **`memLog` now prints `envs [...]` beside `skins`/`rooms`.** It has to: a cached bake is not in
+    the scene graph, so `memTex()`/`memTexBytes()` cannot see it. Listed by key rather than counted,
+    for the same reason skins and rooms are — a regression reads as extra keys, not a bigger number.
+  - **`cacheRooms` STAYS AT 1, deliberately, and the config now says why with the number attached.**
+    The tempting companion change is `cacheRooms:2` so an A/B toggle keeps both GLBs resident. But
+    the cost is not the ~20MB download: `memTex()` puts leaving the arcade at 1158MB -> 821MB, so a
+    second resident room is up to **~337MB of texture**, which on a machine already carrying a
+    gigabyte is what pushes the renderer process into the pagefile — the reported "disk space
+    dropping while switching rooms". 2.25MB versus 337MB is the whole reason these are two separate
+    budgets now. Raise it only with `memTex()` open.
+  - **NEW `tools/roomenv-harness.js` — 35 assertions, 6 mutation guards.** Loads the real
+    `js/config.js` (via `core.js` first, for `clamp`, and reading the script's COMPLETION VALUE —
+    `const CONFIG` is a lexical binding and never lands on the vm context object) so the sizing
+    assertion tracks the actual room list. Guards re-apply: the synthetic flash on re-entry,
+    `disposeRoom` freeing the bake again, an unbounded cache, freeing the texture instead of the
+    render target, an LRU that never refreshes recency, and `ibl:false` paying for a bake.
+- **NEW `tools/venueload-harness.js` — 66 assertions, 9 mutation guards.** Both features are ASYNC
+  and ORDER-SENSITIVE (the entire point of `venueLoad` is *when* each step runs relative to a
+  paint), so time is a virtual clock driving both `setTimeout` and `requestAnimationFrame`, with a
+  rAF queued from a rAF landing on the NEXT tick exactly as a browser would — which is what makes
+  "the veil has painted before the stall" actually testable. Carries the CRLF-stripping `rd()` from
+  `rng-harness.js`. The mutation guards re-apply both measured bugs above (the exact camera compare,
+  the latched shadow flag) plus: a live phase escaping the throttle, the floor becoming zero,
+  `shadowDirty` unhooked, work starting before the veil paints, the compile dropped, queueing
+  instead of coalescing, and the hang ceiling removed.
+- **KTX2 / BASIS: TEXTURES THAT STAY COMPRESSED ALL THE WAY TO THE GPU — a flat 4x VRAM cut, and the
+  decode moves off the main thread** (new `vendor/KTX2Loader.js` + `vendor/WorkerPool.js` +
+  `vendor/basis/`, new `js/world.js` `ktx2Support`/`ktx2Loader`/`newGLTF`, all 14 loader sites,
+  `js/debug.js` `texSize`/`memTex`, `index.html`; new `tools/ktx2-encode.mjs`, `tools/package.json`,
+  `tools/ktx2-harness.js`). The long-term item left open on 2026-08-25.
+  - **A PNG IS COMPRESSED ON DISK AND COMPLETELY UNCOMPRESSED IN VRAM.** The GPU cannot read PNG or
+    JPEG, so the browser decodes to raw pixels and three uploads that: a 2048² albedo is ~1MB in the
+    file and **21.3MB on the card**, and the decode is main-thread work landing exactly when a room
+    or a match is loading. KTX2/Basis is read by the GPU directly — the transcoder converts to
+    whatever block format the card has (ASTC, BC7, ETC2, BC1) and that is what is uploaded.
+  - **MEASURED ON THIS PROJECT'S OWN ASSETS:** arcade room **157.3MB -> 39.4MB** VRAM (20.0 ->
+    10.6MB on disk), pub **166.5 -> 41.6MB** (45.0 -> 17.7MB), a figurine **21.3 -> 5.3MB**, saucer
+    **18.7 -> 4.7MB**. A flat 4x, because ETC1S and UASTC both land on 1 byte/px block formats here.
+    Worst main-thread frame gap during a full GLB+KTX2 load: **32ms** — the transcode is in a worker.
+  - **VISUAL COST, measured as mean absolute pixel difference against the same render:** figurine
+    **0.07%**, saucer **0.08%**, arcade **0.87%** (its worst textures are low-res NPOT signage).
+  - **THE LOADER IS r137's ON r128's CORE, AND THAT IS THE POINT, NOT AN OVERSIGHT.** r128 has no
+    `KTX2Loader` at all — only `BasisTextureLoader`, which reads bare `.basis` files and cannot open
+    a KTX2 container — and its bundled transcoder wasm (440,267 bytes) predates KTX2-container and
+    Zstandard support. But **r128's own GLTFLoader ALREADY implements `KHR_texture_basisu` and
+    `setKTX2Loader`**, and r137's `KTX2Loader`/`WorkerPool` reference only THREE symbols r128 has.
+    So nothing in the loader chain needed patching and three itself did NOT need upgrading — which
+    matters, because r150+ changes the lighting units this project's entire room-candela design is
+    built on. `tools/ktx2-harness.js` pins the transcoder's byte size so that "fixing the version
+    inconsistency" fails loudly instead of at runtime.
+  - **THE TRAP THAT WOULD HAVE SHIPPED BROKEN: BC7 AND S3TC REFUSE A LEVEL THAT IS NOT A MULTIPLE OF
+    4. ASTC DOES NOT.** The arcade's `872x295` and `1170x990` uploaded as `GL_INVALID_OPERATION`
+    (1282) and rendered untextured — while `1254x1254` was fine, because it transcoded to ASTC.
+    **The same file is therefore correct on a GPU that picks ASTC and broken on one that picks BC7,
+    and you cannot know at ENCODE time which the player's card will choose.** So the encoder aligns
+    every texture to a multiple of 4 unconditionally (a <=3px nudge, reported per texture). Found by
+    probing each texture's own `glGetError` in a headless browser; it is invisible to reading, and
+    it would have read as "some people say the arcade looks wrong".
+  - **CODEC BY SLOT, AND THE SPLIT IS NOT OPTIONAL.** ETC1S for baseColor/emissive (tiny files; it
+    is a colour codec and assumes the channels are a colour). UASTC for normal/metallicRoughness/
+    occlusion: a glTF metallicRoughness map packs occlusion/roughness/metalness into R/G/B as three
+    INDEPENDENT scalars and a normal map is a vector — ETC1S bleeds them into each other, which is
+    the classic way to make every material subtly wrong and be unable to say why. Consequence worth
+    knowing: **UASTC files often get BIGGER than the JPEG they replace** (the saucer's 0.2MB
+    metalRough became 1.7MB). VRAM still drops 4x. Watch the VRAM column, not the disk column.
+  - **`newGLTF()` IS NOW THE ONLY WAY TO MAKE A GLTFLoader.** A bare `new THREE.GLTFLoader()` has no
+    ktx2Loader and GLTFLoader THROWS on a file whose `KHR_texture_basisu` is required — which is
+    what the encoder writes, deliberately: a KTX2 asset carrying a silent PNG fallback is just both
+    files shipped. All 14 sites route through it and the harness fails on a 15th.
+    · **A blanket find-and-replace ate its own definition** (`newGLTF(){const g=newGLTF();...}`) —
+      infinite recursion, caught immediately, and now an explicit assertion.
+  - **`memTex()` WOULD HAVE LIED BY 4x.** `texSize` estimated `w*h*4*4/3` for everything; a
+    CompressedTexture's mip levels ARE the GPU bytes, so it sums them instead. This is the tool you
+    reach for to check whether the KTX2 pass worked, so it must not be the thing that misreports it.
+    `memTex()` now also counts encoded vs fallen-back — at a glance those look identical.
+  - **VERIFIED PRESERVED, on the pub (the hard case):** all 5 baked punctual lights at their EXACT
+    authored candela (1739 / 1087 / 1196 x3 — the same numbers `tools/roomlight-harness.js` uses as
+    fixtures), all 4 `KHR_materials_emissive_strength` values, `KHR_texture_transform`, and every
+    node/mesh/material NAME byte-identical — so `led_frame`, `room_light_*`, `kit_*`, `goal_frame`
+    and `wall_end` matching all still work. Confirmed in the running game: the candela transfer
+    logs the same derived values it always did.
+  - **`tools/package.json` DELIBERATELY DOES NOT SET `"type":"module"`.** Setting it makes every
+    `.js` in `tools/` an ES module and every harness there is CommonJS using `require()` — they all
+    die on the spot. Learned by doing it. `ktx2-encode.mjs` is `.mjs`, which is ESM on its own
+    extension. The harness asserts the ABSENCE of the field.
+  - **FOUND, NOT FIXED (upstream):** two arcade textures are used as BOTH a colour map and a data map
+    (one image serving `baseColor+normal+emissive`, another `baseColor+emissive+metallicRoughness`).
+    GLTFLoader must CLONE a texture used at two encodings, so the arcade's 18 images arrive as 23
+    live textures — 50.8MB where the images are worth 39.4MB. A Tripo export artefact. The encoder
+    treats them as sRGB colour and warns; the fix is in the export, not here.
+  - **`--dry` first, and every original gets a `.bak`.** Encoding is a CONTENT step: re-run it on any
+    asset an artist re-exports. `cd tools && npm i`, then `npm run ktx2:dry` / `ktx2:rooms` /
+    `ktx2:figurines` / `ktx2:explosions` / `ktx2:tables`. `@gpu-tex-enc/basis` ships prebuilt
+    `basisu` binaries for win32-x64, so this works on the dev box with no manual KTX-Software install.
+  - **Scope decision: rooms, figurines, explosions and tables. NOT the pitch** — it fills the screen
+    for a whole match, which is where an artefact has the best chance of being seen; the rest you see
+    in passing. That is a look decision and is reversible from the `.bak` either way.
+  - **`tools/ktx2-harness.js` — 39 assertions.** Static on purpose: the interesting behaviour is a
+    WebGL transcode into a GPU block format and cannot be faked in node (that half was proved in a
+    headless browser against the real GLBs). What node can guard is what actually rots — a bare
+    GLTFLoader slipping in, the r137 pin being tidied away, the transcoder path drifting from where
+    the files are, `memTex` reverting to the RGBA estimate, and `type:module` reappearing.
+
+- **STILL OPEN, deliberately.** The BOOT freeze is a different animal and none of this touches it:
+  it is texture decode + GPU upload, and `memTex()` puts the pitch at 3x2752x1536 (64MB). Owner has
+  already halved the figurine maps. A 1K/2K texture-size option in Options is the intended next
+  step. (The env-cache half of this note is DONE — see the reflection-bake entry above, and the KTX2
+  entry above that, which is the real answer to the boot freeze: the figurines and rooms now upload
+  a quarter as much and decode off the main thread. The PITCH is deliberately still uncompressed.)
+
+### 2026-08-23
+- **A ROOM CAN NOW SWITCH THE SUN OFF AND HAND THE SHADOWS TO ITS OWN LAMPS** (new
+  `rooms.<id>.hemi.on` / `dir.on` / `dir.shadow` / `ibl`, new per-light `shadow:true`, new
+  `CONFIG.render.roomLightPool.shadow` + `render.shadow.roomMapSize`, `js/world.js`
+  `applyRoomKeyLights` + `roomShadowPool` + `rlpGet(t,wantShadow)`, `js/roomedit.js` `reChk` +
+  four WORLD switches + a per-light casting box, harness 161 -> **173**). Asked for: a real off for
+  hemi/dir/env that stops them costing, and a choice of which lights cast — "as we're inside we
+  shouldn't really have a sun, and the spot lights should be what's casting shadows".
+  - **`int:0` IS NOT AN OFF, AND THE MEASUREMENT IS THE WHOLE POINT.** A zero-intensity light stays
+    in the scene's light COUNT and runs its full shader path per fragment before multiplying by
+    zero. Captured by hooking `shaderSource`: setting intensity 0 recompiled **0 shaders** and saved
+    nothing; setting `visible=false` recompiled **22** and actually removed it. So the off has to be
+    visibility, and the recompile is the price of it.
+  - **THAT PRICE IS PAID ONCE PER CONFIGURATION, NOT PER TOGGLE — which is what makes it safe to put
+    on a checkbox.** Switching back recompiled **0**: three.js caches programs by their parameters,
+    so a configuration you have already seen comes back free. Latched anyway (the applyFog pattern),
+    since `applyRoom` re-applies on every venue change and must cost nothing when nothing moved.
+  - **CASTING CANNOT BE A PROPERTY OF THE LIGHT YOU ALREADY HAVE.** `castShadow` is a shader
+    parameter too, so flipping it on a live pooled light recompiles everything — the exact thing the
+    pool exists to prevent. So there is a second, FIXED sub-pool whose lights are created casting and
+    stay that way, and `shadow:true` borrows from it. Sized straight from config rather than derived
+    from the rooms, because a caster is a whole extra render pass per frame and that is a budget
+    decision, not something that should grow with the content. **A POINT light is SIX passes** (cube
+    map), hence `point:0` by default.
+  - **THE BUG IN MY OWN FIRST CUT, caught by measuring rather than by reasoning: an UNUSED casting
+    slot still rendered a full shadow pass.** Default arcade went 267 -> 309 draws just by
+    ALLOCATING two idle slots — the pool was no longer free, which would have made the feature cost
+    something for every room that never used it. It cannot be fixed by clearing castShadow (that
+    recompiles), but three.js gates each light's pass on its OWN `shadow.autoUpdate`/`needsUpdate`,
+    so a free slot is parked there and skipped for nothing. Borrowing re-arms it. **Back to 267.**
+  - **A SECOND BUG, caught by the new assertions: over-budget ate a lamp.** `rlpNeed` sized the plain
+    pool from the non-casting lights alone, so with 4 spots, 3 asking to cast and a budget of 2, the
+    third request fell back into the ONE plain slot and the genuinely-plain fourth light got none —
+    it silently vanished. The plain pool is sized `total - min(asking, budget)` now, so every lamp is
+    served whatever the budget. Over budget DOWNGRADES (lit, not casting) and says so; a lamp that
+    disappears is a worse failure than one that stops casting.
+  - **MEASURED, arcade, 1920x1080 looking at the table:** default (sun casts, no room casters)
+    **267 draws**; the indoor setup — sun OFF, all three spots asking, budget 2 — **274 draws with
+    all 3 spots still lighting and 2 casting**. So swapping the sun's single 73-draw pass for two
+    cheaper spot passes costs **+7 draws** and the table finally OCCLUDES. Sun off with nothing
+    casting is **194**.
+  - **This is the honest answer to the rug**, which the 2026-08-23 entry above left open after
+    proving `dist` cannot fix it: nothing occludes until something casts, and now something can.
+  - Editor: four checkboxes in WORLD (hemi / sun / sun casts / image-based light) and a `casts
+    shadow` box on any selected authored light, each titled with what it costs. `shadow` joins the
+    export key order, so it round-trips into config.js like everything else.
+  - **`ibl:false`** switches `scene.environment` off entirely — no IBL, no reflections, and no PMREM
+    bake or render target held for that room. Metals go dark, so it is a look decision as much as a
+    saving.
+  - Harness **173 assertions**: the budget allocating exactly what it says, slots created casting,
+    plain slots never casting, `rlpNeed`'s new sizing, an idle slot being gated off, a borrowed one
+    gated on, over-budget downgrading rather than dropping a light, a zero budget, and a release
+    re-parking the gate. **The stale-anchor guard earned its keep on the way** — changing
+    `applyAuthoredLights` drifted an existing mutation's anchor and it reported itself instead of
+    quietly scoring a point.
+- **A PMREM BAKE IS A RENDER TARGET, AND FREEING ITS TEXTURE DOES NOT FREE IT** (`js/world.js` new
+  `envKeep`/`envDispose` + both bakers, `js/models.js` `disposeRoom`). Reported as fps being ~30 on
+  the first visit to the arcade but ~50 after leaving to Void and coming back, plus disk space
+  dropping while switching rooms — "is there a memory leak/over-caching problem?"
+  - **THERE IS A LEAK, IT IS UNBOUNDED, AND IT IS NOT THE ONE THE SYMPTOM POINTS AT.**
+    `bakeSyntheticEnv`/`bakeGlbEnv` both did `pmrem().fromScene(...).texture` and dropped the
+    RENDER TARGET on the floor. A target owns a framebuffer and its attachments;
+    `WebGLRenderTarget.dispose()` is what runs `deallocateRenderTarget`, and disposing the
+    `.texture` alone runs the plain-texture path instead and frees neither. Measured:
+    `renderer.info.memory.textures` climbed **+1 per room round trip and never came down** — arcade
+    34/35/36/37, Void 2/4/5/6/7/8/9, for the whole session. One leaked target per env bake, i.e.
+    one per visit to any room with a glb. After the fix, six cycles are **perfectly flat: arcade 34,
+    Void 3, every time**.
+  - **BUT IT DOES NOT EXPLAIN THE FPS, AND THE OBVIOUS EXPLANATION IS DISPROVEN.** The tempting
+    story is that the first visit leaves more resident and the round trip frees it. Measured in one
+    controlled session: **fresh boot into arcade and arcade-after-a-round-trip are identical** —
+    45 geometries, 34 textures, 29 programs, 1158 MB of texture, both times. Residency is not the
+    variable. Nor is the shader cache: programs go 29 -> 23 leaving and 23 -> 29 returning, so the
+    return trip RECOMPILES the same six rather than reusing them, which if anything should make it
+    slower. Whatever the 30-vs-50 is, it is below this layer (driver/GPU-process texture residency
+    is the remaining suspect) and needs the `M` profiler on real hardware to attribute — a headless
+    pane has no compositing and unreliable frame timing. **Left open rather than guessed at.**
+  - **THE REAL PRESSURE IS THE TEXTURE BUDGET, AND IT IS THE FIGURINES AGAIN.** `memTex()` reports
+    **1158 MB across 117 textures**, and the top of that list is not the rooms: **every figurine
+    ships 2048x2048 maps — kit albedo + normal + roughness, visor albedo + emissive, skin, hair +
+    hair normal — at 21.3 MB each, and there are two figurine sets resident (one per team)**, for
+    roughly 340 MB of player textures alone on men that render a few dozen pixels tall. The pitch
+    adds 3 x 2752x1536 (64 MB). The room is the SMALLER half: arcade is ~337 MB of the total, which
+    is why leaving it drops the scene walk 1158 -> 821 MB. **Same root cause as the 2026-08-23
+    draw-call entry above: the figurines are an un-decimated, un-downscaled AI export.** Halving
+    those maps to 1024 would return ~255 MB for a change nobody could see at match camera distance.
+  - **ON THE DISK SPACE: not measurable from here, and probably not a file being written.** Nothing
+    in the game writes to disk beyond localStorage. The likely mechanism is the Windows pagefile
+    growing under RAM pressure — a decoded 2048x2048 RGBA is ~21 MB CPU-side as well as GPU-side,
+    so a ~1.16 GB texture set costs roughly that again in the renderer process before upload — plus
+    the browser HTTP cache holding re-fetched room GLBs (`cacheRooms:1` disposes the old room on
+    every switch, so the arcade's 20 MB and the pub's 45 MB are re-downloaded each time). Both are
+    consequences of the texture budget, not of a file leak.
+- **LOOKING AT THE TABLE COST 45% MORE DRAW CALLS THAN LOOKING AWAY, AND IT WAS NEVER THE LIGHTS**
+  (`js/config.js` new `render.shadow.type`/`mapSize`/`autoUpdate` + new `playerModel.shadowMinFrac`
+  + `fx.lightPool` 6->3 + `render.roomLightPool.pad` 4/3/1 -> 1/1/0, `js/world.js` new
+  `shadowMapType`/`shadowDirty`/`markShadowCasters`, `js/main.js` two dirty hooks, `js/arena.js`,
+  `js/props.js`, `js/debug.js` new `lightAudit`). Reported from the room editor: fps drops when the
+  camera faces the table, in ANY room, with lights and objects removed, and worst in dressed rooms.
+  - **MEASURED, NOT REASONED: THE FIGURINES ARE THE SCENE.** At 1920x1080 looking down at the
+    table, arcade room: **194 main-pass draws / 152,460 triangles**, and hiding the 22 men leaves
+    **84 / 66,858**. So the men are **110 draws (57%) and 85,602 tris (56%)** — and they are the
+    only thing that leaves the frustum when the camera pans off the table. That is the whole
+    reported effect. Panning into the room draws 11 calls.
+  - **A FIGURINE IS 5 DRAWS BECAUSE A GLB ARRIVES ONE SUB-MESH PER MATERIAL** (kit / visor / skin /
+    hair / trim), and `makePlayer` set `castShadow=true` on all five — so 110 more went into the
+    shadow pass. **The shadow only needs the SILHOUETTE**: measured on the cyborg the kit mesh
+    spans **0.94** of the figure's bounding diagonal and the next-largest **0.38**, i.e. every other
+    part is enclosed by it. New `markShadowCasters` stamps the decision on the TEMPLATE at load
+    (makePlayer runs 22x per rebuild and `Box3.setFromObject` walks every vertex; `clone(true)`
+    deep-copies userData, so each man inherits it free). The largest part always casts, so a model
+    split into many even pieces can never end up with no shadow at all. **Shadow-updating frame:
+    355 -> 267 draws, 289,704 -> 268,056 tris.**
+  - **THE SHADOW MAP WAS RE-RENDERED EVERY FRAME FOR A RESULT THAT COULD NOT CHANGE.** It is a
+    DIRECTIONAL map with fixed extents — camera-independent — so in the menus, the room editor and
+    photo mode, where by construction nothing moves, it re-drew every caster forever.
+    `autoUpdate:false` + `shadowDirty()` from the things that actually move casters: the sim step
+    (gated on `stepped || alpha moved`, which is what makes a photo/training FREEZE hold the map
+    too — alpha pins at 0 and no step runs), replay playback (it re-poses rods from the ring
+    buffer), and the structural rebuilds (`applyRoom`, `applySkin`, `rebuildRodMen`,
+    `buildRoomProps`). **In the editor the pass is now skipped entirely: 267 -> 194 draws.**
+    Combined with the caster cut that is **355 -> 194, a 45% draw-call reduction where the room is
+    actually authored.** In play alpha moves every frame, so nothing is lost.
+  - **`renderer.info.render.calls` DOES NOT COUNT THE SHADOW PASS** — every number above needed
+    `info.autoReset=false` + a manual `reset()` first, which is exactly why perf.js does that. A
+    shadow-pass regression is INVISIBLE to the default counter; measure it the perf.js way or it
+    reads as free.
+  - **A LIGHT AT INTENSITY 0 COSTS WHAT A LIT ONE COSTS.** r128 compiles the light COUNT into every
+    program and the fragment shader loops over all of them — the multiply by zero happens AFTER the
+    attenuation and, for a spot, the cone smoothstep. The scene carried **13 lights normally and 21
+    with the editor open, 8 of them dead pool slots**. The pool trades a one-off recompile for a
+    permanent per-fragment tax, and at 6 spare fx lights that trade had gone the wrong way:
+    `fx.lightPool` 6->3, editor `pad` 4/3/1 -> 1/1/0. **13 -> 10, and 21 -> 12 in the editor.**
+  - **`PCFSoftShadowMap` is a 9-TAP filter run per fragment by every RECEIVER**, so it is paid in
+    proportion to how much screen the table fills — the exact case that was slow. Now
+    `render.shadow.type:'pcf'` ('pcfsoft' | 'pcf' | 'basic'), with `mapSize` lifted out of the
+    hardcoded 2048 while in there.
+  - **THE RUG IS LIT THROUGH THE TABLE BECAUSE NOTHING OCCLUDES, AND `dist` CANNOT FIX IT.** Every
+    pooled light is forced `castShadow=false` (`rlpAdd`, world.js) and so is every baked one
+    (`models.js`); **the directional key is the ONLY shadow caster in the game.** The obvious fix —
+    pull the lamps' `dist` in so they die before the floor — is disproved by the geometry: a side
+    spot at (+-55,26,0) is **60.8 units from the table centre and 69.0 from the floor beneath it**,
+    and the centre spot is 72.3 from the far table corner against 79 to the floor. Those are the
+    same distance, so no falloff setting can dim one without the other. It delivers **1.948 at the
+    table and 1.365 at the floor — 70%**. The real options are a shadow-casting slot in the pool
+    (needs fixed shadow-casting slots, or the count moves and everything recompiles), lamps low
+    enough that table distance is much less than floor distance (which for a 120-long table means
+    MORE, lower lamps, and more lights is what we just paid to reduce), or leaving it. Deliberately
+    NOT decided here.
+  - **NEW `lightAudit()` (debug.js, console-callable, beside `memLog`/`memTex`)** — because in the
+    editor most of these are invisible: a pooled light sits at intensity 0 with no marker and a
+    baked one belongs to the GLB, so "what is lighting this scene" had no answer. One row per
+    light: type, PROVENANCE (key / goal flash / fx pool / room pool / baked-into-<room> / unknown),
+    intensity, lit-or-dead, position, dist/decay/angle, whether it CASTS, and **delivered intensity
+    straight down at the table (y=0) vs the room floor (y=-43)** — that last pair is the rug
+    problem made readable, and the thing to watch while dragging a `dist` slider.
+  - **DELIBERATELY NOT DONE: decimating the figurines**, which is the biggest win left (2,907 tris
+    in the body mesh alone, a raw un-decimated Tripo export) and is blocked on the UVs — decimation
+    breaks the maps. Owner is doing low-poly re-exports over time; `*_lowPoly.glb` files are already
+    in the tree. Also not done: merging the 5 sub-meshes to cut the MAIN pass 110 -> ~22, which
+    needs a texture atlas and would break `teamParts` (it matches kit materials BY NAME, so the
+    `kit_*` mesh has to stay separate — 2 draws per man is the realistic floor without re-authoring
+    the recolour contract).
+  - **FIXED, FOUND ON THE WAY PAST: `tools/moments-harness.js` had been dead since the seeded-rng
+    work** — it threw `ReferenceError: rngPick is not defined` at `momPick`, because it boots
+    core+config+moments and `momPick` has drawn from `RNG.line` since 2026-08-20. `js/rng.js` is
+    CORE, so it belongs in that chain in index.html's own order (after config.js, which it reads
+    at load). **The whole file was passing vacuously as a crash for days**, which is the real
+    lesson: a harness that exits non-zero reads the same as a harness nobody ran. Now **109
+    passed, 0 failed**, and re-applying the mutation this suite exists to catch (the `y<0`
+    short-landing rejection in `momOnTarget`) still breaks it loudly — 8 named assertions before
+    a downstream null deref — so it kept its teeth. Also pinned `rngSeed(20260823)` after boot:
+    rng.js self-seeds from `Date.now()`, and while every banner assertion is a membership test
+    rather than an exact string, a harness whose output moves per run is one whose failure cannot
+    be reproduced.
+  - **FIXED: `tools/rng-harness.js` had a mutation that silently did nothing, and the cause is a
+    NEW VARIANT OF THE CRLF TRAP that the documented one does not cover.** It reported 4/5 with
+    'rngFor does not cache — MUTATION DID NOT APPLY', i.e. its own stale-guard was working and
+    the anchor looked correct. It was correct. **A multi-line TEMPLATE LITERAL has its line
+    terminators normalised to LF by the ECMAScript lexer itself** — CRLF and a bare CR both
+    become LF in the template's VALUE — so a needle written as a template literal can never
+    match a CRLF source file no matter how the harness is saved. js/rng.js is CRLF and the
+    harness is CRLF, so everything LOOKED consistent and there was nothing to see.
+    · **The documented trap is the opposite direction and would not have found this**: that one
+      is 'a pattern written with \n misses the CRLF files', which you fix by matching the file's
+      ending. Here the language strips the CR for you, so writing it correctly is impossible.
+      Any needle spanning lines is affected; a single-line one never is.
+    · **Fixed at the READ** (`rd()` now strips CRLF) rather than by repairing the one anchor, so
+      every mutation present and future is immune. Safe both ways: the source is only
+      string-matched and run in a vm, where newline style is semantically irrelevant.
+    · Swept the other 11 harnesses: **rng-harness was the only one with a multi-line needle**.
+      The avalanche mutation in the same file survived only because it is a REGEX whose `\s*`
+      happens to match the CR — luck, not design.
+    · Now **5/5**, the revived mutation breaking F1. This closes the 'still open' note left on
+      the 2026-08-21 roomlights entry.
+  - **FOUND ON THE WAY PAST, pre-existing and NOT fixed:** `tools/slidepush-harness.js` is 27/1
+    against the working tree's
+    `kick.slidePush:0.5` (uncommitted), failing "a full swipe is a pass, not a shot" at 42.5 u/s
+    against its own under-35 line — 0.35 still passes 28/0. That is the harness reporting a
+    deliberate retune crossing a designed threshold, so it is a decision, not a bug.
 ### 2026-08-22
 - **SLIDING INTO THE BALL HIT IT HARDER THAN KICKING IT, and the player could not trap at all**
   (new `CONFIG.kick.slidePush`, new `CONFIG.shots.hold`, `js/physics.js` both collision passes,
@@ -1046,8 +1534,9 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
       had NO TEETH because the fixture data made sum and max the same number; and the
       "numbers not rounded" mutation stopped applying the moment `reFmtNum` grew a second branch,
       then quietly passed. `mutate()` now REFUSES a mutant identical to its source, so a drifted
-      anchor reports itself instead of scoring a point — the rng harness's stale-mutation line is
-      the same failure, still open.
+      anchor reports itself instead of scoring a point — the rng harness's stale-mutation line
+      reported the same SYMPTOM and is FIXED as of 2026-08-23, though the cause turned out not to
+      be a drifted anchor at all (a template literal cannot match a CRLF file — see that entry).
   - **THE CROWD DOTS ARE GONE** (`buildCrowd` → `buildGround`). 1,400 canvas dots on a cylinder
     were the stand-in backdrop for a room with no GLB; a room is dressed with PROPS now, which is
     the thing that can actually be art-directed. The shared ground plane it shared a builder with

@@ -213,10 +213,6 @@ input[type=text]{width:110px;text-transform:uppercase}
 .fxTab .fxIco{color:var(--pc)}
 .fxTab .fxIco svg{width:17px;height:17px;display:block}
 .fxTab .fxSec{min-width:14px;justify-content:flex-end;color:color-mix(in srgb,var(--pc) 55%,#fff);font-size:13px}
-#ballTag{position:absolute;bottom:16px;left:16px;display:flex;align-items:center;gap:9px;font-family:var(--font-ui);font-size:12px;letter-spacing:.1em;padding:7px 14px;background:rgba(9,12,21,.9);border:1px solid var(--edge);color:#cfe0ff;transform:skewX(-9deg)}
-#ballTag>*{transform:skewX(9deg)}
-#ballTag i{width:9px;height:14px;background:#fff;display:block;flex:0 0 auto}   /* setBallTag overrides inline with the type's trail colour */
-#ballTag b{font-weight:400;color:#ff8c3a;font-size:13px}   /* cannonball fuse countdown */
 #hint{position:absolute;bottom:16px;right:16px;font-size:13.5px;color:#5d6f92;letter-spacing:.05em;text-align:right;line-height:1.5}
 /* ===== notification tiers ======================================================================
    tier 2 · notice — a live event the player already watched happen. One line, top of screen, out

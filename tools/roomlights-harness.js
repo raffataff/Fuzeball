@@ -147,7 +147,7 @@ const MIN={name:'Void', backdrop:false, bg:0x05060f, fog:[210,440], lights:[], p
 }
 
 /* === the authored-light pool (js/world.js) ================================ */
-const POOL_SRC=[sliceConst(WLD,'roomLightPool'),sliceFrom(WLD,'rlpNeed'),sliceFrom(WLD,'rlpType'),
+const POOL_SRC=[sliceConst(WLD,'roomLightPool'),sliceConst(WLD,'roomShadowPool'),sliceFrom(WLD,'rlpWantsShadow'),sliceFrom(WLD,'rlpShadowNeed'),sliceFrom(WLD,'rlpNeed'),sliceFrom(WLD,'rlpType'),
  sliceFrom(WLD,'buildRoomLightPool'),sliceFrom(WLD,'rlpAdd'),sliceFrom(WLD,'rlpGet'),
  sliceFrom(WLD,'rlpFreeAll'),sliceFrom(WLD,'applyAuthoredLights')].join('\n');
 function pool(rooms,editorOn,padOverride){
@@ -156,16 +156,17 @@ function pool(rooms,editorOn,padOverride){
  const light=t=>({_t:t,visible:false,intensity:-1,castShadow:true,decay:0,distance:0,angle:0,penumbra:0,
   color:{_v:null,set(v){this._v=v;}},
   position:{x:0,y:0,z:0,set(a,b,c){this.x=a;this.y=b;this.z=c;}},
+  shadow:{mapSize:{setScalar(n){this._n=n;}},bias:0,normalBias:0,autoUpdate:true,needsUpdate:true,camera:{}},
   target:(t==='point')?null:mkTarget()});
  const THREE={PointLight:function(){return light('point');},
   SpotLight:function(){return light('spot');},
   DirectionalLight:function(){return light('dir');}};
  const CONFIG={rooms:rooms,debug:{roomEditor:editorOn},
-  render:{roomLightPool:padOverride===undefined?{pad:{point:4,spot:3,dir:1},max:12}:padOverride}};
+  render:{roomLightPool:padOverride===undefined?{pad:{point:4,spot:3,dir:1},max:12}:padOverride,shadow:{roomMapSize:1024}}};
  const scene={add(o){added.push(o);}};
  const warn=[];
  const f=new Function('CONFIG','THREE','scene','console',
-  POOL_SRC+'\nreturn {roomLightPool,rlpNeed,buildRoomLightPool,applyAuthoredLights,rlpType};');
+  POOL_SRC+'\nreturn {roomLightPool,roomShadowPool,rlpNeed,rlpShadowNeed,buildRoomLightPool,applyAuthoredLights,rlpType,rlpGet};');
  const api=f(CONFIG,new Proxy(THREE,{get:(t,k)=>t[k]||function(){return light('point');}}),scene,
   {log(){},warn(m){warn.push(m);}});
  return Object.assign(api,{added:added,warn:warn,CONFIG:CONFIG});
@@ -207,6 +208,70 @@ const R_LIGHTS={
  ok(n.point===0&&n.spot===0&&n.dir===0,'POOL: no authored lights anywhere = no pool',JSON.stringify(n));
  p.buildRoomLightPool();
  ok(p.added.length===0,'POOL: ...and nothing is added to the scene');
+}
+{
+ /* --- the shadow sub-pool ------------------------------------------------
+    castShadow is a SHADER PARAMETER, so a room light cannot simply be told to cast: it has to
+    borrow from a pool of lights that were created casting. These pin the three properties that
+    makes safe — the budget is a cap and not a suggestion, a plain light never eats a shadow
+    slot, and an unborrowed slot renders no pass. */
+ const SH_ROOMS={a:{lights:[
+   {type:'spot',pos:[0,30,0],shadow:true},
+   {type:'spot',pos:[10,30,0],shadow:true},
+   {type:'spot',pos:[20,30,0],shadow:true},
+   {type:'spot',pos:[30,30,0]},
+   {type:'point',pos:[0,20,0]}]}};
+ const shPool=(budget)=>{
+  const p=pool(SH_ROOMS,false);
+  p.CONFIG.render.roomLightPool.shadow=budget;
+  p.buildRoomLightPool();return p;};
+
+ { const p=shPool({point:0,spot:2,dir:0});
+   ok(p.roomShadowPool.spot.length===2,'SHADOW: budget allocates exactly that many casting slots',p.roomShadowPool.spot.length);
+   ok(p.roomShadowPool.spot.every(l=>l.castShadow===true),'SHADOW: ...and they are created CASTING');
+   ok(p.roomLightPool.spot.every(l=>l.castShadow===false),'SHADOW: ...while plain slots never cast'); }
+
+ { /* The plain pool must cover what the SHADOW budget cannot absorb — total minus the slots
+      that will actually be granted. Counting only the non-casting lights leaves the room one
+      slot short the moment more lights ask to cast than the budget allows, and a lamp vanishes.
+      Here: 4 spots, 3 asking, budget 2 -> 2 plain slots, so all four are served. */
+   const p=shPool({point:0,spot:2,dir:0});
+   ok(p.rlpNeed().spot===2,'SHADOW: the plain pool covers what the shadow budget cannot',p.rlpNeed().spot); }
+
+ { /* An unborrowed casting slot must cost NOTHING. It cannot stop casting (that recompiles),
+      so it is parked on three.js's per-light shadow gate instead. Measured cost of getting this
+      wrong: two idle slots were ~106 draw calls a frame. */
+   const p=shPool({point:0,spot:2,dir:0});
+   ok(p.roomShadowPool.spot.every(l=>l.shadow.autoUpdate===false&&l.shadow.needsUpdate===false),
+      'SHADOW: an unborrowed casting slot is gated OFF so it renders no pass'); }
+
+ { const p=shPool({point:0,spot:2,dir:0});
+   p.applyAuthoredLights(SH_ROOMS.a);
+   const lit=p.roomShadowPool.spot.filter(l=>!l._rlFree);
+   ok(lit.length===2,'SHADOW: three lights asking, budget 2 -> exactly 2 borrow a casting slot',lit.length);
+   ok(lit.every(l=>l.shadow.autoUpdate===true),'SHADOW: ...and a borrowed slot is gated back ON');
+   ok(p.warn.some(w=>/past the budget/.test(w)),'SHADOW: ...the third is reported, not silent'); }
+
+ { /* Over budget must DOWNGRADE, never drop the light: a lamp that vanishes is a worse bug
+      than a lamp that stops casting. */
+   const p=shPool({point:0,spot:2,dir:0});
+   p.applyAuthoredLights(SH_ROOMS.a);
+   const used=p.roomLightPool.spot.filter(l=>!l._rlFree).length+p.roomShadowPool.spot.filter(l=>!l._rlFree).length;
+   ok(used===4,'SHADOW: every spot in the room is still lit, casting or not',used); }
+
+ { const p=shPool({point:0,spot:0,dir:0});
+   ok(p.roomShadowPool.spot.length===0,'SHADOW: a zero budget allocates no casting slots at all');
+   p.applyAuthoredLights(SH_ROOMS.a);
+   ok(p.roomShadowPool.spot.length===0&&p.warn.some(w=>/past the budget/.test(w)),
+      'SHADOW: ...and every request downgrades cleanly'); }
+
+ { /* Releasing must re-park the gate, or a slot freed by one room keeps rendering a pass for
+      the next room that never asked for it. */
+   const p=shPool({point:0,spot:2,dir:0});
+   p.applyAuthoredLights(SH_ROOMS.a);
+   p.applyAuthoredLights({lights:[]});
+   ok(p.roomShadowPool.spot.every(l=>l._rlFree&&l.shadow.autoUpdate===false),
+      'SHADOW: releasing a slot re-parks its shadow gate'); }
 }
 {
  const p=pool(R_LIGHTS,false,{pad:{point:4,spot:3,dir:1},max:3});
@@ -413,8 +478,8 @@ mutate('applyAuthoredLights does not release the pool first',
 // scene.add-ing a fresh light per spec is the exact bug the pool exists to prevent: the
 // light count changes and every material in the game recompiles.
 mutate('lights added to the scene per room instead of borrowed',
- POOL_SRC.replace('const t=rlpType(L),l=rlpGet(t);',
-                  'const t=rlpType(L),l=(scene.add(new THREE.PointLight()),roomLightPool[t][0]);'),
+ POOL_SRC.replace('const t=rlpType(L),want=rlpWantsShadow(L),l=rlpGet(t,want);',
+                  'const t=rlpType(L),want=false,l=(scene.add(new THREE.PointLight()),roomLightPool[t][0]);'),
  src=>{const p=poolWith(src,{r:{lights:[{type:'point'}]}},false);
   p.buildRoomLightPool();
   const n0=p.added.length;

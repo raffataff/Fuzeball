@@ -17,7 +17,10 @@ const log=[];
 const ctx={console,Math,Date,JSON,Object,Array,isFinite,isNaN,
  S:null,notice:null,teamCol:null,Au:null,HYPE:['H1','H2']};
 ctx.globalThis=ctx;vm.createContext(ctx);
-for(const f of ['js/core.js','js/config.js','js/moments.js'])
+// js/rng.js is CORE and must be in here: momPick draws from RNG.line (the seeded 'line' stream),
+// so without it momGoal throws ReferenceError on the first banner. Order matches index.html —
+// rng.js reads CONFIG.rng at load, so it goes AFTER config.js and BEFORE its consumers.
+for(const f of ['js/core.js','js/config.js','js/rng.js','js/moments.js'])
  new vm.Script(fs.readFileSync(f,'utf8'),{filename:f}).runInContext(ctx);
 
 /* Stubs. notice/Au record into `log` so a fired moment is observable. */
@@ -31,6 +34,11 @@ ctx.Au={react:k=>fired.push({ch:'react',m:k})};
    DECLARATIONS do land on the global object, which is why ctx.momOnTarget works without this.
    Hand them out explicitly. (Same trap CLAUDE.md flags under Verifying changes.) */
 new vm.Script('globalThis.__c={MOM,F,PHY,BALL_R,GRAV,ARM};').runInContext(ctx);
+/* rng.js self-seeds from Date.now() at load, which would make the banner pick differ every run.
+   The assertions below are membership tests rather than exact strings so that is not a
+   correctness problem — but a harness whose output moves is a harness whose failure cannot be
+   reproduced, so pin it. */
+new vm.Script('rngSeed(20260823);').runInContext(ctx);
 const {MOM,F,BALL_R}=ctx.__c;
 if(!MOM||!F||!BALL_R)throw new Error('alias export failed');
 function resetS(o){

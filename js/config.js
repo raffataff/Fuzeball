@@ -268,12 +268,61 @@ const CONFIG = {
   }
  },
 
- /* ---- table asset residency (memory) ---------------------------------- */
+ /* ---- table asset residency (memory) ------------------------------------
+    Three separate budgets, because the three things cost wildly different amounts and the obvious
+    "just cache more" is only right for one of them.
+
+    cacheRooms IS THE EXPENSIVE ONE, and the number is not the GLB's file size. Measured with
+    memTex(): leaving the arcade drops the scene's texture walk 1158MB -> 821MB, so a second
+    RESIDENT room is up to ~337MB of texture, not ~20MB of download. On a machine already carrying
+    a gigabyte of figurine and pitch maps that is enough to push the renderer process into the
+    pagefile, which is exactly the "disk space dropping while switching rooms" symptom. Raise it to
+    2 only with memTex() open. Re-parsing a room is the cheap half of a switch anyway — the browser
+    HTTP cache usually serves the file, and the bake, which was the expensive half, is now kept
+    separately (cacheEnvs below).
+
+    cacheEnvs IS THE CHEAP ONE and is where the A/B-toggle win actually lives. A bake survives its
+    room being evicted, so a revisit installs the real reflections instantly instead of paying
+    another PMREM pass (six scene renders plus the blur convolution chain) and flashing the
+    synthetic stand-in on the way there. MEASURED, r128, this renderer: a bake is a 768x768
+    UnsignedByte render target = 2.25MB. Put that beside cacheRooms' ~337MB and the asymmetry is
+    the whole point of splitting them.
+
+    COUNT IT AS TWO PER ROOM, NOT ONE. A room that reflects can hold BOTH a `glb:` bake and the
+    `syn:` stand-in it showed while the GLB was downloading, and the synthetic one has to stay
+    because turning Reflections off in Options falls back to it. So the cap is rooms x 2 — 8 for
+    the four rooms in the game, about 18MB to hold every reflection map that exists. A cap sized
+    per-ROOM instead thrashes: measured at 4, six swaps across three rooms re-baked all three,
+    which is the behaviour this whole change exists to remove. ADD A ROOM AND RAISE THIS — the
+    roomenv harness asserts the relationship and will tell you.
+ ----------------------------------------------------------------------- */
  tableAssets:{
   preloadAll:false,   // true = fetch every table skin + every room at boot
   cacheSkins:2,       // max skin GLBs resident, LRU (active always protected)
-  cacheRooms:1        // max room GLBs resident, LRU (active always protected)
+  cacheRooms:1,       // max room GLBs resident, LRU (active always protected) — see the note above
+  cacheEnvs:8,        // max baked reflection maps held, LRU. rooms x 2 (glb + syn) — see above
+  cachePitches:2      // max pitch GLBs resident, LRU (active always protected). 2 keeps an A/B warm
  },
+
+ /* ---- staged venue swap (js/flow.js venueLoad) --------------------------
+    Changing the room, table, skin, pitch or reflections used to run in ONE synchronous burst
+    straight off a <select> change — GLB fetch + parse, PMREM bake, whole-scene recompile, prop
+    rebuild, then a first frame carrying the texture upload. Nothing yielded, so the browser
+    never got a paint in between: that is why it read as the tab hanging rather than as
+    something loading, and why simply adding a spinner did nothing (the spinner could not be
+    drawn either). venueLoad puts a veil up, WAITS FOR IT TO PAINT, does the work, warms it with
+    renderer.compile(), and only then reveals. The stall does not go away — it moves somewhere
+    it is allowed to happen.
+      on     false = call straight through, synchronously (the old behaviour).
+      fadeT  seconds to wait for the veil's CSS fade before starting work. Must be >= the
+             #matchLoad opacity transition in styles.css, or the stall lands mid-fade and the
+             veil freezes half-drawn, which looks worse than no veil at all.
+      minT   minimum total time the veil stays up, so a cached swap doesn't strobe.
+      maxT   hard ceiling on the wait. Every loader in the tree falls back on a miss, but a
+             hung fetch fires neither load nor error — and a veil that never lifts is a worse
+             bug than the freeze this replaces.
+ ----------------------------------------------------------------------- */
+ venue:{ on:true, fadeT:0.24, minT:0.45, maxT:9 },
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
@@ -319,21 +368,7 @@ kick:{
    rest:0.01, restPower:0.8,      // passive touch / struck shot
    powFrom:0.03, powTo:0.2,       // swing-time window in which restPower is used instead of rest
    grip:0.08,                     // fraction of the foot's velocity lerped into the ball on contact
-   /* SLIDE PUSH — the fraction of a boot's SIDEWAYS (z) motion that drives the contact impulse.
-      THE ROTATION IS UNTOUCHED. The contact point's velocity splits into a rotational part
-      (cvx,cvy — the swing) and a slide part (cvz), and only the slide is scaled, so this cannot
-      soften a kick: a button swing, a Total Control stick flick and an AI strike all still
-      transfer in full. What it scales is the ONE contact the player makes by moving the rod into
-      the ball rather than striking it.
-      WHY IT HAD TO BE A NEW KNOB. The impulse is -(1+rest)*vn/mass and `rest` bottoms out at 0, so
-      even a perfectly dead contact hands the ball the boot's WHOLE closing speed — there was no
-      number anywhere in CONFIG that could turn a slide down. At KICK.userSpeed 80 a classic ball
-      left a sideways slide at 66 u/s against the ~44 an ordinary struck shot leaves at, i.e.
-      sliding into the ball hit it harder than kicking it, and a gentle nudge was impossible.
-      0.35 puts a full-tilt swipe at 27 u/s (a firm sideways pass — it rolls ~77 units, so it
-      reaches the next rod) and a 20% stick push at 6.5 (a trickle). Raise it toward 1 for a
-      livelier table; 1 IS the old behaviour, exactly. */
-   slidePush:0.35,
+   slidePush:0.85,
    // Bonus power for a clean strike in the centre of the foot, scaled by the acc stat.
    sweetSpot:{
       on:true,
@@ -351,32 +386,13 @@ kick:{
    splitVel:82, splitMax:3, splitAng:0.45, splitSep:3.2 // split-ball: speed, max balls, spread, z sep
  },
 
- /* ---- player shot VERBS (js/shots.js) ---------------------------------
-    The kick used to be one thing. This block is the modifier AXIS that colours it, and the
-    CHARGE that powers it up. `on:false` restores the pre-shots pad exactly (RT kicks, LT raises,
-    no charge, no pass) — it is the off switch, not a tuning value.
-
-    THE AXIS IS ONE NUMBER: mod = RT depth - LT depth, in -1 (finesse) .. +1 (power). Holding both
-    cancels toward 0, which is what a two-trigger chord SHOULD mean given each trigger's own
-    meaning, and it needs no special case anywhere. In Total Control the same two triggers already
-    modulate the SLIDE the same way round, so each trigger keeps exactly one meaning across both. */
+ /* ---- player shot VERBS (js/shots.js) ------ */
  shots:{
   on:true,
 
   mod:{
    dead:0.08,        // trigger travel under this reads as untouched (analog triggers rest noisy)
-   /* The two ANCHOR curves a button swing blends toward. 0 on the axis is CONFIG.kick UNTOUCHED,
-      so an unmodified kick is byte-identical to the one that shipped. Only the keys listed here
-      are blended; anything else comes from CONFIG.kick.
-      THEY DELIBERATELY DO NOT TOUCH RESTITUTION OR THE POWER WINDOW (rest / restPower / powFrom /
-      powTo), and that is the tuning decision this whole block turns on. THE POWER IS THE ARC.
-      updateRods ramps kickA0 -> strikeA over a FIXED `strike`, so shortening the window and
-      deepening the wind-up is a genuinely faster foot: measured against the shipped 20.0 rad/s,
-      the hard anchor alone is 28.9 (1.44x) and a full charge under it is 54.4 rad/s — 343 u/s at
-      the boot, 2.72x, and still only 0.41u of travel per substep against a 1.9 ball radius.
-      Opening the power window on top of that would ALSO swap rest 0.01 for restPower, another
-      ~1.9x, and the impulse multipliers below would be a third helping of the same thing. One
-      channel, tuned once; the two multipliers here are trims on it. */
+
    soft:{strike:0.115,strikeA:0.95, hold:0.26, drop:0.40},   //  8.3 rad/s — a controlled push
    hard:{strike:0.045,strikeA:1.30, hold:0.24, drop:0.31},   // 28.9 rad/s — a snapped strike
    softPow:0.80, hardPow:1.06,     // impulse TRIM at each end of the axis (the arc does the work)
@@ -389,39 +405,14 @@ kick:{
    directLerp:120                  // stand-in tracking rate when KICK.padAngleLerp is 0 (fully direct)
   },
 
-  /* A deep finesse kick is not a soft kick — it is a PASS, aimed at a teammate by the same
-     passEval the AI has used since 2026-07-28. modAt is how far down the axis that starts.
-     A human pass swings on CONFIG.ai.passShot — the AI's own tuned pass curve, not a blend of the
-     anchors above — so the two cannot drift into meaning different things, and the receiving window
-     the ONE-TWO trial was designed around still holds when a player is the one passing. */
   pass:{
    on:true,
    modAt:-0.55,      // axis at or below this turns the kick into an aimed pass
-   /* HOW FAR OFF-LINE A RECEIVER MAY BE, as a multiple of the aim assist's own bend
-      (CONFIG.ai.dribble.pass.assist, 0.16 rad ≈ 9°). This is the number that makes a human pass
-      mean something: the assist can only turn the ball so far, so a receiver further round than
-      that gets a pass that leaves with a label on it and sails past him — measured live at 43°
-      needed against 9° delivered. 1.4 ≈ 13°, i.e. roughly 6 units of lateral error over the 30 a
-      MID→ATT ball covers, so the player has to line the rod up first. That IS passing a foosball.
-      Raise it and passes start missing; drop it and they stop being offered. */
+
    bendMult:1.4,
    bendCost:4        // how hard a straighter lane is preferred over a clearer one
   },
 
-  /* THE HOLD (L2) — the player's half of holdCfg, which until now was AI-ONLY. ai.js sets
-     r.act='trap'/'dribble' and rods.js's holdCfg turns those into a dead, sticky boot; but every
-     action block in ai.js sits below `if(isUserRod(r))continue;`, so a human boot could never be
-     anything but a passive touch (kick.rest 0.01 / kick.grip 0.08) and there was no way to trap
-     or carry a ball by hand at all.
-     IT IS PROGRESSIVE, NOT A SWITCH. The trigger is analog, so squeeze depth blends each value
-     from its normal setting to the one here — a feathered L2 is a light touch, a buried one is a
-     weld. Resolved once per pad poll into the rod's own `hold` block (js/shots.js
-     shotHoldUpdate), never allocated in collideRod, which reads it per man per substep.
-     IT SHARES LT WITH THE MODIFIER AXIS ON PURPOSE. LT already means finesse — the soft curve,
-     the pass, and the fine slide in Total Control. "Sticky boot" is that same intent expressed
-     physically, so the trigger keeps ONE meaning, and L2+kick is still the pass: holdCfg returns
-     null the moment a swing is in flight, so the release is at full strength and the grip resumes
-     after it. A live wind-up also cancels it — you are charging to strike, not to dribble. */
   hold:{
    on:true,
    from:0.15,        // trigger depth (past mod.dead, rescaled 0..1) at which the grip starts
@@ -435,19 +426,11 @@ kick:{
 
   charge:{
    on:true,
-   /* CLASSIC ONLY — which input holds the wind-up. 'rt' (default) leaves the kick button firing on
-      PRESS, so a tap is exactly as instant as it has always been; RT held winds up and releases.
-      'kick' moves the charge onto the kick button, and a tap then fires on RELEASE — which costs
-      the tap's own duration (~60ms) in front of a contact that currently lands at ~17ms. That is a
-      real regression in feel, which is why it is a preference and not the default. 'both' arms
-      both inputs and pays the same cost. Total Control ignores this entirely: there the right
-      stick's pull-back IS the wind-up, and the two triggers held together are what arm it. */
+ 
    rate:1.6,          // charge gained per second at a full pull-back / a full hold
    decay:2.2,         // charge bled per second once the wind-up is abandoned
    sweetFrom:0.45, sweetTo:0.78,   // the band that pays full power AND full control
-   /* Trims, again — the charge's real power is the deeper wind-up it authors (pullA), which reaches
-      2.05x the shipped swing rate on its own. What these do is make the BAND matter: full charge
-      inside it, and a fifth of it thrown away by holding on. */
+   
    powMin:1.00, powMax:1.10,       // impulse trim from 0 charge to the sweet band
    overPow:0.80,                   // …and back down to this by full charge, held too long
    ctlMin:0.55,                    // control at 0 charge (a snatched shot)
@@ -456,29 +439,11 @@ kick:{
    minFire:0.10,                   // release under this charge fires the ORDINARY swing
    stickBack:0.18,                 // Total Control: right-stick pull-back depth that counts as a wind-up
    pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
-   /* THE EASE MUST SETTLE BEFORE THE BAND OPENS, and that is a RELATIONSHIP, not a taste. The rod
-      eases toward pullA rather than snapping to it (the snap would itself be a swing), so the arc
-      actually delivered depends on how long you have held as well as on the charge — and at the
-      first value tried (9) it was still settling well past the band, which made a full overcook the
-      strongest shot on the table even after the charge trim had been taken off it. Settling is
-      e^(-pullLerp x t), so 95% wants pullLerp >= 3 / (sweetFrom/rate) = 10.7 here; 24 leaves margin
-      and the harness checks the relationship rather than the number. */
+
    pullLerp:24,                    // ease rate toward it
    tapMax:0.11,                    // 'kick'/'both': a press shorter than this is a plain tap
    trem:{amp:0.055, hz:34},        // overcharge tremble — DISPLAY ONLY (see the banner in shots.js)
-   /* THE SOUND OF THE WIND-UP. A build-up is a STATE, not a train of events: the first cut ticked a
-      square-wave beep whose rate rose with the charge, and a train of discrete square blips is
-      exactly what makes a charge sound like a chiptune. This is a HELD voice instead, fed per frame
-      and swept continuously — three layers, each doing one job:
-        · a sine gliding f0 -> f1, the tension;
-        · a noise bed whose lowpass opens nf0 -> nf1, the air gathering;
-        · the FIFTH above the sine, faded in only across the sweet band — so "you are in it" is a
-          consonance arriving rather than a beep, and the overcook bends that same partial flat
-          (overDetune) and wobbles the level (wobHz/wobDepth), which is the tremble made audible.
-      The RELEASE is three short layers under the contact's own kick, all scaled by the charge, so a
-      flinch is nearly silent and a sweet one lands as a soft whump: a body sine dropping in pitch,
-      a bandpass noise sweeping DOWN (a down-sweep reads as release where the build-up's up-sweep
-      read as tension), and a bright snap that fires ONLY from inside the band. */
+   
    tone:{
     on:true,
     vol:0.10, curve:0.75, attack:0.020, release:0.090,   // voice level, its shaping and its smoothing
@@ -488,12 +453,7 @@ kick:{
     overDetune:0.055, wobHz:6.5, wobDepth:0.30,  // overcooked: a flat fifth and an audible unsteadiness
     markVol:0.055, markA:0.030, markD:0.22, markFHi:880, markFLo:330,  // band edges — a soft bloom, never a blip
     fireMin:0.08,                      // release quieter than this makes no discharge sound at all
-    /* THE DECAYS ARE LONGER THAN THE KICK'S ON PURPOSE, and that is the difference between a
-       discharge and a second click. Measured offline: Au.kick peaks at 0.48 and is gone in 40ms,
-       while this peaks at ~0.12 — a quarter of it — and rings on past it. Subtle is about LEVEL;
-       satisfying is about TAIL, so the tail is what got lengthened rather than the volume. airA
-       softens the air's attack so the discharge blooms instead of clicking; the body keeps a fast
-       attack, because that is the punch. */
+    
     bodyVol:0.17, bodyF0:150, bodyF1:52, bodyD:0.26,     // the weight
     airVol:0.13,  airF0:2100, airF1:420, airD:0.34, airA:0.014,   // the discharge
     snapVol:0.13, snapF:3400, snapD:0.045, snapQ:3.0     // the clean-strike reward, sweet band only
@@ -753,6 +713,17 @@ ai:{
   /* ---- 3D player models ----------------------------------------------- */
  playerModel:{
   default:'cyborg',
+  /* SHADOW CASTERS PER FIGURINE. A figurine GLB arrives as one sub-mesh PER MATERIAL — the
+     shipped ones are 5 (kit / visor / skin / hair / trim) — and every one of them used to be
+     castShadow=true, so 22 men submitted 110 draws into the main pass AND 110 more into the
+     shadow pass. But the shadow only needs the SILHOUETTE, and measured on the cyborg the kit
+     mesh spans 0.94 of the figure's bounding diagonal while the next-largest spans 0.38 — i.e.
+     every other part is enclosed by it and contributes nothing a soft shadow can resolve.
+     A part casts only if its bounding diagonal is at least this fraction of the whole
+     figure's; the LARGEST part always casts, so a model split into many even pieces can never
+     end up with no shadow at all. Decided ONCE on the template at load, not per clone.
+     0 = every part casts (the old behaviour). */
+  shadowMinFrac:0.5,
   // Figurine registry — add an entry + its .glb and it appears in the Customize panel.
   //   teamParts  material names that get team-coloured
   //   hairParts  material names tinted by the hair swatch
@@ -796,7 +767,7 @@ ai:{
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.8,
       mug:'assets/renders/render_rocko_mugshot.png',   
-      teamParts:['kit_rocko', 'kit_rocko_badge' ],hairParts:[],
+      teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
       explosionSrc:'assets/animations/rocko_explosion.glb'
    },
 
@@ -925,14 +896,14 @@ ai:{
    // Rod layout, 1-2-5-3 per side. x = position along the long axis; team 0 = red (attacks +x).
    // Optional slideCap overrides the computed max slide range for that row.
    defs:[
-    {x:-52.5,team:0,men:1,role:'GK',slideCap:11},
+    {x:-52.5,team:0,men:1,role:'GK',slideCap:10},
     {x:-37.5,team:0,men:2,role:'DEF'},
     {x:-22.5,team:1,men:3,role:'ATT'},
     {x:-7.5, team:0,men:5,role:'MID'},
     {x: 7.5, team:1,men:5,role:'MID'},
     {x: 22.5,team:0,men:3,role:'ATT'},
     {x: 37.5,team:1,men:2,role:'DEF'},
-    {x: 52.5,team:1,men:1,role:'GK',slideCap:11}]
+    {x: 52.5,team:1,men:1,role:'GK',slideCap:10}]
  },
 
  /* ---- difficulty ----------------------------------------------------- */
@@ -943,8 +914,8 @@ ai:{
   //   err         wandering aim error · range  reach · pred  lead on the ball
   //   cd          kick cooldown multiplier · aim  goal accuracy 0..1
   //   iq          chance of making the smart choice 0..1
-  rookie:{speed:30,react:.23,err:0.9,range:5.0,pred:.45,cd:1.05,aim:.5,iq:.40,reactDelay:.1},
-  pro:   {speed:35,react:.18,err:0.75,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
+  rookie:{speed:30,react:.23,err:0.9,range:5.0,pred:.45,cd:0.9,aim:.5,iq:.40,reactDelay:.1},
+  pro:   {speed:39,react:.18,err:0.75,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
   legend:{speed:43,react:.13,err:.55, range:6.6,pred:0.95,cd:.50,aim:.9,iq:.8,reactDelay:.04}
  },
 
@@ -1333,13 +1304,14 @@ ai:{
         near/far   cube camera clip range (must span the table + room)
         intensity  reflection strength on the ball. Applied ONLY while the cube map is bound —
                    see setBallEnv, which restores each material's authored value on the way out. */
-  ballReflect:{on:true,res:32,every:2,near:1,far:700,intensity:1},
+  ballReflect:{on:true,res:32,every:2,near:1,far:300,intensity:1},
 
   /* ---- debug / toggles -------------------------------------------------- */
   debug:{
    useBallModel:true,  // true = use the ball GLB, false = a generated sphere
    fractureFx:true,     // false = skip the explosion GLBs and vanish instantly
-   roomEditor:false     // true = F2 opens the room editor (js/roomedit.js)
+   roomEditor:false,
+        // true = F2 opens the room editor (js/roomedit.js)
   },
 
  /* ---- power-up types ------------------------------------------------- */
@@ -1396,19 +1368,69 @@ ai:{
                  because they are not equally cheap or equally wanted: every resident light
                  is evaluated by every material, and a room wants several lamps but almost
                  never several suns. A scalar is accepted and applied to all three.
+      shadow     FIXED shadow-CASTING slots, per type — a separate sub-pool whose lights are
+                 created with castShadow=true and keep it for the session, because castShadow
+                 is a SHADER PARAMETER: flipping it on a live light recompiles every material,
+                 exactly like adding one. A room light with `shadow:true` borrows from here; one
+                 without borrows from the plain pool. Over budget = a console line and the extra
+                 light still lights, it just does not cast — a silent downgrade beats a stall.
+                 THIS IS A DELIBERATE COST CAP, NOT A DERIVED SIZE. Each shadow caster is a whole
+                 extra render pass over every caster in the scene, every frame the map is dirty.
+                 A SPOT or DIR costs one pass; a POINT costs SIX (it is a cube map), which is why
+                 point defaults to 0 — turn it on only if you know you want to pay 6x.
       max        Hard ceiling per type. Every resident light costs every material a
                  little, so a typo in a room's `lights` should cost a console line.
 
-    shadow       Directional key-light shadow map. `bias`/`normalBias` fight acne;
-                 the extents are sized to the table rather than the old 160x140,
-                 which is mostly empty space spending shadow resolution on nothing.
+    shadow       Directional key-light shadow map — and it is the ONLY shadow caster in
+                 the game (every room/authored/pooled light is forced castShadow=false,
+                 which is why a lamp over the table lights the floor straight through it).
+                 `bias`/`normalBias` fight acne; the extents are sized to the table rather
+                 than the old 160x140, which spends shadow resolution on empty space.
+      type       'pcfsoft' | 'pcf' | 'basic'. PCFSoft is a 9-TAP filter run per fragment
+                 by every shadow RECEIVER, so it is paid in proportion to how much of the
+                 screen the table fills — measurably the most expensive setting here, for
+                 a difference that is hard to see over a 2048 map on a table this size.
+      mapSize    Shadow map resolution (square).
+      roomMapSize Shadow map resolution for a room's own shadow-casting lights (the `shadow`
+                 sub-pool above). Smaller than the key light's because a room lamp throws a
+                 soft local pool rather than the whole table's key shadow.
+      autoUpdate false = the map is re-rendered only when something that CASTS has actually
+                 moved (shadowDirty(), driven from the sim step + room/table/rod rebuilds).
+                 The pass re-draws every caster — including all 22 figurines — so leaving it
+                 on re-renders an identical map every frame in the menus, the room editor and
+                 photo mode, where by construction nothing moves. true = the three.js default.
+
+    idle       THE MENU BACKDROP'S FRAME RATE (js/world.js renderIdleSkip). The same argument
+               as `autoUpdate` above, one level up: in the menus NOTHING on the table moves,
+               and `.screen` (css/styles.css) covers it at 94% opacity behind a 6px backdrop
+               blur — so a full 60Hz redraw of the table, the room and 22 figurines buys a
+               smudge nobody can resolve, and spends the frame budget a room swap then needs.
+                 on       false restores the old always-render behaviour exactly.
+                 hz       floor frame rate while idle. NOT zero by default on purpose: a pure
+                          dirty-flag is one missed hook away from a stale frame that reads as
+                          a crash, and the hooks live in six files. At 4Hz anything we forgot
+                          to mark self-heals in 250ms and the menu still costs ~7% of before.
+                          0 = hold the last frame indefinitely (fastest, least forgiving).
+                 settle   seconds of FULL frame rate after any renderDirty(), so nothing ever
+                          hitches while something you can see is actually moving.
+                 phases   S.phase values the throttle may apply to. Add 'win' or 'pause' if you
+                          want those overlays cheap too; a live phase must never be listed.
+                 camEps / camRotEps
+                          how far the camera must move (world units) or turn (raw quaternion
+                          components) to count as a change. NOT zero, and that matters:
+                          cameraUpdate LERPS toward a fixed target and a lerp asymptotes, so an
+                          exact compare reads "still moving" for hundreds of frames after the
+                          motion stopped being visible — which is most of a menu's lifetime.
+                          Both defaults are a fraction of a pixel at the match camera.
     -------------------------------------------------------------------------- */
  render:{
    toneMapping:'reinhard',        // 'none' | 'aces' | 'reinhard' | 'cineon' | 'linear'
    exposure:1.08,
    roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
-   roomLightPool:{ pad:{point:4,spot:3,dir:1}, max:12 },
-   shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260 }
+   roomLightPool:{ pad:{point:1,spot:1,dir:0}, max:12, shadow:{point:0,spot:2,dir:0} },
+   shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260,
+            type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024 },
+   idle:{ on:true, hz:4, settle:0.4, phases:['menu'], camEps:0.01, camRotEps:1e-4 }
  },
 
 
@@ -1463,7 +1485,17 @@ ai:{
 
       name         label in the room dropdown and the editor's picker
       bg / fog     backdrop colour + fog depth [near,far]
-      hemi / dir   scene lighting: ambient sky/ground + the key light
+      hemi / dir   scene lighting: ambient sky/ground + the key light. Both take `on:false`,
+                   which is a REAL off — the light is made invisible so it leaves the scene's
+                   light COUNT and stops being evaluated per-fragment. int:0 does NOT do this:
+                   a zero-intensity light still runs its full shader path and multiplies by 0
+                   at the end. `dir` also takes `shadow:false` to keep the sun lighting the
+                   room while something else casts. INDOOR ROOMS USUALLY WANT dir.on:false —
+                   there is no sun in a pub.
+      ibl          false = no scene.environment for this room at all (no image-based light,
+                   no reflections). Metals go dark, so this is a look decision as well as a
+                   saving. Default true. `reflect`/`env` choose WHICH bake; this switches the
+                   whole thing off.
       glb          optional backdrop model, relative to folder (null = shared ground plane)
       backdrop     false = show nothing behind the table, just bg + fog
       reflect      true = bake the reflection env-map from the glb; false = use `env` below
@@ -1482,6 +1514,12 @@ ai:{
       {type:'point', pos:[x,y,z], color:0xffb454, int:2.4, dist:260, decay:2}
       {type:'spot',  pos:[x,y,z], look:[x,y,z], angle:0.55, penumbra:0.4, …as point}
       {type:'dir',   pos:[x,y,z], look:[x,y,z], color, int}
+    Any of them may add `shadow:true` to CAST. That borrows from the fixed shadow sub-pool
+    (CONFIG.render.roomLightPool.shadow) rather than flipping castShadow on a live light, which
+    would recompile every material. Each caster is one more render pass per frame (SIX for a
+    point light — it is a cube map), so the budget is small on purpose and over-budget lights
+    quietly fall back to not casting. THIS IS WHAT FIXES A LAMP LIGHTING THE FLOOR THROUGH THE
+    TABLE: nothing occludes until something casts.
     `look` defaults to the table centre, which is what a room's key light is nearly always
     pointed at. `int` matches the naming hemi/dir already use.
 
@@ -1518,44 +1556,56 @@ ai:{
    },
    saucer:{
       name:'Flying Saucer', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:true,
-      light:{gain:0.8},
+      light:{gain:0,reach:0},
       bg:0x05060f, fog:[210,540],
-      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.2},
-      dir:{color:0xffffff,int:0.5,pos:[45,100,35]},
+      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0,on:false},
+      dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:true},
       lights:[
-         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
-         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xc7e4ff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xb3daff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+      ],
       props:[],
       led:{idle:'rainbow'}
    },
    pub:{
       name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
-      light:{gain:3},
+      light:{gain:3.6,reach:3.2},
       bg:0x120c07, fog:[190,410],
-      hemi:{sky:0xffd9a3,ground:0x140a04,int:1.17},
-      dir:{color:0xffcf95,int:0.81,pos:[40,90,30]},
+      hemi:{sky:0xffd9a3,ground:0x140a04,int:0,on:false},
+      dir:{color:0xffcf95,int:1.31,pos:[40,90,30]},
       env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
       lights:[
-         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
-         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+      ],
       props:[],
       led:{idle:'rainbow',color:0xffb454}
    },
    arcade:{
       name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:true,
-      light:{gain:1.7,reach:1.5},
+      light:{gain:0,reach:0.2},
       bg:0x5c5d60, fog:[170,465],
-      hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.47},
-      dir:{color:0xd6b8ff,int:0.86,pos:[45,100,35]},
+      hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.52,on:false},
+      dir:{color:0xd6b8ff,int:1.07,pos:[45,100,35],on:true,shadow:true},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
-        {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0x28aeca, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:false},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf2e9ba, int:2.65, dist:70, decay:1, angle:0.74, penumbra:0.24, shadow:false},
+        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0xaf71ba, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:false}
       ],
-      props:[],
+      props:[
+        {prop:'fuzeballArcadeStool', at:[
+          [-14.96,-44,-127,0,1],
+          [-127.08,-44,-128.44,0,1],
+          [135.61,-44,-132.4,0,1]], jitter:{x:5,z:8.5}, seed:6},
+        {prop:'fuzeballArcadeTable', at:[
+          [301.67,-44,-134.09,-0.0016,0.93],
+          [92.31,-44,-180.03,1.608,0.93],
+          [300.91,-44,-147.26,-0.0016,0.93]], jitter:{x:122.5,z:4}},
+        {prop:'fuzeballPlayerGrimlotLowPoly', at:[[37.28,14,-187.84,0.528,1]]}
+      ],
       led:{idle:'rainbow'}
    },
   },
@@ -1563,18 +1613,29 @@ ai:{
   themeToRoom:{classic:'open',royal:'pub',verdant:'open',neon:'arcade',cyatron:'arcade'},
 
   /* ---- pitches ---------------------------------------------------------
-     glb  = mesh name inside fuzeball_pitch.glb
-     tex  = image path, used when that mesh is missing
-     name = label in the pitch dropdown ---------------------------------- */
+     ONE FILE PER PITCH, lazy, LRU — the same shape as rooms and table skins, and for the same
+     reason. `glb` used to be a MESH NAME inside one 32MB atlas holding all eight, so booting into
+     any pitch downloaded and decoded all 22 of its images to show three of them. Split with
+     tools/pitch-split.mjs; per-variant files run 0.7MB (neon) to 11.3MB (pub_classic).
+
+     THE SPLIT ALSO FIXED TWO PITCHES THAT HAD NEVER RESOLVED. Blender suffixes duplicate object
+     names, so the atlas carried `champions_green` + `champions_green.001` and `verdant` +
+     `verdant.001` — and models.js `ballKey()` strips a trailing `.NNN`, collapsing each pair onto
+     one key. `champions_purple` and `pub_classic` therefore matched no mesh and silently fell back
+     to their JPEGs. Their MATERIALS (`field_champions_purple`, `field_pub_classic`) always said
+     what they were; the splitter keys on those, which is why the files below exist at all.
+
+     folder + glb = the file. tex = the JPEG fallback, still used when a pitch has no glb or its
+     file 404s. name = the dropdown label. ------------------------------- */
   pitches:{
-   pub_classic:      {glb:'pub_classic',     tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
-   classic:          {glb:'classic',         tex:'pitches/cork.jpeg',          name:'Cork'},
-   royal:            {glb:'royal',           tex:'pitches/royal.jpeg',          name:'Royal Grass'},
-   cyatron:          {glb:'cyatron',         tex:'pitches/cyatron.jpeg',          name:'Cyatron Grid'},
-   neon:             {glb:'neon',            tex:'pitches/neon_nights.jpg',            name:'Neon Nights'},
-   verdantia:        {glb:'verdant',         tex:'pitches/verdantia.jpeg',        name:'Verdantia'},
-   champions_green:  {glb:'champions_green', tex:'pitches/champions_green.png',  name:'Champions Green'},
-   champions_purple: {glb:'champions_purple',tex:'pitches/champions_purple.png', name:'Champions Purple'},
+   pub_classic:      {folder:'assets/pitches/', glb:'pitch_pub_classic.glb',      tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
+   classic:          {folder:'assets/pitches/', glb:'pitch_classic.glb',          tex:'pitches/cork.jpeg',            name:'Cork'},
+   royal:            {folder:'assets/pitches/', glb:'pitch_royal.glb',            tex:'pitches/royal.jpeg',           name:'Royal Grass'},
+   cyatron:          {folder:'assets/pitches/', glb:'pitch_cyatron.glb',          tex:'pitches/cyatron.jpeg',         name:'Cyatron Grid'},
+   neon:             {folder:'assets/pitches/', glb:'pitch_neon.glb',             tex:'pitches/neon_nights.jpg',      name:'Neon Nights'},
+   verdantia:        {folder:'assets/pitches/', glb:'pitch_verdant.glb',          tex:'pitches/verdantia.jpeg',       name:'Verdantia'},
+   champions_green:  {folder:'assets/pitches/', glb:'pitch_champions_green.glb',  tex:'pitches/champions_green.png',  name:'Champions Green'},
+   champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple'},
    },
 
   /* ---- LED strip fx --------------------------------------------------- */
@@ -1593,7 +1654,7 @@ ai:{
  fx:{ trailSpeed:26, spriteCount:70, particleCount:300, // min speed to trail, sprite pool, particle pool
    // Resident PointLights effects borrow from, keeping the scene's light count constant
    // (changing it forces a shader recompile). Overflow just drops the extra glow.
-   lightPool:6,
+   lightPool:3,
    warmMatch:true }, // true = compile every fx a match can fire before kickoff
 
  /* ---- training mode (js/training.js) ---------------------------------- */

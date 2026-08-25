@@ -14,7 +14,18 @@
    because it is the thing you will trust later instead of re-reading the code. */
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
+/* NEWLINES ARE NORMALISED ON READ, and this is load-bearing rather than tidy. A multi-line
+   TEMPLATE LITERAL has its line terminators normalised to LF by the ECMAScript lexer itself
+   (both CRLF and a bare CR become LF in the template's VALUE) — so a needle written as a
+   template literal can NEVER match a CRLF source file, however this harness is itself saved.
+   js/ has mixed endings (see the CRLF trap in CLAUDE.md) and js/rng.js is CRLF, which is
+   exactly how the 'rngFor does not cache' mutation went stale: both files were CRLF, so
+   everything LOOKED consistent, and the replace silently matched nothing while the harness
+   went on reporting 4/5. Note the avalanche mutation survived only because it is a REGEX
+   whose \s* happens to match the CR.
+   Normalising here immunises every mutation, present and future. Safe both ways: the source
+   is only string-matched and run in a vm, and newline style is semantically irrelevant. */
+const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
 
 function boot(mutate){
  let rng=rd('js/rng.js');

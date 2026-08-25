@@ -5,21 +5,6 @@ function updateScoreUI(team){
  if(team!==undefined){const el=team===0?$('sbRS'):$('sbBS');
   el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop');}
 }
-/* Ball readout. The type used to be identified by a colour emoji baked into BALL_TYPES.name
-   ('⚽ CLASSIC', '👯 SPLIT BALL'); it's a colour swatch in the ball's own trail colour now, which
-   ties the tag to what the player actually sees flying around and survives any platform's font
-   stack. `fuse` is the cannonball countdown (was a 💥 in the same string). */
-function setBallTag(key,fuse){
- const el=$('ballTag');if(!el)return;
- // the cannonball fuse path calls this EVERY frame; the text only changes once a second, so gate
- // on a signature — an unguarded innerHTML reparse per frame for 3s is pure waste.
- const sig=(key||'-')+'|'+(fuse||'');
- if(el.dataset.sig===sig)return;
- el.dataset.sig=sig;
- const t=key&&BALL_TYPES[key];
- if(!t){el.innerHTML='<i style="background:#3b4a66"></i><span>NO BALL</span>';return;}
- el.innerHTML='<i style="background:'+t.trail+'"></i><span>'+t.name+'</span>'+(fuse?'<b>'+fuse+'</b>':'');
-}
 /* Rod selector. One row per SEAT — with a single seat this is byte-identical to the old output;
    with two the rows are prefixed P1/P2 so each player can find their own. A chip for a rod
    another seat is holding is marked .taken (setSeatCtrl would skip it anyway).

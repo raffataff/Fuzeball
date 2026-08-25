@@ -34,21 +34,31 @@ function venueSnap(){return{table:cfg.table,room:cfg.room,pitch:cfg.pitch,skins:
    player's choices for every other table alone, while a SNAPSHOT (a whole `skins` map — what LGV
    parks) restores the lot. onReady fires once the table skin AND the room backdrop are both
    resident; synchronous when they already are, which is the normal case once the lobby has run. */
-function venueApply(v,onReady){
+/* STAGED, via js/flow.js venueLoad — so the lobby's own venue swap gets the same frame yields and
+   the same renderer.compile() warm as a Kick Off room change, instead of dropping a GLB parse, a
+   PMREM bake and a whole-scene recompile into one synchronous run on the way into the lobby.
+   `opts.silent` runs the identical staging with NO veil, which is what the two play-match paths
+   pass: #lgTape is already on screen there and is the loading screen, so a second one over the top
+   would hide the thing the tape exists to show. */
+function venueApply(v,onReady,opts){
  cfg.table=CONFIG.tables[v.table]?v.table:'classic';
  cfg.room=roomIdOf(v.room);
  if(v.pitch)cfg.pitch=v.pitch;
  if(v.skins)cfg.skins=Object.assign({},v.skins);
  else if(v.skin){cfg.skins=Object.assign({},cfg.skins);cfg.skins[cfg.table]=v.skin;}
- let a=false,b=false,fired=false;
- const done=()=>{if(a&&b&&!fired){fired=true;if(onReady)onReady();}}; // latched: this gates a kickoff
- applyTable(()=>{a=true;done();});
- applyRoom(()=>{b=true;done();});
+ const work=done=>{
+  let a=false,b=false,fired=false;
+  const d=()=>{if(a&&b&&!fired){fired=true;done();}}; // latched: this gates a kickoff
+  applyTable(()=>{a=true;d();});
+  applyRoom(()=>{b=true;d();});
+ };
+ if(typeof venueLoad!=='function'){work(onReady||function(){});return;}
+ venueLoad(work,Object.assign({label:'LOADING VENUE'},opts||{},{onDone:onReady}));
 }
-function lgVenueEnter(v,onReady){
+function lgVenueEnter(v,onReady,opts){
  if(lgVenueT){clearTimeout(lgVenueT);lgVenueT=0;}   // a restore was pending — we're staying in league land, so it's cancelled
  if(!LGV)LGV=venueSnap();
- venueApply(v,onReady);
+ venueApply(v,onReady,opts);
 }
 /* Hand the player their own venue back. DEFERRED one tick ON PURPOSE: every return-to-lobby path is
    `gotoMenu(); openLeague()` (or openCup) in ONE synchronous run, and gotoMenu's screen change fires
@@ -57,7 +67,7 @@ function lgVenueEnter(v,onReady){
    the churn this block exists to remove. lgVenueEnter cancels the pending restore. */
 function lgVenueExit(){
  if(!LGV||lgVenueT)return;
- lgVenueT=setTimeout(()=>{lgVenueT=0;const v=LGV;LGV=null;if(v)venueApply(v);},0);
+ lgVenueT=setTimeout(()=>{lgVenueT=0;const v=LGV;LGV=null;if(v)venueApply(v,null,{silent:true});},0);
 }
 // Leaving the lobby or the bracket for any other screen (Back, Esc, home) gives it back. Attached
 // here rather than declared in screens.js — a screen owns its own teardown (see that file's header).
@@ -589,7 +599,7 @@ function lgPlayMatch(){
  // landed. The tape screen (or the brief hidden beat when tape is off) IS the loading room.
  let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
  const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
- lgVenueEnter(lgDivVenue(playerDiv()),()=>{venueDone=true;check();});
+ lgVenueEnter(lgDivVenue(playerDiv()),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen here
  loadPlayerModel(()=>{modelDone=true;check();});
  if(LGC.tape){
   renderLgTape(op);
@@ -1076,7 +1086,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
    };
    const cached=typeof PV!=='undefined'&&PV.cache&&PV.cache[am.id];
    if(cached){if(typeof touchModelCache==='function')touchModelCache(PV.cacheOrder,am.id);place(cached);return;}
-   new THREE.GLTFLoader().load(am.src,gltf=>{
+   newGLTF().load(am.src,gltf=>{
     if(typeof pvCachePut==='function')pvCachePut(am.id,gltf.scene);
     else if(typeof PV!=='undefined'&&PV.cache)PV.cache[am.id]=gltf.scene;
     place(gltf.scene);
@@ -1276,7 +1286,7 @@ function cupPlayTie(){
   // you kick off in (it used to re-roll here, so the lobby and the match disagreed).
   let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
   const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
-  lgVenueEnter(cupVenue(),()=>{venueDone=true;check();});
+  lgVenueEnter(cupVenue(),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen here
   loadPlayerModel(()=>{modelDone=true;check();});
   if(LGC.tape){
     renderCupTape(oppId);

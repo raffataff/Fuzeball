@@ -6,7 +6,7 @@
    and rod lerped between its previous and current sim slice by 'alpha' (the
    leftover sub-slice time), so on-screen motion is buttery-smooth at any refresh.
    Wall-clock stuff (countdown, match clock, fx, camera, hud) stays per-frame. */
-let lastT=performance.now(), physAcc=0, lastFrameT=0;
+let lastT=performance.now(), physAcc=0, lastFrameT=0; let lastAlpha=-1;   // last render-interp alpha, for the shadow-map freeze below
 /* Detected display refresh (Hz), for the 'Match display' frame-rate limit. Probed once at startup on
    its OWN rAF chain — separate from loop(), so the game's own frame cap can't throttle the measurement.
    rAF fires at the display's refresh regardless, so ~80 samples at menu-idle give a clean median. The
@@ -112,12 +112,18 @@ function loop(t){
     // player is losing is already modelled, as shotCtl.
     r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha)+(r.trem||0);
    }
+   // Casters moved this frame, so the frozen shadow map (CONFIG.render.shadow.autoUpdate:false)
+   // needs re-rendering. Gated on the sim having stepped OR the interpolation alpha having moved,
+   // which is what makes a photo/training FREEZE hold the map too: alpha pins at 0 and no step
+   // runs, so the pass stops. In ordinary play alpha moves every frame, so nothing is lost.
+   if(stepped||alpha!==lastAlpha){shadowDirty();lastAlpha=alpha;}
    fractureUpdate(rdt);   // advance/fade any live cannonball-fracture instances
    respawnSwirlUpdate(rdt); // spawn/advance/fade the pre-respawn swirl for removed players
    perfAdd('p','fx');
   }
  perfMark('p');
  replayUpdate(rdt);      // playback owns balls/rods/camera while phase==='replay' (no-op otherwise)
+ if(S.phase==='replay')shadowDirty();   // playback re-poses the rods from the ring buffer — casters move
  fxUpdate(rdt);
  if(S.phase!=='replay')cameraUpdate(rdt);   // the replay's shot camera has the conn during playback
  debugUpdate();
@@ -134,11 +140,19 @@ function loop(t){
  updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating, no-op off)
  perfAdd('p','refl');
  perfMark('p');
- renderer.render(scene,camera);
- // photo mode's clip recorder grabs its frame HERE and nowhere else: the renderer has no
- // preserveDrawingBuffer, so the drawing buffer is only guaranteed intact for the rest of THIS
- // task. Same constraint the still capture works under. No-op unless a take is rolling.
- if(S.photo)phPostRender();
+ // IDLE-RENDER GATE (js/world.js renderIdleSkip). In the menus nothing on the table moves and
+ // `.screen` covers it at 94% opacity behind a 6px blur, so the backdrop is redrawn at a trickle
+ // instead of at 60Hz — which is also what frees the frame budget a venue swap needs. It never
+ // skips a live phase, the room editor, photo mode, free roam or the debug overlay, and it falls
+ // back to always-render if world.js somehow hasn't parsed. See the block above renderIdleSkip.
+ if(!(typeof renderIdleSkip==='function'&&renderIdleSkip(rdt))){
+  renderer.render(scene,camera);
+  // photo mode's clip recorder grabs its frame HERE and nowhere else: the renderer has no
+  // preserveDrawingBuffer, so the drawing buffer is only guaranteed intact for the rest of THIS
+  // task. Same constraint the still capture works under. No-op unless a take is rolling.
+  // Safe under the gate: photo mode is one of the states it never skips.
+  if(S.photo)phPostRender();
+ }
  perfAdd('p','rend');
  perfFrameEnd();
 }
@@ -167,6 +181,7 @@ function boot(){
  if(booted)return;booted=true;
  applyLogo();
  buildRods();applyTable();applyRoom();applyColors();
+ if(typeof renderDirty==='function')renderDirty();        // first frame of the world: draw it at full rate
  if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
  requestAnimationFrame(loop);
  // Footprint dump: boot() is pre-first-frame (GPU uploads lazily on render, so
@@ -182,7 +197,11 @@ let loadStarted=false;
 function startLoading(){
  if(loadStarted)return;loadStarted=true;  // idempotent: fired by the intro-skip, the timer below, OR the match-start gate — whichever comes first
  loadTableModel();                       // swaps in the GLB table when ready (falls back to primitives)
- loadPitchModel(()=>{applyPitchModel();}); // pitch GLB (one mesh per theme variant); falls back to jpg
+ // The ACTIVE pitch only. This used to be loadPitchModel(), which fetched one 32MB atlas holding
+ // all eight and decoded all 22 of its images to show three of them — the largest single item in
+ // the boot budget, and seven-eighths of it discarded. drawField owns the fetch now (ensurePitch,
+ // models.js), so this is just "start it early" rather than a different code path.
+ if(typeof drawField==='function')drawField();
  // Floating power-up pickups. Off the boot chain on purpose (nothing waits on them — a pickup is
  // ~10s into a match at the earliest, and a missing GLB just falls back to the procedural gem),
  // but loaded NOW rather than on demand so the fetch+parse never lands mid-rally. The warm is

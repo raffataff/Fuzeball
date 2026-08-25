@@ -187,7 +187,10 @@ function applyTable(onReady){
  // the shared pitch plane rides inside whichever table group is active
  const grp=tableGroups[id]||primTable;
  if(fieldMesh&&grp){grp.add(fieldMesh);fieldMesh.visible=true;}
- if(pitchGroup&&grp)grp.add(pitchGroup);
+ // The pitch rides inside whichever table group is active, so a TABLE change has to re-parent it.
+ // pitchShown (world.js) is whichever pitch group drawField currently has on screen; drawField
+ // below re-runs anyway, but re-parenting here keeps it from flicking out for a frame first.
+ if(typeof pitchShown!=='undefined'&&pitchShown&&grp)grp.add(pitchShown);
  const nets=tableNets[id];
  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
  // load (if needed) + show the active skin; applySkin owns primitives/goal-frame/LED. Prune only
@@ -232,16 +235,23 @@ function applySkin(id){
  else if(!active&&primLedMat)ledMat=primLedMat;
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
  goalFrames.forEach(gf=>{if(gf.userData&&gf.userData.front)gf.userData.front.visible=!custom;});
+ if(typeof shadowDirty==='function')shadowDirty();   // table shell swapped — casters changed
 }
 // Pick a skin for a table (from the Skin dropdown): remember it, lazy-load its GLB, show it,
 // then evict skins past CONFIG.tableAssets.cacheSkins — AFTER the new one has landed, so
 // A/B-ing two skins with cacheSkins:2 never re-fetches and never shows a gap.
-function selectSkin(id,skinId){
+// onReady (optional) fires once the skin GLB is RESIDENT — the same contract applyTable/applyRoom
+// offer, which is what lets js/flow.js venueLoad stage a skin swap behind the loading veil rather
+// than dropping its cost on the first visible frame. Synchronous when the skin is already cached.
+function selectSkin(id,skinId,onReady){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
- if(typeof loadSkin==='function')loadSkin(id,skinId,()=>{
-  applySkin(id);if(typeof drawField==='function')drawField();
-  if(typeof pruneSkins==='function')pruneSkins(id+'/'+skinId);
- });
+ if(typeof loadSkin==='function'){
+  loadSkin(id,skinId,()=>{
+   applySkin(id);if(typeof drawField==='function')drawField();
+   if(typeof pruneSkins==='function')pruneSkins(id+'/'+skinId);
+   if(onReady)onReady();
+  });
+ }else if(onReady)onReady();
  applySkin(id);
  if(typeof saveCfg==='function')saveCfg();
 }

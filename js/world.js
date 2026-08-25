@@ -7,7 +7,7 @@ let renderer,scene,camera,dirLight,hemiLight;
 // active room's led override (fx.js ledUpdate reads it); pmremGen is the shared PMREM baker.
 let activeRoom=null,roomEnvCache={},pmremGen=null,curLeds=CONFIG.leds;
 const teamMat=[null,null],teamGlow=[null,null];
-let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],groundMesh,primTable=null,pitchGroup=null,pitchVariants=null;
+let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],groundMesh,primTable=null;
 const fxLightPool=[];   // resident spare PointLights (see buildFxLightPool) — effect glows borrow from here so the scene's light count never changes
 // primLedMat = the PROCEDURAL led material built in buildTable. ledMat is repointed at whichever
 // skin GLB is showing (applySkin), so disposing an evicted skin would leave ledMat dangling on a
@@ -156,7 +156,7 @@ function initThree(){
  renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
  renderer.setSize(innerWidth,innerHeight);
- renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+ renderer.shadowMap.enabled=true;renderer.shadowMap.type=shadowMapType();
  renderer.outputEncoding=THREE.sRGBEncoding;
  applyToneMapping(renderer,false);   // set before any material exists, so nothing needs recompiling
  scene=new THREE.Scene();
@@ -165,7 +165,7 @@ function initThree(){
  hemiLight=new THREE.HemisphereLight(0xcdd9ff,0x1c1610,.85);scene.add(hemiLight); // colours/intensity set per-room by applyRoom
  dirLight=new THREE.DirectionalLight(0xffffff,1.05);
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
- dirLight.shadow.mapSize.set(2048,2048);
+ dirLight.shadow.mapSize.setScalar(((CONFIG.render&&CONFIG.render.shadow&&CONFIG.render.shadow.mapSize)||2048));
  /* bias/normalBias fight shadow acne — both were 0 (three.js defaults, never set). The extents
     were 160x140 for a table spanning ~138x68 incl. goal depth, so most of the shadow map was
     spent on empty space. Room meshes are castShadow=false, so nothing outside the table casts. */
@@ -174,14 +174,166 @@ function initThree(){
  dirLight.shadow.bias=SH.bias;dirLight.shadow.normalBias=SH.normalBias;
  const sc=dirLight.shadow.camera;sc.left=SH.left;sc.right=SH.right;sc.top=SH.top;sc.bottom=SH.bottom;sc.far=SH.far;
  scene.add(dirLight);
+ // Shadow-map freeze. The pass re-draws every caster (all 22 figurines included) every frame,
+ // for a map that is camera-INDEPENDENT — so in the menus, the room editor and photo mode it
+ // re-renders an identical result forever. autoUpdate off + an explicit shadowDirty() from the
+ // things that actually move casters. needsUpdate is armed once here so the first frame is lit.
+ renderer.shadowMap.autoUpdate=(SH.autoUpdate===true);
+ if(!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;
  teamMat[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,roughness:.45,metalness:.15});
  teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
  teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
   teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
   buildTable();buildArenaTable();buildGround();buildFxPools();buildFxLightPool();buildRoomLightPool();buildBallReflect();
   scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
-  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderDirty();});
   applyDisplay();   // apply saved Display settings (render scale / shadows) at boot
+}
+
+/* Shadow-map filter. PCFSoft is a 9-tap per-fragment filter run by every RECEIVER, so its cost
+   scales with how much screen the table fills — which is exactly the case that was slow. */
+const SHADOW_TYPES={pcfsoft:THREE.PCFSoftShadowMap,pcf:THREE.PCFShadowMap,basic:THREE.BasicShadowMap};
+function shadowMapType(){const k=((CONFIG.render&&CONFIG.render.shadow&&CONFIG.render.shadow.type)||'pcfsoft').toLowerCase();
+ const t=SHADOW_TYPES[k];return t===undefined?THREE.PCFSoftShadowMap:t;}
+/* ===== KTX2 / BASIS TEXTURES ==============================================
+   A PNG or a JPEG is compressed ON DISK and completely UNCOMPRESSED IN VRAM: the browser decodes
+   it to raw pixels and three uploads that, so a 2048² albedo costs 21.3MB on the card whatever the
+   file weighs, and the decode is main-thread work landing exactly when a room or a match is trying
+   to load. A KTX2/Basis texture stays compressed the whole way — the transcoder turns it into
+   whatever block format this GPU actually has (ASTC, BC7, ETC2, BC1…) and that is what gets
+   uploaded. MEASURED on this project's own assets: a flat 4x VRAM cut (arcade room 157.3 -> 39.4MB,
+   pub 166.5 -> 41.6MB, a figurine 21.3 -> 5.3MB) and the transcode runs in a WORKER, which is the
+   half that fixes the boot freeze rather than merely the memory budget.
+
+   THE LOADER IS NOT r128's, AND THAT IS DELIBERATE. r128 predates KTX2Loader entirely — it ships
+   only BasisTextureLoader, which reads bare .basis files and cannot open a KTX2 container. So
+   vendor/ carries r137's KTX2Loader + WorkerPool + basis transcoder, which reference only THREE
+   symbols r128 has. r128's own GLTFLoader ALREADY implements KHR_texture_basisu and setKTX2Loader,
+   so nothing in the loader chain needed patching. See vendor/basis/README.md.
+
+   EVERY GLTFLoader IN THE GAME MUST COME FROM newGLTF(). A plain `new THREE.GLTFLoader()` has no
+   ktx2Loader, and GLTFLoader THROWS on a file whose KHR_texture_basisu is required — which is what
+   the encoder writes, because a KTX2 asset with a silent PNG fallback is just both files shipped.
+   One helper, so a new call site cannot quietly opt out.
+
+   Encoding is a content step, not a runtime one: tools/ktx2-encode.mjs. */
+let _ktx2=null,_ktx2Tried=false;
+function ktx2Support(){
+ if(!renderer||!renderer.extensions)return null;
+ const e=renderer.extensions;
+ return{astc:!!e.has('WEBGL_compressed_texture_astc'),bptc:!!e.has('EXT_texture_compression_bptc'),
+        s3tc:!!e.has('WEBGL_compressed_texture_s3tc'),etc2:!!e.has('WEBGL_compressed_texture_etc'),
+        etc1:!!e.has('WEBGL_compressed_texture_etc1'),pvrtc:!!e.has('WEBGL_compressed_texture_pvrtc')};
+}
+/* The one shared KTX2Loader. Lazy because detectSupport() needs the renderer, and every loader in
+   the game is built long after initThree — but built ONCE, because it owns a worker pool. */
+function ktx2Loader(){
+ if(_ktx2Tried)return _ktx2;
+ _ktx2Tried=true;
+ if(typeof THREE.KTX2Loader!=='function'||!renderer){
+  console.warn('KTX2Loader unavailable — KTX2 textures will not load. Check vendor/KTX2Loader.js and vendor/WorkerPool.js.');
+  return _ktx2=null;
+ }
+ const s=ktx2Support();
+ // Every WebGL2 device has at least one of these; none at all means the transcoder has no target
+ // and every KTX2 texture will fail. Worth saying out loud rather than debugging as "black models".
+ if(s&&!(s.astc||s.bptc||s.s3tc||s.etc2||s.etc1||s.pvrtc))
+  console.warn('KTX2: this GPU exposes NO compressed texture format — KTX2 assets cannot be transcoded here.');
+ try{
+  _ktx2=new THREE.KTX2Loader().setTranscoderPath('vendor/basis/').detectSupport(renderer);
+  console.log('KTX2 ready — GPU formats: '+Object.keys(s||{}).filter(k=>s[k]).join(', '));
+ }catch(e){console.warn('KTX2Loader init failed',e);_ktx2=null;}
+ return _ktx2;
+}
+/* THE ONLY WAY TO MAKE A GLTFLoader IN THIS PROJECT. See the block above. */
+function newGLTF(){
+ const g=new THREE.GLTFLoader();
+ const k=ktx2Loader();
+ if(k)g.setKTX2Loader(k);
+ return g;
+}
+
+/* Mark the shadow map stale — call whenever something that CASTS has moved or been rebuilt.
+   A no-op when autoUpdate is on (three.js is already re-rendering it every frame), so it is
+   always safe to call and the config switch stays a true off switch.
+   It ALSO marks the frame itself dirty (see the idle gate below): every caller of this is, by
+   definition, something that changed what the scene looks like, so the idle throttle inherits
+   the whole existing hook set — applyRoom, applySkin, rebuildRodMen, buildRoomProps, the sim
+   step, replay playback — without any of them being touched. */
+function shadowDirty(){if(renderer&&!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;renderDirty();}
+
+/* ===== IDLE-RENDER GATE (the menus) =======================================
+   THE MENUS WERE RENDERING THE ENTIRE GAME, EVERY FRAME, BEHIND AN OPAQUE PANEL. `loop()` ended
+   in an unconditional renderer.render with no phase test, and boot() builds the rods, the table
+   and the room BEFORE the first menu is shown — so #home, Kick Off, the league lobby, Options and
+   every other screen sat on top of a live ~267-draw scene with a shadow pass and 22 figurines.
+   And `.screen` in css/styles.css is `rgba(7,9,15,.94)` at its 70% stop PLUS `backdrop-filter:
+   blur(6px)`: what all that work bought was a blurred smudge in the corners. Worse, the frame
+   budget was already spent when a venue swap wanted it, which is most of why the swap read as a
+   freeze rather than as a load.
+
+   THIS IS A THROTTLE, NOT AN OFF SWITCH, AND THAT IS THE WHOLE DESIGN. A pure dirty-flag is one
+   missed hook away from a stale frame that looks exactly like a crash, and the hooks are spread
+   over six files. So: any change buys `settle` seconds at FULL frame rate (nothing hitches while
+   something you can see is moving), and the floor is `hz`, not zero — whatever we forgot to mark
+   self-heals within 1/hz. At the default 4Hz the menu costs about 7% of what it did, and the
+   failure mode of a missing hook is a quarter-second of staleness behind a 94% veil.
+
+   WHAT COUNTS AS A CHANGE: renderDirty(), which shadowDirty() calls for free. Camera movement is
+   DETECTED here rather than hooked, because cameraUpdate lerps continuously and there is no one
+   moment it "changes".
+
+   IT NEVER SKIPS a live phase, the room editor, photo mode, free roam, or the debug overlay —
+   every one of those is someone looking at the scene itself rather than at a menu over it. The
+   customize turntable, the menu figurine thumbnails and the league-setup preview are safe by
+   construction: they draw on the SEPARATE offscreen renderer (PRV, above), which this never
+   touches. */
+let _idleT=1e9,_idleAcc=0;
+const _idleCam=new THREE.Vector3(),_idleQuat=new THREE.Quaternion();
+function renderDirty(){_idleT=0;}
+function renderIdleSkip(rdt){
+ const I=(CONFIG.render&&CONFIG.render.idle)||{};
+ if(I.on===false||!renderer||!camera)return false;
+ if((I.phases||['menu']).indexOf(S.phase)<0)return false;
+ if(S.redit||S.photo||S.freeRoam)return false;
+ if(typeof dbgOn!=='undefined'&&dbgOn)return false;
+ // The frame profiler (M) turns renderer.info.autoReset OFF and accumulates per frame, so a
+ // skipped render would report the previous frame's draw/tri forever. You opened it to measure
+ // the real cost of a frame; give it real frames.
+ if(typeof PERF!=='undefined'&&PERF&&PERF.on)return false;
+ // EPSILON, NOT EQUALITY, and this is the difference between the throttle working and never
+ // engaging at all. cameraUpdate LERPS toward a fixed target, and `a+(b-a)*k` ASYMPTOTES: the
+ // last few hundred frames differ only in the bottom bits of the mantissa, so an exact compare
+ // reads "the camera is still moving" essentially forever and every frame is drawn. Measured in
+ // a headless run before this: 100% of menu frames rendered with the gate nominally on.
+ // TWO thresholds, because the units are not comparable: camEps is WORLD UNITS and camRotEps is
+ // raw quaternion components. Both defaults are sized from screen motion at the match camera —
+ // the table spans ~0.09 units per pixel at 1080p, and a quaternion component moves ~114 degrees
+ // per unit against ~0.05 degrees per pixel — so each is a fraction of a pixel. Nothing anyone
+ // could see is ever held on a stale frame; what they buy is the tail of the lerp, which is
+ // hundreds of frames of identical-looking output.
+ const P=camera.position,Q=camera.quaternion,
+       E=I.camEps===undefined?0.01:I.camEps, R=I.camRotEps===undefined?1e-4:I.camRotEps;
+ if(Math.abs(P.x-_idleCam.x)>E||Math.abs(P.y-_idleCam.y)>E||Math.abs(P.z-_idleCam.z)>E||
+    Math.abs(Q.x-_idleQuat.x)>R||Math.abs(Q.y-_idleQuat.y)>R||
+    Math.abs(Q.z-_idleQuat.z)>R||Math.abs(Q.w-_idleQuat.w)>R){
+  _idleCam.copy(P);_idleQuat.copy(Q);renderDirty();
+ }
+ /* DELIBERATELY NOT TESTED HERE: renderer.shadowMap.needsUpdate. It reads like the obvious extra
+    safety net and it is a TRAP — r128's WebGLShadowMap.render() bails on `enabled === false`
+    BEFORE it clears the flag, so with Options -> Display -> Shadows OFF the flag latches true the
+    first time anything calls shadowDirty() and never comes down again. Reading it there marks
+    every single frame dirty, and the throttle silently does nothing for every player who turned
+    shadows off — measured as 100% of menu frames still rendering. Nothing is lost by dropping it:
+    shadowDirty() calls renderDirty() UNCONDITIONALLY, outside its own autoUpdate guard, so the
+    CONFIG.render.shadow.autoUpdate:true path this was meant to cover is already covered. */
+ _idleT+=rdt;
+ if(_idleT<(I.settle===undefined?0.4:I.settle)){_idleAcc=0;return false;}
+ const hz=I.hz===undefined?4:I.hz;
+ if(hz<=0)return true;                        // 0 = hold the last frame indefinitely
+ _idleAcc+=rdt;
+ if(_idleAcc>=1/hz){_idleAcc=0;return false;}
+ return true;
 }
 
 /* Display settings (Options → Display), applied live. Two levers here:
@@ -199,10 +351,12 @@ function applyDisplay(){
  const rs=clamp(cfg.renderScale||1,0.4,1);
  renderer.setPixelRatio(Math.min(devicePixelRatio,2)*rs);
  renderer.setSize(innerWidth,innerHeight);
+ renderDirty();   // the drawing buffer was just resized — the held idle frame is the wrong size
  const sh=cfg.shadows!==false;
  if(sh!==_dispShadows){
   renderer.shadowMap.enabled=sh;
   if(dirLight)dirLight.castShadow=sh;
+  _keyDirSh=null;   // Display owns castShadow now; drop the room latch so the next applyRoom re-decides
   renderer.shadowMap.needsUpdate=true;
   scene.traverse(o=>{const m=o.material;if(!m)return;
    (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
@@ -232,6 +386,7 @@ function applyFog(){
   if(scene.fog){scene.fog.color.set(rm.bg);scene.fog.near=f[0];scene.fog.far=f[1];}
   else scene.fog=new THREE.Fog(rm.bg,f[0],f[1]);
  }else scene.fog=null;
+ renderDirty();
  if(on!==_dispFog){
   scene.traverse(o=>{const m=o.material;if(!m)return;
    (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
@@ -247,6 +402,63 @@ function applyFog(){
      • bakeGlbEnv — real reflections baked FROM a room's backdrop GLB. Used when the room
        reflects AND cfg.reflections is on. */
 function pmrem(){return pmremGen||(pmremGen=new THREE.PMREMGenerator(renderer));}
+/* PMREM's fromScene returns a RENDER TARGET, not a texture, and the difference is a leak.
+   Both bakers below used to take `.texture` and drop the target on the floor — but a render
+   target owns a framebuffer and its attachments, and freeing the texture alone does NOT free
+   them: `WebGLRenderTarget.dispose()` is what runs deallocateRenderTarget. Measured, that cost
+   ONE leaked target per env bake, i.e. one per visit to any room with a glb, unbounded for the
+   session (renderer.info.memory.textures climbed +1 per room round trip and never came down).
+   So the target is stashed on the texture and envDispose() is the only correct way to free a
+   cached env map. Bakes are cached in roomEnvCache, so the stash rides along with the entry. */
+function envKeep(rt){const t=rt&&rt.texture;if(t){if(!t.userData)t.userData={};t.userData.__pmremRT=rt;}return t||null;}   // PMREM's internal target texture can arrive without userData
+function envDispose(tex){
+ if(!tex)return;
+ const rt=tex.userData&&tex.userData.__pmremRT;
+ if(rt&&rt.dispose)rt.dispose();   // frees the framebuffer AND its texture
+ else if(tex.dispose)tex.dispose();
+}
+/* ---- baked-env residency (LRU) ------------------------------------------
+   THE BAKE OUTLIVES THE ROOM NOW, AND IT SHOULD. A room GLB is 20-45MB of geometry and texture;
+   the PMREM bake OF it is one ~6MB render target that holds no reference back to the group it was
+   baked from. disposeRoom used to free BOTH, which read as tidy bookkeeping and was the expensive
+   half of a room switch: an A/B room toggle — the single most common thing anyone does with a room
+   picker — re-parsed the GLB *and* re-ran a full PMREM pass (six scene renders plus the blur
+   convolution chain) every single time, to reproduce a texture that had not changed. Freeing the
+   45MB and keeping the 6MB is the trade; it was the wrong way round.
+
+   BOUNDED BY ITS OWN LRU rather than left to grow, because "these are small, keep them all" is how
+   a residency budget stops being one — and CONFIG.tableAssets exists to say residency is a budget.
+   cacheEnvs counts ENTRIES, the active one is always protected, and both bake kinds share the list:
+   a synthetic bake is much cheaper to recreate, but it is also much cheaper to hold, so there is
+   nothing to gain from special-casing it.
+
+   COUNTING ENTRIES MEANS A ROOM CAN OCCUPY TWO SLOTS — its `glb:` bake and the `syn:` stand-in it
+   showed while the GLB was downloading — so the cap is sized rooms x 2 and NOT rooms. Sized per
+   room it thrashes, and thrashing here is indistinguishable from not having the cache at all:
+   measured at a cap of 4, six swaps across three rooms re-baked all three.
+
+   Frees through envDispose(), never tex.dispose() — a PMREM bake is a RENDER TARGET and freeing
+   its texture alone leaves the framebuffer allocated (see envKeep above). That was a measured,
+   unbounded leak once; moving where the free happens must not lose the lesson.
+
+   NOTE FOR memTex(): a cached bake is NOT in the scene graph, so the texture audit cannot see it.
+   memLog prints the env list beside skins/rooms instead. */
+const envOrder=[];   // roomEnvCache keys, least-recently-used first
+function touchEnv(k){const i=envOrder.indexOf(k);if(i>=0)envOrder.splice(i,1);envOrder.push(k);}
+/* Evict bakes past the cap, LRU first. Measured as "how many NON-kept entries may stay", the same
+   way pruneSkins/pruneRooms are, so cacheEnvs:1 legally means "never hold one you aren't using". */
+function pruneEnvs(keepKey){
+ const cap=Math.max(1,((CONFIG.tableAssets||{}).cacheEnvs)||4);
+ const extra=Math.max(0,cap-1);
+ let n=0;for(const k of envOrder)if(k!==keepKey)n++;
+ for(let i=0;i<envOrder.length&&n>extra;){
+  const k=envOrder[i];
+  if(k===keepKey){i++;continue;}
+  if(roomEnvCache[k])envDispose(roomEnvCache[k]);
+  delete roomEnvCache[k];envOrder.splice(i,1);n--;
+  console.log('room env freed: '+k);
+ }
+}
 function bakeSyntheticEnv(spec){
  if(!renderer)return null;
  const es=new THREE.Scene();
@@ -256,7 +468,7 @@ function bakeSyntheticEnv(spec){
   const m=new THREE.Mesh(new THREE.PlaneGeometry(p[4],p[5]),new THREE.MeshBasicMaterial({color:p[0],side:THREE.DoubleSide}));
   m.position.set(p[1],p[2],p[3]);m.lookAt(0,0,0);es.add(m);
  }
- const tex=pmrem().fromScene(es,0.02,1,1200).texture;                            // sigma small; near/far cover the 560-unit shell
+ const tex=envKeep(pmrem().fromScene(es,0.02,1,1200));                           // sigma small; near/far cover the 560-unit shell
  es.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
  return tex;
 }
@@ -276,13 +488,47 @@ function bakeGlbEnv(group){
  const hidden=[];
  group.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
   if(o.visible&&ms.some(m=>m&&(m.transmission>0||(m.transparent&&m.opacity<1)))){hidden.push(o);o.visible=false;}});
- const tex=pmrem().fromScene(es,0.04,1,1200).texture;
+ const tex=envKeep(pmrem().fromScene(es,0.04,1,1200));
  for(const o of hidden)o.visible=true;                                          // restore
  if(parent)parent.add(group);else scene.add(group);                             // move it back
  group.visible=vis;
  return tex;
 }
 
+/* Per-room switches for the two KEY lights and the image-based light — the three that are not
+   in any pool, and the ones an indoor room most often wants rid of (there is no sun in a pub).
+
+   THE OFF HAS TO BE `visible=false`, NOT `int:0`. Measured: a light at intensity 0 stays in the
+   scene's light COUNT and runs its whole shader path per fragment before multiplying by zero —
+   flipping intensity recompiled NOTHING (0 shaders) and saved nothing. Making it invisible took
+   it out of the count and recompiled 22 shaders. That recompile is the price of a real off.
+
+   AND IT IS PAID ONCE PER CONFIGURATION, NOT PER TOGGLE, which is what makes this cheap enough
+   to put on a checkbox: three.js caches programs by their parameters, so switching back reused
+   the cached set and recompiled 0. Latched here anyway (the applyFog/applyDisplay pattern) so
+   re-applying the same room — which applyRoom does on every venue change — costs nothing. */
+let _keyHemi=null,_keyDir=null,_keyDirSh=null,_keyIbl=null;
+function applyRoomKeyLights(rm){
+ const hOn=!(rm&&rm.hemi&&rm.hemi.on===false);
+ const dOn=!(rm&&rm.dir&&rm.dir.on===false);
+ // The sun casts unless the room says otherwise — but never while the Display shadow toggle is
+ // off, or we would re-arm the pass that setting exists to stop.
+ const dSh=dOn&&!(rm&&rm.dir&&rm.dir.shadow===false)&&cfg.shadows!==false;
+ const iblOn=!(rm&&rm.ibl===false);
+ let moved=false;
+ if(hemiLight&&hOn!==_keyHemi){hemiLight.visible=hOn;_keyHemi=hOn;moved=true;}
+ if(dirLight&&dOn!==_keyDir){dirLight.visible=dOn;_keyDir=dOn;moved=true;}
+ if(dirLight&&dSh!==_keyDirSh){dirLight.castShadow=dSh;_keyDirSh=dSh;moved=true;}
+ if(iblOn!==_keyIbl){_keyIbl=iblOn;moved=true;}
+ if(!iblOn)scene.environment=null;   // setRoomEnv re-sets it when the room allows one
+ if(moved){
+  scene.traverse(o=>{const m=o.material;if(!m)return;
+   (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
+  shadowDirty();
+ }
+}
+/* True when this room allows an image-based light at all — setRoomEnv asks before assigning. */
+function roomIblOn(rm){return !(rm&&rm.ibl===false);}
 /* Local ball reflections. A single shared cube camera rides the lead ball and renders the REAL
    scene around it into a low-res cube target, reused as `envMap` on every ball material — so a
    metallic ball reflects the table/pitch/men it's actually among, not just the distant room bake
@@ -332,7 +578,10 @@ function buildTable(){
  fieldMesh.rotation.x=-Math.PI/2;fieldMesh.receiveShadow=true;primTable.add(fieldMesh);
   // Load ONLY the active pitch's texture (was: all ~7 up front, decoding every image into
   // RAM for the one shown). The rest come in on demand via drawField→loadPitchTex.
-  loadPitchTex(cfg.pitch,tex=>{if(tex&&fieldMesh){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}});
+  // Only when this pitch has no GLB. With one, drawField shows the real thing and the JPEG would
+  // be a second full-size download for a plane that is about to be hidden.
+  if(!(CONFIG.pitches[cfg.pitch]&&CONFIG.pitches[cfg.pitch].glb))
+   loadPitchTex(cfg.pitch,tex=>{if(tex&&fieldMesh){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}});
  wallMat=new THREE.MeshStandardMaterial({color:0x7a4b22,roughness:.6,metalness:.1});
  const body=new THREE.Mesh(new THREE.BoxGeometry(F.L+10,10,F.W+10),wallMat);
  body.position.y=-5.2;body.receiveShadow=true;primTable.add(body);
@@ -449,6 +698,7 @@ function loadPlayerModel(onReady){
     playerModel[team]=scene.clone(true);
     playerTeamMats[team]={};
     playerHairParts[team]=hairParts;
+    markShadowCasters(playerModel[team]);   // decide silhouette casters ONCE, here — not per clone
     playerModel[team].traverse(child=>{
      if(!child.isMesh)return;
      const name=child.material.name.toLowerCase();
@@ -460,7 +710,7 @@ function loadPlayerModel(onReady){
     done();
    };
   if(modelCache[am.id]){touchModelCache(modelCacheOrder,am.id);useCache(modelCache[am.id]);return;}
-  new THREE.GLTFLoader().load(am.src,
+  newGLTF().load(am.src,
    gltf=>{cacheModelTemplate(modelCache,modelCacheOrder,am.id,gltf.scene);useCache(gltf.scene);
     // Evict old templates (ref-drop only, dispose=false): a just-swapped-away figurine can still
     // have live clones on the table sharing this geometry until rebuildRodMen runs, so we never
@@ -471,6 +721,28 @@ function loadPlayerModel(onReady){
    ()=>{console.warn('player model load failed for team '+team);done();}
   );
  });
+}
+
+/* Stamp userData.castsShadow on a figurine TEMPLATE's sub-meshes — see
+   CONFIG.playerModel.shadowMinFrac for the reasoning and the measured numbers. Done on the
+   template rather than in makePlayer because makePlayer runs 22 times per rebuild and
+   Box3.setFromObject walks every vertex; clone(true) deep-copies userData, so each man
+   inherits the decision for free. A part that is not a caster is still DRAWN normally —
+   this only keeps it out of the shadow pass. */
+function markShadowCasters(root){
+ if(!root)return;
+ const frac=(CONFIG.playerModel&&CONFIG.playerModel.shadowMinFrac);
+ const parts=[];root.traverse(o=>{if(o.isMesh)parts.push(o);});
+ if(!parts.length)return;
+ if(!(frac>0)){parts.forEach(o=>{o.userData.castsShadow=true;});return;}   // 0/undefined = old behaviour
+ const v=new THREE.Vector3(),whole=new THREE.Box3().setFromObject(root).getSize(v).length();
+ let big=null,bigD=-1;
+ parts.forEach(o=>{
+  const d=new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).length();
+  o.userData._shDiag=d;if(d>bigD){bigD=d;big=o;}
+  o.userData.castsShadow=whole>1e-6&&(d/whole)>=frac;
+ });
+ if(big)big.userData.castsShadow=true;   // never leave a figurine with no shadow at all
 }
 
 function makePlayer(team){
@@ -493,7 +765,7 @@ function makePlayer(team){
     const sw=CONFIG.playerModel.hairSwatches;
     child.material.color.set(sw[Math.floor(Math.random()*sw.length)]);
    }
-   child.castShadow=true;
+   child.castShadow=child.userData.castsShadow!==false;   // set by markShadowCasters on the template
   });
   return g;
 }
@@ -672,7 +944,15 @@ function rlpNeed(){
  const n={point:0,spot:0,dir:0};
  for(const id in CONFIG.rooms){
   const c={point:0,spot:0,dir:0};
-  ((CONFIG.rooms[id]||{}).lights||[]).forEach(L=>{const t=rlpType(L);if(c[t]!==undefined)c[t]++;});
+  // Count ALL of this room's lights per type, and how many of them want to cast. The plain pool
+  // then needs whatever the SHADOW budget cannot absorb — not simply the non-casting ones. A
+  // light that asks to cast past the budget falls back to a plain slot, so sizing this to the
+  // non-casting lights alone leaves the room one slot short and silently drops a lamp.
+  const w={point:0,spot:0,dir:0};
+  ((CONFIG.rooms[id]||{}).lights||[]).forEach(L=>{const t=rlpType(L);if(c[t]===undefined)return;
+   c[t]++;if(rlpWantsShadow(L))w[t]++;});
+  const shN=rlpShadowNeed();
+  for(const t in c)c[t]=Math.max(0,c[t]-Math.min(w[t],shN[t]||0));
   for(const t in n)if(c[t]>n[t])n[t]=c[t];
  }
  // Editor headroom, paid for only by a build with the editor switched on. Per type: every
@@ -684,35 +964,75 @@ function rlpNeed(){
  return n;
 }
 function rlpType(L){const t=(L&&L.type)||'point';return t==='spot'?'spot':(t==='dir'||t==='directional')?'dir':'point';}
+function rlpWantsShadow(L){return !!(L&&L.shadow);}
+/* The SHADOW sub-pool. castShadow is a shader parameter, so it cannot be flipped on a live
+   light without recompiling every material — the same reason the pool exists at all. So these
+   are created casting and stay that way, and a room light with `shadow:true` borrows one.
+   Sized straight from CONFIG.render.roomLightPool.shadow rather than derived from the rooms:
+   a caster is a whole extra render pass per frame (SIX for a point light, which is a cube map),
+   so this is a deliberate budget, not something that should quietly grow with the content. */
+const roomShadowPool={point:[],spot:[],dir:[]};
+function rlpShadowNeed(){
+ const P=(CONFIG.render&&CONFIG.render.roomLightPool)||{},S=P.shadow||{};
+ const cap=P.max===undefined?12:P.max,n={point:0,spot:0,dir:0};
+ for(const t in n)n[t]=Math.min(Math.max(0,S[t]||0),cap);
+ return n;
+}
 function buildRoomLightPool(){
  const n=rlpNeed();
  for(let i=0;i<n.point;i++){const l=new THREE.PointLight(0xffffff,0,100);rlpAdd('point',l);}
  for(let i=0;i<n.spot;i++){const l=new THREE.SpotLight(0xffffff,0,100,0.6,0.4,2);rlpAdd('spot',l);}
  for(let i=0;i<n.dir;i++){const l=new THREE.DirectionalLight(0xffffff,0);rlpAdd('dir',l);}
- const tot=n.point+n.spot+n.dir;
- if(tot)console.log('room light pool: '+n.point+' point, '+n.spot+' spot, '+n.dir+' dir');
+ const sh=rlpShadowNeed(),SM=((CONFIG.render&&CONFIG.render.shadow)||{}).roomMapSize||1024;
+ for(let i=0;i<sh.point;i++){const l=new THREE.PointLight(0xffffff,0,100);rlpAdd('point',l,true,SM);}
+ for(let i=0;i<sh.spot;i++){const l=new THREE.SpotLight(0xffffff,0,100,0.6,0.4,2);rlpAdd('spot',l,true,SM);}
+ for(let i=0;i<sh.dir;i++){const l=new THREE.DirectionalLight(0xffffff,0);rlpAdd('dir',l,true,SM);}
+ const tot=n.point+n.spot+n.dir,tsh=sh.point+sh.spot+sh.dir;
+ if(tot||tsh)console.log('room light pool: '+n.point+' point, '+n.spot+' spot, '+n.dir+' dir'
+  +(tsh?'  |  shadow-casting: '+sh.point+' point, '+sh.spot+' spot, '+sh.dir+' dir':''));
 }
 /* Every pooled light keeps its own target in the scene. A three.js SpotLight/DirectionalLight
    aims at target.position and the target must be IN the scene graph or its matrix never
    updates — the classic silent failure where a spot points doggedly at the origin. */
-function rlpAdd(t,l){
- l.visible=true;l.intensity=0;l.castShadow=false;l._rlFree=true;
+function rlpAdd(t,l,cast,mapSize){
+ l.visible=true;l.intensity=0;l.castShadow=!!cast;l._rlFree=true;
+ if(cast&&l.shadow){l.shadow.mapSize.setScalar(mapSize||1024);l.shadow.bias=-0.0015;l.shadow.normalBias=0.6;
+  // A FREE shadow slot must not cost a pass. castShadow has to stay true (it is a shader
+  // parameter — flipping it recompiles everything), but three.js gates each light's pass on its
+  // OWN shadow.autoUpdate/needsUpdate, so an unborrowed slot is skipped for free. Measured: two
+  // idle slots were costing ~106 draws a frame before this.
+  l.shadow.autoUpdate=false;l.shadow.needsUpdate=false;
+  if(l.shadow.camera&&l.shadow.camera.isPerspectiveCamera){l.shadow.camera.near=1;l.shadow.camera.far=600;}}
  scene.add(l);
  if(l.target){l.target.position.set(0,0,0);scene.add(l.target);}
- roomLightPool[t].push(l);
+ (cast?roomShadowPool:roomLightPool)[t].push(l);
 }
-function rlpGet(t){for(const l of roomLightPool[t])if(l._rlFree){l._rlFree=false;return l;}return null;}
-function rlpFreeAll(){for(const t in roomLightPool)for(const l of roomLightPool[t]){l.intensity=0;l._rlFree=true;}}
+/* Borrow a slot. wantShadow picks the casting sub-pool and FALLS BACK to a plain slot when the
+   budget is spent — the light still lights, it just does not cast. A silent downgrade is the
+   right failure here: the alternative is either a stall or a room that loses a lamp entirely. */
+function rlpGet(t,wantShadow){
+ if(wantShadow){for(const l of roomShadowPool[t])if(l._rlFree){l._rlFree=false;
+  if(l.shadow){l.shadow.autoUpdate=true;l.shadow.needsUpdate=true;}   // in use: follow the global freeze
+  return l;}}
+ for(const l of roomLightPool[t])if(l._rlFree){l._rlFree=false;return l;}
+ return null;
+}
+function rlpFreeAll(){
+ for(const t in roomLightPool)for(const l of roomLightPool[t]){l.intensity=0;l._rlFree=true;}
+ for(const t in roomShadowPool)for(const l of roomShadowPool[t]){l.intensity=0;l._rlFree=true;
+  if(l.shadow){l.shadow.autoUpdate=false;l.shadow.needsUpdate=false;}}
+}
 /* Drive the pool from one room's `lights`. Called by applyRoom, and again by the editor on
    every change — it is a full re-drive rather than a diff, so the pool can never disagree
    with the spec list (the same "edit the data, rebuild" rule js/roomedit.js applies to props). */
 function applyAuthoredLights(rm){
  rlpFreeAll();
  const list=(rm&&rm.lights)||[];
- let over=0;
+ let over=0,short=0;
  list.forEach(L=>{
-  const t=rlpType(L),l=rlpGet(t);
+  const t=rlpType(L),want=rlpWantsShadow(L),l=rlpGet(t,want);
   if(!l){over++;return;}
+  if(want&&!l.castShadow)short++;   // shadow budget spent — it still lights, it just cannot cast
   const p=L.pos||[0,60,0];
   l.position.set(p[0]||0,p[1]||0,p[2]||0);
   l.color.set(L.color===undefined?0xffffff:L.color);
@@ -722,39 +1042,17 @@ function applyAuthoredLights(rm){
   if(l.target){const k=L.look||[0,0,0];l.target.position.set(k[0]||0,k[1]||0,k[2]||0);l.target.updateMatrixWorld();}
  });
  if(over)console.warn('room lights: '+over+' over the pool — raise CONFIG.render.roomLightPool.pad/max');
+ if(short)console.warn('room lights: '+short+' asked to cast shadows past the budget — lit but not casting.'
+  +' Raise CONFIG.render.roomLightPool.shadow (one extra render pass each; SIX for a point light).');
  return list.length-over;
 }
 
-function applyPitchModel(){
-  if(!pitchModel)return;
-  if(pitchGroup)return;  // idempotent — already built
-  pitchGroup=pitchModel;
-  pitchModel=null;       // ownership transferred; the model is now in the scene
-  (fieldMesh?fieldMesh.parent:primTable).add(pitchGroup);
-  drawField();
-}
-
-// One-time map of the loaded pitch GLB's meshes → variant key, remembering each mesh's
-// parent so it can be detached/re-attached. Built from the GLB as loaded (before any
-// removal), so every variant's parent link is captured intact.
-function indexPitchVariants(){
-  pitchVariants={};
-  if(!pitchGroup)return;
-  pitchGroup.traverse(c=>{if(!c.isMesh)return;const k=ballKey(c);if(!k)return;
-   (pitchVariants[k]||(pitchVariants[k]=[])).push({mesh:c,parent:c.parent});});
-}
-// Release a detached variant's GPU buffers + textures. CPU-side geometry attributes and
-// texture.image survive, so three.js re-uploads automatically if the pitch is re-selected.
-function freePitchMeshGPU(c){
-  if(c.geometry&&c.geometry.dispose)c.geometry.dispose();
-  const mats=Array.isArray(c.material)?c.material:[c.material];
-  for(const m of mats){if(!m)continue;
-   for(const k of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap']){
-    const t=m[k];if(t&&t.dispose)t.dispose();}}
-}
+/* The pitch group that is currently parented into the table. Kept so applyTable can re-parent it
+   when the TABLE changes underneath it (the pitch rides inside whichever table group is active). */
+let pitchShown=null;
 /* Lazy pitch-texture loader/cache. Loads assets/<pitch.tex> once, caches it in
    fieldTexCache, and hands it back (or null on failure) via cb. Only the JPG-fallback path
-   uses this — when a pitch GLB is present drawField never touches fieldTexCache. */
+   uses this — a pitch with a working GLB never touches fieldTexCache. */
 function loadPitchTex(pid,cb){
   if(fieldTexCache[pid]){if(cb)cb(fieldTexCache[pid]);return;}
   const pdef=CONFIG.pitches[pid];
@@ -763,47 +1061,88 @@ function loadPitchTex(pid,cb){
    tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[pid]=tex;if(cb)cb(tex);
   },undefined,()=>{console.warn('pitch texture missing (assets/'+pdef.tex+')');if(cb)cb(null);});
 }
-function drawField(){
-  const pdef=CONFIG.pitches[cfg.pitch];
-  if(!pdef)return;
-  const glbKey=pdef.glb;
-  if(pitchGroup){
-    if(!pitchVariants)indexPitchVariants();
-    // Only the selected variant stays in the scene graph. The rest are DETACHED (not merely
-    // hidden) so renderer.compile()/the render loop never touch them — otherwise compile
-    // uploads every variant's textures to VRAM regardless of .visible. Re-attaching on switch
-    // re-uploads from the retained CPU data (a one-frame cost, only when changing pitch).
-    let shown=false;
-    for(const key in pitchVariants){
-      const active=key===glbKey;
-      for(const v of pitchVariants[key]){
-        if(active){if(!v.mesh.parent)v.parent.add(v.mesh);v.mesh.visible=true;shown=true;}
-        else if(v.mesh.parent){freePitchMeshGPU(v.mesh);v.parent.remove(v.mesh);}
-      }
-    }
-    if(shown){if(fieldMesh)fieldMesh.visible=false;return;}
-  }
-  if(fieldMesh){fieldMesh.visible=true;
-   const cur=cfg.pitch;
-   loadPitchTex(cur,tex=>{
-    if(cfg.pitch!==cur)return;                     // user switched again while this loaded — let the newer call win
-    if(tex){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;
-     for(const k in fieldTexCache){if(k!==cur&&fieldTexCache[k]){ // keep only the active pitch resident
-      if(fieldTexCache[k].dispose)fieldTexCache[k].dispose();delete fieldTexCache[k];}}
-    }
+/* Show the selected pitch, fetching its GLB if it isn't resident, and evicting the rest.
+   Same shape as applyRoom, deliberately: show() first with whatever is already here, then load,
+   then show() again — so a venue change never leaves a hole while a file is in flight.
+
+   THE INACTIVE PITCHES ARE DETACHED, NOT HIDDEN, and that mattered even more than it looks: three
+   walks INVISIBLE objects in updateMatrixWorld, and renderer.compile() uploads every material it
+   can reach regardless of .visible — which the staged venue swap now calls on purpose. A hidden
+   pitch would be silently uploaded by the very warm that exists to make the swap smooth.
+
+   onReady (opt) fires once the pitch is resident — synchronous when it already is, or when the
+   pitch has no GLB and the JPEG path is used. venueLoad gates the loading veil on it. */
+function drawField(onReady){
+  const id=CONFIG.pitches[cfg.pitch]?cfg.pitch:Object.keys(CONFIG.pitches)[0];
+  const pdef=CONFIG.pitches[id];
+  if(!pdef){if(onReady)onReady();return;}
+  const host=()=>(fieldMesh&&fieldMesh.parent)||primTable;
+  const show=()=>{
+   const g=(typeof pitchGroups!=='undefined')?pitchGroups[id]:null;
+   const on=!!(g&&g.children.length);
+   if(typeof pitchGroups!=='undefined')
+    for(const pid in pitchGroups){const gg=pitchGroups[pid];if(!gg)continue;
+     if(pid===id&&on){if(gg.parent!==host())host().add(gg);gg.visible=true;pitchShown=gg;}
+     else if(gg.parent){gg.parent.remove(gg);if(pitchShown===gg)pitchShown=null;}}
+   if(fieldMesh)fieldMesh.visible=!on;             // the shared plane stands in until the GLB is here
+   shadowDirty();
+   return on;
+  };
+  const on=show();
+  const wantGlb=(typeof pitchHasGlb==='function')?pitchHasGlb(id):!!pdef.glb;
+  if(wantGlb&&typeof ensurePitch==='function'){
+   ensurePitch(id,()=>{
+    // fallbackTex ONLY if the GLB did not land. Dressing the stand-in plane "while we wait" reads
+    // as a nicety and is a second full-size download of the same pitch — measured: every switch
+    // fetched the JPEG AND the GLB, and boot fetched pubClassic.jpeg three times (drawField runs
+    // from startLoading, twice from applyTable, and from applyColors) on top of the 11.3MB GLB.
+    // The plane is only on screen for the moment before the GLB arrives, and a venue swap is
+    // behind the loading veil anyway. But a 404'd GLB means the plane IS the pitch — dress it then.
+    if(!show())fallbackTex(id);
+    if(typeof prunePitches==='function')prunePitches(id);
+    if(onReady)onReady();
    });
+   return;
   }
+  fallbackTex(id);
+  if(typeof prunePitches==='function')prunePitches(null);
+  if(onReady)onReady();
+}
+/* The no-GLB / 404 path: the shared plane wearing the pitch's JPEG. */
+function fallbackTex(id){
+  if(!fieldMesh)return;
+  loadPitchTex(id,tex=>{
+   if(cfg.pitch!==id)return;                       // switched again while this loaded — newer call wins
+   if(!tex)return;
+   fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;renderDirty();
+   for(const k in fieldTexCache){if(k!==id&&fieldTexCache[k]){   // keep only the active pitch's image
+    if(fieldTexCache[k].dispose)fieldTexCache[k].dispose();delete fieldTexCache[k];}}
+  });
 }
 
 /* Pick the active room's reflection env (synthetic vs baked-from-GLB), cache it, and install it.
    Re-run whenever the room, its loaded state, or cfg.reflections changes. */
 function setRoomEnv(id,rm){
  if(!renderer||!scene)return;
- const glbReady=roomGroups[id]&&roomGroups[id].children.length;
- const wantGlb=!!(cfg.reflections&&rm.reflect&&glbReady);
- const key=(wantGlb?'glb:':'syn:')+id;
- if(!roomEnvCache[key])roomEnvCache[key]=wantGlb?bakeGlbEnv(roomGroups[id]):bakeSyntheticEnv(rm.env);
- if(roomEnvCache[key])scene.environment=roomEnvCache[key];
+ // rooms.<id>.ibl:false = no image-based light at all. Nothing is BAKED either, so a room that
+ // never wants one never pays the PMREM pass or holds its render target.
+ if(!roomIblOn(rm)){scene.environment=null;return;}
+ const glbReady=!!(roomGroups[id]&&roomGroups[id].children.length);
+ const wantGlb=!!(cfg.reflections&&rm.reflect);
+ const gk='glb:'+id, sk='syn:'+id;
+ /* A CACHED GLB BAKE IS USABLE BEFORE THE GLB ITSELF IS BACK, and this is the visible half of
+    keeping it. The bake is an independent cubemap, so on a revisit the REAL reflections can go on
+    immediately instead of showing the synthetic stand-in and popping to the real one a second
+    later when the download lands. `glbReady` therefore only decides whether we can BAKE one, not
+    whether we can USE one. A room we have never baked still falls back to synthetic. */
+ let key=(wantGlb&&(glbReady||roomEnvCache[gk]))?gk:sk;
+ if(!roomEnvCache[key]&&key===gk){
+  if(glbReady)roomEnvCache[gk]=bakeGlbEnv(roomGroups[id]);
+  if(!roomEnvCache[gk])key=sk;                            // never baked, or the bake failed
+ }
+ if(!roomEnvCache[key])roomEnvCache[key]=bakeSyntheticEnv(rm.env);
+ if(roomEnvCache[key]){scene.environment=roomEnvCache[key];touchEnv(key);}
+ pruneEnvs(key);
 }
 /* Apply the selected room/location: backdrop colour + fog, scene lighting, LED mood, reflection
    env, and the backdrop geometry (a room GLB, or the shared ground plane when it
@@ -817,6 +1156,7 @@ function applyRoom(onReady){
  applyFog();                                             // honours cfg.fog; reads THIS room's near/far
  if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
  if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
+ applyRoomKeyLights(rm);
  // LED mood: merge the room's override over CONFIG.leds (fx.js ledUpdate reads curLeds). A 'hold'
  // idle seeds the strip colour now; 'rainbow' is driven per-frame so its seed doesn't matter.
  curLeds=Object.assign({},CONFIG.leds,rm.led||{});
@@ -829,6 +1169,7 @@ function applyRoom(onReady){
  // than captured once: the old code read rm.glb up front, so a room whose GLB never arrived hid the
  // shared backdrop too and rendered as an empty void.
  const show=()=>{
+  shadowDirty();   // room/backdrop/props swapped, and the glb + props both land async
   const on=!!(roomGroups[id]&&roomGroups[id].children.length);
   for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&on);}
   const fill=!on&&rm.backdrop!==false;   // backdrop:false = a TRUE void (bg + fog only), no stand-in
@@ -865,6 +1206,7 @@ function applyColors(){
  document.documentElement.style.setProperty('--c0',cfg.redColor);
  document.documentElement.style.setProperty('--c1',cfg.blueColor);
  applyFinish();drawField();
+ renderDirty();   // kit/finish change: nothing MOVED, so shadowDirty never fires for it
 }
 
 /* Surface finish (metalness / roughness / emissive glow) from the Customize
@@ -892,6 +1234,7 @@ function rebuildRodMen(){
   }
   r.men=men;
  });
+ shadowDirty();   // every caster on the table was just replaced
 }
 
 /* Load a freshly-selected figurine and refresh everything already on the table. */

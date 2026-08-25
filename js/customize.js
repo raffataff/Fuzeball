@@ -270,7 +270,7 @@ function pvLoadModel(){
   PV.model=g;PV.loadedId=am.id;PV.root.add(g);pvApply();
  };
  if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);show(PV.cache[am.id]);return;}
- new THREE.GLTFLoader().load(am.src,
+ newGLTF().load(am.src,
   gltf=>{pvCachePut(am.id,gltf.scene);show(gltf.scene);},
   undefined,
   ()=>{console.warn('preview model load failed, using primitive');pvCachePut(am.id,pvFallback());show(PV.cache[am.id]);});
@@ -349,7 +349,7 @@ function thumbLoad(cb){
    done();
   };
   if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);place(PV.cache[am.id]);return;}
-  new THREE.GLTFLoader().load(am.src,
+  newGLTF().load(am.src,
    gltf=>{pvCachePut(am.id,gltf.scene);place(gltf.scene);},
    undefined,
    ()=>{pvCachePut(am.id,pvFallback());place(PV.cache[am.id]);});

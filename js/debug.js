@@ -43,6 +43,11 @@ function memLog(tag){
  // list them rather than count them: a regression here reads as extra keys, not a bigger number.
  const sk=(typeof skinOrder!=='undefined'&&skinOrder)?(skinOrder.join(',')||'none'):'?';
  const rm=(typeof roomOrder!=='undefined'&&roomOrder)?(roomOrder.join(',')||'none'):'?';
+ // Baked reflection maps outlive their room now (CONFIG.tableAssets.cacheEnvs) and are NOT in the
+ // scene graph, so memTexBytes() below cannot see them. Listed by key for the same reason skins and
+ // rooms are listed rather than counted: a regression here reads as extra keys, not a bigger number.
+ const ev=(typeof envOrder!=='undefined'&&envOrder)?(envOrder.join(',')||'none'):'?';
+ const pt=(typeof pitchOrder!=='undefined'&&pitchOrder)?(pitchOrder.join(',')||'none'):'?';
  // The main canvas isn't the only GL context: the studio, the menu thumbnails and the league setup
  // preview all draw through ONE shared offscreen renderer (PRV, world.js), which holds its own
  // upload of whatever figurines they've shown. Reported separately because main-renderer counts
@@ -54,7 +59,7 @@ function memLog(tag){
   'JS heap '+memFmt(pm&&pm.usedJSHeapSize)+' / limit '+memFmt(pm&&pm.jsHeapSizeLimit)
   +' | GPU '+geos+' geoms, '+texs+' textures, '+progs+' shaders'
   +' | scene '+nodes+' nodes | modelCache '+mc+' templates'
-  +' | skins ['+sk+'] rooms ['+rm+']'
+  +' | skins ['+sk+'] rooms ['+rm+'] pitches ['+pt+'] envs ['+ev+']'
   +' | tex '+memFmt(memTexBytes())
   +(sub.length?' | extra contexts: '+sub.join(', '):''));
 }
@@ -71,6 +76,15 @@ function memLog(tag){
    ten meshes is counted once. Estimate, not truth: it assumes 8-bit RGBA and mipmaps, which is
    what an uncompressed glTF PNG/JPG becomes once uploaded. */
 function texSize(t){
+ /* A COMPRESSED texture is the one case where this does not have to estimate: its mip levels ARE
+    the bytes that go to the GPU, so sum them. The RGBA formula below would over-report a KTX2
+    texture by 4x or more, which would make this audit worse than useless — it is the tool you
+    reach for to decide whether the KTX2 pass worked, so it must not be the thing that lies. */
+ if(t&&t.isCompressedTexture&&t.mipmaps&&t.mipmaps.length){
+  let b=0;for(const l of t.mipmaps)b+=(l&&l.data&&l.data.byteLength)||0;
+  const m0=t.mipmaps[0]||{},im0=t.image||{};
+  return{w:m0.width||im0.width||0,h:m0.height||im0.height||0,b:b,gpu:1};
+ }
  const im=t&&t.image;if(!im)return{w:0,h:0,b:0};
  const w=im.width||im.naturalWidth||im.videoWidth||0,h=im.height||im.naturalHeight||im.videoHeight||0;
  return{w,h,b:w*h*4*(t.generateMipmaps===false?1:4/3)};
@@ -85,7 +99,9 @@ function memTexCollect(){
  if(typeof ballExplosionTemplate!=='undefined'&&ballExplosionTemplate)push(ballExplosionTemplate.scene);
  if(typeof respawnSwirlTemplate!=='undefined'&&respawnSwirlTemplate)push(respawnSwirlTemplate.scene);
  if(typeof ballModel!=='undefined')push(ballModel);
- if(typeof pitchModel!=='undefined')push(pitchModel);
+ // Pitches are per-id groups now. Walk the RESIDENT ones, not just the shown one: an evicted-but-
+ // still-cached pitch is exactly the kind of thing this audit exists to make visible.
+ if(typeof pitchGroups!=='undefined')for(const k in pitchGroups)push(pitchGroups[k]);
  if(typeof roomGroups!=='undefined')for(const k in roomGroups)push(roomGroups[k]);
  const KEYS=['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap','envMap'];
  for(const r of roots)r.traverse(c=>{
@@ -93,7 +109,7 @@ function memTexCollect(){
   for(const m of (Array.isArray(c.material)?c.material:[c.material])){
    if(!m)continue;
    for(const k of KEYS){const t=m[k];if(!t||!t.uuid||seen.has(t.uuid))continue;
-    const s=texSize(t);if(s.b)seen.set(t.uuid,{name:(t.name||m.name||c.name||'?')+' ['+k+']',w:s.w,h:s.h,b:s.b});}
+    const s=texSize(t);if(s.b)seen.set(t.uuid,{name:(t.name||m.name||c.name||'?')+' ['+k+']',w:s.w,h:s.h,b:s.b,gpu:!!s.gpu});}
   }
  });
  return [...seen.values()].sort((a,b)=>b.b-a.b);
@@ -102,10 +118,91 @@ function memTexBytes(){let n=0;for(const t of memTexCollect())n+=t.b;return n;}
 /* Console helper: memTex() → the 15 fattest textures resident, biggest first. Anything at
    2048² or above on a prop the player never sees up close is a candidate for a downsize. */
 function memTex(n){
- const list=memTexCollect();let tot=0;for(const t of list)tot+=t.b;
- console.log('%c[TEX] '+list.length+' unique, '+memFmt(tot)+' est. (uncompressed RGBA + mipmaps)','color:#ffcf4d;font-weight:bold');
- console.table(list.slice(0,n||15).map(t=>({texture:t.name,px:t.w+'×'+t.h,MB:+(t.b/1048576).toFixed(1)})));
+ const list=memTexCollect();let tot=0,ktx=0,nk=0;
+ for(const t of list){tot+=t.b;if(t.gpu){ktx+=t.b;nk++;}}
+ // The KTX2 count is worth its own line: it is the difference between "this asset was encoded" and
+ // "this asset silently fell back", and at a glance those look identical in the size column.
+ console.log('%c[TEX] '+list.length+' unique, '+memFmt(tot)+' ('+nk+' KTX2 = '+memFmt(ktx)
+  +' exact; the rest est. as uncompressed RGBA + mipmaps)','color:#ffcf4d;font-weight:bold');
+ console.table(list.slice(0,n||15).map(t=>({texture:t.name,px:t.w+'×'+t.h,MB:+(t.b/1048576).toFixed(1),KTX2:t.gpu?'✓':''})));
  return tot;
+}
+
+/* ===== light audit =====================================================
+   Console-callable census of EVERY light in the game scene, with provenance —
+   because most of them are invisible in the room editor: a pooled light sits at
+   intensity 0 with no marker, and a room GLB's baked fixtures belong to the model
+   rather than to CONFIG. `lightAudit()` answers the two questions that matter:
+   what is lighting this scene, and what is it COSTING.
+
+   The cost line is the point. r128 compiles the scene's light COUNT into every
+   material's program and the fragment shader loops over ALL of them — so a light
+   parked at intensity 0 runs its full attenuation (and, for a spot, its cone
+   smoothstep) on every pixel of every MeshStandardMaterial before multiplying the
+   result by zero. Dead pool slots are not free; they cost what a lit one costs.
+
+   Shadow casters are called out separately because each one is an ENTIRE extra
+   render pass over every caster in the scene, per frame. */
+function lightProvenance(l){
+ if(typeof hemiLight!=='undefined'&&l===hemiLight)return 'world.js key - hemisphere (applyRoom sets colours/int)';
+ if(typeof dirLight!=='undefined'&&l===dirLight)return 'world.js key - directional SUN';
+ if(typeof goalLights!=='undefined'&&goalLights.indexOf(l)>=0)return 'goal flash pool (fx.js goalFx)';
+ if(typeof fxLightPool!=='undefined'&&fxLightPool.indexOf(l)>=0)return 'fx light pool'+(l._fxFree?' - FREE (dead weight)':' - borrowed');
+ if(typeof roomLightPool!=='undefined')for(const t in roomLightPool)
+  if(roomLightPool[t].indexOf(l)>=0)return 'room light pool ['+t+']'+(l._rlFree?' - FREE (dead weight)':' - authored rooms.<id>.lights');
+ // Anything left is parented inside a loaded model - almost always a room GLB's baked
+ // KHR_lights_punctual, which applyRoomLights transfers and models.js forces castShadow=false.
+ if(typeof roomGroups!=='undefined')for(const id in roomGroups){
+  let p=l;while(p){if(p===roomGroups[id])return 'BAKED into room GLB ('+id+') - position lives in the model';p=p.parent;}}
+ return 'unknown parent: '+((l.parent&&(l.parent.name||l.parent.type))||'none');
+}
+/* Delivered intensity from one light at the point directly BELOW it, at height y. Comparing
+   y=0 (the table) with y=-43 (the room floor) is what makes the 'why is the rug lit through
+   the table' question answerable: nothing occludes, so the only thing separating the two is
+   distance falloff — and for a lamp out at x=+-55 the floor beneath it is 69 units away against
+   60.8 to the table centre, i.e. essentially the SAME distance. Which is why pulling `dist` in
+   cannot fix it: any setting dark enough to kill the floor kills the table with it. */
+function lightDeliv(l,wp,y){
+ if(l.isHemisphereLight||l.isAmbientLight)return '-';
+ if(l.isDirectionalLight)return +l.intensity.toFixed(3);   // no falloff
+ const d=Math.abs(wp.y-y);
+ const f=(l.distance>0)?Math.pow(Math.max(0,1-d/l.distance),l.decay===undefined?2:l.decay):1;
+ return +(l.intensity*f).toFixed(3);
+}
+
+function lightAudit(){
+ if(typeof scene==='undefined'||!scene){console.warn('[LIGHTS] no scene yet');return 0;}
+ const rows=[],wp=new THREE.Vector3();let dead=0,cast=0;
+ scene.traverse(o=>{
+  if(!o.isLight)return;
+  o.getWorldPosition(wp);
+  const lit=o.intensity>0.0001&&o.visible;
+  if(!lit)dead++;
+  if(o.castShadow)cast++;
+  rows.push({
+   type:o.type.replace('Light',''),
+   from:lightProvenance(o),
+   int:+o.intensity.toFixed(3),
+   lit:lit?'yes':'- dead -',
+   pos:o.isHemisphereLight?'-':[wp.x,wp.y,wp.z].map(v=>Math.round(v)).join(','),
+   dist:o.distance===undefined?'-':Math.round(o.distance),
+   decay:o.decay===undefined?'-':o.decay,
+   angle:o.isSpotLight?(o.angle*180/Math.PI).toFixed(0)+'deg':'-',
+   table:lightDeliv(o,wp,0),
+   floor:lightDeliv(o,wp,-43),
+   shadow:o.castShadow?'CASTS':'no'
+  });
+ });
+ rows.sort((a,b)=>(a.lit===b.lit?0:a.lit==='yes'?-1:1));
+ console.log('%c[LIGHTS] '+rows.length+' in scene - '+(rows.length-dead)+' lit, '+dead+' dead weight, '+cast+' casting shadows',
+  'color:#ffcf4d;font-weight:bold');
+ console.table(rows);
+ console.log('%cAll '+rows.length+' are evaluated per-fragment by every MeshStandardMaterial, lit or not.'
+  +' Each CASTS costs a full extra shadow render pass per frame.','color:#8fa');
+ console.log('%ctable/floor = delivered straight down at y=0 vs the room floor y=-43. Nothing occludes'
+  +' (every light here except the SUN is castShadow:false), so a big floor number IS the rug lit'
+  +' through the table.','color:#8fa');
+ return rows.length;
 }
 
 // AI debug state

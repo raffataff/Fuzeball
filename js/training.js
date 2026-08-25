@@ -18,9 +18,8 @@ function trnSpawnBall(key,x,z){
  const b=makeBall(BALL_TYPES[key]?key:'classic');
  b.m.position.set(trnClampX(x),BALL_R,trnClampZ(z));b.v.set(0,0,0);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null;
  if(ARENA_ON)arenaClampSpawn(b.m.position);
- syncBall(b);
- setBallTag(b.key);
- TRN.lastSpot={x:b.m.position.x,z:b.m.position.z};
+  syncBall(b);
+  TRN.lastSpot={x:b.m.position.x,z:b.m.position.z};
  return b;
 }
 /* Teleport the first live ball (spawning one if none) to x,z at rest. The ONE place a
@@ -187,7 +186,7 @@ function buildTrnPanel(){
  $('trnRedrop').onclick=()=>{if(S.balls.length)for(const b of S.balls.slice())redropBall(b);else trnSpawnBall(TRN.ballType,trnSpot().x,trnSpot().z);Au.ui();};
  $('trnType').onchange=e=>{TRN.ballType=e.target.value;};
  $('trnSpawn').onclick=()=>{trnSpawnBall(TRN.ballType,trnSpot().x,trnSpot().z);Au.ui();};
- $('trnClear').onclick=()=>{clearBalls();setBallTag(null);Au.ui();};
+ $('trnClear').onclick=()=>{clearBalls();Au.ui();};
  $('trnSet').onclick=()=>trnPlace(+$('trnX').value||0,+$('trnZ').value||0);
  $('trnPick').onclick=()=>trnSetPlacing(!TRN.placing);
  $('trnLaunch').onclick=()=>trnLaunch();

@@ -77,11 +77,10 @@ function cannonballWarn(b){
   const ambient=0.1+0.15*k;                                // faint base glow that ramps as detonation nears
   b.warnShell.material.opacity=clamp(ambient+flash*(0.6+0.4*k),0,1);
   b.warnShell.scale.setScalar(1+0.06*flash);               // subtle swell timed to each beep
-  if(b.warnLight){
+   if(b.warnLight){
     b.warnLight.position.copy(b.m.position);
     b.warnLight.intensity=(0.3+CB.warnLightMax*k)*flash+0.2*k;
-  }
-  setBallTag('cannon',Math.ceil(b.cannonTimer)+'s');
+   }
 }
 function removeBall(b){scene.remove(b.m);if(b.light)fxLightPut(b.light);   // release the pooled glow (NOT scene.remove — that would change the light count)
  if(b.warnLight)fxLightPut(b.warnLight);
@@ -118,9 +117,8 @@ function serve(){
  syncBall(b);
  // tier 2: the ball drops in front of you — the old 'SPECIAL BALL DROPPING' subtitle under a
  // 66px centre banner narrated something already on screen, and blocked the table while doing it.
- if(key!=='classic')notice(BALL_TYPES[key].name,1.5,BALL_TYPES[key].trail);
- setBallTag(key);
- S.phase='play';S.lastTouch=-1;
+  if(key!=='classic')notice(BALL_TYPES[key].name,1.5,BALL_TYPES[key].trail);
+  S.phase='play';S.lastTouch=-1;
  msRallyReset();   // matchstats.js: a serve starts a new rally (the longest-rally clock)
 }
 
@@ -133,9 +131,8 @@ function cannonballUpdate(dt){
     if(b._warnSec!==sec){b._warnSec=sec;b._warnBeepAt=S.time;Au.warnBeep(1-sec/CONFIG.cannonball.warn);}
    }
    if(b.cannonTimer<=0){
-     const bp=b.m.position.clone();   // capture the detonation spot BEFORE removeBall frees the mesh
-     setBallTag('cannon');
-     removeBall(b);
+      const bp=b.m.position.clone();   // capture the detonation spot BEFORE removeBall frees the mesh
+      removeBall(b);
     cannonExplodeFx(bp);             // 3D shard debris + particle blast + light + boom (replaces the old Au.power beep)
     let nearestRod=-1,nearestMan=-1,nearestDist=Infinity;
     for(let ri=0;ri<rods.length;ri++){

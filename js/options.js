@@ -33,7 +33,10 @@ function applyGfxPreset(name){
  const p=GFX_PRESETS[name];if(!p)return;
  cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
  cfg.gfxPreset=name;
- applyDisplay();applyRoom();refreshBallReflect();applyReducedFx();
+ applyDisplay();applyReducedFx();
+ // A preset moves `reflections`, which re-decides the room's env map and pays a PMREM bake — so
+ // it goes through the staged gate (js/flow.js) like every other venue-touching control.
+ venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'APPLYING PRESET'});
  if($('setReflect'))$('setReflect').checked=cfg.reflections;   // keep the Match-Setup mirror in step
  syncDisplayUI();saveCfg();
 }
@@ -252,7 +255,8 @@ function bindOptions(){
   $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};
  $('optShadows').onchange=e=>{cfg.shadows=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
  $('optReflect2').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
-  applyRoom();refreshBallReflect();if($('setReflect'))$('setReflect').checked=e.target.checked;saveCfg();};
+  venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'REFLECTIONS'});
+  if($('setReflect'))$('setReflect').checked=e.target.checked;saveCfg();};
  $('optReducedFx').onchange=e=>{cfg.reducedFx=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyReducedFx();saveCfg();};
  $('optTrails').onchange=e=>{cfg.trails=e.target.checked;saveCfg();};        // fx.js spawnTrail reads cfg.trails live
  $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live

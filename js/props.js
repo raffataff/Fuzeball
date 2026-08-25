@@ -102,7 +102,7 @@ function ensureProp(id,cb){
  const cbs=propLoading[id]=cb?[cb]:[];
  const flush=()=>{delete propLoading[id];cbs.forEach(f=>f&&f());};
  const url=(d.folder!==undefined?d.folder:(P.folder||''))+d.src;
- new THREE.GLTFLoader().load(url,gltf=>{
+ newGLTF().load(url,gltf=>{
   try{
    if(typeof applyEmissiveStrength==='function')applyEmissiveStrength(gltf.scene);
    propTemplates[id]=propFlatten(gltf.scene,Object.assign({id},d));
@@ -224,6 +224,7 @@ function buildRoomProps(id,rm,cb){
  const P=(typeof CONFIG!=='undefined'&&CONFIG.props)||{};
  const specs=(rm&&rm.props)||[];
  disposeRoomProps(id);
+ if(typeof shadowDirty==='function')shadowDirty();   // props are casters; the editor rebuilds on every edit
  if(P.on===false||!specs.length){if(cb)cb();return;}
  let left=specs.length;
  const done=()=>{

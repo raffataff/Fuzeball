@@ -12,18 +12,113 @@ let matchLoading=false;
 function startMatch(mode,rodLockRole){
  if(S.lg||typeof ensureMatchAssets!=='function'){startMatchNow(mode,rodLockRole);return;}
  if(matchLoading)return;                     // a start is already pending — swallow repeat clicks
- matchLoading=true;let sync=false;
- const go=()=>{sync=true;matchLoading=false;showMatchLoading(false);
+ // `veil` tracks whether we ACTUALLY raised the loader. It used to be enough to just call
+ // showMatchLoading(false) unconditionally, because the call was a plain toggle — but the veil is
+ // refcounted now (a venue swap can be holding it at the same time), so an unbalanced lower would
+ // pull it off someone else's half-built room. Only lower what this path raised.
+ matchLoading=true;let sync=false,veil=false;
+ const go=()=>{sync=true;matchLoading=false;
+  if(veil){veil=false;showMatchLoading(false);}
   if(rods.length){rebuildRodMen();applyColors();}  // refresh the men to the now-resident figurines + kit colours (mirrors league start())
   startMatchNow(mode,rodLockRole);};
  ensureMatchAssets(go);
- if(!sync)showMatchLoading(true);            // assets weren't ready synchronously → show the loader until go() fires
+ if(!sync){veil=true;showMatchLoading(true,'LOADING');}   // assets weren't ready synchronously → show the loader until go() fires
 }
-function showMatchLoading(on){
+/* The loading veil. REFCOUNTED, because two things can want it at once now: the match-start gate
+   above and a venue swap (venueLoad, below). Without a count, whichever finished first would pull
+   the veil off the other and reveal a half-built room. `label` is only read on the way up, so the
+   caller that raised it owns the wording until it comes down. */
+let mlN=0;
+function showMatchLoading(on,label){
  let el=$('matchLoad');
  if(!el){if(!on)return;el=document.createElement('div');el.id='matchLoad';
-  el.innerHTML='<div class="mlBox"><div class="mlSpin"></div><span>LOADING</span></div>';document.body.appendChild(el);}
- el.classList.toggle('show',!!on);
+  el.innerHTML='<div class="mlBox"><div class="mlSpin"></div><span id="mlLabel">LOADING</span></div>';document.body.appendChild(el);}
+ mlN=Math.max(0,mlN+(on?1:-1));
+ if(on){const t=$('mlLabel');if(t)t.textContent=label||'LOADING';}
+ el.classList.toggle('show',mlN>0);
+}
+
+/* ===== STAGED VENUE SWAP ==================================================
+   Changing the room, table, skin, pitch or reflections used to happen in ONE synchronous run
+   straight off a <select> change: fetch and parse the backdrop GLB (the pub's is ~45MB), bake a
+   PMREM env, recompile every material in the scene if the incoming room's key-light configuration
+   differs from the outgoing one, rebuild the props — and then hand the browser a first frame
+   carrying the whole texture upload. Nothing yielded anywhere in that chain, so the browser never
+   got a paint in between. THAT is why it reads as the tab hanging rather than as something
+   loading, and why bolting a spinner onto it would have changed nothing: the spinner could not
+   have been drawn either.
+
+   THE FIX IS NOT MAKING THE WORK FASTER, IT IS GIVING IT SOMEWHERE TO HAPPEN — the same shape as
+   the league's tape screen. Four steps, each on its own frame:
+     1. veil up, then WAIT OUT ITS CSS FADE. Skipping this wait is the obvious optimisation and it
+        is wrong: the stall lands mid-transition and the veil freezes half-drawn, which reads worse
+        than no veil at all.
+     2. run(done) — the caller's applyRoom / applyTable / selectSkin. Every one of those already
+        takes an onReady that fires when its assets are RESIDENT, and resolves synchronously when
+        they already are; that existing contract is the only reason this is cheap to add.
+     3. warm: renderer.compile(scene,camera). THIS IS THE LOAD-BEARING LINE. compile() forces the
+        shader link AND the texture upload that three.js otherwise defers to the first render, so
+        the cost lands here, under the veil, instead of on the first frame the player sees.
+        js/props.js warmPropShaders already proved the technique — it just never ran for a room
+        with no props, i.e. `open`, `saucer` and `pub`, which is most of them.
+     4. one clean frame, then the veil drops.
+
+   COALESCED, NOT QUEUED. Holding the arrow keys on the room dropdown fires a change per room, and
+   running those in series would load every room between where you started and where you stopped.
+   A request arriving mid-swap REPLACES the pending one, so only the room you actually settled on
+   is ever fetched.
+
+   `silent` runs the identical staging with no veil — for a swap the player is not waiting on: the
+   league's own tape screen is already up, or the venue is being handed back in the background. The
+   staging alone is most of the win; the veil is just what makes the wait legible. */
+let venueBusy=false,venuePend=null;
+function venueLoad(run,opts){
+ opts=opts||{};
+ if(typeof run!=='function'){if(opts.onDone)opts.onDone();return;}
+ if(venueBusy){venuePend={run:run,opts:opts};return;}          // coalesce: only the latest survives
+ venueBusy=true;
+ const V=(typeof CONFIG!=='undefined'&&CONFIG.venue)||{};
+ const staged=V.on!==false, veil=staged&&!opts.silent;
+ const fade=(V.fadeT===undefined?0.24:V.fadeT)*1000;
+ const minT=(V.minT===undefined?0.45:V.minT)*1000;
+ const t0=Date.now();
+ if(veil)showMatchLoading(true,opts.label||'LOADING');
+ // One SETTLED frame later. The rAF pair matters: the first callback runs before the paint that
+ // applies whatever we just changed, so work scheduled on it still lands in the same visual frame.
+ const next=(fn,ms)=>{
+  if(!staged){fn();return;}
+  const go=()=>requestAnimationFrame(()=>requestAnimationFrame(fn));
+  if(ms)setTimeout(go,ms);else go();
+ };
+ const finish=()=>{
+  if(typeof renderDirty==='function')renderDirty();
+  setTimeout(()=>{
+   if(veil)showMatchLoading(false);
+   venueBusy=false;
+   if(opts.onDone)opts.onDone();
+   const p=venuePend;venuePend=null;
+   if(p)venueLoad(p.run,p.opts);
+  },veil?Math.max(0,minT-(Date.now()-t0)):0);
+ };
+ const warm=()=>{
+  // Gated on `staged` so CONFIG.venue.on:false is a TRUE off switch — the old path did no warm,
+  // and an escape hatch that still changes behaviour is not an escape hatch.
+  if(staged){
+   try{if(typeof renderer!=='undefined'&&renderer&&scene&&camera)renderer.compile(scene,camera);}
+   catch(e){console.warn('venue warm failed',e);}            // a warm that throws must not strand the veil
+   if(typeof shadowDirty==='function')shadowDirty();
+  }
+  next(finish);
+ };
+ next(()=>{
+  let done=false;
+  const settle=()=>{if(done)return;done=true;next(warm);};
+  // Hard ceiling on the wait. Every loader in the tree falls back on a miss (a 404 room uses the
+  // shared backdrop, a missing skin keeps the primitives), but a hung fetch fires neither load nor
+  // error — and a veil that never lifts is a worse bug than the freeze this replaces.
+  setTimeout(settle,(V.maxT===undefined?9:V.maxT)*1000);
+  try{run(settle);}catch(e){console.warn('venue load threw',e);settle();}
+ },veil?fade:0);
 }
 function startMatchNow(mode,rodLockRole){
  // The menu is clickable BEFORE main.js's boot() has run (intro skipped by a key/click, the
@@ -98,7 +193,7 @@ function startMatchNow(mode,rodLockRole){
  $('pause').classList.add('hidden');$('win').classList.add('hidden');  // overlays aren't registered, so they're torn down by hand
  $('hud').classList.remove('hidden');
  $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
- setBallTag('classic');clearFxRail();   // rail must not carry tabs over from the previous match
+  clearFxRail();   // rail must not carry tabs over from the previous match
   updateScoreUI();updateChips();
   // Pre-kickoff shader warm (fracture.js): compile every fx a match can fire — each ball type's
   // material + the shatter/swirl templates — at THIS match's exact light count, before the whistle.

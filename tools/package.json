@@ -1,0 +1,19 @@
+{
+  "name": "fuzeball-tools",
+  "private": true,
+  "description": "Build-time tooling for Fuzeball. Nothing here ships to the browser.",
+  "scripts": {
+    "ktx2:dry": "node ktx2-encode.mjs --dir ../assets/rooms --dry",
+    "ktx2:rooms": "node ktx2-encode.mjs --dir ../assets/rooms",
+    "ktx2:figurines": "node ktx2-encode.mjs --dir ../assets --no-recurse",
+    "ktx2:explosions": "node ktx2-encode.mjs --dir ../assets/animations",
+    "ktx2:tables": "node ktx2-encode.mjs --dir ../assets/tables"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "@gpu-tex-enc/basis": "^1.16.4"
+  },
+  "//type": "DELIBERATELY NO \"type\":\"module\". Setting it would make every .js in tools/ an ES module, and every existing harness here (roomlights, trials, shots, venueload, roomenv...) is CommonJS and uses require() \u2014 they all die instantly. ktx2-encode.mjs is .mjs, which is ESM on its own extension and needs no help from this file."
+}

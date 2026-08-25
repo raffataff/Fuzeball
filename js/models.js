@@ -12,7 +12,7 @@ const rodSetLoading={};   // rod-set key -> [pending cbs] while its load batch i
 const ROD_SIZES=[1,2,3,5];
 let ballModel=null;      // loaded ball GLB scene (with material slots)
 let roomModel=null;      // deprecated — room/location GLBs now live in roomGroups[id] (arena.js), keyed by CONFIG.rooms id; kept to avoid a dangling ref
-let pitchModel=null;     // loaded pitch GLB scene (one mesh per theme variant)
+// (pitchModel is gone — pitches are per-id groups in pitchGroups now; see the pitch block below)
 const ballMatMap={};     // ballType -> material name in GLB
 const pitchMatMap={};    // pitch variant -> material (unused for now; mirrors ball loader)
 const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc. Lazy: only the figurines actually on the table are loaded (ensureExplosionModel), not all ~17.
@@ -83,7 +83,7 @@ function loadSkin(id,skinId,cb){
  touchSkin(id,skinId);
  const cbs=skinLoadingCbs[key]=cb?[cb]:[];
  const flush=()=>{delete skinLoadingCbs[key];cbs.forEach(f=>f&&f());};
- const loader=new THREE.GLTFLoader();
+ const loader=newGLTF();
  const hook=gltf=>{
   try{
    let hasFrame=false;
@@ -319,17 +319,28 @@ function applyRoomLights(room,R){
  // light count and recompiles every material, and a dev toggling a lamp should not pay that.
  const off=new Set(((R&&R.lightsOff)||[]).map(s=>String(s).toLowerCase()));
  lights.forEach(l=>{
+  /* AUTHORED CANDELA, stashed on the FIRST pass only. The transfer below OVERWRITES intensity,
+     so without this stash the function is not idempotent — and it is called twice in real use:
+     once at GLB load, then again on every drag of the room editor's gain/reach sliders. A second
+     pass would divide the already-transferred value by d0^2 a second time and collapse the room
+     to black; worse, a room authored at gain:0 lands every fixture on 0 and could NEVER come
+     back, because 0*gain is 0 for every gain. That is exactly what made those sliders read dead. */
+  if(l.userData.rlCandela===undefined){
+   l.userData.rlCandela=l.intensity;
+   l.userData.rlDist=l.distance;
+  }
+  const cd=l.userData.rlCandela;
   l.castShadow=false;                                  // no room light casts shadows yet — see CLAUDE.md
   l.userData.roomOff=off.has(String(l.name||'').toLowerCase());
   l.getWorldPosition(p);
   // d0: how far this fixture is from the play area. The table sits at the origin.
   const d0=Math.max(p.length(),C.minDist);
   if(l.isPointLight||l.isSpotLight){
-   l.intensity=l.intensity/(d0*d0)*C.gain;             // inverse-square relationship, then the room's knob
+   l.intensity=cd/(d0*d0)*C.gain;                      // inverse-square relationship, then the room's knob
    l.decay=C.decay;
    l.distance=C.reach>0?d0*C.reach:0;                  // 0 = no cutoff (flat)
   }else{
-   l.intensity*=C.gain;                                // directional/ambient inside a room glb: no falloff to derive
+   l.intensity=cd*C.gain;                              // directional/ambient inside a room glb: no falloff to derive
   }
  });
  // Ratio-preserving ceiling. Scales the WHOLE room by one factor so the authored
@@ -365,7 +376,7 @@ function ensureRoom(id,cb){
  const cbs=roomLoading[id]=cb?[cb]:[];touchRoom(id);
  const flush=()=>{delete roomLoading[id];cbs.forEach(f=>f&&f());};
  const url=(R.folder||'')+R.glb;
- new THREE.GLTFLoader().load(url,gltf=>{
+ newGLTF().load(url,gltf=>{
   try{
    const room=gltf.scene;
    room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}});   // backdrop, not a shadow caster
@@ -384,16 +395,25 @@ function ensureRoom(id,cb){
   flush();                                          // GLB missing → shared backdrop; release queued cbs so a gate doesn't wait forever
  });
 }
-/* Free an evicted room backdrop + its baked GLB reflection map. Rooms are never cloned, so a hard
-   dispose is safe. NEVER call on the room currently visible. */
+/* Free an evicted room backdrop. Rooms are never cloned, so a hard dispose is safe. NEVER call on
+   the room currently visible.
+   THE REFLECTION BAKE IS DELIBERATELY LEFT BEHIND. It used to be freed right here, one line below
+   the group it came from, which looked like tidy bookkeeping and was the expensive half of a room
+   switch. The bake is an independent ~6MB cubemap that holds no reference back to the group; the
+   group is 20-45MB of geometry and texture. Freeing the small thing — the one that costs a full
+   PMREM pass to recreate — in order to free the large thing alongside it is the trade backwards,
+   and it meant an A/B room toggle re-baked BOTH rooms every single time. roomEnvCache has its own
+   LRU now (CONFIG.tableAssets.cacheEnvs, world.js pruneEnvs) and that is what bounds it.
+   The leak the old code guarded against is still guarded, just from there: pruneEnvs frees through
+   envDispose(), never tex.dispose() — a PMREM bake is a RENDER TARGET and freeing its texture
+   alone leaves the framebuffer allocated (see world.js envKeep). */
 function disposeRoom(id){
  const room=roomGroups[id];if(!room)return;
  if(typeof disposeRoomProps==='function')disposeRoomProps(id);   // instanced props go with the room
  scene.remove(room);delete roomGroups[id];
  const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
  disposeModelTemplate(room);
- if(typeof roomEnvCache!=='undefined'){const k='glb:'+id;if(roomEnvCache[k]){if(roomEnvCache[k].dispose)roomEnvCache[k].dispose();delete roomEnvCache[k];}}
- console.log('room freed: '+id);
+ console.log('room freed: '+id+' (reflection bake kept — see the note above)');
 }
 // Back-compat shim: the old eager all-rooms loader. Nothing calls it now — kept so an
 // external/console caller doesn't hit a missing function.
@@ -418,7 +438,7 @@ function loadRodSet(key,cb){
  if(set._done){if(cb)cb();return;}
  if(rodSetLoading[key]){if(cb)rodSetLoading[key].push(cb);return;}
  const cbs=rodSetLoading[key]=[];if(cb)cbs.push(cb);
- const loader=new THREE.GLTFLoader();
+ const loader=newGLTF();
  const rd=(key!=='_shared'&&CONFIG.tables[key])?CONFIG.tables[key].rods:null;
  const folder=(rd&&rd.folder)||'assets/rods/';
  const files=(rd&&rd.files)||{};
@@ -510,13 +530,13 @@ function loadExplosionModels(onReady){
   if(!left){onReady();return;}
   const done=()=>{if(--left<=0)onReady();};
   if(ballSrc){
-   new THREE.GLTFLoader().load(ballSrc,
+   newGLTF().load(ballSrc,
     gltf=>{applyEmissiveStrength(gltf.scene);ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('cannonball explosion GLB missing ('+ballSrc+')');done();});
   }
   if(swirlSrc){
-   new THREE.GLTFLoader().load(swirlSrc,
+   newGLTF().load(swirlSrc,
     gltf=>{applyEmissiveStrength(gltf.scene);respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('respawn swirl GLB missing ('+swirlSrc+')');done();});
@@ -533,7 +553,7 @@ function ensureExplosionModel(id,cb){
   const m=CONFIG.playerModel.models.find(x=>x.id===id);
   if(!m||!m.explosionSrc){if(cb)cb();return;}                       // figurine has no shatter GLB — keeps original instant-vanish
   explosionLoading[id]=true;
-  new THREE.GLTFLoader().load(m.explosionSrc,
+  newGLTF().load(m.explosionSrc,
    gltf=>{delete explosionLoading[id];applyEmissiveStrength(gltf.scene);
     explosionTemplates[id]={scene:gltf.scene,clips:gltf.animations};
     if(typeof warmFractureTemplate==='function')warmFractureTemplate(explosionTemplates[id]); // precompile now, off the game loop
@@ -573,7 +593,7 @@ function loadBallModel(onReady){
     if(onReady)onReady();
     return;
   }
-  const loader=new THREE.GLTFLoader();
+  const loader=newGLTF();
   const hook=(url)=>gltf=>{
     ballModel=gltf.scene;
     ballModel.traverse(c=>{
@@ -635,7 +655,7 @@ function loadPowerupModels(onReady){
  const keys=(M&&M.on)?Object.keys(M).filter(k=>k!=='on'&&M[k]&&M[k].src):[];
  if(!keys.length){if(onReady)onReady();return;}
  let left=keys.length;const done=()=>{if(--left<=0&&onReady)onReady();};
- const loader=new THREE.GLTFLoader();
+ const loader=newGLTF();
  keys.forEach(k=>{
   const d=M[k],ty=CONFIG.puTypes.find(x=>x.key===k);
   loader.load(d.src,gltf=>{
@@ -690,14 +710,35 @@ function warmPowerupShaders(){
  }
 }
 
-/* --- pitch model ------------------------------------------------------------ */
-function loadPitchModel(onReady){
-  const loader=new THREE.GLTFLoader();
-  let fired=false;
-  const done=()=>{if(!fired){fired=true;if(onReady)onReady();}};
-  loader.load('assets/pitches/fuzeball_pitch.glb',gltf=>{
-    pitchModel=gltf.scene;
-    pitchModel.traverse(c=>{
+/* --- pitches (one GLB each, lazy + LRU) --------------------------------------
+   Was ONE 32MB atlas holding all eight, so booting into any pitch downloaded it and GLTFLoader
+   decoded all 22 of its images — to show three. drawField then detached the seven meshes you were
+   not using, which correctly kept VRAM down and did nothing at all about the fetch or the decode
+   that had already happened. Now it is the same shape rooms and skins already use: one file per
+   id, fetched when picked, evicted past CONFIG.tableAssets.cachePitches, LRU, active protected.
+   Split with tools/pitch-split.mjs — see the note above CONFIG.pitches for why the variant key is
+   the MATERIAL name and not the mesh name. */
+const pitchGroups={};    // pitch id -> its loaded GLB group (parented into the table group when shown)
+const pitchLoading={};   // pitch id -> [pending cbs] while its GLB fetch is in flight
+const pitchFailed={};    // 404 latch — same reason roomFailed exists: without it a missing file is
+                         // re-fetched on every drawField, and drawField runs on every venue change
+const pitchOrder=[];     // LRU, least-recent first
+function pitchHasGlb(id){const P=CONFIG.pitches&&CONFIG.pitches[id];return !!(P&&P.glb&&!pitchFailed[id]);}
+function touchPitch(id){const i=pitchOrder.indexOf(id);if(i>=0)pitchOrder.splice(i,1);pitchOrder.push(id);}
+/* Ensure one pitch's GLB is resident. Idempotent; cb fires on success, on failure, and on every
+   no-op, so drawField can gate on it the way applyRoom gates on ensureRoom. */
+function ensurePitch(id,cb){
+  const P=CONFIG.pitches&&CONFIG.pitches[id];
+  if(!pitchHasGlb(id)){if(cb)cb();return;}
+  if(pitchGroups[id]){touchPitch(id);if(cb)cb();return;}
+  if(pitchLoading[id]){if(cb)pitchLoading[id].push(cb);touchPitch(id);return;}
+  const cbs=pitchLoading[id]=cb?[cb]:[];touchPitch(id);
+  const flush=()=>{delete pitchLoading[id];cbs.forEach(f=>f&&f());};
+  const url=(P.folder||'assets/pitches/')+P.glb;
+  newGLTF().load(url,gltf=>{
+   try{
+    const g=gltf.scene;
+    g.traverse(c=>{
       if(!c.isMesh)return;
       c.castShadow=false;c.receiveShadow=true;
       const m=c.material;
@@ -711,13 +752,38 @@ function loadPitchModel(onReady){
         if(m.bumpMap){m.bumpMap.encoding=THREE.LinearEncoding;m.bumpMap.needsUpdate=true;}
         m.needsUpdate=true;
       }
-      const n=ballKey(c);
-      if(n)pitchMatMap[n]=m;
     });
-    console.log('pitch GLB loaded — variants:',Object.keys(pitchMatMap));
-    done();
+    g.visible=false;                        // drawField parents + reveals it
+    pitchGroups[id]=g;
+    console.log('pitch "'+id+'" loaded ('+P.glb+')');
+   }catch(e){console.warn('pitch GLB hookup failed for '+id,e);}
+   flush();
   },undefined,()=>{
-    console.warn('no pitch GLB, using image pitches');
-    done();
+   pitchFailed[id]=true;                    // latch: never re-fetch, and let drawField use the JPEG for real
+   const oi=pitchOrder.indexOf(id);if(oi>=0)pitchOrder.splice(oi,1);
+   console.warn('pitch GLB missing for '+id+' ('+url+'), using the image fallback');
+   flush();
   });
+}
+/* Free an evicted pitch. Never call on the one currently shown — prunePitches protects it. */
+function disposePitch(id){
+  const g=pitchGroups[id];if(!g)return;
+  if(g.parent)g.parent.remove(g);
+  delete pitchGroups[id];
+  const oi=pitchOrder.indexOf(id);if(oi>=0)pitchOrder.splice(oi,1);
+  disposeModelTemplate(g);                  // shared GPU-free helper (world.js)
+  console.log('pitch freed: '+id);
+}
+/* Evict past CONFIG.tableAssets.cachePitches, LRU first. Measured as "how many NON-kept entries
+   may stay", the same way pruneSkins/pruneRooms/pruneEnvs are, so cachePitches:1 legally means
+   "hold nothing you are not standing on". */
+function prunePitches(keepId){
+  const extra=Math.max(0,((CONFIG.tableAssets||{}).cachePitches||2)-1);
+  let n=0;for(const id of pitchOrder)if(id!==keepId)n++;
+  for(let i=0;i<pitchOrder.length&&n>extra;){
+   const id=pitchOrder[i];
+   if(id===keepId){i++;continue;}
+   disposePitch(id);
+   if(pitchOrder[i]===id)i++;else n--;
+  }
 }

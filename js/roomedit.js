@@ -181,6 +181,16 @@ function reColor(lab,val,cb){
  i.addEventListener('input',()=>{const n=parseInt(i.value.slice(1),16);t.textContent=reHex(n);cb(n);});
  r.appendChild(i);r.appendChild(t);return r;
 }
+/* Checkbox row. `hint` becomes the title, because every switch built on this one costs a
+   whole-scene shader recompile the first time a configuration is seen and the user deserves
+   to know which clicks are the expensive ones. */
+function reChk(lab,val,cb,hint){
+ const r=reEl('div','reRow');const l=reEl('label',null,lab);r.appendChild(l);
+ const i=document.createElement('input');i.type='checkbox';i.checked=!!val;
+ if(hint)r.title=hint;
+ i.addEventListener('change',()=>cb(i.checked));
+ r.appendChild(i);return r;
+}
 function reBtnRow(){return reEl('div','reRow');}
 function buildREPanel(){
  if(RE.panel)return;
@@ -380,6 +390,18 @@ function reditTabWorld(w){
  w.appendChild(reEl('h4',null,'ambient + key'));
  if(!rm.hemi)rm.hemi={sky:0xffffff,ground:0x101010,int:0.8};
  if(!rm.dir)rm.dir={color:0xffffff,int:0.8,pos:[45,100,35]};
+ // A REAL off: these three leave the scene's light count rather than sitting at intensity 0,
+ // so they stop costing every material a per-fragment evaluation. See applyRoomKeyLights.
+ const keys=()=>{if(typeof applyRoomKeyLights==='function')applyRoomKeyLights(rm);reditBackup();};
+ w.appendChild(reChk('hemi on',rm.hemi.on!==false,v=>{rm.hemi.on=v;keys();},
+  'Off removes it from the light count entirely (one recompile, then cached)'));
+ w.appendChild(reChk('sun on',rm.dir.on!==false,v=>{rm.dir.on=v;keys();},
+  'An indoor room usually wants this off — there is no sun in a pub'));
+ w.appendChild(reChk('sun casts shadow',rm.dir.shadow!==false,v=>{rm.dir.shadow=v;keys();},
+  'The key light is the only caster until a room light asks to cast'));
+ w.appendChild(reChk('image-based light',rm.ibl!==false,v=>{rm.ibl=v;
+  if(typeof setRoomEnv==='function')setRoomEnv(id,rm);keys();},
+  'Off = no scene.environment: no reflections and metals go dark'));
  w.appendChild(reSlider('hemi',rm.hemi.int,0,2,0.01,
   v=>{rm.hemi.int=v;if(typeof hemiLight!=='undefined'&&hemiLight)hemiLight.intensity=v;reditBackup();}));
  w.appendChild(reColor('sky',rm.hemi.sky,v=>{rm.hemi.sky=v;
@@ -419,17 +441,18 @@ function reditTabWorld(w){
  w.appendChild(reEl('div','reMuted','exposure + tone are CONFIG.render, not this room'));
  reditLightReadout();
 }
-/* Re-run applyRoomLights from the GLB's ORIGINAL candela. The transfer is destructive
-   (it overwrites intensity), so the authored value is stashed on first touch — without
-   this, dragging the gain slider would compound: each pass would re-divide the already
-   transferred value by d0^2 and the room would collapse to black in a few frames. */
+/* Re-run the candela transfer for this room. applyRoomLights (models.js) stashes each
+   fixture's authored candela in userData.rlCandela on its first pass and always derives
+   from that, so it is IDEMPOTENT — this can fire on every 'input' event of the gain/reach
+   sliders without compounding. (It did not always: the transfer overwrites intensity, and
+   re-deriving from an already-transferred value divides by d0^2 twice, which is what used
+   to black the room out on the first drag and pin a gain:0 room at zero forever.)
+   Readout only, deliberately — rebuilding the whole section here would destroy the slider
+   the user is still holding, since these fire on every 'input' event. */
 function reditRelight(group,rm){
- group.traverse(c=>{if(c.isLight&&c.userData.reAuthored===undefined){
-  c.userData.reAuthored=c.intensity;c.userData.reDist=c.distance;}});
- group.traverse(c=>{if(c.isLight){c.intensity=c.userData.reAuthored;c.distance=0;}});
  if(typeof applyRoomLights==='function')applyRoomLights(group,rm);
- reditLightReadout();      // readout only — rebuilding the section here would destroy the
- reditBackup();            // slider mid-drag, since these fire on every 'input' event
+ reditLightReadout();
+ reditBackup();
 }
 /* Refresh just the per-fixture readout, in place. */
 function reditLightReadout(){
@@ -474,6 +497,14 @@ function reditSelLight(w){
   w.appendChild(reSlider('angle',L.angle===undefined?0.6:L.angle,0.05,1.5,0.01,v=>{L.angle=v;set();}));
   w.appendChild(reSlider('penumbra',L.penumbra===undefined?0.4:L.penumbra,0,1,0.02,v=>{L.penumbra=v;set();}));
  }
+ // Casting is not a property we can flip on THIS light — castShadow is a shader parameter, so
+ // the light is re-borrowed from the fixed shadow sub-pool instead (see world.js rlpGet). Hence
+ // the full re-drive rather than a live poke, and hence the budget in the title.
+ w.appendChild(reChk('casts shadow',!!L.shadow,v=>{L.shadow=v;
+  if(typeof applyAuthoredLights==='function')applyAuthoredLights(reditRoom());
+  if(typeof shadowDirty==='function')shadowDirty();
+  reditBackup();reditSync();},
+  'One extra render pass per frame (SIX for a point light). Budget: CONFIG.render.roomLightPool.shadow'));
  if(t!=='point'){
   const k=L.look||(L.look=[0,0,0]);
   w.appendChild(reNum('aim x',k[0],1,v=>{k[0]=v;set();}));
@@ -888,7 +919,7 @@ function reditPropsBlock(specs,ind){
 }
 function reditLightsBlock(list,ind){
  if(!list.length)return ind+'lights:[],';
- const order=['type','pos','look','color','int','dist','decay','angle','penumbra'];
+ const order=['type','pos','look','color','int','dist','decay','angle','penumbra','shadow'];
  const L=[ind+'lights:['];
  list.forEach((x,i)=>{
   const extra=Object.keys(x).filter(k=>order.indexOf(k)<0);
