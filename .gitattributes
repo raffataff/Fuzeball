@@ -1,0 +1,53 @@
+# ============================================================================
+# LINE ENDINGS
+#
+# Every line in a text file ends with an invisible marker. Windows tools write
+# two characters (CR+LF), everything else writes one (LF). Both work fine — the
+# game does not care, node does not care, python does not care. Git cares,
+# because a tool that rewrites the markers rewrites EVERY line, so a one-line
+# edit shows up as a whole-file change and buries the real edit.
+#
+# With no rule here, whichever tool touched a file last decided its endings, and
+# this repo drifted: 25 files CRLF, 13 LF, and 3 mixed inside themselves. The
+# line below settles it — text files are stored in the repo as LF no matter what
+# your editor writes locally, which is the convention GitHub and every web
+# toolchain expects.
+# ============================================================================
+* text=auto eol=lf
+
+# Batch files are the one real exception: cmd.exe can mis-parse them with LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# ============================================================================
+# BINARY — never rewrite these bytes, and never try to diff them as text.
+# Models and textures would be CORRUPTED by line-ending translation, so they are
+# named explicitly rather than left to git's content guess.
+# ============================================================================
+*.glb     binary
+*.glb.bak binary
+*.ktx2    binary
+*.basis   binary
+
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.otf     binary
+*.eot     binary
+
+*.mp3     binary
+*.ogg     binary
+*.wav     binary
+*.m4a     binary
+*.mp4     binary
+*.webm    binary
+
+*.zip     binary
+*.pdf     binary

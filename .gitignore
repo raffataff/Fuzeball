@@ -1,0 +1,50 @@
+# ============================================================================
+# FUZEBALL — .gitignore
+#
+# Everything listed here is either reinstallable, regenerable, or a local
+# safety copy. Nothing here is needed to build or run the game from a fresh
+# clone. Assets (assets/, vendor/, fonts/) are deliberately NOT ignored — they
+# ARE the game, and vendor/ is committed on purpose so a packaged build never
+# has to touch the network. See the note at the top of index.html.
+# ============================================================================
+
+# --- npm packages -----------------------------------------------------------
+# Restored with:  cd tools && npm install
+# tools/package.json and tools/package-lock.json are committed, so the exact
+# versions come back. Was 563 files / 63 MB, including an 18 MB Windows DLL
+# stored twice over and basisu binaries for macOS and Linux that never run here.
+node_modules/
+
+# --- local backup copies ----------------------------------------------------
+# The single biggest thing in this repo: 59 files, 418 MB — safety copies left
+# beside a model before re-exporting it. Git history is already the backup, so
+# committing these stores the same model twice, forever.
+*.bak
+
+# --- machine-local tool state -----------------------------------------------
+# "local" in the name: this is per-machine, not project config.
+.claude/settings.local.json
+
+# --- VS Code ----------------------------------------------------------------
+# Personal editor state stays out; genuinely shared project settings (such as
+# files.eol, which keeps line endings consistent) can be committed.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# --- OS junk ----------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+
+# --- editor / temp ----------------------------------------------------------
+*.swp
+*~
+*.tmp
+tmp/
+.cache/
+
+# --- logs -------------------------------------------------------------------
+*.log
+npm-debug.log*
