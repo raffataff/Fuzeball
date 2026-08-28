@@ -165,14 +165,17 @@ function initThree(){
  hemiLight=new THREE.HemisphereLight(0xcdd9ff,0x1c1610,.85);scene.add(hemiLight); // colours/intensity set per-room by applyRoom
  dirLight=new THREE.DirectionalLight(0xffffff,1.05);
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
- dirLight.shadow.mapSize.setScalar(((CONFIG.render&&CONFIG.render.shadow&&CONFIG.render.shadow.mapSize)||2048));
  /* bias/normalBias fight shadow acne — both were 0 (three.js defaults, never set). The extents
     were 160x140 for a table spanning ~138x68 incl. goal depth, so most of the shadow map was
-    spent on empty space. Room meshes are castShadow=false, so nothing outside the table casts. */
- const SH=Object.assign({bias:-0.0002,normalBias:0.35,left:-76,right:76,top:46,bottom:-46,far:260},
-  (typeof CONFIG!=='undefined'&&CONFIG.render&&CONFIG.render.shadow)||{});
- dirLight.shadow.bias=SH.bias;dirLight.shadow.normalBias=SH.normalBias;
+    spent on empty space. Room meshes are castShadow=false, so nothing outside the table casts.
+    Map size, filter and bias come from the ACTIVE quality tier (see shadowQ below), so a saved
+    High is live on the very first frame rather than being switched in a moment later — which
+    would recompile every material that exists by then, at boot, for nothing. */
+ const SH=shadowQ();
+ dirLight.shadow.mapSize.setScalar(SH.mapSize||2048);
+ dirLight.shadow.bias=SH.bias;dirLight.shadow.normalBias=SH.normalBias;dirLight.shadow.radius=SH.radius;
  const sc=dirLight.shadow.camera;sc.left=SH.left;sc.right=SH.right;sc.top=SH.top;sc.bottom=SH.bottom;sc.far=SH.far;
+ _dispShadowQ=shadowQLevel();   // the light now matches this tier — applyDisplay's first run has nothing to do
  scene.add(dirLight);
  // Shadow-map freeze. The pass re-draws every caster (all 22 figurines included) every frame,
  // for a map that is camera-INDEPENDENT — so in the menus, the room editor and photo mode it
@@ -192,8 +195,21 @@ function initThree(){
 
 /* Shadow-map filter. PCFSoft is a 9-tap per-fragment filter run by every RECEIVER, so its cost
    scales with how much screen the table fills — which is exactly the case that was slow. */
-const SHADOW_TYPES={pcfsoft:THREE.PCFSoftShadowMap,pcf:THREE.PCFShadowMap,basic:THREE.BasicShadowMap};
-function shadowMapType(){const k=((CONFIG.render&&CONFIG.render.shadow&&CONFIG.render.shadow.type)||'pcfsoft').toLowerCase();
+const SHADOW_TYPES={pcfsoft:THREE.PCFSoftShadowMap,pcf:THREE.PCFShadowMap,basic:THREE.BasicShadowMap,
+ vsm:THREE.VSMShadowMap};
+/* THE ACTIVE SHADOW TUNING. CONFIG.render.shadow holds what every tier shares (the camera
+   extents, the far plane, the freeze); CONFIG.render.shadow.quality.<low|high> overrides the
+   handful of values the Display setting actually moves. Resolved in ONE place so initThree and
+   applyDisplay can never disagree about what High means, and so a tier that omits a key simply
+   inherits the base rather than silently reading undefined. */
+const SHADOW_BASE={bias:-0.0002,normalBias:0.35,radius:1,left:-76,right:76,top:46,bottom:-46,far:260,
+ type:'pcfsoft',mapSize:2048,autoUpdate:false};
+function shadowQLevel(){return (typeof cfg!=='undefined'&&cfg.shadowQuality==='high')?'high':'low';}
+function shadowQ(){
+ const S=(typeof CONFIG!=='undefined'&&CONFIG.render&&CONFIG.render.shadow)||{};
+ return Object.assign({},SHADOW_BASE,S,(S.quality&&S.quality[shadowQLevel()])||{});
+}
+function shadowMapType(){const k=String(shadowQ().type||'pcfsoft').toLowerCase();
  const t=SHADOW_TYPES[k];return t===undefined?THREE.PCFSoftShadowMap:t;}
 /* ===== KTX2 / BASIS TEXTURES ==============================================
    A PNG or a JPEG is compressed ON DISK and completely UNCOMPRESSED IN VRAM: the browser decodes
@@ -260,6 +276,18 @@ function newGLTF(){
    definition, something that changed what the scene looks like, so the idle throttle inherits
    the whole existing hook set — applyRoom, applySkin, rebuildRodMen, buildRoomProps, the sim
    step, replay playback — without any of them being touched. */
+/* DROP A LIGHT'S SHADOW MAP so three re-allocates it. This is the only way a new mapSize or a
+   new shadowMap.type ever takes effect: three builds the map once, in a `shadow.map === null`
+   branch, and reuses it forever after. `mapPass` is VSM's gaussian blur target, allocated beside
+   the map in that same branch and REASSIGNED rather than disposed — so dropping the map without
+   it leaks a whole render target per call. One helper because this is needed from two files
+   (here for the quality tiers, js/photo.js for its capture-resolution boost) and the mapPass
+   half is exactly the sort of thing the second caller forgets. */
+function shadowMapDrop(sh){
+ if(!sh)return;
+ if(sh.map){sh.map.dispose();sh.map=null;}
+ if(sh.mapPass){sh.mapPass.dispose();sh.mapPass=null;}
+}
 function shadowDirty(){if(renderer&&!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;renderDirty();}
 
 /* ===== IDLE-RENDER GATE (the menus) =======================================
@@ -344,24 +372,55 @@ function renderIdleSkip(rdt){
      surfaces receive it. Flipping shadowMap.enabled changes material shader defines, so every
      material needs a one-time recompile on the change — done here, and ONLY when it actually
      changes (tracked in _dispShadows), so re-applying render scale alone never triggers it.
+   • shadowQuality swaps the map size, the filter and the bias for the tier in
+     CONFIG.render.shadow.quality. The filter is another shader define, so it rides the SAME
+     one-time recompile rather than paying a second one, and the map has to be thrown away for a
+     new size to take — three.js allocates it once and reuses it forever otherwise.
    Reflections + fps-cap live elsewhere (refreshBallReflect / the main loop). */
 let _dispShadows=true;   // matches initThree's shadowMap.enabled=true starting state
+let _dispShadowQ=null;   // set by initThree to the tier the light was built with
 function applyDisplay(){
  if(!renderer)return;
  const rs=clamp(cfg.renderScale||1,0.4,1);
  renderer.setPixelRatio(Math.min(devicePixelRatio,2)*rs);
  renderer.setSize(innerWidth,innerHeight);
  renderDirty();   // the drawing buffer was just resized — the held idle frame is the wrong size
+ let recompile=false,redraw=false;
  const sh=cfg.shadows!==false;
  if(sh!==_dispShadows){
   renderer.shadowMap.enabled=sh;
   if(dirLight)dirLight.castShadow=sh;
   _keyDirSh=null;   // Display owns castShadow now; drop the room latch so the next applyRoom re-decides
-  renderer.shadowMap.needsUpdate=true;
-  scene.traverse(o=>{const m=o.material;if(!m)return;
-   (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
-  _dispShadows=sh;
+  _dispShadows=sh;recompile=true;redraw=true;
  }
+ const q=shadowQLevel();
+ if(q!==_dispShadowQ){
+  const S=shadowQ(),t=shadowMapType();
+  if(dirLight&&dirLight.shadow){
+   const d=dirLight.shadow;
+   /* THROW THE MAP AWAY WHEN THE SIZE **OR THE TYPE** MOVES, and the type case is the one that
+      bites. three allocates the map — and, for VSM only, the `mapPass` blur target beside it —
+      inside a single `shadow.map === null` branch, picking the filter from the type (Linear for
+      VSM, Nearest for everything else). Switch to VSM while a PCF map is still live and that
+      branch never runs: the blur then renders into an undefined target, against a map with the
+      wrong filter. Dropping both here is what forces the correct pair to be rebuilt. */
+   if(d.mapSize.x!==S.mapSize||renderer.shadowMap.type!==t){
+    d.mapSize.setScalar(S.mapSize);
+    shadowMapDrop(d);
+   }
+   /* Plain uniforms, read by the receiving shader — no map redraw, no recompile. `radius` means
+      the same thing to both techniques (blur half-width in texels): it scales PCF's 17 tap
+      offsets, and it is fed straight to VSM's gaussian blur pass. */
+   d.bias=S.bias;d.normalBias=S.normalBias;d.radius=S.radius;
+  }
+  if(renderer.shadowMap.type!==t){renderer.shadowMap.type=t;recompile=true;}
+  _dispShadowQ=q;redraw=true;
+ }
+ // The map is frozen (autoUpdate off), so a discarded or newly-enabled map stays blank until
+ // something asks for it — this is that ask.
+ if(redraw)renderer.shadowMap.needsUpdate=true;
+ if(recompile&&scene)scene.traverse(o=>{const m=o.material;if(!m)return;
+  (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
 }
 
 /* Scene fog (Options -> Display -> Fog), applied live.

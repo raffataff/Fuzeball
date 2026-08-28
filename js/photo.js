@@ -375,7 +375,7 @@ function phSnap(){
  try{
   if(sh&&msOld&&PHOTO.shadowBoost&&renderer.shadowMap.enabled){
    const t=Math.min(PHOTO.shadowMax,msOld.x*sc);
-   if(t>msOld.x){sh.mapSize.set(t,t);if(sh.map){sh.map.dispose();sh.map=null;}msMoved=true;}
+   if(t>msOld.x){sh.mapSize.set(t,t);shadowMapDrop(sh);msMoved=true;}
   }
   renderer.setPixelRatio(1);
   renderer.setSize(o.w,o.h,false);            // false = leave the canvas CSS size alone
@@ -385,7 +385,7 @@ function phSnap(){
  }catch(e){url=null;}
  finally{
   try{
-   if(msMoved&&sh){sh.mapSize.set(msOld.x,msOld.y);if(sh.map){sh.map.dispose();sh.map=null;}}
+   if(msMoved&&sh){sh.mapSize.set(msOld.x,msOld.y);shadowMapDrop(sh);}
    renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);
    camera.fov=fov;camera.aspect=asp;camera.updateProjectionMatrix();
    phApply();                                  // phApply owns fov/near/far while the mode is live
@@ -494,7 +494,7 @@ async function phSeqStart(){
   if(sh&&msOld&&Q.shadowBoost&&renderer.shadowMap.enabled){
    const k=Math.max(1,pl.h/Math.max(1,innerHeight)),
          t=Math.min(PHOTO.shadowMax,Math.round(msOld.x*k));
-   if(t>msOld.x){sh.mapSize.set(t,t);if(sh.map){sh.map.dispose();sh.map=null;}msMoved=true;}
+   if(t>msOld.x){sh.mapSize.set(t,t);shadowMapDrop(sh);msMoved=true;}
   }
   for(let i=0;i<pl.n;i++){
    if(PH.seqCancel)break;
@@ -523,7 +523,7 @@ async function phSeqStart(){
  }catch(e){err=err||(e&&e.message)||'render failed';}
  finally{
   try{
-   if(msMoved&&sh){sh.mapSize.set(msOld.x,msOld.y);if(sh.map){sh.map.dispose();sh.map=null;}}
+   if(msMoved&&sh){sh.mapSize.set(msOld.x,msOld.y);shadowMapDrop(sh);}
    renderer.setPixelRatio(pr);renderer.setSize(sz0.x,sz0.y,false);
    camera.fov=fov0;camera.aspect=asp0;camera.updateProjectionMatrix();
    PH.yaw=yaw0;PH.freeze=frz0;

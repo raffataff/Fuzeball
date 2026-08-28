@@ -1329,7 +1329,41 @@ ai:{
    roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
    roomLightPool:{ pad:{point:1,spot:1,dir:0}, max:12, shadow:{point:0,spot:2,dir:0} },
    shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260,
-            type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024 },
+            type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024,
+   /* SHADOW QUALITY (Options -> Display -> Shadow quality). The values above are the shared
+      base; a tier below overrides only what it changes, so the extents, the far plane and the
+      freeze are never per-tier and cannot drift apart.
+
+      THE TIERS USE DIFFERENT SHADOW TECHNIQUES, and the cheap-looking one is the expensive one.
+      Measured on this project before choosing:
+
+      LOW - 2048 map, PCF, radius 1. The shipped tuning, untouched. r128's PCF is a fixed 17-tap
+      grid run PER RECEIVING FRAGMENT, so it is paid in proportion to how much screen the table
+      fills. That is why PCFSoft was dropped here originally: same per-fragment shape, and its
+      blur is locked to ONE texel, so it cost more and looked the same.
+
+      HIGH - 1024 map, VSM, radius 6. Variance shadow maps invert the cost: a two-pass gaussian
+      blur (8 samples each) runs once over the MAP, and every receiving fragment then costs ONE
+      texture read instead of seventeen. Counted in texture fetches per frame at 1440p:
+        PCF 2048 : 37.6M   (all of it per-fragment, every frame)
+        VSM 1024 : 19.0M   (16.8M blur + 2.2M receiver)
+      and the blur sits inside the shadow pass, so the autoUpdate:false freeze skips it entirely
+      in menus, photo mode and the room editor - where PCF's per-fragment cost is still paid.
+
+      The LOW resolution is deliberate, not a compromise: VSM blurs the map, so map coarseness
+      disappears into the blur, and blur width in world units is radius x texel - a coarser map
+      buys a WIDER soft edge for the same sample spacing.
+
+      TUNING, in order: `radius` first (blur width; the 8 samples sit radius/4 texels apart, so
+      much past 6 starts to undersample). Then `bias`, which is 0 on purpose - VSM resolves
+      self-shadowing through the variance maths and a negative bias only feeds light bleeding.
+      Keep `normalBias` small for the same reason. VSM's one real artifact is that bleeding:
+      light leaking where two casters overlap at different depths. The rods sitting directly
+      above the men are the place to look for it. */
+            quality:{
+              low :{ mapSize:2048, type:'pcf', radius:1, bias:-0.0002, normalBias:0.35 },
+              high:{ mapSize:1024, type:'vsm', radius:6, bias:0,       normalBias:0.15 }
+            } },
    idle:{ on:true, hz:4, settle:0.4, phases:['menu'], camEps:0.01, camRotEps:1e-4 }
  },
 
@@ -1366,9 +1400,9 @@ ai:{
       hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0,on:false},
       dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:true},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xc7e4ff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xb3daff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xc7e4ff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xb3daff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true}
       ],
       props:[],
       led:{idle:'rainbow'}
@@ -1381,24 +1415,24 @@ ai:{
       dir:{color:0xffcf95,int:1.31,pos:[40,90,30]},
       env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true}
       ],
       props:[],
       led:{idle:'rainbow',color:0xffb454}
    },
    arcade:{
-      name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:true,
+      name:'Neon Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:false,
       light:{gain:0,reach:0.2},
       bg:0x5c5d60, fog:[170,465],
       hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.52,on:false},
       dir:{color:0xd6b8ff,int:1.07,pos:[45,100,35],on:true,shadow:true},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
       lights:[
-        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0x28aeca, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:false},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf2e9ba, int:2.65, dist:70, decay:1, angle:0.74, penumbra:0.24, shadow:false},
-        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0xaf71ba, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:false}
+        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0x28aeca, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf2e9ba, int:2.65, dist:70, decay:1, angle:0.74, penumbra:0.24, shadow:true},
+        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0xaf71ba, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true}
       ],
       props:[
         {prop:'fuzeballArcadeStool', at:[
@@ -1928,7 +1962,9 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,fog:true,tab
  layouts:{},
  // Display settings. renderScale multiplies the device pixel ratio; fpsCap 0 = uncapped;
  // gfxPreset is the last-picked preset ('low'|'medium'|'high'|'custom').
- renderScale:1,shadows:true,fpsCap:0,showFps:false,gfxPreset:'high'};
+ // shadowQuality picks a tier from CONFIG.render.shadow.quality ('low'|'high') and only
+ // matters while `shadows` is on. Defaults to 'low' — the tuning every build shipped with.
+ renderScale:1,shadows:true,shadowQuality:'low',fpsCap:0,showFps:false,gfxPreset:'high'};
 /* =========================================================================
    WHERE A SETTING LIVES — PLAYER vs MACHINE.
 
@@ -1962,7 +1998,7 @@ const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeb
 
 // Never leaves this computer. Display, performance, hardware calibration, window geometry.
 const CFG_MACHINE=new Set([
- 'renderScale','shadows','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
+ 'renderScale','shadows','shadowQuality','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
  'particles','reflections','fog','profiler',
  'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
  'padDeadzone'     // stick calibration: a drifty pad on ONE machine, not a preference
@@ -2047,6 +2083,9 @@ if(typeof cfg.replay!=='boolean')cfg.replay=true;
 if(typeof cfg.renderScale!=='number'||!(cfg.renderScale>0))cfg.renderScale=1;
 cfg.renderScale=clamp(cfg.renderScale,0.4,1);
 if(typeof cfg.shadows!=='boolean')cfg.shadows=true;
+// Anything that isn't a known tier reads as Low, so an old save (or a hand-edited one) lands on
+// the tuning it was already running rather than on a setting its machine may not want.
+if(cfg.shadowQuality!=='high')cfg.shadowQuality='low';
 if(cfg.fpsCap!=='match'&&typeof cfg.fpsCap!=='number')cfg.fpsCap=0;   // number, or 'match' (track detected refresh)
 if(typeof cfg.showFps!=='boolean')cfg.showFps=false;
 if(typeof cfg.profiler!=='boolean')cfg.profiler=false;   // frame profiler overlay (M)

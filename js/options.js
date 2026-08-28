@@ -24,14 +24,15 @@ let optRefLast=0, optRefAcc=[], optRefShown=0;
    individual control flips the preset to 'custom'. Applied live via applyDisplay() (render scale +
    shadows, world.js) and applyRoom()/refreshBallReflect() (reflections) — no reload. */
 const GFX_PRESETS={
- low:{renderScale:0.5,shadows:false,reflections:false,fpsCap:30,reducedFx:true},
- medium:{renderScale:0.75,shadows:true,reflections:false,fpsCap:60,reducedFx:true},
- high:{renderScale:1,shadows:true,reflections:true,fpsCap:0,reducedFx:false}
+ low:{renderScale:0.5,shadows:false,shadowQuality:'low',reflections:false,fpsCap:30,reducedFx:true},
+ medium:{renderScale:0.75,shadows:true,shadowQuality:'low',reflections:false,fpsCap:60,reducedFx:true},
+ high:{renderScale:1,shadows:true,shadowQuality:'high',reflections:true,fpsCap:0,reducedFx:false}
 };
 function applyReducedFx(){document.body.classList.toggle('lowFx',!!cfg.reducedFx);}   // cheap-CSS mode (see .lowFx in styles.css)
 function applyGfxPreset(name){
  const p=GFX_PRESETS[name];if(!p)return;
- cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
+ cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.shadowQuality=p.shadowQuality;
+ cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
  cfg.gfxPreset=name;
  applyDisplay();applyReducedFx();
  // A preset moves `reflections`, which re-decides the room's env map and pays a PMREM bake — so
@@ -40,11 +41,18 @@ function applyGfxPreset(name){
  if($('setReflect'))$('setReflect').checked=cfg.reflections;   // keep the Match-Setup mirror in step
  syncDisplayUI();saveCfg();
 }
+/* Shadow quality only means anything while shadows are ON, so it greys out with the tick rather
+   than sitting there as a live control that does nothing — same call as the charge-input row. */
+function syncShadowQ(){
+ $('optShadowQ').value=cfg.shadowQuality==='high'?'high':'low';
+ $('optShadowQ').disabled=cfg.shadows===false;
+}
 function syncDisplayUI(){                                     // push cfg → display controls
  $('optPreset').value=cfg.gfxPreset||'custom';
  $('optRScale').value=cfg.renderScale;
  $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';
  $('optShadows').checked=cfg.shadows!==false;
+ syncShadowQ();
  $('optReflect2').checked=!!cfg.reflections;
  $('optReducedFx').checked=!!cfg.reducedFx;
  $('optTrails').checked=cfg.trails!==false;
@@ -253,7 +261,11 @@ function bindOptions(){
  $('optPreset').onchange=e=>{if(e.target.value==='custom'){cfg.gfxPreset='custom';saveCfg();}else applyGfxPreset(e.target.value);};
  $('optRScale').oninput=e=>{cfg.renderScale=+e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
   $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};
- $('optShadows').onchange=e=>{cfg.shadows=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
+ $('optShadows').onchange=e=>{cfg.shadows=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
+  syncShadowQ();applyDisplay();saveCfg();};
+ // Map size + filter + bias, from CONFIG.render.shadow.quality — applyDisplay swaps them live.
+ $('optShadowQ').onchange=e=>{cfg.shadowQuality=e.target.value==='high'?'high':'low';
+  cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
  $('optReflect2').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
   venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'REFLECTIONS'});
   if($('setReflect'))$('setReflect').checked=e.target.checked;saveCfg();};

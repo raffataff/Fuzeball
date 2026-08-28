@@ -81,7 +81,7 @@
 
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo_TC.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.28</div>
+  <div class="tagline">v0.1.29</div>
 
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" 
@@ -521,8 +521,9 @@
         <div class="optDiv"></div>
         <div class="czSlide"><label>Resolution</label><input type="range" id="optRScale" min="0.5" max="1" step="0.05"><span class="czVal" id="optRScaleV"></span></div>
         <div class="row"><label>Shadows</label><input type="checkbox" id="optShadows"></div>
+        <div class="row" id="optShadowQRow"><label>Shadow quality</label><select id="optShadowQ"><option value="low">Low</option><option value="high">High</option></select></div>
         <div class="row"><label>Reflections</label><input type="checkbox" id="optReflect2"></div>
-        <div class="optHint">Resolution renders the game at a fraction of your screen and upscales it — the biggest speed-up on laptops and integrated graphics. Shadows and reflections are the next heaviest effects. Lower any of these if the frame rate dips.</div>
+        <div class="optHint">Resolution renders the game at a fraction of your screen and upscales it — the biggest speed-up on laptops and integrated graphics. Shadows and reflections are the next heaviest effects. Lower any of these if the frame rate dips. Shadow quality High uses a different shadow technique that blurs the shadow itself instead of sampling it over and over per pixel, so edges fall off softly rather than ending in a hard line. It is not a heavier setting — at 1440p and above it asks less of the graphics card than Low does. Drop back to Low if you ever see light leaking through the players or the rods.</div>
       </div>
       <div class="panel optPanel">
         <h3>Effects</h3>
