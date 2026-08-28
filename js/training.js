@@ -4,7 +4,8 @@
    S.trn points at TRN and other modules read ONLY S.trn + r.trnHidden (ai gate, physics
    skip, powerup/deadball guards, main-loop freeze), so a missing training.js can never
    break the game. All defaults in CONFIG.training. Keys: T panel · P freeze · O step ·
-   G click-place. Saved spots persist in cfg.trnSpots (normal 'fuzeball' localStorage). */
+   G click-place. Saved spots persist in cfg.trnSpots — a PLAYER key, so they follow the
+   person between machines rather than sitting on one (see the PLAYER/MACHINE block in config.js). */
 const TRNC=CONFIG.training;
 const TRN={on:false,ai:[false,false],freeze:false,stepQ:0,placing:false,deadball:false,score:false,
  ballType:'classic',hidden:[],spots:null,lastSpot:null};

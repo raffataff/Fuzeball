@@ -1118,6 +1118,12 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
    fix #menu needed when co-op grew the seat cards, and #win when the stat sheet arrived. */
 #trials{overflow-y:auto;justify-content:safe center;padding:24px 0}
 .trnStub{max-width:520px;margin:0 auto;padding:0 12px;width:100%}
+/* .panel is written for the multi-panel FLOW layouts — flex:1 with a 320px cap. Inside .trnStub
+   there is exactly one of them and the stub is not a flex container, so `flex` did nothing and the
+   cap left the card 320px wide and LEFT-ALIGNED inside a 520px centred column: off-centre by 100px
+   on both #trials and #daily. Invisible while the card was the only thing on the screen, and
+   glaring the moment something full-width (the discipline tabs) sits above it. */
+.trnStub>.panel{max-width:none;width:100%}
 .trnEmpty{padding:16px 4px 8px;text-align:center;font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-mute)}
 .trnEmpty span{display:block;margin-top:10px;font-family:var(--font-body);font-size:var(--fs-body);letter-spacing:0;color:var(--tx-dim);line-height:1.55}
 
@@ -1155,6 +1161,50 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
    border or box-shadow: .trlRow:hover replaces box-shadow outright, so a shadow marker would
    vanish under the cursor, and a border change would shift the row by a pixel. */
 .trlRow.done{background:linear-gradient(90deg,rgba(255,166,58,.10),#0d1322 42%)}
+
+/* ---- the discipline tabs (renderTrials, js/trials.js) — GK / DEF / MID / ATT / TEAM ----
+   Sized to the PANEL below it rather than to the screen, so the strip and the list it drives read
+   as one control instead of a toolbar floating above an unrelated card. Five equal columns via
+   flex:1 with min-width:0, because the labels run two to four characters and intrinsic widths
+   would make TEAM visibly wider than GK for a reason nobody could name. flex:none because #trials
+   is a centred flex COLUMN — without it the strip is the first thing squeezed when the list grows
+   past the viewport. */
+.trlTabs{flex:none;display:flex;gap:6px;width:100%;max-width:520px;margin:0 auto 10px;padding:0 12px}
+.trlTab{flex:1 1 0;min-width:0;padding:8px 2px 7px;border-radius:10px;background:#0d1322;
+ border:1px solid var(--edge);cursor:pointer;pointer-events:auto;text-align:center;
+ transition:transform .12s,border-color .15s,box-shadow .15s,background .15s}
+.trlTab:hover{transform:translateY(-2px);border-color:rgba(255,166,58,.55)}
+.trlTab.on{border-color:#ffa63a;background:linear-gradient(180deg,rgba(255,166,58,.16),#0d1322 72%);
+ box-shadow:0 0 18px rgba(255,166,58,.22)}
+/* A section nobody has written trials for yet stays REACHABLE — it explains itself when you open
+   it — but it must not sit there looking like one with challenges waiting inside. */
+.trlTab.void{opacity:.55}
+.trlTab.void.on{opacity:1}   /* ...but the tab you are ON is never the dim one */
+.trlTabName{font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-label);color:var(--tx-mute)}
+.trlTab.on .trlTabName{color:var(--tx-bright)}
+.trlTabCt{margin-top:3px;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-dim);
+ font-variant-numeric:tabular-nums}
+.trlTab.full .trlTabCt{color:#2bff88}
+
+/* the section header inside the panel. The stock .panel h3 carries margin-bottom:12px, which
+   would push the tally line off the headline's baseline — the sub-line owns that gap instead. */
+.trlSecHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.trlSecHead h3{margin-bottom:0}
+.trlTally{font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;
+ color:var(--tx-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.trlSecSub{margin:4px 0 12px;font-size:var(--fs-body);color:var(--tx-body);line-height:1.45}
+/* medal tally — only rendered once there IS one, so this never shows a row of zeroes at somebody
+   who has not played the section yet. Colours are the same three the HUD card and the row pills
+   use, so a gold can never look like two different things on two screens. */
+.trlMedRow{display:flex;gap:6px;margin-bottom:10px}
+.trlMedCt{flex:1 1 0;text-align:center;padding:5px 2px;border-radius:8px;background:#0d1322;
+ border:1px solid var(--edge);font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:.04em;
+ font-variant-numeric:tabular-nums}
+.trlMedCt em{display:block;margin-top:2px;font-style:normal;font-family:var(--font-body);
+ font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-dim)}
+.trlMedCt.gold{color:#ffcf4d;border-color:rgba(255,207,77,.28)}
+.trlMedCt.silver{color:#cfd8e6;border-color:rgba(207,216,230,.28)}
+.trlMedCt.bronze{color:#d08a4d;border-color:rgba(208,138,77,.28)}
 
 /* ===== the daily challenge screen (#daily) =====
    Amber throughout, tying it to the trials family rather than to the league's gold. */

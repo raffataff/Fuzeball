@@ -27,7 +27,10 @@
    in a trial — flipping that on is what a woodwork trial will need, and it is not needed yet.  */
 const TRLC=CONFIG.trials;
 const TRL={def:null,pending:null,run:false,t0:0,secs:0,done:false,ok:false,goals:0,
- roles:null,statKey:null,statN:0,medal:null,pb:false,tbl:null,hudBuilt:false,sig:''};
+ roles:null,statKey:null,statN:0,medal:null,pb:false,tbl:null,hudBuilt:false,sig:'',
+ /* the DISCIPLINE tab #trials is showing. Lives here rather than in cfg on purpose — see the
+    header above renderTrials. Resolved to a real section on the first render. */
+ cat:null};
 /* HUD wording for a 'stat' objective. Any ledger counter works without an entry here — it falls
    back to the key uppercased — this is only where that reads badly ('onTarget' -> 'ON TARGET'). */
 const TRL_LABEL={woodwork:'WOODWORK',passes:'PASSES',saves:'SAVES',shots:'SHOTS',onTarget:'ON TARGET',kicks:'KICKS'};
@@ -73,6 +76,10 @@ function dailyBuild(date){
  if(!src)return null;
  const d=Object.assign({},src);          // shallow: goal/rods/medals are read-only in the runner
  d.id='daily';d.daily=true;d.date=date;d.from=src.id;
+ // A daily is NOT filed under a discipline: it has its own screen and never appears in the
+ // sectioned list. Explicitly cleared because the shallow copy above inherits the source trial's
+ // cat, and leaving it would make playing the daily silently move the tab #trials opens on.
+ d.cat=null;
  d.name='DAILY · '+src.name;
  d.seed=(rngHash('dailySeed|'+date,0)>>>0)||1;
  d.ball=Object.assign({},src.ball);
@@ -134,6 +141,10 @@ function trialStart(id){
  // today's date (dailyBuild). Everything downstream takes an ordinary spec and can't tell.
  const d=(id==='daily')?dailyBuild():trialById(id);
  if(!d||S.trial)return;
+ // Quitting a run returns to #trials (S.fromScreen), and it should return to the SECTION the run
+ // was launched from. The daily has no cat — it is not in the sectioned list at all — so it
+ // leaves whatever tab was open alone.
+ if(d.cat)TRL.cat=d.cat;
  Au.init();Au.ui();
  trialTableApply(d.table,()=>{
   TRL.pending=d;
@@ -351,27 +362,116 @@ function trialHudSync(){
  md.className='trlMed '+(TRL.medal||'');
 }
 
-/* ---- the list on #trials ---- */
+/* ---- the list on #trials ----
+   THE CATALOGUE IS BROWSED BY DISCIPLINE (CONFIG.trials.cats): a tab strip above the panel, one
+   section on screen at a time. A single flat column was fine at six trials and stops being fine
+   well before twenty — the question a player actually arrives with is "what can I practise with
+   my keeper", and an undifferentiated list answers that by making them read all of it.
+
+   A SECTION IS A FILTER, NOT A SECOND LIST. Nothing here owns trial data: trialsIn() walks the
+   one flat CONFIG.trials.list and keeps what matches, so re-filing a trial under another tab
+   changes where it is listed and nothing else — same id, same seed, same stored best, and the
+   daily's templates (which name trials by id) never notice.
+
+   TRL.cat SURVIVES THE RUN and is set by trialStart, which is what makes quitting a trial land
+   you back on the tab you launched it from instead of on GK every single time. Deliberately NOT
+   persisted to cfg: it is where you were a moment ago, not a preference worth a save slot. */
+function trialCats(){return (TRLC&&TRLC.cats)||[];}
+function trialsIn(cat){const out=[];if(TRLC&&TRLC.list)for(const d of TRLC.list)if(d.cat===cat)out.push(d);return out;}
+/* Cleared / total plus the medal breakdown — the tab counter and the section header read the
+   same numbers off this, so a tab can never disagree with the section it opens. */
+function trialCatStat(cat){
+ const st={n:0,done:0,gold:0,silver:0,bronze:0};
+ for(const d of trialsIn(cat)){
+  st.n++;
+  const b=trialBest(d.id);
+  if(!b)continue;
+  st.done++;
+  if(b.medal&&st[b.medal]!=null)st[b.medal]++;
+ }
+ return st;
+}
+/* The tab that opens when there is no live choice: the first section that HAS something in it,
+   so a discipline nobody has written trials for yet can never be the first thing a player meets
+   on the screen. */
+function trialCatDefault(){
+ const cs=trialCats();
+ for(const c of cs)if(trialsIn(c.id).length)return c.id;
+ return cs.length?cs[0].id:null;
+}
+function trialCatSet(id){if(id===TRL.cat)return;TRL.cat=id;Au.ui();renderTrials();}
+/* One row. Pulled out of renderTrials so the flat fallback below and the sectioned list render
+   byte-identical rows rather than two copies of the same markup drifting apart. */
+function trialRowHtml(d){
+ const b=trialBest(d.id);
+ return '<div class="trlRow'+(b?' done':'')+'" data-trial="'+d.id+'">'
+  +'<div class="trlRowTop"><span class="trlRowName">'+d.name+'</span>'
+  +(b&&b.medal?'<span class="trlPill '+b.medal+'">'+b.medal.toUpperCase()+'</span>'
+    :b?'<span class="trlPill">DONE</span>':'')
+  +'</div><div class="trlRowSub">'+d.blurb+'</div>'
+  +'<div class="trlRowMeta">'+trialObjText(d)
+  +'<i>'+(d.limit?d.limit+'s &middot; ':'')+(b?'best '+b.best.toFixed(2)+'s':'not attempted')
+  +'</i></div></div>';
+}
+function trialBindRows(box){box.querySelectorAll('[data-trial]').forEach(el=>{el.onclick=()=>trialStart(el.dataset.trial);});}
 function renderTrials(){
  const box=$('trialsPanel');
  if(!box||!trialOn())return;   // no list = leave the screen's own empty state in the markup
- // The daily is NOT listed here — it has its own top-level screen (#daily, renderDaily below).
- // One home for it: a row here as well would be two places to keep in step and two places to find
- // it half-hidden.
- let h='<h3>Trials</h3><div class="trlList">';
- for(const d of TRLC.list){
-  const b=trialBest(d.id);
-  h+='<div class="trlRow'+(b?' done':'')+'" data-trial="'+d.id+'">'
-   +'<div class="trlRowTop"><span class="trlRowName">'+d.name+'</span>'
-   +(b&&b.medal?'<span class="trlPill '+b.medal+'">'+b.medal.toUpperCase()+'</span>'
-     :b?'<span class="trlPill">DONE</span>':'')
-   +'</div><div class="trlRowSub">'+d.blurb+'</div>'
-   +'<div class="trlRowMeta">'+trialObjText(d)
-   +'<i>'+(d.limit?d.limit+'s &middot; ':'')+(b?'best '+b.best.toFixed(2)+'s':'not attempted')
-   +'</i></div></div>';
+ const cats=trialCats();
+ /* NO cats DECLARED FALLS BACK TO THE OLD FLAT LIST rather than to a blank panel. The tab strip
+    is presentation; the trials are the feature, and a CONFIG that has been stripped down or is
+    mid-edit should still be playable. Same instinct as the rest of this file's typeof guards. */
+ if(!cats.length){
+  const tabs=$('trlTabs');if(tabs)tabs.innerHTML='';
+  box.innerHTML='<h3>Trials</h3><div class="trlList">'+TRLC.list.map(trialRowHtml).join('')+'</div>';
+  trialBindRows(box);
+  return;
  }
- box.innerHTML=h+'</div>';
- box.querySelectorAll('[data-trial]').forEach(el=>{el.onclick=()=>trialStart(el.dataset.trial);});
+ if(!TRL.cat||!cats.some(c=>c.id===TRL.cat))TRL.cat=trialCatDefault();
+ let cat=null;for(const c of cats)if(c.id===TRL.cat)cat=c;
+ if(!cat)cat=cats[0];
+ /* ---- the tab strip ----
+    Rebuilt whole on every show, because every counter on it can have moved since the last one —
+    this screen is re-rendered exactly twice per visit (arriving, and returning from a run), so
+    there is nothing here worth a diff. The COUNTER is cleared/total rather than a medal count:
+    "2 / 4" is the number a player checks a tab for, and a gold tally that reads 0 next to it
+    would be reporting a failure they have not had yet. */
+ const tabs=$('trlTabs');
+ if(tabs){
+  let t='';
+  for(const c of cats){
+   const st=trialCatStat(c.id);
+   t+='<div class="trlTab'+(c.id===cat.id?' on':'')+(st.n&&st.done>=st.n?' full':'')+(st.n?'':' void')
+    +'" data-cat="'+c.id+'" title="'+c.name+'">'
+    +'<div class="trlTabName">'+c.id+'</div>'
+    +'<div class="trlTabCt">'+(st.n?st.done+' / '+st.n:'&mdash;')+'</div></div>';
+  }
+  tabs.innerHTML=t;
+  tabs.querySelectorAll('[data-cat]').forEach(el=>{el.onclick=()=>trialCatSet(el.dataset.cat);});
+ }
+ /* ---- the section ---- */
+ const list=trialsIn(cat.id),st=trialCatStat(cat.id);
+ let h='<div class="trlSecHead"><h3>'+cat.name+'</h3>'
+  +'<span class="trlTally">'+(st.done?st.done+' / '+st.n+' cleared':st.n?st.n+' trial'+(st.n===1?'':'s'):'')+'</span></div>'
+  +'<div class="trlSecSub">'+(cat.sub||'')+'</div>';
+ if(!list.length){
+  /* An empty section says WHAT is missing rather than that something is broken — a player who
+     opens GK before those trials exist should read it as "not written yet", not as a bug. */
+  h+='<div class="trnEmpty">NOTHING HERE YET<span>No '+cat.name.toLowerCase()
+   +' trials have been written. Every trial runs on a fixed seed, so each attempt replays the '
+   +'same ball, the same opponent and the same bounce &mdash; these are on their way.</span></div>';
+ }else{
+  // The medal strip only appears once there IS a medal to report: three zeroes on a section you
+  // have never played is a scoreboard telling you off before you have started.
+  if(st.gold||st.silver||st.bronze)
+   h+='<div class="trlMedRow">'
+    +'<span class="trlMedCt gold">'+st.gold+'<em>gold</em></span>'
+    +'<span class="trlMedCt silver">'+st.silver+'<em>silver</em></span>'
+    +'<span class="trlMedCt bronze">'+st.bronze+'<em>bronze</em></span></div>';
+  h+='<div class="trlList">'+list.map(trialRowHtml).join('')+'</div>';
+ }
+ box.innerHTML=h;
+ trialBindRows(box);
 }
 /* ---- the daily's own screen ---- */
 // One human-readable line for any objective kind. Shared by the daily panel and the trials list
@@ -436,7 +536,19 @@ if(typeof SCREENS!=='undefined'&&SCREENS.daily){
 /* R retries. Owned here rather than in input.js so a missing trials.js cannot change what any key
    does; guarded on S.trial, and on S.photo because photo mode binds R for its own recorder. */
 addEventListener('keydown',e=>{
- if(!S.trial||S.photo)return;
+ if(S.photo)return;
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
- if(e.code==='KeyR'){e.preventDefault();trialRestart();}
+ if(S.trial){if(e.code==='KeyR'){e.preventDefault();trialRestart();}return;}
+ /* Left/Right walk the discipline tabs, and ONLY while #trials is the live screen. Safe against
+    input.js, which binds the same two keys to seatStep but gates them on S.phase 'play'/'count' —
+    a menu screen is 'menu', so nothing else is listening for them here. */
+ if(typeof screenId!=='function'||screenId()!=='trials')return;
+ const dir=e.code==='ArrowLeft'?-1:e.code==='ArrowRight'?1:0;
+ if(!dir)return;
+ const cs=trialCats();
+ if(cs.length<2)return;
+ let i=-1;for(let k=0;k<cs.length;k++)if(cs[k].id===TRL.cat)i=k;
+ if(i<0)i=0;
+ e.preventDefault();
+ trialCatSet(cs[(i+dir+cs.length)%cs.length].id);
 });

@@ -972,7 +972,7 @@ ai:{
     simK:.5,              // sim: how steeply a stat edge shifts per-goal probability (logistic)
     divisions:[            // tier order: 0 bottom .. 2 top
       {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
-      {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'classic'},
+      {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'cork'},
       {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'premierLeague',  table:'classic',  pitch:'royal'}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
@@ -1024,7 +1024,7 @@ ai:{
       diff:'legend',
       seeded:true,     // false = random draw
       table:'arena', skin:'standard', room:'arcade', pitch:'champions_green', // venue; pitch is the fallback
-      pitches:['champions_green','champions_purple', 'neon', 'verdantia', 'cyatron'], // drawn per tie
+      pitches:['champions_green','champions_purple'], // drawn per tie
       goals:5, special:true, power:true,
       poolSize:12, drawSize:7,                      // elite teams generated / drawn per cup (+ player)
       base:8, budget:[3,5],                       // elite build base + weighted spend
@@ -1322,107 +1322,7 @@ ai:{
    {key:'big',label:'BIG GOAL',col:0x7dff8a}
  ],
 
- /* ---- renderer / light transfer -----------------------------------------
-    How authored lighting gets from Blender onto the screen. Two separate jobs:
-
-    toneMapping  What happens to values ABOVE 1.0. With 'none' (the old behaviour)
-                 anything brighter than white clips flat — a lit room's highlights
-                 all land on the same white and the image reads as a raw WebGL demo.
-                 'aces' rolls the top end off instead. 'none' restores the old look
-                 byte-for-byte. Changing this recompiles every material, so it is
-                 read once at boot (setToneMapping handles a live change).
-    exposure     Stop adjustment on top. ACES darkens the mid-range slightly vs no
-                 tone mapping, so a touch over 1 keeps the overall level familiar.
-
-    roomLight    The watts->screen transfer for KHR_lights_punctual baked into a
-                 room GLB. Defaults here, per-room overrides in rooms.*.light.
-      gain       THE brightness knob for a room, in ordinary three.js intensity
-                 units: roughly "how bright is this room's key light AT THE TABLE".
-                 Readable on purpose — see the note on `base` in models.js.
-      reach      Distance cutoff as a multiple of each light's own distance to the
-                 table. Scale-invariant: a lamp 90 units up and one 210 units up
-                 both land on the same falloff at the table, so a room's look does
-                 not depend on how high its fixtures happen to be authored. The
-                 falloff AT THE TABLE is a known constant, (1-1/reach)^decay, which
-                 is what makes `gain` mean something. 0 = no cutoff (flat, no falloff).
-      decay      Falloff exponent. Legacy (non-physically-correct) falloff is
-                 pow(1 - d/distance, decay) — NOT inverse-square. See models.js.
-      minDist    Floor on distance-to-table, so a fixture near the origin cannot
-                 divide by ~0 and blow up.
-      max        Ratio-preserving ceiling on the brightest light in a room. 0 = off.
-                 When it bites, EVERY light in that room scales by the same factor,
-                 so the authored key:fill relationship survives. A per-light clamp
-                 (what this replaces) flattens two different lights onto one value
-                 and silently destroys the lighting design.
-
-    roomLightPool  Resident lights that rooms.<id>.lights BORROW, so placing or moving an
-                 AUTHORED light never changes the scene's light count. r128 bakes that
-                 count into every material's program, so a light added mid-session would
-                 otherwise recompile the whole scene — the fxLightPool rule, and the
-                 thing that makes the room editor's light gizmo usable at all.
-                 The pool is SIZED FROM THIS CONFIG at boot: the per-type maximum over
-                 every room's `lights`, so it costs exactly what the heaviest room needs
-                 and a game whose rooms author none pays nothing.
-      pad        Spare slots, added ONLY when CONFIG.debug.roomEditor is on — headroom to
-                 add lights in the editor, which shipping players never pay for. PER TYPE,
-                 because they are not equally cheap or equally wanted: every resident light
-                 is evaluated by every material, and a room wants several lamps but almost
-                 never several suns. A scalar is accepted and applied to all three.
-      shadow     FIXED shadow-CASTING slots, per type — a separate sub-pool whose lights are
-                 created with castShadow=true and keep it for the session, because castShadow
-                 is a SHADER PARAMETER: flipping it on a live light recompiles every material,
-                 exactly like adding one. A room light with `shadow:true` borrows from here; one
-                 without borrows from the plain pool. Over budget = a console line and the extra
-                 light still lights, it just does not cast — a silent downgrade beats a stall.
-                 THIS IS A DELIBERATE COST CAP, NOT A DERIVED SIZE. Each shadow caster is a whole
-                 extra render pass over every caster in the scene, every frame the map is dirty.
-                 A SPOT or DIR costs one pass; a POINT costs SIX (it is a cube map), which is why
-                 point defaults to 0 — turn it on only if you know you want to pay 6x.
-      max        Hard ceiling per type. Every resident light costs every material a
-                 little, so a typo in a room's `lights` should cost a console line.
-
-    shadow       Directional key-light shadow map — and it is the ONLY shadow caster in
-                 the game (every room/authored/pooled light is forced castShadow=false,
-                 which is why a lamp over the table lights the floor straight through it).
-                 `bias`/`normalBias` fight acne; the extents are sized to the table rather
-                 than the old 160x140, which spends shadow resolution on empty space.
-      type       'pcfsoft' | 'pcf' | 'basic'. PCFSoft is a 9-TAP filter run per fragment
-                 by every shadow RECEIVER, so it is paid in proportion to how much of the
-                 screen the table fills — measurably the most expensive setting here, for
-                 a difference that is hard to see over a 2048 map on a table this size.
-      mapSize    Shadow map resolution (square).
-      roomMapSize Shadow map resolution for a room's own shadow-casting lights (the `shadow`
-                 sub-pool above). Smaller than the key light's because a room lamp throws a
-                 soft local pool rather than the whole table's key shadow.
-      autoUpdate false = the map is re-rendered only when something that CASTS has actually
-                 moved (shadowDirty(), driven from the sim step + room/table/rod rebuilds).
-                 The pass re-draws every caster — including all 22 figurines — so leaving it
-                 on re-renders an identical map every frame in the menus, the room editor and
-                 photo mode, where by construction nothing moves. true = the three.js default.
-
-    idle       THE MENU BACKDROP'S FRAME RATE (js/world.js renderIdleSkip). The same argument
-               as `autoUpdate` above, one level up: in the menus NOTHING on the table moves,
-               and `.screen` (css/styles.css) covers it at 94% opacity behind a 6px backdrop
-               blur — so a full 60Hz redraw of the table, the room and 22 figurines buys a
-               smudge nobody can resolve, and spends the frame budget a room swap then needs.
-                 on       false restores the old always-render behaviour exactly.
-                 hz       floor frame rate while idle. NOT zero by default on purpose: a pure
-                          dirty-flag is one missed hook away from a stale frame that reads as
-                          a crash, and the hooks live in six files. At 4Hz anything we forgot
-                          to mark self-heals in 250ms and the menu still costs ~7% of before.
-                          0 = hold the last frame indefinitely (fastest, least forgiving).
-                 settle   seconds of FULL frame rate after any renderDirty(), so nothing ever
-                          hitches while something you can see is actually moving.
-                 phases   S.phase values the throttle may apply to. Add 'win' or 'pause' if you
-                          want those overlays cheap too; a live phase must never be listed.
-                 camEps / camRotEps
-                          how far the camera must move (world units) or turn (raw quaternion
-                          components) to count as a change. NOT zero, and that matters:
-                          cameraUpdate LERPS toward a fixed target and a lerp asymptotes, so an
-                          exact compare reads "still moving" for hundreds of frames after the
-                          motion stopped being visible — which is most of a menu's lifetime.
-                          Both defaults are a fraction of a pixel at the match camera.
-    -------------------------------------------------------------------------- */
+ /* ---- renderer / light transfer -------------- */
  render:{
    toneMapping:'reinhard',        // 'none' | 'aces' | 'reinhard' | 'cineon' | 'linear'
    exposure:1.08,
@@ -1434,37 +1334,7 @@ ai:{
  },
 
 
- /* ---- props (assets/props/) ----------------------------------------------
-    Small GLBs any room can place, INSTANCED — see the banner in js/props.js for
-    what this is and is not for (short version: it buys shared assets and high
-    counts, not draw calls; a room's real cost is texture memory).
-
-    Adding a prop: drop <name>.glb in assets/props/ and run
-        node tools/build_props_manifest.js
-    which writes assets/props/manifest.json. `lib` below overrides or extends that
-    manifest, so a prop can also be declared by hand with no build step.
-
-      folder/manifest  where props live, and the generated index (absent = lib only)
-      seed             base seed for every scatter — change it to reroll ALL of them.
-                       Scatters are deterministic on purpose: a crowd that re-rolls
-                       per load cannot be art-directed or screenshotted twice.
-      maxInstances     per-spec cap. A typo in `n` should cost a console line.
-      defaults         applied to every lib entry:
-        fit            target HEIGHT in world units (0 = keep the authored size).
-                       Height, not bounding radius — it is the dimension you actually
-                       know about a chair, and it makes a prop usable straight out of
-                       Blender whatever scale it was modelled at.
-        ground         true = sit the prop's base on y=0, so placements are floor
-                       coordinates rather than "wherever the origin happened to be".
-        yaw/scale      default rotation / extra multiplier.
-
-    A room places props with rooms.<id>.props — an array of specs:
-      {prop:'stool', at:[[x,y,z,yaw,scale], ...]}            explicit
-      {prop:'stool', scatter:{kind:'ring'|'grid'|'box'|'line', ...},
-                     jitter:{x,z,ry}, scaleVar:0.1, tint:[0xrrggbb, ...]}
-    `tint` needs a material that reads vertex colour; `face:'in'|'out'|<radians>`
-    turns each instance toward or away from the scatter centre (crowds want 'in').
-    -------------------------------------------------------------------------- */
+ /* ---- props (assets/props/) -------- */
  props:{
    on:true,
    folder:'assets/props/',
@@ -1474,72 +1344,7 @@ ai:{
    defaults:{ fit:0, scale:1, yaw:0, ground:true },
    lib:{}     // e.g. stool:{src:'pub_stool.glb', fit:11}
  },
- /* ---- rooms / locations --------------------------------------------------
-    The environment around the table, independent of the table shape and pitch.
-
-    EVERY ENTRY BELOW IS A WHOLE-BLOCK PASTE TARGET. The room editor (F2 — js/roomedit.js)
-    exports one room in exactly this shape and key order, so authoring a room is: edit it
-    live, press COPY, replace the block. That is why these entries carry no inline prose —
-    a comment inside one would be destroyed by the first paste. Notes that used to live in
-    them are in ON THE LIGHTING below, where a paste cannot reach them.
-
-      name         label in the room dropdown and the editor's picker
-      bg / fog     backdrop colour + fog depth [near,far]
-      hemi / dir   scene lighting: ambient sky/ground + the key light. Both take `on:false`,
-                   which is a REAL off — the light is made invisible so it leaves the scene's
-                   light COUNT and stops being evaluated per-fragment. int:0 does NOT do this:
-                   a zero-intensity light still runs its full shader path and multiplies by 0
-                   at the end. `dir` also takes `shadow:false` to keep the sun lighting the
-                   room while something else casts. INDOOR ROOMS USUALLY WANT dir.on:false —
-                   there is no sun in a pub.
-      ibl          false = no scene.environment for this room at all (no image-based light,
-                   no reflections). Metals go dark, so this is a look decision as well as a
-                   saving. Default true. `reflect`/`env` choose WHICH bake; this switches the
-                   whole thing off.
-      glb          optional backdrop model, relative to folder (null = shared ground plane)
-      backdrop     false = show nothing behind the table, just bg + fog
-      reflect      true = bake the reflection env-map from the glb; false = use `env` below
-      env          synthetic reflection cube: {shell, panels:[[hex,x,y,z,w,h],…]}
-      light        per-room override of CONFIG.render.roomLight for the KHR_lights_punctual
-                   BAKED INTO THE GLB — {gain,reach,decay,minDist,max}. `gain` is the knob:
-                   roughly how bright this room's key light lands AT THE TABLE. (Replaces the
-                   old `lightScale`, which was a raw watts multiplier fighting a hidden cutoff.)
-      lightsOff    names of baked GLB fixtures to switch off, e.g. because the editor has
-                   DETACHED one into an authored `lights` entry that can actually be moved.
-      lights       AUTHORED lights, placed in the editor and listed here — see below.
-      props        instanced prop placements — see CONFIG.props for the spec shape.
-      led          optional per-room override of CONFIG.leds
-
-    AUTHORED LIGHTS (`lights`) — one object each, positions in world units, table at 0,0,0:
-      {type:'point', pos:[x,y,z], color:0xffb454, int:2.4, dist:260, decay:2}
-      {type:'spot',  pos:[x,y,z], look:[x,y,z], angle:0.55, penumbra:0.4, …as point}
-      {type:'dir',   pos:[x,y,z], look:[x,y,z], color, int}
-    Any of them may add `shadow:true` to CAST. That borrows from the fixed shadow sub-pool
-    (CONFIG.render.roomLightPool.shadow) rather than flipping castShadow on a live light, which
-    would recompile every material. Each caster is one more render pass per frame (SIX for a
-    point light — it is a cube map), so the budget is small on purpose and over-budget lights
-    quietly fall back to not casting. THIS IS WHAT FIXES A LAMP LIGHTING THE FLOOR THROUGH THE
-    TABLE: nothing occludes until something casts.
-    `look` defaults to the table centre, which is what a room's key light is nearly always
-    pointed at. `int` matches the naming hemi/dir already use.
-
-    THE ONE THING TO KNOW ABOUT `int`: an authored light is in PLAIN three.js units and does
-    NOT go through the candela transfer that `light.gain` drives. That transfer exists to
-    rescue Blender's watts-as-candela export; a light you placed on a slider is already in
-    screen units, so running it through gain/d0^2 would make both knobs meaningless and make
-    them fight. Baked = transferred, authored = literal. Authored lights also BORROW from
-    CONFIG.render.roomLightPool, so adding one never recompiles the scene.
-
-    ON THE LIGHTING, i.e. what the per-room numbers below are recovering from. The old
-    transfer clamped every fixture individually, which does not dim a room — it DELETES its
-    lighting design, because any two lights over the ceiling arrive equal. The saucer's
-    46k-candela key and 8k fill both landed on 4.0, and a forced 260-unit cutoff then
-    attenuated the key to ~4%, so the fill was outshining it and `lightScale` was a dead
-    knob. The pub's fireplace and all three sconces sat beyond the forced 180-unit cutoff
-    and delivered EXACTLY ZERO — only the pendant ever lit anything. Both rooms' hemi/dir
-    were carrying the room to compensate and are eased accordingly; the arcade GLB has no
-    punctual lights at all, so its old lightScale was pure decoration.
-    ---------------------------------------------------------------------- */
+ /* ---- rooms / locations ---------- */
   rooms:{
    open:{
       name:'Void', folder:'na', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
@@ -1612,24 +1417,10 @@ ai:{
   // Legacy theme-key → room-id map, for old saves.
   themeToRoom:{classic:'open',royal:'pub',verdant:'open',neon:'arcade',cyatron:'arcade'},
 
-  /* ---- pitches ---------------------------------------------------------
-     ONE FILE PER PITCH, lazy, LRU — the same shape as rooms and table skins, and for the same
-     reason. `glb` used to be a MESH NAME inside one 32MB atlas holding all eight, so booting into
-     any pitch downloaded and decoded all 22 of its images to show three of them. Split with
-     tools/pitch-split.mjs; per-variant files run 0.7MB (neon) to 11.3MB (pub_classic).
-
-     THE SPLIT ALSO FIXED TWO PITCHES THAT HAD NEVER RESOLVED. Blender suffixes duplicate object
-     names, so the atlas carried `champions_green` + `champions_green.001` and `verdant` +
-     `verdant.001` — and models.js `ballKey()` strips a trailing `.NNN`, collapsing each pair onto
-     one key. `champions_purple` and `pub_classic` therefore matched no mesh and silently fell back
-     to their JPEGs. Their MATERIALS (`field_champions_purple`, `field_pub_classic`) always said
-     what they were; the splitter keys on those, which is why the files below exist at all.
-
-     folder + glb = the file. tex = the JPEG fallback, still used when a pitch has no glb or its
-     file 404s. name = the dropdown label. ------------------------------- */
+  /* ---- pitches ------- */
   pitches:{
    pub_classic:      {folder:'assets/pitches/', glb:'pitch_pub_classic.glb',      tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
-   classic:          {folder:'assets/pitches/', glb:'pitch_classic.glb',          tex:'pitches/cork.jpeg',            name:'Cork'},
+   cork:             {folder:'assets/pitches/', glb:'pitch_cork.glb',             tex:'pitches/cork.jpeg',            name:'Cork'},
    royal:            {folder:'assets/pitches/', glb:'pitch_royal.glb',            tex:'pitches/royal.jpeg',           name:'Royal Grass'},
    cyatron:          {folder:'assets/pitches/', glb:'pitch_cyatron.glb',          tex:'pitches/cyatron.jpeg',         name:'Cyatron Grid'},
    neon:             {folder:'assets/pitches/', glb:'pitch_neon.glb',             tex:'pitches/neon_nights.jpg',      name:'Neon Nights'},
@@ -1673,6 +1464,11 @@ ai:{
 
     A TRIAL SPEC:
       id      unique key. cfg.trials[id] stores the personal best, so DON'T rename one.
+      cat     which DISCIPLINE section the trial is filed under on #trials — one of the ids in
+              `cats` below. A pure grouping key: nothing in the runner reads it, so re-filing a
+              trial changes only where it is listed and never what it scores or what it stored.
+              A trial with a missing or unknown cat would simply never appear in the list — a
+              silent disappearance, which is exactly why the harness asserts coverage both ways.
       seed    the sim seed every attempt runs on. Change it and you have a different trial
               wearing the same name — and every stored best silently becomes a lie.
       table   pinned for the run, because the table picks the COLLISION MODEL ('bowl' is a
@@ -1707,57 +1503,122 @@ ai:{
  trials:{
   on:true,
   pinTable:true,     // apply the trial's table for the run, give the player's back on the way out
+
+  /* ---- the five disciplines (#trials tab strip, renderTrials in js/trials.js) ----
+     A SECTION IS A FILTER OVER `list`, NOT A SECOND LIST. Every trial still lives in the one
+     flat array below, so trialById, the daily templates, the personal-best map and the harness
+     all keep working untouched, and re-filing a trial under a different tab cannot orphan its
+     stored best. The alternative — a list per section — would have made `from:'snap'` in the
+     daily templates ambiguous and given cfg.trials two places for one id to hide in.
+
+     GK / DEF / MID / ATT ARE THE ROD ROLES, deliberately: the tab tells you which handle the
+     trial is about before you have read a word of the blurb, and `rods.show` in each spec below
+     uses the very same strings. TEAM is the one that isn't a rod — it is the section for trials
+     that need more than one of yours on the table at once.
+       id    the value a trial's `cat` names, and the tab's label
+       name  the section headline, shown above the list
+       sub   one line under it — what this discipline is FOR, not what the trials are  */
+  cats:[
+   {id:'GK',  name:'GOALKEEPER',sub:'Handle it, then start the move'},
+   {id:'DEF', name:'DEFENCE',   sub:'Win it back, then play it long'},
+   {id:'MID', name:'MIDFIELD',  sub:'Keep the ball moving'},
+   {id:'ATT', name:'ATTACK',    sub:'Finish, and finish fast'},
+   {id:'TEAM',name:'TEAM',      sub:'The whole rack, working as one'}
+  ],
+
   list:[
-   {id:'snap',name:'SNAP SHOT',blurb:'One ball, one empty net. How fast can you put it away?',
-    seed:10231,table:'classic',
-    ball:{type:'classic',x:26.5,z:0},
-    hold:'ATT',rods:{show:['0|ATT']},
-    goal:{kind:'goals',n:1},limit:0,
-    medals:{gold:2,silver:3.5,bronze:6}},
+   /* ---- GK ---------------------------------------------------------------
+      DISTRIBUTION IS A PASSING TRIAL RATHER THAN A SHOT-STOPPING ONE, and that is a mechanics
+      constraint rather than a taste call. The trial clock starts on the player's first SWING
+      (S.stats.kicks[0], js/trials.js) and a keeper who blocks with a rod he never swings has not
+      swung — so a pure save trial would run its whole length untimed, bank no record and hand out
+      no medal. The COUNTER is already there: momOn() carries the S.trial clause, so S.stats.saves
+      is live in a trial and {kind:'stat',stat:'saves'} would evaluate today. What it still needs
+      is a clock that also starts on a save and a FAIL-ON-CONCEDE condition, because without one
+      "make 3 saves" is passed by standing still. That is the next mechanics job, not a config edit.
+      GK sits at -52.5 and DEF at -37.5 — 15 units, which an ordinary ~44 u/s strike covers in
+      about a third of a second, comfortably inside MSTAT.passT (2.5s). Same geometry ONE-TWO
+      already proves out, at half the distance. */
+   {id:'distro',name:'DISTRIBUTION',cat:'GK',blurb:'Play it out from the back. Six clean balls between your keeper and your defence.',
+    seed:70669,table:'classic',
+    ball:{type:'classic',x:-48,z:0},
+    hold:null,rods:{show:['0|GK','0|DEF']},
+    goal:{kind:'stat',stat:'passes',n:6},limit:45,
+    medals:{gold:15,silver:25,bronze:40}},
 
-   {id:'keeper',name:"KEEPER'S NIGHTMARE",blurb:'Three past a keeper who never moves. Find the corners.',
-    seed:20477,table:'classic',
-    ball:{type:'classic',x:26.5,z:0},
-    hold:'ATT',rods:{show:['0|ATT','1|GK']},
-    goal:{kind:'goals',n:3},limit:40,
-    medals:{gold:12,silver:20,bronze:32}},
-
-   {id:'fullset',name:'THE FULL SET',blurb:'Score once with your defence, once with your midfield, once up front.',
-    seed:31889,table:'classic',
+   /* ---- DEF --------------------------------------------------------------
+      The long strike, and the trial the friction note above exists for: -37.5 to the far line at
+      +60 is 94 units against a maximum roll of ~125, so the ball DOES arrive — at about 11 u/s,
+      after roughly four seconds in transit. That travel time is most of the medal spread, which
+      is why the thresholds here are so much softer than SNAP SHOT's for what looks like the same
+      objective. The opponent keeper is shown with its AI OFF: a static obstacle sitting central,
+      so a ball rolled straight down the middle is stopped and the trial is about placement rather
+      than about power. Two goals rather than one on purpose — a single long ball that happens to
+      miss the keeper is luck, twice is aim. */
+   {id:'longball',name:'THE LONG BALL',cat:'DEF',blurb:'Twice from your own defence, past a keeper who never moves.',
+    seed:83117,table:'classic',
     ball:{type:'classic',x:-34,z:0},
-    hold:null,rods:{show:['0|GK','0|DEF','0|MID','0|ATT']},
-    goal:{kind:'roleGoals',roles:['DEF','MID','ATT']},limit:90,
-    medals:{gold:40,silver:60,bronze:85}},
+    hold:'DEF',rods:{show:['0|DEF','1|GK']},
+    goal:{kind:'goals',n:2},limit:60,
+    medals:{gold:18,silver:30,bronze:48}},
 
-   // Woodwork is detected in js/moments.js and NOWHERE else, and momOn() gates on the training
-   // mode — which is why it carries an explicit S.trial clause. Without that this trial counts
-   // nothing and is silently unwinnable, so don't "tidy" that clause away.
-   {id:'frame',name:'RATTLE THE FRAME',blurb:'Ring the woodwork three times. Posts and bar both count.',
-    seed:44021,table:'classic',
-    ball:{type:'classic',x:26.5,z:0},
-    hold:'ATT',rods:{show:['0|ATT']},
-    goal:{kind:'stat',stat:'woodwork',n:3},limit:75,
-    medals:{gold:25,silver:40,bronze:65}},
-
-   // A pass is a teammate ROD receiving what another of yours STRUCK, within MSTAT.passT (2.5s).
-   // MID and ATT sit 30 units apart, which an ordinary strike covers in ~0.8s — comfortably
-   // inside that window, and the reason those two are the pair.
-   {id:'onetwo',name:'ONE-TWO',blurb:'Five completed passes between your midfield and your attack.',
+   /* ---- MID --------------------------------------------------------------
+      A pass is a teammate ROD receiving what another of yours STRUCK, within MSTAT.passT (2.5s).
+      MID and ATT sit 30 units apart, which an ordinary strike covers in ~0.8s — comfortably
+      inside that window, and the reason those two are the pair. */
+   {id:'onetwo',name:'ONE-TWO',cat:'MID',blurb:'Five completed passes between your midfield and your attack.',
     seed:52733,table:'classic',
     ball:{type:'classic',x:-3,z:0},
     hold:null,rods:{show:['0|MID','0|ATT']},
     goal:{kind:'stat',stat:'passes',n:5},limit:45,
     medals:{gold:18,silver:28,bronze:40}},
 
+   /* ---- ATT --------------------------------------------------------------
+      The section that ramps: an empty net, then a static keeper, then the frame, then a keeper
+      that actually plays. List order IS the order the tab shows them in, so keep it a curve. */
+   {id:'snap',name:'SNAP SHOT',cat:'ATT',blurb:'One ball, one empty net. How fast can you put it away?',
+    seed:10231,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'goals',n:1},limit:0,
+    medals:{gold:2,silver:3.5,bronze:6}},
+
+   {id:'keeper',name:"KEEPER'S NIGHTMARE",cat:'ATT',blurb:'Three past a keeper who never moves. Find the corners.',
+    seed:20477,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    goal:{kind:'goals',n:3},limit:40,
+    medals:{gold:12,silver:20,bronze:32}},
+
+   // Woodwork is detected in js/moments.js and NOWHERE else, and momOn() gates on the training
+   // mode — which is why it carries an explicit S.trial clause. Without that this trial counts
+   // nothing and is silently unwinnable, so don't "tidy" that clause away.
+   {id:'frame',name:'RATTLE THE FRAME',cat:'ATT',blurb:'Ring the woodwork three times. Posts and bar both count.',
+    seed:44021,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'stat',stat:'woodwork',n:3},limit:75,
+    medals:{gold:25,silver:40,bronze:65}},
+
    // The first trial with a LIVE opponent. diff is pinned so the keeper plays the same for
    // everyone; the seed makes its wander/aim rolls identical on every attempt (js/rng.js).
-   {id:'wall',name:'THE WALL',blurb:'Three past a keeper that actually moves.',
+   {id:'wall',name:'THE WALL',cat:'ATT',blurb:'Three past a keeper that actually moves.',
     seed:61457,table:'classic',
     ball:{type:'classic',x:26.5,z:0},
     hold:'ATT',rods:{show:['0|ATT','1|GK']},
     ai:[false,true],diff:'pro',
     goal:{kind:'goals',n:3},limit:45,
-    medals:{gold:15,silver:25,bronze:40}}
+    medals:{gold:15,silver:25,bronze:40}},
+
+   /* ---- TEAM -------------------------------------------------------------
+      The section for objectives that need more than one of your rods on the table at once — the
+      only place a trial hands you the whole rack and asks you to switch between handles. */
+   {id:'fullset',name:'THE FULL SET',cat:'TEAM',blurb:'Score once with your defence, once with your midfield, once up front.',
+    seed:31889,table:'classic',
+    ball:{type:'classic',x:-34,z:0},
+    hold:null,rods:{show:['0|GK','0|DEF','0|MID','0|ATT']},
+    goal:{kind:'roleGoals',roles:['DEF','MID','ATT']},limit:90,
+    medals:{gold:40,silver:60,bronze:85}}
   ],
 
   /* ---- the daily challenge (FEATURE-IDEAS 3.3) ------------------------
@@ -1777,7 +1638,10 @@ ai:{
        lower bound = foot box far face + BALL_R   (inside it, collideRod fires on sim step one —
                      the 2026-08-20 clock bug, and the ball visibly jumps as the trial loads)
        upper bound = rod x + CONFIG.ai.inFrontMax (past it the player cannot reach the ball at all)
-     For the ATT rod that is [25.80, 28.80]; for DEF [-34.20, -31.20]; for MID [-4.20, -1.20].
+     For the ATT rod that is [25.80, 28.80]; for DEF [-34.20, -31.20]; for MID [-4.20, -1.20];
+     for GK [-49.20, -46.20]. The GK band's z is the tighter one because the keeper's slide is
+     capped at CONFIG.rods.gkSlide (11) to keep it inside its own area — a spawn the ATT rod
+     would stroll onto can sit outside what a keeper can reach at all.
      tools/trials-harness.js SAMPLES every band against the live geometry, so widening one past
      what the rods can reach fails there rather than handing somebody an impossible day.
      ---------------------------------------------------------------------- */
@@ -1789,7 +1653,9 @@ ai:{
     {from:'frame',   ball:{x:[26.2,28.4], z:[-6,6]}},
     {from:'wall',    ball:{x:[26.2,28.4], z:[-8,8]}},
     {from:'fullset', ball:{x:[-33.8,-31.6], z:[-6,6]}},
-    {from:'onetwo',  ball:{x:[-3.8,-1.6], z:[-6,6]}}
+    {from:'onetwo',  ball:{x:[-3.8,-1.6], z:[-6,6]}},
+    {from:'distro',  ball:{x:[-49.0,-46.4], z:[-5,5]}},
+    {from:'longball',ball:{x:[-33.8,-31.6], z:[-6,6]}}
    ]
   }
  },
@@ -2063,7 +1929,95 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,fog:true,tab
  // Display settings. renderScale multiplies the device pixel ratio; fpsCap 0 = uncapped;
  // gfxPreset is the last-picked preset ('low'|'medium'|'high'|'custom').
  renderScale:1,shadows:true,fpsCap:0,showFps:false,gfxPreset:'high'};
-try{Object.assign(cfg,JSON.parse(localStorage.getItem('fuzeball')||'{}'));}catch(e){}
+/* =========================================================================
+   WHERE A SETTING LIVES — PLAYER vs MACHINE.
+
+   `cfg` used to be ONE localStorage blob under 'fuzeball'. It is still one live
+   object — nothing that reads cfg.x or calls saveCfg() changes — but it now
+   PERSISTS as two, because the settings in it answer two different questions:
+
+     PLAYER   who this person is and what they have done. Their team names and
+              kit, their difficulty, their match rules, their trial records,
+              their saved training spots. This follows the person.
+     MACHINE  what THIS computer can do. renderScale, shadows, fpsCap, the gfx
+              preset, physQuality, and the panel `layouts` (which are clamped to
+              a live window, so an ultrawide arrangement is wrong on a handheld).
+              This must never leave the machine it was set on.
+
+   The split exists for Steam Cloud. Cloud syncs a folder of files, and the
+   moment the wrapper mirrors saves into one, a single blended blob would push a
+   desktop's renderScale:1 / shadows:true onto the same player's Steam Deck and
+   tank it — a "my settings reset themselves and now it runs at 20fps" bug that
+   is near-impossible to diagnose from a support thread. Splitting it now, while
+   there are no shipped saves to migrate, costs one boot; splitting it later
+   costs a migration path per player. cfgSyncKeys() below is the manifest the
+   wrapper reads, kept here so it cannot drift from these two sets.
+
+   ADDING A SETTING: put its key in exactly one of the two sets. A key in
+   neither still WORKS — it defaults to PLAYER, because failing to sync progress
+   is worse than syncing a stray toggle — but it is reported once to the console
+   so the drift is caught in the session it appears.
+   ========================================================================= */
+const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeball'};
+
+// Never leaves this computer. Display, performance, hardware calibration, window geometry.
+const CFG_MACHINE=new Set([
+ 'renderScale','shadows','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
+ 'particles','reflections','fog','profiler',
+ 'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
+ 'padDeadzone'     // stick calibration: a drifty pad on ONE machine, not a preference
+]);
+// Follows the person. Identity, choices, progress.
+const CFG_PLAYER=new Set([
+ 'diff','diffRed','diffBlue','goals','gameTime','special','power','auto','replay',
+ 'sound','ambience',
+ 'table','room','pitch','skins',
+ 'redName','blueName','redColor','blueColor',
+ 'modelRed','modelBlue','redYaw','blueYaw',
+ 'redMetalness','redRoughness','redGlow','redScale','redFinishDefault',
+ 'blueMetalness','blueRoughness','blueGlow','blueScale','blueFinishDefault',
+ // Control PREFERENCES sync (inversion, sensitivity, the Total Control curve, charge button);
+ // only padDeadzone above does not, because that one is calibrated to a physical stick.
+ 'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
+ 'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
+ 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens',
+ 'trials','daily','trnSpots','photoShots',                       // progress + authored content
+ 'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
+]);
+/* Bucket a key. Unlisted -> PLAYER, reported ONCE per key per session (not per save, or every
+   slider drag would spam the console). */
+const cfgWarned=new Set();let cfgOrphans=null;
+function cfgBucket(k){
+ if(CFG_MACHINE.has(k))return 'machine';
+ if(!CFG_PLAYER.has(k)&&!cfgWarned.has(k)){cfgWarned.add(k);(cfgOrphans||(cfgOrphans=[])).push(k);}
+ return 'player';
+}
+function cfgSplit(src){const o={player:{},machine:{}};for(const k in src)o[cfgBucket(k)][k]=src[k];return o;}
+/* THE STEAM CLOUD MANIFEST. The Electron wrapper mirrors exactly these localStorage keys out to
+   JSON files under app.getPath('userData') and registers that folder for Auto-Cloud; anything
+   not listed stays on this computer. Deliberately excludes CFG_KEY.machine and CFG_KEY.legacy.
+   'fuzeball_career' is listed ahead of existing — it is the achievements store (ACHIEVEMENTS.md
+   §4) and belongs in the manifest the day it appears, not as a later amendment. */
+function cfgSyncKeys(){
+ const out=[CFG_KEY.player,'fuzeball_league_slot','fuzeball_career'];
+ try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);
+  if(k&&k.indexOf('fuzeball_league_')===0&&k!=='fuzeball_league_slot')out.push(k);}}catch(e){}
+ return out;
+}
+/* Load. Player first, then machine ON TOP: if a key ever moves between the two sets, or a stale
+   copy survives in the player blob from before the move, THIS computer's value still wins. */
+(function cfgLoad(){
+ let p=null,m=null;
+ try{p=JSON.parse(localStorage.getItem(CFG_KEY.player)||'null');}catch(e){}
+ try{m=JSON.parse(localStorage.getItem(CFG_KEY.machine)||'null');}catch(e){}
+ if(p||m){if(p)Object.assign(cfg,p);if(m)Object.assign(cfg,m);return;}
+ /* FIRST BOOT AFTER THE SPLIT: fold the single legacy blob in and let the first saveCfg() write
+    the two new keys. The legacy 'fuzeball' key is deliberately NOT deleted — it is a free
+    one-time backup of the pre-split state and costs a few KB. Nothing reads it again once
+    either new key exists, so a later save can never resurrect a stale value from it. */
+ let l=null;try{l=JSON.parse(localStorage.getItem(CFG_KEY.legacy)||'null');}catch(e){}
+ if(l)Object.assign(cfg,l);
+})();
 if(cfg.model&&!cfg.modelRed){cfg.modelRed=cfg.model;cfg.modelBlue=cfg.model;delete cfg.model;saveCfg();}
 // Migrate legacy single `diff` into per-team fields when those are missing.
 if(!cfg.diffRed)cfg.diffRed=cfg.diff||'pro';
@@ -2121,7 +2075,18 @@ function saveCfg(){try{
  // Kick Off setting. Whichever is holding wins — they can't both be, since a trial can't start
  // from inside a league match.
  const v=((typeof lgVenueHeld==='function')&&lgVenueHeld())||((typeof trialVenueHeld==='function')&&trialVenueHeld());
- localStorage.setItem('fuzeball',JSON.stringify(v?Object.assign({},cfg,{table:v.table,room:v.room,pitch:v.pitch,skins:v.skins}):cfg));
+ // The venue substitution happens BEFORE the split, not after: table/room/pitch/skins are PLAYER
+ // keys, so parking them has to be settled while it is still one object or the parked values
+ // would be written straight through into the synced blob.
+ const src=v?Object.assign({},cfg,{table:v.table,room:v.room,pitch:v.pitch,skins:v.skins}):cfg;
+ const b=cfgSplit(src);
+ localStorage.setItem(CFG_KEY.player,JSON.stringify(b.player));
+ localStorage.setItem(CFG_KEY.machine,JSON.stringify(b.machine));
+ if(cfgOrphans){
+  console.warn('Fuzeball: cfg key(s) in neither CFG_PLAYER nor CFG_MACHINE, defaulted to PLAYER '+
+   '(they WILL sync between machines) — add them to one of the two sets in js/config.js: '+cfgOrphans.join(', '));
+  cfgOrphans=null;   // cfgWarned keeps them from being re-collected, so this fires once per key
+ }
 }catch(e){}}
 
 /* Physics quality presets */

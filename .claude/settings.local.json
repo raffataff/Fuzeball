@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check js/layout.js)",
+      "Bash(node --check js/config.js)",
+      "Bash(node --check js/league.js)",
+      "Bash(node --check js/flow.js)",
+      "Bash(node -e ' *)",
+      "Bash(node \"C:/Users/bobby/AppData/Local/Temp/claude/E--bobby-Documents-Fuzeball/ceb9b606-6d1f-4a06-9fb3-b76ee14e89cc/scratchpad/inspect_glb.js\")"
+    ]
+  }
+}

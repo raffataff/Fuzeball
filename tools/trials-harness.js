@@ -23,7 +23,7 @@ function boot(mutate){
   +'\n'+rd('js/state.js')+'\n'+STUBS+'\n'+trials
   +'\n;globalThis.__api={CONFIG,F,PHY,TRL,TRLC,S,cfg,rods,TRN,SCREENS,'
   +'trialById,trialBest,trialMedal,trialStart,trialArm,trialReset,trialGoal,trialTick,trialFinish,'
-  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC};';
+  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC};';
  const sb={console:{log(){},warn(){}},Math,Date,JSON,Object,Array,String,Number,Map,Set,isFinite,
   localStorage:{getItem:()=>null,setItem(){}},addEventListener(){},setTimeout(){},
   navigator:{}};
@@ -220,7 +220,7 @@ function suite(A){
  R.eq(TRN.freeze,false,'C4 sandbox freeze cleared on entry');
  const vis=rods.filter(r=>!r.trnHidden).map(r=>r.team+'|'+r.role);
  R.ok(vis.length===1&&vis[0]==='0|ATT','C5 only the declared rod is on the table','['+vis+']');
- R.eq(TRN.lastSpot.x,TRLC.list[0].ball.x,'C6 ball spawned at the trial spawn');
+ R.eq(TRN.lastSpot.x,A.trialById('snap').ball.x,'C6 ball spawned at the trial spawn');
  R.eq(S.phase,'play','C7 phase is play');
  R.eq(S.lastTouch,-1,'C8 lastTouch cleared so the clock cannot pre-start');
  R.ok(!!S.stats,'C9 the ledger is fresh');
@@ -341,6 +341,72 @@ function suite(A){
  for(const d of TRLC.list)
   R.ok(!!A.trialObjText(d),'O7 "'+d.id+'" renders an objective line');
  R.ok(!!A.trialObjText(A.dailyBuild('2026-07-04')),'O8 a daily renders one too');
+
+ /* ================= Q. the discipline sections =================
+    #trials is browsed by discipline (CONFIG.trials.cats): a tab strip, one section at a time.
+    The section is a FILTER over the one flat list, so the failure mode worth catching is a trial
+    that belongs to no section — it does not error, it simply never appears anywhere in the game,
+    and nothing on screen says a trial is missing. Hence the coverage check runs BOTH ways. */
+ const CATS=A.trialCats();
+ R.ok(CATS.length>0,'Q1 the discipline registry is populated');
+ const cids={};
+ for(const c of CATS){
+  R.ok(!cids[c.id],'Q2 cat id "'+c.id+'" is unique');cids[c.id]=1;
+  R.ok(!!c.name,'Q3 cat "'+c.id+'" has a section name');
+  R.ok(!!c.sub,'Q4 cat "'+c.id+'" has a sub-line');
+ }
+ // EVERY TRIAL IS REACHABLE. A cat typo hides a trial from the whole game in silence.
+ for(const d of TRLC.list)
+  R.ok(!!cids[d.cat],'Q5 "'+d.id+'" is filed under a real discipline','cat='+d.cat);
+ // ...and nothing is listed twice or lost: the sections must partition the list exactly.
+ let tot=0;for(const c of CATS)tot+=A.trialsIn(c.id).length;
+ R.eq(tot,TRLC.list.length,'Q6 the sections partition the list exactly');
+ // section order follows LIST order, which is what makes a section's difficulty curve authorable
+ const att=A.trialsIn('ATT').map(d=>d.id);
+ R.eq(att.join(','),TRLC.list.filter(d=>d.cat==='ATT').map(d=>d.id).join(','),
+  'Q7 a section keeps the list order');
+ R.eq(A.trialsIn('nope').length,0,'Q8 an unknown discipline is empty, not everything');
+ /* THE FIVE THE PLAYER WAS PROMISED. Named explicitly rather than derived from the registry:
+    the point of the check is that a section cannot quietly go missing, and a loop over whatever
+    happens to be in `cats` could never notice one being deleted. */
+ for(const id of ['GK','DEF','MID','ATT','TEAM']){
+  R.ok(!!cids[id],'Q9 "'+id+'" is one of the sections');
+  R.ok(A.trialsIn(id).length>0,'Q10 "'+id+'" has at least one trial');
+ }
+ /* The tallies the tab strip and the section header both read. Driven off cfg.trials, so this
+    also pins that a DAILY best (which lives in cfg.daily) can never leak into a section count. */
+ cfg.trials={};cfg.daily={date:A.dailyDate(),best:1,medal:'gold',streak:3};
+ let st=A.trialCatStat('ATT');
+ R.eq(st.n,att.length,'Q11 an untouched section counts its trials');
+ R.eq(st.done,0,'Q12 ...and nothing cleared');
+ R.eq(st.gold,0,'Q13 ...and a daily gold is not a section gold');
+ cfg.trials[att[0]]={best:1.5,medal:'gold'};
+ cfg.trials[att[1]]={best:19,medal:'silver'};
+ cfg.trials[att[2]]={best:99,medal:null};
+ st=A.trialCatStat('ATT');
+ R.eq(st.done,3,'Q14 a cleared trial counts as done whatever the medal');
+ R.eq(st.gold,1,'Q15 gold tallied');
+ R.eq(st.silver,1,'Q16 silver tallied');
+ R.eq(st.bronze,0,'Q17 bronze tallied');
+ cfg.trials={};cfg.daily=null;
+ /* The tab that opens by default must never be an EMPTY section — a player landing on a blank
+    panel reads it as the feature being broken rather than as one discipline being unwritten. */
+ R.ok(A.trialsIn(A.trialCatDefault()).length>0,'Q18 the default tab has trials in it');
+ /* Proved against a section that IS empty rather than against the shipped catalogue — today the
+    first tab happens to have trials in it, so shipped data alone would pass this even if the
+    skipping were deleted. An unwritten discipline is exactly the case this guards. */
+ TRLC.cats.unshift({id:'ZZZ',name:'UNWRITTEN',sub:'nothing here'});
+ R.eq(A.trialCatDefault(),'GK','Q18b an empty leading section is skipped');
+ R.eq(A.trialsIn('ZZZ').length,0,'Q18c ...because it really is empty');
+ TRLC.cats.shift();
+ /* Launching a trial parks its section, so quitting the run comes back to the tab it came from
+    rather than to the top of the list. A DAILY has no cat and must leave that alone. */
+ A.trialExit();TRL.pending=null;   // earlier sections leave a trial armed; trialStart no-ops on one
+ TRL.cat='TEAM';A.trialStart('snap');
+ R.eq(TRL.cat,'ATT','Q19 starting a trial remembers its section');
+ A.trialExit();TRL.cat='MID';A.trialStart('daily');
+ R.eq(TRL.cat,'MID','Q20 the daily leaves the open section alone');
+ A.trialExit();TRL.pending=null;
 
  /* ================= P. the daily ================= */
  R.ok(A.dailyOn(),'P1 the daily is enabled with templates');
@@ -545,6 +611,18 @@ console.log('trials-harness: '+R.pass+' passed, '+R.failed.length+' failed');
 R.failed.forEach(f=>console.log('  FAIL  '+f));
 
 const MUTANTS=[
+ /* THE SECTION IS A FILTER. A section that ignores `cat` shows the whole catalogue under every
+    tab — which looks like it works, and is the exact bug this file exists to catch: nothing
+    errors, the screen just stops meaning anything. */
+ ['every discipline lists every trial',
+  s=>s.replace("for(const d of TRLC.list)if(d.cat===cat)out.push(d);","for(const d of TRLC.list)out.push(d);")],
+ // ...and the mirror: a filter that matches nothing empties every section instead.
+ ['a discipline lists nothing at all',
+  s=>s.replace("for(const d of TRLC.list)if(d.cat===cat)out.push(d);","for(const d of TRLC.list)if(false)out.push(d);")],
+ // The default tab must skip empty sections, or GK opening blank on a fresh install reads as a
+ // broken feature rather than as one discipline still being written.
+ ['the default tab is simply the first one',
+  s=>s.replace("for(const c of cs)if(trialsIn(c.id).length)return c.id;","")],
  ['a conceded goal counts toward the objective',
   s=>s.replace('if(!TRL.def||TRL.done||team!==0)return;','if(!TRL.def||TRL.done)return;')],
  ['the table stash is re-taken on every apply',

@@ -561,6 +561,12 @@ and an objective on top.
 
 - **Route:** `#home` → TRAINING → **TRIALS** (`SCREENS.trials`), and `#home` → **DAILY**
   (`SCREENS.daily`, its own top-level card and screen).
+- **The catalogue is browsed by DISCIPLINE** — a five-tab strip on `#trials` (GK · DEF · MID · ATT
+  · TEAM, `CONFIG.trials.cats`), one section on screen at a time. **A section is a FILTER over the
+  one flat `list`, not a second list**: every trial carries a `cat` and `trialsIn()` keeps what
+  matches, so re-filing one changes where it is listed and never its id, seed or stored best, and
+  the daily's id-named templates never notice. A trial with a `cat` nobody declared does not error
+  — it silently appears nowhere, which is why the harness checks coverage BOTH ways.
 - **The clock is SIM time (`S.time`) and starts on your first SWING** (`S.stats.kicks[0]>0`, which
   `msKick` increments from `kickRod`). Not wall clock, so a dropped frame can neither cost a medal
   nor hand one over; not `S.lastTouch`, because a ball resting against a boot sets that on sim step
@@ -588,7 +594,7 @@ and an objective on top.
   at the near end (inside it, `collideRod` fires immediately), `rod.x + CONFIG.ai.inFrontMax` at
   the far end (past it the player cannot reach the ball). `tools/trials-harness.js` samples every
   band against the live geometry.
-- **The harness asserts the trial DATA, not just the code** (337 assertions, 17 mutations). An
+- **The harness asserts the trial DATA, not just the code** (423 assertions, 20 mutations). An
   unwinnable trial — bronze past its own limit, a must-score rod that is hidden, a spawn inside a
   boot or out of reach, a `stat` key that names nothing — fails as "I couldn't do it" rather than
   as an error, so those are checked from live CONFIG. Run: `node tools/trials-harness.js`.
@@ -670,6 +676,122 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   canvas would cost frames while we're measuring frames).
 
 ### 2026-08-26
+- **SKILL TRIALS ARE BROWSED BY DISCIPLINE NOW — GK · DEF · MID · ATT · TEAM** (`js/config.js` new
+  `CONFIG.trials.cats` + a `cat` on every trial + two new trials + two daily templates;
+  `js/trials.js` `renderTrials` rebuilt around sections; `index.html` `#trlTabs`; `css/styles.css`
+  the tab strip and a centring fix; `tools/trials-harness.js` 337 -> **423** assertions and
+  17 -> **20** mutations).
+  - **A SECTION IS A FILTER OVER THE ONE FLAT LIST, NOT A SECOND LIST.** Every trial still lives in
+    `CONFIG.trials.list` and carries a `cat`; `trialsIn(cat)` walks that list and keeps what
+    matches. A list-per-section would have made the daily's `from:'snap'` ambiguous and given
+    `cfg.trials` two places for one id to hide in — and re-filing a trial would have orphaned its
+    stored best. As it stands, re-filing changes which tab a trial appears under and nothing else.
+  - **THE FLAT COLUMN WAS ALREADY THE WRONG SHAPE AT SIX TRIALS.** The question a player arrives
+    with is "what can I practise with my keeper", and an undifferentiated list answers it by making
+    them read all of it. GK/DEF/MID/ATT are the ROD ROLES on purpose — the same strings `rods.show`
+    uses — so the tab says which handle the trial is about before the blurb has been read. TEAM is
+    the one that is not a rod: it is where a trial that needs several of yours on the table goes.
+  - **GK AND DEF WERE EMPTY SECTIONS, SO THEY GOT ONE TRIAL EACH, built only out of objective kinds
+    that already work.** DISTRIBUTION (GK) is six passes between keeper and defence — 15 units
+    apart, well inside `MSTAT.passT`, the geometry ONE-TWO already proves at twice the distance.
+    THE LONG BALL (DEF) is two goals from your own defence past a static keeper: -37.5 to +60 is 94
+    units against a ~125-unit maximum roll, so the ball arrives at about 11 u/s after ~4s in
+    transit — which is most of the medal spread, and why its thresholds are so much softer than
+    SNAP SHOT's for what looks like the same objective.
+  - **THE OBVIOUS GK TRIAL IS A SAVE TRIAL AND IT DOES NOT WORK YET — that is a MECHANICS gap, not
+    a config one.** The counter is live (`momOn()` carries the `S.trial` clause, so `S.stats.saves`
+    fills in a trial), but the clock starts on the player's first SWING and a keeper who blocks
+    with a rod he never swings has not swung: the run would go untimed and bank no record (the
+    `TRL.run` guard). And "make 3 saves" with no FAIL-ON-CONCEDE is passed by standing still. Two
+    rules — a clock that also starts on a save, and a concede condition — and the section can have
+    the trial it actually wants.
+  - **`TRL.cat` IS REMEMBERED FOR THE RUN AND DELIBERATELY NOT PERSISTED.** `trialStart` parks the
+    launched trial's section, so quitting comes back to the tab you left rather than to GK every
+    time; it is where you were a moment ago, not a preference worth a save key. The DAILY clears
+    its `cat` explicitly in `dailyBuild` — the shallow copy inherits the source trial's, and
+    leaving it would make playing the daily silently move the tab `#trials` opens on.
+  - **THE PANEL ON `#trials` AND `#daily` HAD BEEN OFF-CENTRE BY 100px ALL ALONG.** `.panel` is
+    written for the multi-panel flow layouts (`flex:1 1 0` with a 320px cap); `.trnStub` is not a
+    flex container, so `flex` did nothing and the cap left a 320px card left-aligned inside a 520px
+    centred column. Invisible while the card was the only thing on the screen, glaring the moment
+    a full-width tab strip sat above it. `.trnStub>.panel{max-width:none;width:100%}`.
+  - **The tab counter is CLEARED / TOTAL, and the medal tally only renders once there is a medal**
+    — three zeroes on a section you have never opened is a scoreboard telling you off before you
+    have started. An empty section stays reachable and explains itself ("nothing here yet"), and
+    the default tab skips it, because a player landing on a blank panel reads it as the feature
+    being broken rather than as one discipline still being written. Arrow keys walk the tabs;
+    safe against `input.js`, which binds the same two to `seatStep` but gates them on `S.phase`
+    `play`/`count`.
+- **`cfg` NOW PERSISTS AS TWO BLOBS — PLAYER AND MACHINE** (`js/config.js` `CFG_KEY`/`CFG_MACHINE`/
+  `CFG_PLAYER`/`cfgBucket`/`cfgSplit`/`cfgSyncKeys`/`cfgLoad` + a rewritten `saveCfg`; comment
+  fixed in `js/training.js`; new `tools/savesplit-harness.js`). Steam-wrapper prep, done now
+  because it only gets more expensive.
+  - **`cfg` IS STILL ONE LIVE OBJECT.** Nothing that reads `cfg.x` or calls `saveCfg()` changed —
+    that was the constraint, because `saveCfg()` is called from ~40 sites across `ui.js`,
+    `options.js`, `customize.js`, `league.js`, `trials.js`, `training.js` and `photo.js`. Only the
+    PERSISTENCE changed: `fuzeball_player` + `fuzeball_machine` instead of one `fuzeball`.
+  - **WHAT IT PREVENTS is a bug you could never diagnose from a support thread.** Steam Cloud syncs
+    a folder of files. The moment the wrapper mirrors saves into one, a single blended blob carries
+    `renderScale`, `shadows`, `fpsCap`, `gfxPreset` and `physQuality` from a desktop onto the same
+    player's Steam Deck. They would report it as "my settings reset themselves and now it runs at
+    20fps", and nothing in the game would say otherwise.
+  - **`layouts` IS A MACHINE KEY, WHICH IS NOT OBVIOUS.** Panel arrangements are clamped to the live
+    window (`layApplyScreen`), so an ultrawide arrangement is simply wrong on a handheld. It is
+    per-DISPLAY, not per-player, and syncing it would be a bug wearing the costume of a feature.
+    `padDeadzone` goes the same way for the same reason — it is calibration for one physical stick,
+    not a preference — while every other pad setting (inversion, sensitivity, the Total Control
+    curve, the charge button) is a preference and syncs.
+  - **THE VENUE SUBSTITUTION HAS TO HAPPEN BEFORE THE SPLIT.** `lgVenueHeld`/`trialVenueHeld` park
+    `table`/`room`/`pitch`/`skins`, and all four are PLAYER keys — settle the substitution while it
+    is still one object or the parked league venue is written straight through into the synced blob
+    and becomes the player's permanent Kick Off setting on every machine they own.
+  - **LOAD ORDER IS PLAYER FIRST, MACHINE ON TOP.** If a key ever moves between the two sets, a
+    stale copy of it survives in the player blob; assigning machine last means this computer's own
+    value still wins, and the next `saveCfg()` drops the stale copy.
+  - **AN UNCLASSIFIED KEY STILL WORKS** — it defaults to PLAYER, because failing to sync progress is
+    worse than syncing a stray toggle — **and warns once per key** to the console so the drift is
+    caught in the session it appears. Not once per save: `saveCfg` fires on every slider drag.
+  - The legacy `fuzeball` key is read once on first boot and then **deliberately never deleted**. It
+    is a free one-time backup of the pre-split state; nothing reads it again once either new key
+    exists, so no later save can resurrect a stale value out of it.
+  - `cfgSyncKeys()` is the **Steam Cloud manifest** and lives next to the two sets on purpose, so the
+    "what syncs" list cannot drift from the "what is a player key" list. It returns
+    `fuzeball_player`, every `fuzeball_league_*`, and `fuzeball_career` (the achievements store —
+    listed ahead of existing, see `ACHIEVEMENTS.md` §4). It excludes `fuzeball_machine` and the
+    legacy key.
+  - `tools/savesplit-harness.js` boots `core.js` + `config.js` for real in a fresh V8 context per
+    scenario against a fake `localStorage` — 36 assertions over migration, bucketing, load
+    precedence, round-trip, venue parking and the manifest. Check 3 is the one that matters: no
+    `CFG_MACHINE` key may appear in the synced blob.
+- **NO CDN, NO GOOGLE FONTS — the game now boots with zero network access** (`index.html` loader +
+  `<head>`, `tools/fetch-vendor.ps1` rewritten, `vendor/README.md` rewritten, new
+  `tools/offline-harness.js`).
+  - **THE CDN FALLBACK WAS AN RCE WAITING FOR THE WRAPPER.** `{srcs:['vendor/three.min.js',
+    'https://cdnjs…']}` is sensible resilience in a browser. In Electron — where `steamworks.js`'s
+    quickstart tells you to set `nodeIntegration:true` — a compromised or DNS-hijacked CDN is
+    arbitrary code on the player's machine. `CDN_FALLBACK` is now `false` for every build; the
+    second entry of each `srcs` array is documentation of the pinned version and is never fetched.
+  - **THE WATCHDOG IS KEYED ON THE ORIGINAL ENTRY, NOT THE SLICED ONE.** The 7s timeout exists
+    because "some `file://` loads fire neither event", and the vendor entries are the heavy ones
+    where that shows. Keying `guard` on `all.length>1` rather than on what survives `CDN_FALLBACK`
+    keeps that watchdog alive — it just logs and lets the boot carry on instead of racing to a CDN.
+  - **`vendor/fonts.css` HAD BEEN SHIPPING THE WRONG FONT FOR MONTHS AND THE GOOGLE LINK HID IT.**
+    It declared **Orbitron**; `css/styles.css` has asked for **Russo One** since the switch.
+    `tools/fetch-vendor.ps1` was updated at the time and never re-run, so the generated file was
+    stale — and because `<head>` still carried a Google Fonts `<link>`, everything looked correct
+    online while every offline boot (`file://`, and any future Electron build) fell back to
+    `monospace` on `#camInfo`, `#ballSpeed`, `#ballVel`, `#fps`, `.trnAngT`, `.phInfo` and
+    `.reRoomCard`. **This is the failure mode to fear with vendored assets: not a crash, a build
+    that is only correct on the machine that has the network.**
+  - Check 5 of `tools/offline-harness.js` exists for exactly that class of drift — it cross-checks
+    every family named in `css/styles.css` against the `@font-face` rules actually on disk. **Re-run
+    the fetch script AND the harness after changing any font in `css/styles.css`.**
+  - `fetch-vendor.ps1` was also two libraries behind the boot list — `WorkerPool.js` and
+    `KTX2Loader.js` (both r137) were never in it. It now clears stale `.woff2` before re-fetching
+    (which is how ~250KB of dead Orbitron was still sitting in `vendor/fonts/`), and fetches
+    `vendor/basis/` **only when the folder is empty**, then byte-size-checks the wasm against the
+    499,935 that `vendor/basis/README.md` documents — a script that re-downloaded a hand-verified
+    binary on every run would quietly undo that pin.
 - **ONE FILE PER PITCH — and it turned out two pitches had never worked** (new
   `tools/pitch-split.mjs`, `CONFIG.pitches` rewritten + new `tableAssets.cachePitches`, `js/models.js`
   new `pitchGroups`/`ensurePitch`/`disposePitch`/`prunePitches` replacing `loadPitchModel`,
