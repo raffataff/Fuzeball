@@ -489,7 +489,15 @@ written device-agnostic so the keyboard/mouse port is a second caller, not a sec
 
 ## Current state / recent work
 
-**Most recent (2026-08-22): SLIDING INTO THE BALL NO LONGER PINGS IT OFF, AND L2 IS A GRIP** —
+**Most recent (2026-08-29): THE GK SECTION HAS ITS SAVE TRIAL** — new `saveRun` objective kind and
+THE LAST LINE: ten attacks on your goal, served one at a time, scored on how many you kept out.
+It needed the SECOND SCORING DIRECTION the 2026-08-20 note said a non-stopwatch objective would
+take (`trialDir`; saves, higher is better). Two things worth carrying forward: the ball has to be
+served on the opponent's ATTACK line because a midfield-line shot arrives at 23.0 u/s against
+`moments.save.minSpeed` 24 and would be **blocked but never credited**; and an undriven keeper
+still finishes on 2-3 of 10, which is what set bronze. See the 2026-08-29 entry.
+
+Earlier: **SLIDING INTO THE BALL NO LONGER PINGS IT OFF, AND L2 IS A GRIP** —
 new `CONFIG.kick.slidePush` (the fraction of a boot's SIDEWAYS motion that drives the contact
 impulse; the rotation is untouched, so a kick is bit-identical) and new `CONFIG.shots.hold` (the
 player's half of `holdCfg`, which was AI-only by construction). A full-tilt slide used to hand the
@@ -576,10 +584,21 @@ and an objective on top.
 - **Objectives** (`goal.kind`): `goals` (n at the far end) · `roleGoals` (one struck by each named
   rod of yours, credited off `b.mss`, matchstats' last SWING) · `stat` (n of any per-team MATCH
   LEDGER counter — `woodwork`, `saves`, `passes`, `shots`, `onTarget`, `kicks` — polled once per
-  FRAME, never on the sim path). **Scoring does not complete a `stat` trial.**
-- **Medals are ELAPSED SIM SECONDS, lower is better, for both clock styles** — one metric, so a
-  stopwatch trial and a countdown one share the whole comparison path. A countdown only changes
-  what the HUD displays. This is also why there is no SURVIVE objective (see 2026-08-20).
+  FRAME, never on the sim path) · **`saveRun`** (THE GK KIND: n attacks served one at a time, scored
+  on how many you KEPT OUT). **Scoring does not complete a `stat` trial.**
+- **THERE ARE TWO SCORING DIRECTIONS AND ONLY TWO.** Every kind but one is ELAPSED SIM SECONDS,
+  lower is better — one metric, so a stopwatch trial and a countdown one share the whole comparison
+  path and a countdown only changes what the HUD displays. **A `saveRun` is SAVES, higher is
+  better**, because a keeper never has to swing and a clock therefore cannot be its metric even in
+  principle. `trialDir` derives the direction from the KIND and one comparator flip carries it
+  through medals, bests, the list and the HUD. (This is the second direction 2026-08-20 said a
+  SURVIVE objective would need; SURVIVE still does not get one — it would complete at exactly its
+  limit every time and every medal would be gold.)
+- **A `saveRun` ATTEMPT IS ONE SERVED BALL**, settling on the FIRST of a save, a conceded goal, or
+  `attemptT` seconds. Settling on the first is what keeps saves <= attempts, which is the only
+  reason "7 / 10" means anything. The spawn LIST (`spawns`) varies the ANGLE and not the range, and
+  which line the ball is served on is forced by `CONFIG.moments.save.minSpeed` — read the
+  'ON A saveRun' note in `CONFIG.trials` before moving any of it.
 - **Two things are pinned per trial, for different reasons.** The TABLE (it picks the collision
   model) is applied and the player's is PARKED — `saveCfg` writes `trialVenueHeld()` beside
   `lgVenueHeld()`, or a trial would become their Kick Off setting. The DIFFICULTY (`diff`) is read
@@ -594,7 +613,7 @@ and an objective on top.
   at the near end (inside it, `collideRod` fires immediately), `rod.x + CONFIG.ai.inFrontMax` at
   the far end (past it the player cannot reach the ball). `tools/trials-harness.js` samples every
   band against the live geometry.
-- **The harness asserts the trial DATA, not just the code** (423 assertions, 20 mutations). An
+- **The harness asserts the trial DATA, not just the code.** An
   unwinnable trial — bronze past its own limit, a must-score rod that is hidden, a spawn inside a
   boot or out of reach, a `stat` key that names nothing — fails as "I couldn't do it" rather than
   as an error, so those are checked from live CONFIG. Run: `node tools/trials-harness.js`.
@@ -674,6 +693,92 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-08-29
+- **THE GK SECTION HAS ITS SAVE TRIAL — and it needed a SECOND SCORING DIRECTION, which is the
+  thing 2026-08-20 said it would take** (`js/config.js` new `saveRun` objective kind + THE LAST
+  LINE + a derivation note; `js/trials.js` `trialDir`/`trialBetter`/`trialScoreText` + `trialServe`/
+  `trialAttemptEnd`/`trialSpawnFor` + the saveRun branches; one-line hooks in `js/training.js` x2
+  and `js/powerups.js`; `tools/trials-harness.js` gains a saveRun section and 8 mutations, and its
+  reach check is split by who is meant to STRIKE the ball. **The node harness was NOT run this
+  session — there is no node on this machine** — so its exact totals are not quoted here; the same
+  assertions and mutations were re-run in a browser instead, see below.)
+  - **ONE RULE ANSWERS BOTH OF THE MECHANICS GAPS the 2026-08-26 note listed, rather than two.**
+    That note wanted "a clock that also starts on a save" AND "a fail-on-concede condition,
+    because without one 'make 3 saves' is passed by standing still". Make the run N SERVED ATTACKS
+    scored on how many you KEPT OUT and both disappear: the clock stops being the metric, so it
+    cannot matter that a keeper never swings, and a keeper who does nothing simply finishes on 0.
+    A fail-on-concede would also have been the wrong shape — it ends the run on the first mistake,
+    which is a punishing way to practise the one position where mistakes are the job.
+  - **AN ATTEMPT IS ONE SERVED BALL, SETTLING ON THE FIRST OUTCOME — a SAVE, a CONCEDE, or
+    `attemptT`.** Settling on the FIRST is what makes "7 / 10" mean anything: the ball is taken
+    away the instant the attempt is decided, so a rebound cannot bank a second save off one
+    attempt and the score can never outrun the attempts. The save is read as a DELTA on
+    `S.stats.saves[0]` and banked once per attempt, never as a total, which is what holds that
+    invariant even when two land inside one frame. `attemptT` (14s) is a FAILSAFE, not the normal
+    exit — measured, attempts settle in ~1.8s of play, so it only ever catches a shot that misses
+    and rattles off the end wall, a dead-ball re-drop, or an attacker that dawdles.
+  - **THE SPAWN QUESTION IS ANSWERED BY momSaveTest, NOT BY FEEL, and the midfield line does not
+    work.** A save is only credited when the ball reaches the keeper closing at
+    `CONFIG.moments.save.minSpeed` (24 u/s) in x, and `momOnTarget` refuses a projection needing
+    longer than `moments.target.maxT` (1.6s). Against an ordinary ~44 u/s strike, with floor
+    friction `exp(-0.35t)`: their ATT (-22.5) arrives at **33.5 u/s after 0.78s** and counts;
+    their MID (+7.5) arrives at **23.0 u/s after 1.85s**, UNDER minSpeed; their DEF (+37.5)
+    projects at 2.22s, over maxT. **A shot from the midfield line is blocked but never credited**,
+    which reads as the trial being broken rather than as it being hard. So the attack line is the
+    only one that works, and there is no shoot-from-deep variant.
+  - **VARIED SPAWNS COST NOTHING AND ARE THE WHOLE VARIETY — but they vary the ANGLE, not the
+    RANGE**, for the same reason. `spawns:[{x,z},…]` is walked in order and wraps; x stays inside
+    the attacking rod's own strike band and z is what moves, kept inside +/-10 (at the corner of
+    that band a shot across the face still reaches the keeper at ~29 u/s; wider and the
+    x-component starts dipping under the 24). AUTHORED rather than rolled, so the harness samples
+    every entry against the live geometry and two players face the same ten balls in the same
+    order — the same discipline the daily uses when it rolls a spawn but never a difficulty.
+  - **THE SECOND DIRECTION IS DERIVED FROM THE KIND, NOT DECLARED BESIDE IT.** `trialDir(d)` is
+    the whole of it; medals, personal bests, the list row and the HUD all turn on one comparator
+    flip, and a spec cannot ship a metric and a direction that disagree. `cfg.trials[id].best`
+    now holds SECONDS for one kind and SAVES for the other — one slot, two units, which is safe
+    only because a trial id may never be renamed OR re-kinded.
+  - **`trialAttemptEnd` DELIBERATELY DOES NOT CLEAR THE BALL.** It is reachable from inside
+    `trainingGoal`, which frees the ball itself a line later, so freeing it there is a double
+    free; `trialTick` sweeps on the frame boundary instead. And the sweep skips a DONE run, so
+    the last attempt freezes on the ball where it settled rather than on an empty table.
+  - Three one-line cross-module hooks, all reading DATA off `S.trial` so a missing trials.js
+    leaves them harmlessly false: `trainingGoal` and `trainingBallGone` must not drop a sandbox
+    ball into the gap between attempts (`S.trial.serving`), and `redropBall` must put a stalled
+    ball back on THIS attempt's spot rather than the trial's first one (`S.trial.spawn`).
+  - **MEASURED IN THE RUNNING GAME, and it moved the thresholds: an undriven keeper still scores
+    2-3 of 10.** The men block whatever is aimed near them, so bronze at 4 would have been handed
+    out for doing nothing — the same hole "make 3 saves" had, one number further along. Now
+    gold 9 / silver 7 / bronze 5. Everything above bronze is still an unplayed first cut.
+  - **THE HARNESS NEEDED A SPLIT IT DID NOT HAVE: whose reach a spawn must be inside.** `A-reach`
+    tested the ball against rods YOU control, which a save trial fails by construction — its ball
+    is 25 units in front of a keeper whose strike window is 6.3. It tests the SHOOTING side for a
+    saveRun instead, and checks the keeper for the thing that actually matters to it (that
+    `gkSlide` + foot reach covers `goalHalf`, i.e. both posts). Every spawn in the list is now
+    walked for wall clearance, foot clearance and reach, not just `ball`.
+  - **`rd()` NOW STRIPS CRLF, which is the 2026-08-23 rng-harness fix arriving here.** js/trials.js
+    is a CRLF file, so a multi-line mutation needle could never match one — and two of the new
+    mutations silently did not apply until this landed. Fixed at the READ so every mutation,
+    present and future, is immune.
+  - **Verified live** at `http://localhost:8123` (no node in the session — a PowerShell
+    `HttpListener` served the repo, and the harness's DATA + runner assertions were re-run in the
+    browser against the real modules: **192 passed, 0 failed, 12/12 mutations caught**, plus the
+    42-module chain compiled in one scope for duplicate top-level names). Then the trial itself was
+    driven end to end in the actual game: the setup applies (locked to GK, exactly the five
+    declared rods, team 1 AI on, seed 96331), ten attempts serve and settle, `TRL.saves` matches
+    `S.stats.saves[0]` exactly, the world freezes on the result, the card reads "3 / 10 saved ·
+    NEW BEST", the record banks the COUNT, and a worse second run does not overwrite it.
+    **Found on the way past: `SRV` is already `CONFIG.serve`** — the harness stub had claimed it,
+    which is the 2026-08-02 `CUP` trap in a new place. Renamed to `RODRST`.
+  - **STILL WANTS A REAL LOOK AT, and it is all feel.** Whether `serveDelay` 1.2s is a beat or a
+    wait across ten of them; whether ten attempts is the right length for "go again"; and the
+    thresholds above bronze. The one number to watch if saves stop registering is
+    `CONFIG.moments.save.minSpeed` — a blocked-but-uncredited shot is the failure mode this
+    geometry is written around.
+  - **DELIBERATELY NOT DONE:** THE LAST LINE is not a daily template. `dailyRecord` takes the
+    direction now and would handle one, but the daily's whole shape is a rolled SPAWN over
+    authored difficulty, and a saveRun's spawn list is the trial.
 
 ### 2026-08-26
 - **SKILL TRIALS ARE BROWSED BY DISCIPLINE NOW — GK · DEF · MID · ATT · TEAM** (`js/config.js` new

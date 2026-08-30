@@ -81,7 +81,15 @@ function bindUI(){
  // The three mode cards (PLAY RED / PLAY BLUE / AI SHOWDOWN) and their rod rows are gone —
  // the roster replaces all of them: side, rod and who's AI are now per-seat (js/roster.js).
  $('btnResume').onclick=()=>togglePause();
- $('btnRestart').onclick=()=>startMatch(S.mode,S.rodLockRole);
+ /* A TRIAL RESTARTS THROUGH ITS OWN RESET, not through startMatch. startMatch would rebuild the
+    sandbox with S.trial still pointing at the finished run and nothing armed in TRL.pending, so
+    trialArm would decline and hand back a half-set-up trial: HUD still up, spec no longer applied.
+    trialReset is also the only path that re-seeds from S.seed, which is what makes a retry
+    comparable to the attempt before it. typeof-guarded, so a missing trials.js changes nothing. */
+ $('btnRestart').onclick=()=>{
+  if(S.trial&&typeof trialRestart==='function'){togglePause();trialRestart();return;}
+  startMatch(S.mode,S.rodLockRole);
+ };
  $('btnPauseMenu').onclick=()=>{
   if(S.lg){
    if(S.lg.matchStart&&S.time-S.lg.matchStart<CONFIG.league.graceT){gotoMenu();return;}

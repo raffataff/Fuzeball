@@ -547,6 +547,40 @@ function passPick(r,bx,bz){
  r.passEvT=P.every;
  return r.passEv=passEval(r,bx,bz);
 }
+/* THE PASSIVE RAISE — one rod, one frame, no hand on it. Lifted out of the bench branch of
+   aiUpdate so THREE callers share the exact same rule instead of three near-copies:
+     - a benched rod in a real match (aiUpdate below),
+     - an uncontrolled rod in training/trials whose team has its AI off (via TRN.lift),
+     - the rod a player has just switched ONTO, until the inherited raise lets go (js/input.js).
+   It decides the ANGLE only. It never writes r.target, because "benched" MEANS the rod holds its
+   lane in z. Returns the raise state it settled on, which is what tells the inherited-raise latch
+   when to hand the men back to the player. */
+function rodHoldRaise(r){
+ let bb=null,bd=1e9;
+ for(const b of S.balls){if(b.scored)continue;const d=Math.abs(b.m.position.x-r.x);if(d<bd){bd=d;bb=b;}}
+ if(!bb){r.raise=false;r.behindFlag=false;return false;}
+ const dir=r.team===0?1:-1,rel=(bb.m.position.x-r.x)*dir;
+ // A resting rod still must not stand in a teammate's kick lane. It holds its lane in z, so it
+ // gets the LIFT half of clearLane only: the clearance passes under the feet instead of into
+ // them. Same back-swing guard as the action — a lift while the ball is in reach sweeps it.
+ if(AIC.clearLane.on&&AIC.clearLane.lift&&rel<AIC.clearLane.behind&&rel>-AIC.clearLane.nearBall
+    &&bb.m.position.y<AIC.lowY&&!inFootRange(r,bb)&&laneMate(r,bb)){
+  r.raise=true;r.behindFlag=false;return true;
+ }
+ if(inFootRange(r,bb,AIC.underFootBack)){
+  r.raise=false;r.behindFlag=false;                 // ball right at the feet — never swing back through it
+ }else{
+  if(!r.behindFlag && rel<AIC.raiseBehind) r.behindFlag=true;
+  if(r.behindFlag){
+   r.raise=true;
+   // Release when ball reaches feet OR has moved well past them (skipped the zone)
+   if(rel>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
+  }else{
+   r.raise=rel<AIC.raiseBehind;
+  }
+ }
+ return r.raise;
+}
  function aiUpdate(dt){
   recordBalls();               // snapshot every ball's true state this step so rods can read it delayed
   pickActiveRods(dt);
@@ -555,9 +589,20 @@ function passPick(r,bx,bz){
   const GA=AIC.gapAim;
   for(const r of rods){
    if(isUserRod(r))continue;
-   // training sandbox: a hidden rod or a team with its AI toggled off holds dead still —
-   // target pinned to the current offset, men down, no actions. (S.trn is null outside training.)
-   if(S.trn&&(r.trnHidden||!S.trn.ai[r.team])){r.raise=false;r.behindFlag=false;r.act=null;r.aimEv=null;r.target=r.offset;continue;}
+   r.raiseKeep=false;                     // an inherited raise (js/seats.js) dies the moment the AI has the rod back
+   /* training sandbox: a hidden rod, or a team with its AI toggled off, never chases and never
+      swings — target pinned to the current offset, no actions. (S.trn is null outside training.)
+      TRN.lift[team] then decides what the MEN do. false is the old dead-flat obstacle, which is
+      what a trial like KEEPER'S NIGHTMARE is built on; true runs the same passive raise a benched
+      rod uses in a real match, so your own uncontrolled rods lift out of the ball's way instead of
+      lying across it. A hidden rod is a ghost either way (physics.js skips it), so it never pays
+      for the scan. */
+   if(S.trn&&(r.trnHidden||!S.trn.ai[r.team])){
+    r.act=null;r.aimEv=null;r.target=r.offset;
+    if(!r.trnHidden&&S.trn.lift&&S.trn.lift[r.team])rodHoldRaise(r);
+    else{r.raise=false;r.behindFlag=false;}
+    continue;
+   }
    r.aimEv=null;                          // cleared each frame; set only while gap-aiming (debug + hold read it)
    // how many of this rod's men are still on the pitch (cannonball can remove them). If
    // ALL are gone the rod can't touch the ball, so drop it out of the aim/kick logic.
@@ -607,30 +652,7 @@ function passPick(r,bx,bz){
     // where resetRodRotation just wiped every latch) sits down in the ball's path and takes
     // a teammate's kick in the back. Mirrors the active-rod raise latch below, minus the
     // swing actions (trap/safeRaise), which only ever run for an active rod anyway.
-    let bb=null,bd2=1e9;
-    for(const b of S.balls){if(b.scored)continue;const d=Math.abs(b.m.position.x-r.x);if(d<bd2){bd2=d;bb=b;}}
-    if(!bb){r.raise=false;r.behindFlag=false;continue;}
-    const dir2=r.team===0?1:-1;
-    const relReal2=(bb.m.position.x-r.x)*dir2;
-    // A benched rod still must not stand in a teammate's kick lane. It holds its lane in z (that's
-    // what benched MEANS — the hand isn't on it), so it gets the LIFT half of clearLane only: the
-    // clearance passes under the feet instead of into them. Same back-swing guard as the action.
-    if(AIC.clearLane.on&&AIC.clearLane.lift&&relReal2<AIC.clearLane.behind&&relReal2>-AIC.clearLane.nearBall
-       &&bb.m.position.y<AIC.lowY&&!inFootRange(r,bb)&&laneMate(r,bb)){
-     r.raise=true;r.behindFlag=false;continue;
-    }
-     if(inFootRange(r,bb,AIC.underFootBack)){
-      r.raise=false;r.behindFlag=false;                 // ball right at the feet — never swing back through it
-     }else{
-      if(!r.behindFlag && relReal2<AIC.raiseBehind) r.behindFlag=true;
-      if(r.behindFlag){
-       r.raise=true;
-       // Release when ball reaches feet OR has moved well past them (skipped the zone)
-       if(relReal2>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
-      }else{
-       r.raise=relReal2<AIC.raiseBehind;
-      }
-     }
+    rodHoldRaise(r);
     continue;
   }   // a resting hand: hold its lane, block passively
    const D=r.team===0?Dred:Dblue;

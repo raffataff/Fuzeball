@@ -114,18 +114,34 @@ function clearFxRail(){
 }
 let fxHudT=0;
 function hudTick(rdt){
- // Clock: unlimited → counts up; timed → counts DOWN to the limit, pulsing red in the final
- // seconds (MATCH.warnT); once level time runs out it flips to a pulsing SUDDEN DEATH badge.
- const mt=$('matchTime'),lim=gameTimeLimit();
- if(S.suddenDeath){mt.textContent='SUDDEN DEATH';mt.classList.add('sd');mt.classList.remove('warn');}
+ /* Clock: unlimited → counts up; timed → counts DOWN to the limit, pulsing red in the final
+    seconds (MATCH.warnT); once level time runs out it flips to a pulsing SUDDEN DEATH badge.
+    TRAINING AND TRIALS HAVE NO MATCH CLOCK, so the plate comes off screen entirely. checkMatchClock
+    already refuses to act on S.trn, but S.matchTime keeps advancing regardless — so the plate sat
+    there counting down from whatever Kick Off was last set to: a second clock beside the trial's
+    own, deciding nothing and contradicting the one that does. Hidden rather than blanked, because
+    an empty plate still reads as a clock that has broken. */
+ const mt=$('matchTime');
+ if(S.trn)mt.style.display='none';
  else{
-  let shown;
-  if(lim>0){shown=Math.max(0,Math.ceil(lim-S.matchTime));mt.classList.toggle('warn',shown<=MATCH.warnT);}
-  else{shown=Math.floor(S.matchTime);mt.classList.remove('warn');}
-  mt.classList.remove('sd');
-  const mm=String(Math.floor(shown/60)).padStart(2,'0'),ss=String(Math.floor(shown%60)).padStart(2,'0');
-  mt.textContent=mm+':'+ss;
+  mt.style.display='';
+  const lim=gameTimeLimit();
+  if(S.suddenDeath){mt.textContent='SUDDEN DEATH';mt.classList.add('sd');mt.classList.remove('warn');}
+  else{
+   let shown;
+   if(lim>0){shown=Math.max(0,Math.ceil(lim-S.matchTime));mt.classList.toggle('warn',shown<=MATCH.warnT);}
+   else{shown=Math.floor(S.matchTime);mt.classList.remove('warn');}
+   mt.classList.remove('sd');
+   const mm=String(Math.floor(shown/60)).padStart(2,'0'),ss=String(Math.floor(shown%60)).padStart(2,'0');
+   mt.textContent=mm+':'+ss;
+  }
  }
+ /* THE SCOREBOARD GOES WITH IT IN A TRIAL, where '0 : 1' is a second and worse copy of the
+    objective line ('GOALS 1 / 3') and half of it belongs to a team that is often not even on
+    the table. Driven from HERE, off live state, rather than toggled on the way in and out of
+    a trial: every frame re-asserts it, so no exit path can leave a match with no scoreboard.
+    S.trial is plain nullable data, so this costs nothing and is safe with no trials.js. */
+ const sb=$('sb');if(sb)sb.style.display=S.trial?'none':'';
  fxHudT-=rdt;if(fxHudT>0)return;fxHudT=.1;
  const live=[];
  [0,1].forEach(t=>{const e=S.eff[t];FX_EFFECTS.forEach(fe=>{const end=e[fe.key];

@@ -7,7 +7,7 @@
    G click-place. Saved spots persist in cfg.trnSpots — a PLAYER key, so they follow the
    person between machines rather than sitting on one (see the PLAYER/MACHINE block in config.js). */
 const TRNC=CONFIG.training;
-const TRN={on:false,ai:[false,false],freeze:false,stepQ:0,placing:false,deadball:false,score:false,
+const TRN={on:false,ai:[false,false],lift:[false,false],freeze:false,stepQ:0,placing:false,deadball:false,score:false,
  ballType:'classic',hidden:[],spots:null,lastSpot:null};
 let trnBuilt=false,trnRing=null,trnAngT=null,trnNeedle=null;
 const trnRay=new THREE.Raycaster();
@@ -160,6 +160,12 @@ function buildTrnPanel(){
   '<div class="trnSect">AI</div>'+
   '<div class="trnRow"><label><span class="lblR">Team 1</span> AI</label><input type="checkbox" id="trnAiR"></div>'+
   '<div class="trnRow"><label><span class="lblB">Team 2</span> AI</label><input type="checkbox" id="trnAiB"></div>'+
+  // LIFT is what an AI-OFF rod does with its MEN. Off = the dead-flat obstacle this sandbox has
+  // always given you, which is what you want when a rod is there to block something. On = the
+  // passive raise a benched rod runs in a real match (ai.js rodHoldRaise), so idle rods get out of
+  // the ball's way. Ignored while that team's AI is on — the full AI picks its own angles.
+  '<div class="trnRow"><label><span class="lblR">Team 1</span> lift when idle</label><input type="checkbox" id="trnLiftR"></div>'+
+  '<div class="trnRow"><label><span class="lblB">Team 2</span> lift when idle</label><input type="checkbox" id="trnLiftB"></div>'+
   '<div class="trnSect">Rods · show / hide</div>'+
   '<div class="trnRods" id="trnRods"></div>'+
   '<div class="trnSect">Rules</div>'+
@@ -199,6 +205,8 @@ function buildTrnPanel(){
  }
  $('trnAiR').onchange=e=>{TRN.ai[0]=e.target.checked;};
  $('trnAiB').onchange=e=>{TRN.ai[1]=e.target.checked;};
+ $('trnLiftR').onchange=e=>{TRN.lift[0]=e.target.checked;};
+ $('trnLiftB').onchange=e=>{TRN.lift[1]=e.target.checked;};
  trnRodRows();
  $('trnScore').onchange=e=>{TRN.score=e.target.checked;};
  $('trnDead').onchange=e=>{TRN.deadball=e.target.checked;};
@@ -213,6 +221,7 @@ function trainingEnter(){
  buildTrnPanel();trnRodRows();
  rods.forEach((r,i)=>{r.trnHidden=!!TRN.hidden[i];r.pivot.visible=!r.trnHidden;const c=$('trnRod'+i);if(c)c.checked=!r.trnHidden;});
  $('trnAiR').checked=TRN.ai[0];$('trnAiB').checked=TRN.ai[1];
+ $('trnLiftR').checked=TRN.lift[0];$('trnLiftB').checked=TRN.lift[1];
  $('trnScore').checked=TRN.score;$('trnDead').checked=TRN.deadball;
  $('trnType').value=TRN.ballType;
  $('trnFreeze').classList.remove('on');
@@ -243,11 +252,18 @@ function trainingGoal(team,b){
  // A FINISHED trial keeps the table as it was: dropping a fresh ball behind the result card reads
  // as the run still going. Any other case (sandbox, or a trial still in progress) respawns so the
  // next shot is instantly repeatable.
- if(!S.balls.length&&!(S.trial&&S.trial.done)){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
+ // A 'saveRun' trial serves its own balls, one per attempt, and holds the table empty for a beat
+ // between them (S.trial.serving) — the sandbox dropping a fresh ball into that gap would restart
+ // play before the next attempt was served. Read as DATA off S.trial, like every other hook here,
+ // so a missing trials.js leaves the clause harmlessly false.
+ if(!S.balls.length&&!(S.trial&&(S.trial.done||S.trial.serving))){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
 }
 /* The last live ball left play without a goal (cannonball detonation etc) — respawn at the
    last placed spot so the sandbox never drops into the match goal-hold/serve flow. */
-function trainingBallGone(){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
+function trainingBallGone(){
+ if(S.trial&&(S.trial.done||S.trial.serving))return;   // a saveRun is between attempts — see trainingGoal
+ const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);
+}
 /* Torn down from gotoMenu — restores every hidden rod and clears the cross-module gate. */
 function trainingExit(){
  if(S.trial&&typeof trialExit==='function')trialExit();   // drop the trial gate before the sandbox one

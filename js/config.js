@@ -356,7 +356,7 @@ physics:{
 kick:{
    // swing-angle curve keyframes: time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.055,  strikeA:1.1,     // strike ramp end / peak forward angle
+   strike:0.055,  strikeA:0.95,     // strike ramp end / peak forward angle
    hold:0.25,                     // hold peak until this time
    drop:0.32,                     // fully returned by this time
    raiseA:-1.6, raiseLerp:18, dropLerp:6, // lift-men angle + settle rates
@@ -485,7 +485,7 @@ ai:{
       zMargin:0.01,      // extra z-depth of the zone beyond footBox.z + BALL_R
       maxSpeed:50,      // only evade balls slower than this
       vz:5,            // ball z-speed above this decides the escape direction (never 0)
-      abortT:.35        // release the evade after this long (s)
+      abortT:.25        // release the evade after this long (s)
    },
    footRangeBack:7.0,                         // backward x depth of a foot's reach rectangle
 
@@ -529,7 +529,7 @@ ai:{
       carryLead:1.2,     // how far past the ball in z the trapping man aims while carrying
       holdZ:2.8,         // z-distance from the man above which the trap is lost
       carryMult:0.5,     // rod slide-speed multiplier while carrying
-      abortT:3.0          // give up after this long (s, keep under deadball.stallT)
+      abortT:5.0          // give up after this long (s, keep under deadball.stallT)
    },
    // Trap-shot kick curve: the scoop released from a trapped ball.
    trapShot:{
@@ -577,7 +577,7 @@ ai:{
       holdT:2.2,          // …or after this long dribbling (s, keep under deadball.stallT)
       pressX:13,          // closed down: an opposing man within this x…
       pressZ:3.2,         //   …and this z of the ball forces an immediate release
-      abortT:2.8,         // hard safety valve on the whole action (s)
+      abortT:6.8,         // hard safety valve on the whole action (s)
       cd:1.2,             // re-entry lockout after a dribble ends (s)
       noPoke:true,        // also suppress the full-stretch poke so the ball can reach the feet
       // Pass: give a covered ball to a teammate rod ahead with a better shot.
@@ -617,10 +617,10 @@ ai:{
       angle:-0.8,        // lift angle the rod eases to (rod-local; full raiseA is -1.6)
       lerp:4,             // ease rate toward the angle
       back:-5.8,          // x band behind the rod where a loitering ball triggers it…
-      front:0.48,        // …up to just behind the rod line
-      maxVX:30,            // ball |v.x| must be under this
-      maxSpeed:50,        // total ball speed cap
-      abortT:3.0          // give up after this long (s, keep under deadball.stallT)
+      front:0.5,        // …up to this line
+      maxVX:55,            // ball |v.x| must be under this
+      maxSpeed:55,        // total ball speed cap
+      abortT:6.5          // give up after this long (s, keep under deadball.stallT)
    },
    // Evade: slide the men away from a slow ball stuck behind them so play can restart.
    evade:{
@@ -1088,6 +1088,24 @@ ai:{
    wedgeT:2.2,         // multi-ball: one ball boxed in this long → re-drop just it (s)
    zoneMult:3,       // timer speed-up inside a table deadzone (1 = none)
    roofMult:3,       // …and for a ball settled on top of the goal (1 = none)
+   // The OPPOSITE of a deadzone. While the ball sits somewhere a man could actually swing at
+   // it, the dead-ball clock runs SLOWER — so you get room to trap it, pick the shot and go,
+   // instead of being whistled for taking your time. Two rules keep it honest: it is a
+   // discount and never a pause, and every ball has a budget (graceMax) that one stall can
+   // spend. Without that ceiling this hands the smother exploit straight back, because a
+   // keeper sat on the ball on his own line is inside his own hit range by definition.
+   // A ball in a pocket, in a rod gap, or on the goal roof never earns it — those checks win.
+   live:{
+    on:true,
+    mult:0.4,        // clock speed while the ball is strikeable (1 = no discount, 0 = frozen)
+    graceMax:2.5,    // most extra REAL seconds one stall can earn (4.6s stall -> 7.1s at most)
+    // The strikeable window around each man, measured from the rod and facing the way it kicks.
+    // Mirrors CONFIG.ai.inFrontMax (6.3) and the back edge of the overFoot zone — the same
+    // window the AI calls "at the feet or in front" — so what buys you time is what you can hit.
+    ahead:6.3,       // units IN FRONT of the rod the ball still counts as strikeable
+    back:1.5,        // …and behind it (a ball trapped tight against the boot)
+    zPad:0.6         // slack on the z line-up, beyond footBox.z + BALL_R
+   },
    // Dead lanes between the rows, where neither row's men can reach the ball.
    // One entry per gap as a plain x range; rods sit at ±7.5 / ±22.5 / ±37.5 / ±52.5.
    // Lanes run the full pitch width. Per-lane `mult` overrides the shared one.
@@ -1327,7 +1345,7 @@ ai:{
    toneMapping:'reinhard',        // 'none' | 'aces' | 'reinhard' | 'cineon' | 'linear'
    exposure:1.08,
    roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
-   roomLightPool:{ pad:{point:1,spot:1,dir:0}, max:12, shadow:{point:0,spot:2,dir:0} },
+   roomLightPool:{ pad:{point:1,spot:1,dir:0}, max:12, shadow:{point:1,spot:2,dir:0} },
    shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260,
             type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024,
    /* SHADOW QUALITY (Options -> Display -> Shadow quality). The values above are the shared
@@ -1525,18 +1543,59 @@ ai:{
                 {kind:'stat',stat,n}        n of any MATCH LEDGER counter (S.stats[stat][0]) —
                                             'woodwork','saves','passes','shots','onTarget','kicks'.
                                             Scoring does NOT complete a stat trial; the counter does.
-      limit   seconds; 0 = stopwatch, no failure state.
-      medals  ELAPSED SIM SECONDS, lower is better — one metric serves both clock styles.
+                {kind:'saveRun',n,          THE GK KIND. n ATTACKS on your goal, served one at a
+                  attemptT,serveDelay,      time; the score is how many you KEEP OUT. Read the
+                  spawns:[{x,z},…]}         'ON A saveRun' block below before touching a number.
+      limit   seconds; 0 = stopwatch, no failure state. A saveRun wants 0 — it ends when its
+              attempts run out, not on a clock.
+      medals  ELAPSED SIM SECONDS, LOWER is better… EXCEPT for a 'saveRun', where they are SAVES
+              and HIGHER is better, so gold is the BIGGEST number and the block reads downward.
+              trialDir (js/trials.js) derives the direction from the objective KIND rather than
+              taking it as a field, so a spec cannot ship a metric and a direction that disagree.
 
     ON THE DISTANCES, because the obvious worry about them is wrong: floor friction is
     exp(-0.35t), so a strike's MAXIMUM roll is v0/floorFric — about 125 units off an ordinary
     ~44 u/s contact, against a table only 120 long. A shot from your own DEF rod therefore does
     reach the far goal; it just arrives slowly. That is what makes the deep-rod objective in
     'fullset' possible at all, and it is the number to redo if floorFric ever moves.
+
+    ON A 'saveRun', because every number in one is derived rather than chosen:
+
+    · AN ATTEMPT IS ONE SERVED BALL, settling on the FIRST of a SAVE, a GOAL CONCEDED, or
+      `attemptT` sim seconds. Settling on the FIRST outcome is what makes "7 / 10" mean anything:
+      the ball is taken away the instant the attempt is decided, so a rebound cannot bank a second
+      save off one attempt and the score can never outrun the attempts. `attemptT` is a FAILSAFE
+      and not the normal exit — it covers a shot that misses and rattles about off the end wall, a
+      ball the dead-ball timer re-drops, and an attacker that dawdles. `serveDelay` is the beat
+      between one attempt settling and the next ball going down, and it runs before the FIRST one
+      too, so every attempt in the run opens identically.
+
+    · THE BALL IS SERVED ON THE OPPONENT'S ATTACK LINE, AND THAT IS FORCED BY THE SAVE DETECTOR
+      rather than chosen for feel. momSaveTest (js/moments.js) only credits a save when the ball
+      reaches the keeper closing at CONFIG.moments.save.minSpeed (24 u/s) in x, and momOnTarget
+      refuses a projection needing longer than moments.target.maxT (1.6s) to reach the goal plane.
+      Floor friction is exp(-0.35t), so measured against an ordinary ~44 u/s strike:
+          their ATT (-22.5) -> reaches the keeper at 33.5 u/s after 0.78s   COUNTS
+          their MID  (+7.5) -> reaches it at         23.0 u/s after 1.85s   under minSpeed
+          their DEF (+37.5) -> projection is 2.22s                          over maxT
+      A shot from the midfield line is therefore BLOCKED BUT NEVER CREDITED, which reads as the
+      trial being broken rather than as it being hard. The attack line is the only one that works
+      at ordinary pace, and that is why there is no 'shoot from deep' variant.
+
+    · `spawns` VARIES THE ANGLE, NOT THE RANGE, for the same reason: x stays inside the attacking
+      rod's own strike band and z is the thing that moves. It is AUTHORED rather than rolled so
+      the harness can sample every entry against the live geometry, and so two players face the
+      same balls in the same order. Kept inside +/-10 in z: from the corner of that band a shot
+      across the face still reaches the keeper at ~29 u/s, and wider than that the x-component
+      starts dipping under the 24 the detector needs.
     ---------------------------------------------------------------------- */
  trials:{
   on:true,
   pinTable:true,     // apply the trial's table for the run, give the player's back on the way out
+  // Beat between the world freezing on the result and the result panel appearing (s). The freeze
+  // is instant — a 'stat' trial must not bank another woodwork after it is won — so this delays
+  // only the UI, which lets the goal sound and the confetti land before a panel covers them.
+  resultDelay:0.8,
 
   /* ---- the five disciplines (#trials tab strip, renderTrials in js/trials.js) ----
      A SECTION IS A FILTER OVER `list`, NOT A SECOND LIST. Every trial still lives in the one
@@ -1562,23 +1621,48 @@ ai:{
 
   list:[
    /* ---- GK ---------------------------------------------------------------
-      DISTRIBUTION IS A PASSING TRIAL RATHER THAN A SHOT-STOPPING ONE, and that is a mechanics
-      constraint rather than a taste call. The trial clock starts on the player's first SWING
-      (S.stats.kicks[0], js/trials.js) and a keeper who blocks with a rod he never swings has not
-      swung — so a pure save trial would run its whole length untimed, bank no record and hand out
-      no medal. The COUNTER is already there: momOn() carries the S.trial clause, so S.stats.saves
-      is live in a trial and {kind:'stat',stat:'saves'} would evaluate today. What it still needs
-      is a clock that also starts on a save and a FAIL-ON-CONCEDE condition, because without one
-      "make 3 saves" is passed by standing still. That is the next mechanics job, not a config edit.
-      GK sits at -52.5 and DEF at -37.5 — 15 units, which an ordinary ~44 u/s strike covers in
-      about a third of a second, comfortably inside MSTAT.passT (2.5s). Same geometry ONE-TWO
-      already proves out, at half the distance. */
+      DISTRIBUTION IS THE PASSING HALF OF THE KEEPER'S JOB. GK sits at -52.5 and DEF at -37.5 —
+      15 units, which an ordinary ~44 u/s strike covers in about a third of a second, comfortably
+      inside MSTAT.passT (2.5s). Same geometry ONE-TWO already proves out, at half the distance. */
    {id:'distro',name:'DISTRIBUTION',cat:'GK',blurb:'Play it out from the back. Six clean balls between your keeper and your defence.',
     seed:70669,table:'classic',
     ball:{type:'classic',x:-48,z:0},
     hold:null,rods:{show:['0|GK','0|DEF']},
     goal:{kind:'stat',stat:'passes',n:6},limit:45,
     medals:{gold:15,silver:25,bronze:40}},
+
+   /* THE SHOT-STOPPING TRIAL THIS SECTION WAS WAITING FOR. The note that used to sit above
+      DISTRIBUTION said a save trial needed two mechanics rules before it could exist — a clock
+      that does not depend on the player swinging, and something to stop "make 3 saves" being
+      passed by standing still. The 'saveRun' kind answers both with ONE rule rather than two: the
+      run is N SERVED ATTACKS and the score is how many you kept out, so the clock stops being the
+      metric and a keeper who does nothing simply finishes on 0.
+      THE WHOLE OF THEIR TEAM IS ON THE TABLE and yours is one rod. Their keeper and defence never
+      see the ball at this range; what they are there for is that a save is not a free clearance —
+      the rebound has somewhere to go and someone to go to, which is the difference between this
+      and a shooting-machine drill. Ten attempts at ~0.8s of flight each, so a run is short enough
+      to go again immediately, which is the whole appeal of a score-out-of-n. */
+   {id:'lastline',name:'THE LAST LINE',cat:'GK',blurb:'Ten attacks, one keeper, no defenders. Keep out as many as you can.',
+    seed:96331,table:'classic',
+    ball:{type:'classic',x:-27.2,z:0},
+    hold:'GK',rods:{show:['0|GK','1|GK','1|DEF','1|MID','1|ATT']},
+    ai:[false,true],diff:'pro',
+    goal:{kind:'saveRun',n:10,attemptT:14,serveDelay:1.2,
+     /* x stays inside their ATT rod's own strike band (-28.8 .. -25.8: clear of its resting foot
+        box at the near end, inside CONFIG.ai.inFrontMax at the far one); z is the variable, and
+        it walks out from the middle so the run RAMPS. See the 'ON A saveRun' note above for why
+        the band is this narrow and why it is the attack line rather than the midfield one. */
+     spawns:[
+      {x:-27.2,z:  0},{x:-26.6,z: -4},{x:-27.6,z:  5},{x:-26.8,z: -8},{x:-28.0,z:  9},
+      {x:-26.4,z: -2},{x:-27.4,z: 10},{x:-26.9,z:-10},{x:-28.2,z:  6},{x:-27.0,z: -7}
+     ]},
+    limit:0,
+    /* SAVES, and HIGHER is better — gold is the biggest number here, unlike every other trial in
+       this file. MEASURED FLOOR: a keeper nobody is driving, parked on its line, still finishes on
+       2-3 of 10, because the men block whatever is aimed near them. Bronze has to clear that or it
+       is handed out for doing nothing, which is the same hole "make 3 saves" had. Everything above
+       bronze is still an unplayed first cut. */
+    medals:{gold:9,silver:7,bronze:5}},
 
    /* ---- DEF --------------------------------------------------------------
       The long strike, and the trial the friction note above exists for: -37.5 to the far line at
@@ -1958,6 +2042,10 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,fog:true,tab
  // 'kick' (the kick button holds it, and a tap then fires on release) or 'both'.
  padChargeBtn:'rt',
  mouseSens:1,kbdSens:1,
+ // Cursor lock during a match: hides the pointer and lets the mouse keep going past the edge of
+ // the screen (no taskbar, no lost travel). ESC releases it AND pauses — see the pointer-lock
+ // block in js/input.js. Off = the cursor stays visible and stops at the screen edge.
+ mouseLock:true,
  // Per-screen panel arrangements from the Layout editor: screen-id -> {p:{elId:{x,y,w,h}},h}.
  layouts:{},
  // Display settings. renderScale multiplies the device pixel ratio; fpsCap 0 = uncapped;
@@ -2016,7 +2104,7 @@ const CFG_PLAYER=new Set([
  // only padDeadzone above does not, because that one is calibrated to a physical stick.
  'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
- 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens',
+ 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock',
  'trials','daily','trnSpots','photoShots',                       // progress + authored content
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);

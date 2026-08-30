@@ -158,7 +158,7 @@ function startMatchNow(mode,rodLockRole){
   }
   S.active=[[],[]];S.pairCd=[0,0];
   rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
-   r.kickT=-1;r.raise=false;r.cd=0;r.exert=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
+   r.kickT=-1;r.raise=false;r.raiseKeep=false;r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;r.cd=0;r.exert=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
    // NOTE: r.exert (swing fatigue) is cleared HERE and nowhere else. It must NOT go in
    // resetRodRotation — that runs on every goal / dead ball / out, which would wipe the
    // accumulation several times a match and leave the channel permanently near zero.
@@ -310,7 +310,7 @@ function endMatch(w){
 }
 function togglePause(){
  if(S.phase==='play'||S.phase==='count'){S.prePause=S.phase;S.phase='pause';$('pause').classList.remove('hidden');Au.ui();}
- else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');Au.ui();}
+ else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');mouseLockRequest();Au.ui();}   // the Resume click is the gesture the lock needs
 }
 function gotoMenu(){
   if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods + drop the training gate

@@ -7,7 +7,7 @@
    Sensitivities are MULTIPLIERS on the CONFIG bases (1 = the tuned default). */
 
 const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
- padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,
+ padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,mouseLock:true,
  padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
  padChargeBtn:'rt'};
 
@@ -167,6 +167,7 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optSlideInv').checked=cfg.padSlideInvert;$('optAngleInv').checked=cfg.padAngleInvert;
  $('optDead').value=cfg.padDeadzone;
  $('optMouseSens').value=cfg.mouseSens;$('optKbdSens').value=cfg.kbdSens;
+ $('optMouseLock').checked=cfg.mouseLock!==false;
  $('optCtlMode').value=cfg.padControlMode;
  $('optChargeBtn').value=cfg.padChargeBtn||'rt';
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
@@ -248,6 +249,7 @@ function bindOptions(){
  $('optDead').oninput=e=>{cfg.padDeadzone=+e.target.value;updateOptLabels();saveCfg();};
  $('optMouseSens').oninput=e=>{cfg.mouseSens=+e.target.value;updateOptLabels();saveCfg();};
  $('optKbdSens').oninput=e=>{cfg.kbdSens=+e.target.value;updateOptLabels();saveCfg();};
+ $('optMouseLock').onchange=e=>{cfg.mouseLock=e.target.checked;saveCfg();};   // input.js re-reads it every frame, so it takes effect mid-match
  $('optCtlMode').onchange=e=>{cfg.padControlMode=e.target.value;updateTCVis();updateAxisLines();saveCfg();};
  $('optChargeBtn').onchange=e=>{cfg.padChargeBtn=e.target.value;saveCfg();};
  $('optTCBase').oninput=e=>{cfg.padTCBase=+e.target.value;updateOptLabels();saveCfg();};

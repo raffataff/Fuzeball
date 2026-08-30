@@ -93,7 +93,7 @@ function holdCfg(r){
    collideRod, mid-swing; cleared here so an un-aimed kick can never inherit a stale target. */
 function kickRod(r, style, aimAt, curve){
  if(r.kickT>=0)return;
- r.raise=false;r.kickT=0;r.act=null;r.kickStyle=style||null;
+ r.raise=false;r.raiseKeep=false;r.kickHold=false;r.kickT=0;r.act=null;r.kickStyle=style||null;   // a fresh swing is never born held — js/input.js sets kickHold right after, for a human press only
  r.kickCurve=curve||null;                          // per-swing blended curve (js/shots.js); null = use the style's block
  r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;      // a swing IS the release: no wind-up survives it
  r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
@@ -110,7 +110,8 @@ function kickRod(r, style, aimAt, curve){
 function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
-   r.kickT=-1;r.kickStyle=null;r.raise=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
+   r.kickT=-1;r.kickStyle=null;r.raise=false;r.raiseKeep=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
+   r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;   // a stick angle or held kick left on a rod outranks the rest-drop — they die with the rally
   shotReset(r);                                    // charge/arming/tremble die with the rally (js/shots.js)
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
@@ -147,7 +148,15 @@ function updateRods(dt){
      // Keep the swing pinned at the strike angle while it's over a ball (uf) OR while ai.js has the
      // held-evade latch live (r.evadeHold) — so the rod holds forward the WHOLE slide-away instead of
      // dropping the instant it clears z. The swing only completes once the ball has left the zone.
-     const holdF=(uf||(r.evadeHold>0&&!r.evadeSpent))&&T>=KS.hold;
+     /* r.kickHold is the PLAYER holding the kick button (mouse/keyboard, js/input.js), and it
+        joins the same pin the AI's two cases already use. Note what T>=KS.hold means for feel: the
+        windup and the strike always run at full speed, so the hit is untouched, and the rod already
+        sat at full stretch until KICK.hold (0.25s) anyway. A tap is gone long before that, so
+        tapping plays exactly as it always did — only a button still down at 0.25s freezes the
+        swing there, and it resumes and drops the moment you let go. It is a BLOCK, not a free
+        power shot: the power window (CONFIG.kick.powFrom/powTo, 0.03-0.2) has closed by
+        then, so a ball meeting the held boot gets ordinary restitution off a still rod. */
+     const holdF=(uf||r.kickHold||(r.evadeHold>0&&!r.evadeSpent))&&T>=KS.hold;
      r.heldFwd=holdF;
      if(holdF){a=KS.strikeA;r.kickT=KS.hold;}
      else if(T<KS.windup)a=kA0+(KS.windupA-kA0)*(T/KS.windup);

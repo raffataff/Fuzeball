@@ -23,11 +23,35 @@
    last-SWING record, which is live in training because msOn() has no training gate. Nothing new
    is computed on the sim path; trialTick runs once per FRAME off training.js's own tick, which is
    where FEATURE-IDEAS says to keep new logic (a sim-path check costs ~7x more on a slow frame).
-   Deliberately NOT read: moments.js. momOn() folds in a training gate, so woodwork/saves are dark
-   in a trial — flipping that on is what a woodwork trial will need, and it is not needed yet.  */
+   moments.js IS read, and it has to be: momOn() carries an explicit S.trial clause, so woodwork
+   and saves fire in a trial and are what a 'stat' and a 'saveRun' objective count. Don't tidy
+   that clause away.
+
+   THERE ARE TWO SCORING DIRECTIONS AND ONLY TWO. Every kind but one is scored on ELAPSED SIM
+   SECONDS, lower is better. A 'saveRun' is scored on SAVES OUT OF N ATTEMPTS, higher is better —
+   the keeper never has to swing, so a clock could not be its metric even in principle. The
+   direction is derived from the objective kind (trialDir) and one comparator flip carries it
+   through medals, personal bests, the list and the HUD.  */
 const TRLC=CONFIG.trials;
 const TRL={def:null,pending:null,run:false,t0:0,secs:0,done:false,ok:false,goals:0,
  roles:null,statKey:null,statN:0,medal:null,pb:false,tbl:null,hudBuilt:false,sig:'',
+ /* ---- 'saveRun' state (the GK kind). Scored on SAVES OUT OF N ATTEMPTS rather than on elapsed
+    sim seconds, so this is the one kind that reads its medal thresholds the other way up.
+      saveRun  the spec's goal block while this kind is live, else null. Every branch below tests
+               this single flag, so an ordinary trial reads none of the rest.
+      att      attempts SERVED (1..n).    saves  attempts kept out.
+      svSeen   the ledger's saves[0] already consumed. A save is banked from this DELTA and never
+               read as a total, which is what guarantees saves <= attempts even when two land
+               inside one frame.
+      res      this attempt is settled and the next ball is being held back.
+      attT0    sim time this attempt was served - what the attemptT failsafe measures from.
+      serving  true while the table is deliberately empty between attempts. training.js's goal
+               respawn reads S.trial.serving so the sandbox cannot drop a ball into the gap, and
+               redropBall reads S.trial.spawn so a stalled ball goes back on THIS attempt's spot. */
+ saveRun:null,att:0,saves:0,svSeen:0,res:false,attT0:0,serveAt:0,serving:false,spawn:null,
+ /* wall-clock ms at which the result panel is allowed to appear — set by trialFinish, so the
+    freeze and the panel are two separate moments (CONFIG.trials.resultDelay). 0 = show now. */
+ showAt:0,
  /* the DISCIPLINE tab #trials is showing. Lives here rather than in cfg on purpose — see the
     header above renderTrials. Resolved to a real section on the first render. */
  cat:null};
@@ -38,14 +62,32 @@ const TRL_LABEL={woodwork:'WOODWORK',passes:'PASSES',saves:'SAVES',shots:'SHOTS'
 function trialOn(){return !!(TRLC&&TRLC.on!==false&&TRLC.list&&TRLC.list.length);}
 function trialById(id){if(!TRLC||!TRLC.list)return null;for(const t of TRLC.list)if(t.id===id)return t;return null;}
 function trialBest(id){const m=cfg.trials;return (m&&m[id])||null;}
-/* Thresholds are ELAPSED SIM SECONDS and lower is better, so one metric serves a stopwatch trial
-   and a countdown one alike — a countdown only changes what the HUD displays, not what is scored. */
-function trialMedal(d,secs){
- const m=d.medals||{};
- if(m.gold!=null&&secs<=m.gold)return'gold';
- if(m.silver!=null&&secs<=m.silver)return'silver';
- if(m.bronze!=null&&secs<=m.bronze)return'bronze';
+/* ---- the score, and its DIRECTION -------------------------------------------
+   For every kind but one the metric is ELAPSED SIM SECONDS and lower is better, which is what
+   lets a stopwatch trial and a countdown one share the whole comparison path — a countdown only
+   changes what the HUD displays, not what is scored. It is also why a SURVIVE objective was
+   refused on 2026-08-20: it would complete at exactly its limit every time and hand out nothing
+   but gold.
+
+   A 'saveRun' is the case that earns the second direction honestly. Its metric is SAVES and more
+   is better, so the thresholds are read the other way up. The direction is DERIVED from the
+   objective kind rather than declared beside it, so a spec can never ship a metric and a
+   direction that disagree — and the tests below stay in one order (gold, silver, bronze) for
+   both, so the whole path turns on a single comparator flip. */
+function trialDir(d){return (d&&d.goal&&d.goal.kind==='saveRun')?1:-1;}
+function trialMedal(d,v){
+ const m=d.medals||{},up=trialDir(d)>0;
+ if(m.gold!=null&&(up?v>=m.gold:v<=m.gold))return'gold';
+ if(m.silver!=null&&(up?v>=m.silver:v<=m.silver))return'silver';
+ if(m.bronze!=null&&(up?v>=m.bronze:v<=m.bronze))return'bronze';
  return null;
+}
+function trialBetter(d,v,prev){return trialDir(d)>0?v>prev:v<prev;}
+/* What a stored best MEANS for this trial. cfg.trials[id].best holds seconds for a stopwatch
+   trial and SAVES for a saveRun — one slot, two units, which is only safe because a trial id may
+   never be renamed OR re-kinded: either would silently turn every stored best into a lie. */
+function trialScoreText(d,v){
+ return (trialDir(d)>0)?(v+' / '+((d.goal&&d.goal.n)||1)+' saved'):(v.toFixed(2)+'s');
 }
 
 /* ---- the daily challenge (FEATURE-IDEAS 3.3) --------------------------------
@@ -99,13 +141,15 @@ function dailyStreak(date){
 function dailyDone(date){const c=cfg.daily;return !!(c&&c.date===(date||dailyDate()));}
 /* Completion. The FIRST finish of a day moves the streak; later attempts can only improve the
    time, which is why the streak is not touched in that branch. */
-function dailyRecord(secs,med,date){
+function dailyRecord(secs,med,date,up){
  const c=cfg.daily||(cfg.daily={});
  secs=+secs.toFixed(2);
  if(c.date!==date){
   c.streak=(c.date&&dailyPrev(date)===c.date)?(c.streak||0)+1:1;
   c.date=date;c.best=secs;c.medal=med;
- }else if(secs<c.best){c.best=secs;c.medal=med;}
+ // `up` is the trial's scoring direction (trialDir): a saveRun's best is a SAVE COUNT and higher
+ // wins. Omitted by every existing caller, which reads as the lower-is-better default.
+ }else if(up?secs>c.best:secs<c.best){c.best=secs;c.medal=med;}
  else return false;
  saveCfg();return true;
 }
@@ -180,18 +224,37 @@ function trialReset(){
  const d=TRL.def;if(!d)return;
  if(typeof rngSeed==='function')rngSeed(S.seed);
  TRL.run=false;TRL.t0=0;TRL.secs=0;TRL.done=false;TRL.ok=false;TRL.goals=0;
- TRL.medal=null;TRL.pb=false;TRL.sig='';
+ TRL.medal=null;TRL.pb=false;TRL.sig='';TRL.showAt=0;
  TRL.roles=(d.goal.kind==='roleGoals')?d.goal.roles.slice():null;
  // A 'stat' objective is scored off the match ledger (S.stats.<key>[0]) rather than off goals —
  // one evaluator covering woodwork, saves, passes, shots and onTarget. Polled in trialTick.
  TRL.statKey=(d.goal.kind==='stat')?d.goal.stat:null;
  TRL.statN=0;
+ // A 'saveRun' serves its own balls, one per attempt, and is scored on how many it kept out.
+ TRL.saveRun=(d.goal.kind==='saveRun')?d.goal:null;
+ TRL.att=0;TRL.saves=0;TRL.svSeen=0;TRL.res=false;TRL.attT0=0;TRL.serveAt=0;TRL.serving=false;TRL.spawn=null;
  // sandbox state a trial must not inherit from a previous sandbox session. `ai` comes from the
  // spec: an opponent rod with its AI OFF is a static obstacle, with it ON it is a real keeper —
  // and CONFIG.trials pins the difficulty too (teamDiff, js/league.js) so the level is the trial's,
  // never whatever the player last chose in Kick Off.
- TRN.freeze=false;TRN.stepQ=0;TRN.score=false;TRN.deadball=false;
+ TRN.freeze=false;TRN.stepQ=0;TRN.score=false;
+ // DEAD-BALL RECOVERY IS ON IN A TRIAL, unlike the sandbox it borrows. The sandbox default is
+ // off because a ball you placed by hand must stay where you put it; a TIMED run is the exact
+ // opposite — a ball that stalls out of reach just burns the limit with nothing the player can
+ // do about it. A spec can still opt out with deadball:false if a trial ever wants a dead ball
+ // to be the player's problem. redropBall (js/powerups.js) reads S.trial and puts it back on
+ // THIS trial's spawn rather than a match face-off spot, which most trials cannot reach.
+ TRN.deadball=(d.deadball!==false);
  TRN.ai=(d.ai&&d.ai.slice())||[false,false];
+ /* WHAT AN AI-OFF ROD DOES WITH ITS MEN. The player is always team 0 in training, so YOUR side
+    defaults to LIFTING: an uncontrolled rod of yours holds its lane but raises out of the way
+    exactly as a benched teammate does in a real match (ai.js rodHoldRaise). Flat, they were
+    furniture in your own passing lanes — DISTRIBUTION, ONE-TWO and THE FULL SET all move the ball
+    between two of your rods, and the one you were not holding lay across it.
+    THEIR side defaults to NOT lifting, because a rod with its AI off is the trial's OBSTACLE:
+    "a keeper who never moves" is the whole of KEEPER'S NIGHTMARE and THE LONG BALL, and a keeper
+    that lifts is not that. A spec overrides both sides with lift:[bool,bool]. */
+ TRN.lift=(d.lift&&d.lift.slice())||[true,false];
  TRN.ballType=d.ball.type||'classic';
  trnSetPlacing(false);
  // rods: only what the trial declares stays on the table. Keys are '<team>|<role>'.
@@ -207,9 +270,16 @@ function trialReset(){
  });
  if(typeof updateChips==='function')updateChips();
  clearBalls();
- const b=trnSpawnBall(TRN.ballType,d.ball.x,d.ball.z);
- b.v.set(d.ball.vx||0,d.ball.vy||0,d.ball.vz||0);
- syncBall(b);
+ if(TRL.saveRun){
+  /* A saveRun puts NO ball down here — it arms the FIRST SERVE instead, so every attempt in the
+     run opens the same way, this one included, and the player gets the same beat to read the
+     setup before the first ball as before the tenth. */
+  TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();
+ }else{
+  const b=trnSpawnBall(TRN.ballType,d.ball.x,d.ball.z);
+  b.v.set(d.ball.vx||0,d.ball.vy||0,d.ball.vz||0);
+  syncBall(b);
+ }
  // The ledger backs the objective, so a retry starts it clean. Safe against the per-rod stat
  // bucket cache: matchstats keys r.msB on the IDENTITY of S.stats, which is why that check exists.
  S.stats=freshStats();
@@ -217,14 +287,68 @@ function trialReset(){
  if(typeof updateScoreUI==='function')updateScoreUI();
  trialHudSync();
 }
+/* ---- 'saveRun': N attacks, one keeper ---------------------------------------
+   AN ATTEMPT IS ONE SERVED BALL, and it settles on the FIRST of three things: a SAVE, a GOAL
+   CONCEDED, or attemptT sim seconds. That last one is a FAILSAFE and not the normal exit — it is
+   what covers a shot that misses and rebounds around the end wall, a ball the dead-ball timer
+   re-drops, and an attacker that dawdles, none of which the other two can see.
+
+   SETTLING ON THE FIRST OUTCOME IS WHAT MAKES "7 / 10" LEGIBLE. The ball is taken away the
+   instant the attempt is decided, so one attempt can never bank two saves off a rebound and the
+   score can never outrun the attempts — which is the only reason the medal thresholds can be
+   written as a count out of n at all. */
+function trialServeDelay(){const g=TRL.saveRun;return (g&&g.serveDelay!=null)?g.serveDelay:1.2;}
+/* Which spawn this attempt uses. A spec may declare a LIST and it is walked IN ORDER, wrapping if
+   it is shorter than n. Authored rather than rolled, for the same reason the daily rolls a spawn
+   but never a difficulty: an authored list can be sampled against the live geometry by the
+   harness, and two players' runs face the same balls in the same order. No list = every attempt
+   from `ball`, which is also what the harness's single-spawn checks read. */
+function trialSpawnFor(i){
+ const sp=TRL.saveRun&&TRL.saveRun.spawns;
+ return (sp&&sp.length)?sp[i%sp.length]:TRL.def.ball;
+}
+function trialServe(){
+ const s=trialSpawnFor(TRL.att);
+ clearBalls();
+ // Every attempt opens from rest: this clears the swing latches, held-forward evades and trap
+ // state a previous attempt left on the rack, so attempt 10 starts from the same rod pose as
+ // attempt 1. It does NOT touch r.offset, so the keeper stays where the player left it.
+ if(typeof resetRodRotation==='function')resetRodRotation();
+ const b=trnSpawnBall(TRN.ballType,s.x,s.z);
+ b.v.set(s.vx||0,s.vy||0,s.vz||0);
+ syncBall(b);
+ TRL.spawn={x:s.x,z:s.z};   // read as DATA by redropBall (js/powerups.js) — a stall goes back HERE
+ TRL.att++;TRL.res=false;TRL.serving=false;TRL.attT0=S.time;
+ /* THE CLOCK STARTS ON THE FIRST SERVE, not on the player's first swing. A keeper who blocks with
+    a rod he never swings has not swung, which is precisely why a save trial could not be written
+    before — the run would have gone untimed and banked no record. Here the run genuinely begins
+    when the first ball is put down. The clock is NOT what a saveRun is scored on; it is kept
+    running so the record still has an elapsed time behind it. */
+ if(!TRL.run){TRL.run=true;TRL.t0=S.time;}
+ trialHudSync();
+}
+/* Settle the live attempt. Idempotent on purpose: a save and a concede can both land inside one
+   frame (a shot the keeper got a touch to and which went in anyway) and only the first counts. */
+function trialAttemptEnd(saved){
+ if(!TRL.saveRun||TRL.res||TRL.done)return;
+ TRL.res=true;
+ if(saved)TRL.saves++;
+ /* THE BALL IS NOT CLEARED HERE. This is reachable from inside trainingGoal, which frees the ball
+    itself a line later — freeing it here would be a double free. trialTick sweeps it on the frame
+    boundary instead, outside the sim step, where clearing a ball is safe. */
+ if(TRL.att>=(TRL.saveRun.n||1)){trialFinish(true);return;}
+ TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();
+ trialHudSync();
+}
 function trialRestart(){if(TRL.def){trialReset();Au.ui();}}
 /* From trainingExit (gotoMenu). The table is NOT restored here — that is the screen's job, so a
    retry and a quit-to-list both keep the trial's table on. */
 function trialExit(){
  S.trial=null;TRL.def=null;TRL.pending=null;
- TRL.run=false;TRL.done=false;TRN.freeze=false;TRN.stepQ=0;
+ TRL.run=false;TRL.done=false;TRL.serving=false;TRL.res=false;TRL.spawn=null;TRN.freeze=false;TRN.stepQ=0;
  if(TRL.hidWas){TRN.hidden=TRL.hidWas;TRL.hidWas=null;}   // give the sandbox its own hide list back
  const h=$('trlHud');if(h)h.classList.add('hidden');
+ const c=$('trlCard');if(c)c.classList.add('hidden');     // sibling of the HUD, not a child — see buildTrialHud
 }
 
 /* ---- scoring ----
@@ -232,7 +356,12 @@ function trialExit(){
    SCORING team; the player is always team 0 in training mode, so a goal at the other end is one
    the player conceded and never counts toward an objective. */
 function trialGoal(team,b){
- if(!TRL.def||TRL.done||team!==0)return;
+ if(!TRL.def||TRL.done)return;
+ /* A saveRun is scored by ATTEMPTS, not by goals. A goal at YOUR end settles the live attempt
+    with nothing banked; one you somehow put in at the far end is no part of the objective. Both
+    are answered here, ABOVE the team gate below — that gate belongs to the kinds you SCORE. */
+ if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}
+ if(team!==0)return;
  const d=TRL.def;
  TRL.goals++;
  // A 'stat' trial is scored by its counter, never by goals — scoring is often just how you get
@@ -264,23 +393,36 @@ function trialFinish(ok){
      so TRL.secs is 0 and banking it would write a 0.00s gold that nothing could ever beat.
      Unreachable in the shipped trials (you cannot walk a ball up the table without kicking it),
      but a records feature should not have a zero-time hole in it at all. */
-  TRL.medal=TRL.run?trialMedal(d,TRL.secs):null;
-  if(TRL.run){
+  /* THE METRIC AND THE RECORD GUARD ARE BOTH KIND-DEPENDENT. A saveRun is scored on SAVES and
+     can only complete by playing out every attempt, so its record is always meaningful — the
+     untimed-run hole above cannot exist for it, and a 0-save run is an honest score that the
+     next attempt can beat. Every other kind is scored on elapsed seconds and must still refuse
+     an untimed one. */
+  const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;
+  TRL.medal=keep?trialMedal(d,val):null;
+  if(keep){
    /* A DAILY KEEPS ITS RECORD IN cfg.daily, NOT in the per-trial cfg.trials map. Its id is
       'daily' every single day, so storing it there would leave one "best" being overwritten by
       whichever day happened to be easiest — and there would be nowhere to hang the streak. */
-   if(d.daily)TRL.pb=dailyRecord(TRL.secs,TRL.medal,d.date);
+   if(d.daily)TRL.pb=dailyRecord(val,TRL.medal,d.date,trialDir(d)>0);
    else{
     const prev=trialBest(d.id);
-    if(!prev||TRL.secs<prev.best){
+    if(!prev||trialBetter(d,val,prev.best)){
      const m=cfg.trials||(cfg.trials={});
-     m[d.id]={best:+TRL.secs.toFixed(2),medal:TRL.medal};
+     m[d.id]={best:+val.toFixed(2),medal:TRL.medal};
      saveCfg();TRL.pb=true;
     }
    }
   }
-  Au.goal();if(typeof confetti==='function')confetti();
+  /* A saveRun ALWAYS completes, whatever the score, so the celebration is gated on the MEDAL
+     instead of on completion — confetti and the goal horn over 0 of 10 reads as the game not
+     having noticed. Every other kind completes only by doing the thing, so completion IS the
+     moment and this is byte-identical for them. */
+  if(!sr||TRL.medal){Au.goal();if(typeof confetti==='function')confetti();}
+  else Au.whistle();
  }else{TRL.medal=null;Au.whistle();}
+ // Start the beat. The world is ALREADY frozen (TRN.freeze above); this delays only the panel.
+ TRL.showAt=performance.now()+Math.max(0,(TRLC.resultDelay!=null?TRLC.resultDelay:0.8))*1000;
  TRL.sig='';   // force the card to render
  trialHudSync();
 }
@@ -296,8 +438,29 @@ function trialTick(){
      scored on was however long you spent getting your bearings and no medal was reachable.
      S.stats.kicks[] is incremented by msKick from kickRod, i.e. once per SWING, and is gated on
      S.stats alone rather than on msOn() — so it is live in training and cannot be tripped by the
-     ball merely resting against a boot. trialReset's freshStats() zeroes it per attempt. */
-  if(!TRL.run&&S.stats&&S.stats.kicks[0]>0){TRL.run=true;TRL.t0=S.time;}
+     ball merely resting against a boot. trialReset's freshStats() zeroes it per attempt.
+     A SAVE ALSO STARTS IT, and that clause is what a GK trial needs to exist at all: a keeper
+     blocks with a rod he never swings, so kicks alone would leave a save trial running untimed
+     and banking no record. S.stats.saves[] is written by momSave (js/moments.js), whose momOn()
+     carries an explicit S.trial clause so the detector is live in a trial. It can never fire
+     EARLIER than the swing clause in the existing trials — a ball only heads at your own goal
+     once somebody has struck it. */
+  if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0)){TRL.run=true;TRL.t0=S.time;}
+  /* ---- 'saveRun': serve, settle, repeat. All of it on the FRAME boundary, never the sim path. */
+  if(TRL.saveRun){
+   const g=TRL.saveRun;
+   // A SAVE IS READ AS A DELTA, never as a total — at most one banked per attempt, which is what
+   // keeps saves <= attempts even if two land inside one frame.
+   const sv=(S.stats&&S.stats.saves[0])||0;
+   if(sv>TRL.svSeen){TRL.svSeen=sv;trialAttemptEnd(true);}
+   // The sweep trialAttemptEnd deliberately does not do. Skipped once the run is DONE, so the
+   // last attempt freezes on the ball where it settled rather than on an empty table.
+   if(TRL.res&&!TRL.done&&S.balls.length)clearBalls();
+   if(!TRL.done){
+    if(TRL.serving){if(S.time>=TRL.serveAt)trialServe();}
+    else if(TRL.att>0&&g.attemptT>0&&S.time-TRL.attT0>=g.attemptT)trialAttemptEnd(false);
+   }
+  }
   /* A 'stat' objective is POLLED here rather than hooked at each detector: the counters already
      exist in S.stats, matchstats and moments already maintain them, and polling once per frame
      costs nothing and adds no sim-path work (the FEATURE-IDEAS watch-out). freshStats() in
@@ -323,14 +486,26 @@ function buildTrialHud(){
   const d=document.createElement('div');d.id='trlHud';
   d.innerHTML='<div class="trlName" id="trlName"></div>'
    +'<div class="trlObj" id="trlObj"></div>'
-   +'<div class="trlClock" id="trlClock">0.00</div>'
-   +'<div class="trlCard hidden" id="trlCard">'
-    +'<div class="trlRes" id="trlRes"></div>'
-    +'<div class="trlSecs" id="trlSecs"></div>'
-    +'<div class="trlMed" id="trlMed"></div>'
-    +'<div class="trlKeys">R — retry &nbsp;·&nbsp; ESC — quit</div>'
-   +'</div>';
+   +'<div class="trlClock" id="trlClock">0.00</div>';
   document.body.appendChild(d);
+  /* THE RESULT PANEL IS A SIBLING OF THE HUD, NOT A CHILD, and that is a CSS constraint rather
+     than a tidiness one: #trlHud carries a transform to centre itself, and a transformed ancestor
+     makes position:fixed DESCENDANTS resolve against it instead of against the viewport — so a
+     card nested inside could never sit in the middle of the screen. It also lets #trlHud keep
+     pointer-events:none (a HUD must not eat clicks) while the panel below takes them. */
+  const c=document.createElement('div');c.id='trlCard';c.className='trlCard hidden';
+  c.innerHTML='<div class="trlRes" id="trlRes"></div>'
+   +'<div class="trlSecs" id="trlSecs"></div>'
+   +'<div class="trlMed" id="trlMed"></div>'
+   +'<div class="trlBtns">'
+    +'<button class="btn" id="trlRetry">Retry</button>'
+    +'<button class="btn ghost" id="trlQuit">Trials</button>'
+   +'</div>'
+   +'<div class="trlKeys">R — retry &nbsp;·&nbsp; ESC — back to trials</div>';
+  document.body.appendChild(c);
+  // Bound ONCE at build time, not on every result — these two nodes outlive every run.
+  const rb=$('trlRetry');if(rb)rb.onclick=()=>trialRestart();   // trialRestart plays its own click
+  const qb=$('trlQuit');if(qb)qb.onclick=()=>{Au.ui();trialQuit();};
  }
  const h=$('trlHud');if(h)h.classList.remove('hidden');
 }
@@ -341,22 +516,35 @@ function trialHudSync(){
  if(!TRL.hudBuilt||!TRL.def)return;
  const d=TRL.def,lim=d.limit||0,shown=lim>0?Math.max(0,lim-TRL.secs):TRL.secs;
  const cl=$('trlClock');
- if(cl){cl.textContent=shown.toFixed(2);cl.classList.toggle('warn',lim>0&&shown<=5);}
- const prog=TRL.roles
+ /* A saveRun's big number is the SCORE, not the clock. The clock is running behind it, but it is
+    not what the medal reads, and a stopwatch sitting where the score belongs would say the
+    opposite of what the trial is asking for. */
+ if(cl){
+  if(TRL.saveRun){cl.textContent=String(TRL.saves);cl.classList.remove('warn');}
+  else{cl.textContent=shown.toFixed(2);cl.classList.toggle('warn',lim>0&&shown<=5);}
+ }
+ const prog=TRL.saveRun
+  ? (Math.max(1,Math.min(TRL.att,TRL.saveRun.n||1))+' / '+(TRL.saveRun.n||1))
+  : TRL.roles
   ? d.goal.roles.map(r=>TRL.roles.indexOf(r)<0?'<b>'+r+'</b>':r).join(' &middot; ')
   : ((TRL.statKey?TRL.statN:TRL.goals)+' / '+(d.goal.n||1));
- const sig=prog+'|'+TRL.done+'|'+TRL.ok+'|'+TRL.medal+'|'+TRL.pb;
+ /* The panel appears a beat AFTER the run ends (CONFIG.trials.resultDelay), so the goal sound
+    and the confetti land before it covers them. `ready` HAS to be part of the signature below:
+    without it the gate would evaluate the card once, on the frame the run finished, find it too
+    early to show, and — the signature never changing again — never look a second time. */
+ const ready=TRL.done&&(!TRL.showAt||performance.now()>=TRL.showAt);
+ const sig=prog+'|'+TRL.saves+'|'+TRL.done+'|'+ready+'|'+TRL.ok+'|'+TRL.medal+'|'+TRL.pb;
  if(sig===TRL.sig)return;
  TRL.sig=sig;
  $('trlName').textContent=d.name;
- $('trlObj').innerHTML=(TRL.roles?'SCORE WITH ':TRL.statKey?(TRL_LABEL[TRL.statKey]||TRL.statKey.toUpperCase())+' ':'GOALS ')+prog;
+ $('trlObj').innerHTML=(TRL.saveRun?'SAVES &middot; ATTEMPT ':TRL.roles?'SCORE WITH ':TRL.statKey?(TRL_LABEL[TRL.statKey]||TRL.statKey.toUpperCase())+' ':'GOALS ')+prog;
  const card=$('trlCard');
- card.classList.toggle('hidden',!TRL.done);
- if(!TRL.done)return;
+ card.classList.toggle('hidden',!ready);
+ if(!ready)return;
  const res=$('trlRes');
  res.textContent=TRL.ok?'COMPLETE':'OUT OF TIME';
  res.className='trlRes '+(TRL.ok?'ok':'no');
- $('trlSecs').textContent=TRL.ok?(TRL.secs.toFixed(2)+'s'+(TRL.pb?'  ·  NEW BEST':'')):'';
+ $('trlSecs').textContent=TRL.ok?(trialScoreText(d,TRL.saveRun?TRL.saves:TRL.secs)+(TRL.pb?'  ·  NEW BEST':'')):'';
  const md=$('trlMed');
  md.textContent=TRL.medal?TRL.medal.toUpperCase():'';
  md.className='trlMed '+(TRL.medal||'');
@@ -410,7 +598,7 @@ function trialRowHtml(d){
     :b?'<span class="trlPill">DONE</span>':'')
   +'</div><div class="trlRowSub">'+d.blurb+'</div>'
   +'<div class="trlRowMeta">'+trialObjText(d)
-  +'<i>'+(d.limit?d.limit+'s &middot; ':'')+(b?'best '+b.best.toFixed(2)+'s':'not attempted')
+  +'<i>'+(d.limit?d.limit+'s &middot; ':'')+(b?'best '+trialScoreText(d,b.best):'not attempted')
   +'</i></div></div>';
 }
 function trialBindRows(box){box.querySelectorAll('[data-trial]').forEach(el=>{el.onclick=()=>trialStart(el.dataset.trial);});}
@@ -480,6 +668,7 @@ function trialObjText(d){
  const g=d.goal||{};
  if(g.kind==='roleGoals')return 'Score with '+(g.roles||[]).join(' &middot; ');
  if(g.kind==='stat')return (g.n||1)+' &times; '+(TRL_LABEL[g.stat]||String(g.stat).toUpperCase());
+ if(g.kind==='saveRun')return 'Keep out '+(g.n||1)+' attacks';
  return 'Score '+(g.n||1);
 }
 /* Rebuilt on every show, because what it says depends on the date AND on whether today has been
@@ -533,6 +722,27 @@ if(typeof SCREENS!=='undefined'&&SCREENS.daily){
  const back=$('dailyBack');
  if(back)back.onclick=()=>{showScreen('home');Au.ui();};
 })();
+/* Leave the run for the list. The panel's TRIALS button and Escape both land here; gotoMenu does
+   the rest — trainingExit calls trialExit (gate dropped, sandbox hide list and scoreboard given
+   back) and showScreen(S.fromScreen) returns to #trials, on the tab this run was launched from
+   (TRL.cat outlives trialExit, which is the whole point of it living on TRL). */
+function trialQuit(){if(typeof gotoMenu==='function')gotoMenu();}
+/* ESCAPE ON A FINISHED RUN GOES BACK TO THE LIST rather than opening the pause menu: the result
+   panel already IS the end of the run, and pausing a world that is frozen anyway, to hunt for a
+   Main Menu button, is two steps for one intent. CAPTURE phase because input.js loads first and
+   would open #pause on the way up; capture runs before it and stopPropagation keeps it there.
+   Deliberately narrow — only Escape, only while a trial is DONE, and never over an overlay that
+   owns Escape itself — so no other key or screen changes behaviour, and a missing trials.js
+   registers nothing at all. A trial still RUNNING keeps the ordinary Escape-to-pause. */
+addEventListener('keydown',e=>{
+ if(e.code!=='Escape'||S.photo||!S.trial||!TRL.done)return;
+ if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
+ const o=$('options'),f=$('lgForfeit');
+ if(o&&!o.classList.contains('hidden'))return;
+ if(f&&!f.classList.contains('hidden'))return;
+ e.preventDefault();e.stopPropagation();
+ trialQuit();
+},true);
 /* R retries. Owned here rather than in input.js so a missing trials.js cannot change what any key
    does; guarded on S.trial, and on S.photo because photo mode binds R for its own recorder. */
 addEventListener('keydown',e=>{

@@ -45,6 +45,7 @@ function loop(t){
  const rdt=Math.min(.05,(t-lastT)/1000);lastT=t;
  Au.tick(rdt);
  gamepadUpdate(rdt);   // poll controller once per rendered frame (in-match play + pause)
+ mouseLockTick();      // cursor lock re-asserted off live state, so no exit path can strand it (js/input.js)
  const active=S.phase==='play'||S.phase==='goal'||S.phase==='count';
  if(active){
   const FIXED=1/SIM.hz;

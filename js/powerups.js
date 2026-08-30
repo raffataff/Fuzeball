@@ -86,6 +86,21 @@ function redropZone(x){
 // of play and its position is gone. Only the ZONE is chosen from it; the drop is still jittered
 // inside that zone, so a re-drop is never a free return to the exact spot it was held.
 function redropBall(b,atX){
+ // A TRIAL PUTS THE BALL BACK ON ITS OWN SPAWN, not on a face-off spot. A trial hides most of
+ // the rack, so a match zone can drop the ball in a lane whose rod is not even on the table
+ // (DISTRIBUTION dies around x -48 and the -30 zone belongs to a blue ATT that trial never
+ // shows). Read as DATA off S.trial rather than by calling into trials.js, so a missing
+ // trials.js leaves this line harmlessly false — same discipline as the rest of the S.trial hooks.
+ // S.trial.spawn is the LIVE attempt's spot in a 'saveRun' (which serves a different ball per
+ // attempt); null for every other kind, which falls through to the trial's single spawn.
+ const TB=(S.trial&&S.trial.spawn)||(S.trial&&S.trial.def&&S.trial.def.ball);
+ if(TB&&typeof TB.x==='number'&&typeof TB.z==='number'){
+  b.m.position.set(TB.x,BALL_R,TB.z);
+  b.v.set(0,0,0);b.spin=0;b.stuckT=0;b.graceT=0;b.bbMin=b.bbMax=null;
+  if(ARENA_ON)arenaClampSpawn(b.m.position);
+  syncBall(b);replayCut();
+  return;
+ }
  const z=redropZone(atX!==undefined?atX:(b.cur||b.m.position).x);
  // target = where the ball should actually LAND, not where it's released — a falling ball
  // carries its launch vx/vz the whole way down (air friction is negligible), so releasing it
@@ -96,7 +111,7 @@ function redropBall(b,atX){
  const vx=rngR(DR,-DEAD.redrop.vel,DEAD.redrop.vel),vz=rngR(DR,-DEAD.redrop.vel,DEAD.redrop.vel);
  const fallT=Math.sqrt(2*Math.max(DEAD.redrop.y-BALL_R,0)/GRAV);
  b.m.position.set(tx-vx*fallT,DEAD.redrop.y,tz-vz*fallT);
- b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;b.bbMin=b.bbMax=null; // clear the stall tracker
+ b.v.set(vx,0,vz);b.spin=0;b.stuckT=0;b.graceT=0;b.bbMin=b.bbMax=null; // clear the stall tracker + its grace budget
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
  replayCut();   // the teleport would streak across a replay — drop the stale footage
@@ -124,6 +139,27 @@ function deadzoneMult(p){
  for(let i=0;i<gp.length;i++)if(p.x>gp[i].x0&&p.x<gp[i].x1)return gp[i].mult||DEAD.rodGaps.mult;
  return 1;
 }
+// The REVERSE of deadzoneMult: is the ball parked somewhere a man could actually swing at it?
+// True when it sits inside one live foot's strike window — within live.ahead in front of that rod
+// (or live.back behind it, i.e. trapped tight against the boot) AND lined up in z with a man on
+// it. Hidden rods and knocked-out men are skipped, because neither can hit anything. The x test
+// is dir-relative off the rod, the same reference the AI's overFoot/inFront zones use, so this
+// agrees with what the AI itself treats as reachable.
+function liveZone(p){
+ const L=DEAD.live;
+ if(p.y>ROD_H)return false;                 // above the rod axis — nobody is swinging at that
+ const zR=FOOT_BOX.z+BALL_R+L.zPad;
+ for(const r of rods){
+  if(r.trnHidden)continue;                  // training/trial: a hidden rod is a ghost, it reaches nothing
+  const rel=(p.x-r.x)*r.kickDir;            // + = in front of this rod, - = behind it
+  if(rel>L.ahead||rel<-L.back)continue;
+  for(let i=0;i<r.baseZ.length;i++){
+   if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;   // man blown off by a cannonball
+   if(Math.abs(p.z-(r.baseZ[i]+r.offset))<=zR)return true;
+  }
+ }
+ return false;
+}
 function deadBallUpdate(dt){
  if(S.trn&&!S.trn.deadball)return;       // training sandbox: a placed ball must sit still forever unless opted in
  if(S.phase!=='play'||!S.balls.length)return;
@@ -133,15 +169,26 @@ function deadBallUpdate(dt){
  // and (unlike the old S.still) a per-touch collision can't reset it. Per ball we grow the
  // horizontal bounding box of where it's been; the box only resets when the ball roams past
  // moveEps, so a ball pinned in one spot keeps accruing time.
- const eps=DEAD.moveEps;
+ const eps=DEAD.moveEps,L=DEAD.live;
  let allStuck=true;
  for(const b of S.balls){
   const p=b.cur;
-  if(!b.bbMin){b.bbMin=p.clone();b.bbMax=p.clone();b.stuckT=0;}
+  if(!b.bbMin){b.bbMin=p.clone();b.bbMax=p.clone();b.stuckT=0;b.graceT=0;}
   else{
    b.bbMin.min(p);b.bbMax.max(p);
-   if(Math.max(b.bbMax.x-b.bbMin.x,b.bbMax.z-b.bbMin.z)>eps){b.bbMin.copy(p);b.bbMax.copy(p);b.stuckT=0;}
-   else b.stuckT+=dt*deadzoneMult(p); // faster in an unreachable deadzone → shorter re-drop wait
+   if(Math.max(b.bbMax.x-b.bbMin.x,b.bbMax.z-b.bbMin.z)>eps){b.bbMin.copy(p);b.bbMax.copy(p);b.stuckT=0;b.graceT=0;}
+   else{
+    let mult=deadzoneMult(p);   // faster in an unreachable deadzone → shorter re-drop wait
+    // …and SLOWER the other way, while a man can still reach it: room to trap, aim and shoot.
+    // Only where deadzoneMult said 1, so a pocket/roof/rod-gap always outranks the discount, and
+    // only until this ball has spent its budget — after that the clock runs full speed and a
+    // keeper smothering it on his own line gets whistled like he always did, just later.
+    if(mult===1&&L&&L.on&&b.graceT<L.graceMax&&liveZone(p)){
+     b.graceT+=dt*(1-L.mult);   // bank the REAL seconds being gifted, not the ticked ones
+     mult=L.mult;
+    }
+    b.stuckT+=dt*mult;
+   }
   }
   if(b.stuckT<=DEAD.stallT)allStuck=false;
  }

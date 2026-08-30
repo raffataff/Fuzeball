@@ -12,7 +12,13 @@
    Run: node tools/trials-harness.js                                                            */
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
+/* CRLF IS STRIPPED AT THE READ, and it has to be here rather than per-anchor: js/trials.js is a
+   CRLF file, and a mutation needle written as a multi-line string or template literal can never
+   match one — the ECMAScript lexer normalises a template's own line terminators to LF, so writing
+   it "correctly" is impossible (see the 2026-08-23 rng-harness entry). Stripping at the read makes
+   every mutation, present and future, immune. Safe both ways: the source is only string-matched
+   and run in a vm, where newline style is semantically irrelevant. */
+const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
 
 function boot(mutate){
  let trials=rd('js/trials.js');
@@ -23,7 +29,8 @@ function boot(mutate){
   +'\n'+rd('js/state.js')+'\n'+STUBS+'\n'+trials
   +'\n;globalThis.__api={CONFIG,F,PHY,TRL,TRLC,S,cfg,rods,TRN,SCREENS,'
   +'trialById,trialBest,trialMedal,trialStart,trialArm,trialReset,trialGoal,trialTick,trialFinish,'
-  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC};';
+  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC,'
+  +'trialDir,trialBetter,trialScoreText,trialServe,trialAttemptEnd,trialSpawnFor,trialServeDelay,RODRST};';
  const sb={console:{log(){},warn(){}},Math,Date,JSON,Object,Array,String,Number,Map,Set,isFinite,
   localStorage:{getItem:()=>null,setItem(){}},addEventListener(){},setTimeout(){},
   navigator:{}};
@@ -56,6 +63,8 @@ function trnSetRodShown(i,v){var r=rods[i];if(!r)return;r.trnHidden=!v;r.pivot.v
 function trnSetPlacing(v){TRN.placing=v;}
 function trnSpawnBall(k,x,z){LAST_BALL={key:k,cur:{x:x,y:1.9,z:z},v:{set:function(a,b,c){this.x=a;this.y=b;this.z=c;},x:0,y:0,z:0},mss:null};TRN.lastSpot={x:x,z:z};return LAST_BALL;}
 function clearBalls(){S.balls.length=0;}
+var RODRST={resets:0};
+function resetRodRotation(){RODRST.resets++;}
 function syncBall(){}
 function updateScoreUI(){}
 function updateChips(){}
@@ -98,21 +107,33 @@ function footGap(r,bx,bz){
  return best;
 }
 function footClear(r,bx,bz){return footGap(r,bx,bz)>=API.PHY.ballR*API.PHY.footBoxReach;}
-/* The rods the player could be holding: the locked one, else every visible rod of team 0. */
-function ownRods(A,d){
- const show=(d.rods&&d.rods.show)||[];
- return A.rods.filter(r=>r.team===0&&show.includes('0|'+r.role)&&(!d.hold||r.role===d.hold));
+/* WHOSE reach a spawn has to be inside depends on who is meant to STRIKE it. For every kind but
+   one that is you: the locked rod, else every visible rod of team 0. In a 'saveRun' the ball is
+   served to the OPPONENT and the player never touches it until it arrives, so the same band is
+   tested against the shooting side instead — the keeper is checked for something else entirely
+   (that it can cover the mouth). Without this split a save trial fails A-reach by construction:
+   its ball is 25 units in front of a keeper whose strike window is 6.3. */
+function strikers(A,d){
+ const show=(d.rods&&d.rods.show)||[],t=(d.goal&&d.goal.kind==='saveRun')?1:0;
+ return A.rods.filter(r=>r.team===t&&show.includes(t+'|'+r.role)&&(t===1||!d.hold||r.role===d.hold));
 }
-// signed distance from the rod to the ball, in the direction that rod attacks
-function relOf(A,d){
+// every spawn a trial can serve: the saveRun's authored list, else its single ball
+function trialSpawns(d){
+ const sp=d.goal&&d.goal.kind==='saveRun'&&d.goal.spawns;
+ return (sp&&sp.length)?sp:[d.ball];
+}
+// signed distance from the striking rod to the ball, in the direction that rod attacks
+function relOf(A,d,s){
+ s=s||d.ball;
  let best=Infinity;
- for(const r of ownRods(A,d)){const rel=(d.ball.x-r.x)*(r.team===0?1:-1);if(Math.abs(rel)<Math.abs(best))best=rel;}
+ for(const r of strikers(A,d)){const rel=(s.x-r.x)*(r.team===0?1:-1);if(Math.abs(rel)<Math.abs(best))best=rel;}
  return best===Infinity?NaN:best;
 }
-function reachOK(A,d){
- return ownRods(A,d).some(r=>{
-  const rel=(d.ball.x-r.x)*(r.team===0?1:-1);
-  return rel>0&&rel<=A.AIC.inFrontMax&&zReach(A,r,d.ball.z);
+function reachOK(A,d,s){
+ s=s||d.ball;
+ return strikers(A,d).some(r=>{
+  const rel=(s.x-r.x)*(r.team===0?1:-1);
+  return rel>0&&rel<=A.AIC.inFrontMax&&zReach(A,r,s.z);
  });
 }
 // a rod slides, so the ball's z is reachable if SOME man can be slid onto it
@@ -133,6 +154,17 @@ function arm(A,id,seed){
  A.S.seed=(seed===undefined?A.trialById(id).seed:seed)>>>0;
  A.trialArm();
 }
+/* Play a 'saveRun' out to its end, keeping every attempt out or conceding every one. The guard is
+   what keeps a broken mutant a FAILED assertion rather than a hung harness — a mutation that stops
+   attempts settling would otherwise spin here forever instead of reporting itself. */
+function drain(A,saved){
+ let guard=0;
+ while(!A.TRL.done&&guard++<400){
+  if(A.TRL.serving){A.S.time=A.TRL.serveAt;A.trialTick();continue;}
+  if(saved){A.S.stats.saves[0]++;A.trialTick();}
+  else A.trialGoal(1,{mss:null});
+ }
+}
 
 function suite(A){
  const R=new Run();
@@ -144,7 +176,7 @@ function suite(A){
   R.ok(!ids[d.id],'A-id "'+d.id+'" is unique');ids[d.id]=1;
   R.ok(typeof d.seed==='number'&&d.seed>0,'A-seed "'+d.id+'" declares a seed');
   R.ok(!!CONFIG.tables[d.table],'A-table "'+d.id+'" table exists','table='+d.table);
-  R.ok(d.goal&&['goals','roleGoals','stat'].includes(d.goal.kind),'A-kind "'+d.id+'" objective kind is supported',
+  R.ok(d.goal&&['goals','roleGoals','stat','saveRun'].includes(d.goal.kind),'A-kind "'+d.id+'" objective kind is supported',
    'kind='+(d.goal&&d.goal.kind));
   /* A 'stat' objective names a MATCH LEDGER counter. A typo there would silently never complete —
      the trial would just be impossible, with nothing on screen saying why — so the key is checked
@@ -159,32 +191,60 @@ function suite(A){
      players' medal times would not be comparable. */
   if(d.ai&&d.ai.some(Boolean))
    R.ok(!!d.diff,'A-diff "'+d.id+'" pins a difficulty because it enables an AI');
-  const m=d.medals||{};
-  R.ok(m.gold<m.silver&&m.silver<m.bronze,'A-medal "'+d.id+'" thresholds ascend',JSON.stringify(m));
+  /* Ordered in the trial's OWN direction. A saveRun is scored on SAVES and higher is better, so
+     its block reads downward and gold is the biggest number. Read through trialDir rather than
+     off the kind again, so this check and the runner can never disagree about which way a trial
+     is scored. */
+  const m=d.medals||{},up=A.trialDir(d)>0;
+  R.ok(up?(m.gold>m.silver&&m.silver>m.bronze):(m.gold<m.silver&&m.silver<m.bronze),
+   'A-medal "'+d.id+'" thresholds run in the trial\'s own scoring direction',JSON.stringify(m)+' up='+up);
   // a bronze you cannot reach inside the limit is an unwinnable medal
   if(d.limit>0)R.ok(m.bronze<=d.limit,'A-limit "'+d.id+'" bronze is inside the time limit',
    'bronze='+m.bronze+' limit='+d.limit);
-  R.ok(Math.abs(d.ball.x)<F.L/2&&Math.abs(d.ball.z)<F.W/2,'A-ball "'+d.id+'" spawns inside the walls');
+  /* EVERY spawn, not just `ball`: a saveRun serves a different one per attempt, and one bad entry
+     in the middle of that list is an attempt nobody can win with nothing on screen saying why. */
+  const SPW=trialSpawns(d);
+  for(const s of SPW)
+   R.ok(Math.abs(s.x)<F.L/2&&Math.abs(s.z)<F.W/2,'A-ball "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside the walls');
   /* A TRIAL MUST NOT SPAWN THE BALL INSIDE A VISIBLE FOOT. This is the check the shipped SNAP
      SHOT failed: at x=25 the ball sat 0.8u inside the resting ATT foot box, so collideRod fired
      on sim step one — which nudged the ball and (with the old lastTouch clock) started the timer
      before the player had done anything. Nothing on screen says "your ball is inside a boot";
      it just reads as the trial being broken. Computed from the live CONFIG so retuning footBox
      or the rod geometry fails HERE rather than in play. */
-  for(const r of rods){
+  for(const s of SPW)for(const r of rods){
    if(!(d.rods&&d.rods.show||[]).includes(r.team+'|'+r.role))continue;   // hidden rods can't touch it
-   R.ok(footClear(r,d.ball.x,d.ball.z),'A-spawn "'+d.id+'" ball is clear of the '+r.team+'|'+r.role+' foot box',
-    'gap '+footGap(r,d.ball.x,d.ball.z).toFixed(2)+' < BALL_R '+PHY.ballR);
+   R.ok(footClear(r,s.x,s.z),'A-spawn "'+d.id+'" spawn '+s.x+'/'+s.z+' is clear of the '+r.team+'|'+r.role+' foot box',
+    'gap '+footGap(r,s.x,s.z).toFixed(2)+' < BALL_R '+PHY.ballR);
   }
   /* AND IT MUST BE WITHIN REACH OF A ROD YOU CONTROL. The band that makes a spawn playable is
      bounded at BOTH ends: too close and it is inside the boot (above), too far and the player
      simply cannot get a foot to it. CONFIG.ai.inFrontMax (the AI's own forward swing window) is
      the conservative, config-derived stand-in for a human's reach — so retuning it re-checks
      every trial rather than leaving a stale literal here. */
-  R.ok(reachOK(A,d),'A-reach "'+d.id+'" the ball is inside a controlled rod\'s strike window',
-   'rel='+relOf(A,d).toFixed(2)+' max='+A.AIC.inFrontMax);
+  for(const s of SPW)
+   R.ok(reachOK(A,d,s),'A-reach "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside a striking rod\'s window',
+    'rel='+relOf(A,d,s).toFixed(2)+' max='+A.AIC.inFrontMax);
   const show=d.rods&&d.rods.show;
   R.ok(!!show&&show.length>0,'A-rods "'+d.id+'" declares which rods are on the table');
+  /* A 'saveRun' is only playable if the keeper is on the table, something is there to shoot at
+     it, and the run can end. Each of these fails as "I couldn't do it" rather than as an error,
+     which is exactly the class of config bug this section exists for. */
+  if(d.goal.kind==='saveRun'){
+   R.ok(d.goal.n>0,'A-save "'+d.id+'" needs a positive attempt count');
+   R.ok(d.goal.attemptT>0,'A-save "'+d.id+'" declares an attempt failsafe, or a stall hangs the run');
+   R.ok(!d.limit,'A-save "'+d.id+'" carries no time limit — it ends on attempts, not on a clock');
+   R.ok((d.medals||{}).gold<=d.goal.n,'A-save "'+d.id+'" gold is reachable inside n attempts',
+    'gold='+(d.medals||{}).gold+' n='+d.goal.n);
+   R.ok((show||[]).indexOf('0|GK')>=0,'A-save "'+d.id+'" your keeper is on the table');
+   R.ok(!!(d.ai&&d.ai[1]),'A-save "'+d.id+'" the opponent AI is on, or nothing ever shoots');
+   /* AND THE KEEPER MUST BE ABLE TO COVER THE MOUTH, or attempts are lost to geometry rather than
+      to the player. gkSlide (11) against goalHalf (11) means it reaches both posts exactly; this
+      fails loudly if either is ever retuned without the other. */
+   R.ok(CONFIG.rods.gkSlide+PHY.footBox.z+PHY.ballR>=F.goalHalf,
+    'A-save "'+d.id+'" the keeper can reach both posts',
+    'slide '+CONFIG.rods.gkSlide+' + foot '+(PHY.footBox.z+PHY.ballR).toFixed(2)+' vs goalHalf '+F.goalHalf);
+  }
   // every rod key names a real rod
   for(const k of show)R.ok(rods.some(r=>r.team+'|'+r.role===k),'A-rodkey "'+d.id+'" "'+k+'" is a real rod');
   // a locked role must be a rod you can actually see
@@ -211,6 +271,21 @@ function suite(A){
  R.eq(A.trialMedal(d0,6),'bronze','B5 exactly bronze counts');
  R.eq(A.trialMedal(d0,6.01),null,'B6 past bronze earns nothing');
  R.eq(A.trialMedal({},1),null,'B7 a trial with no medals block');
+ /* THE SECOND SCORING DIRECTION. A saveRun's metric is SAVES and more is better, so the same
+    block is read the other way up — one comparator flip carrying medals, bests, list and HUD. */
+ const dS={goal:{kind:'saveRun',n:10},medals:{gold:8,silver:6,bronze:4}};
+ R.eq(A.trialMedal(dS,9),'gold','B8 a saveRun reads its thresholds upward');
+ R.eq(A.trialMedal(dS,8),'gold','B9 exactly gold counts');
+ R.eq(A.trialMedal(dS,7),'silver','B10 just under gold');
+ R.eq(A.trialMedal(dS,4),'bronze','B11 exactly bronze counts');
+ R.eq(A.trialMedal(dS,3),null,'B12 under bronze earns nothing');
+ R.eq(A.trialDir(dS),1,'B13 a saveRun is higher-is-better');
+ R.eq(A.trialDir(d0),-1,'B14 every other kind is lower-is-better');
+ R.eq(A.trialBetter(dS,9,8),true,'B15 more saves beats fewer');
+ R.eq(A.trialBetter(dS,7,8),false,'B16 ...and fewer does not');
+ R.eq(A.trialBetter(d0,1,2),true,'B17 fewer seconds beats more');
+ R.eq(A.trialScoreText(dS,7),'7 / 10 saved','B18 a saveRun best reads as a count');
+ R.eq(A.trialScoreText(d0,1.5),'1.50s','B19 ...and everything else as seconds');
 
  /* ================= C. setup application ================= */
  cfg.table='classic';
@@ -528,6 +603,83 @@ function suite(A){
  R.eq(TRL.done,true,'M11 the limit still applies');
  R.eq(TRL.ok,false,'M12 ...as a failure');
 
+ /* ================= SR. the 'saveRun' objective (the GK kind) =================
+    The behaviour the score rests on, in the order it happens: the beat before the FIRST ball,
+    the authored spawn list walking forward, a save settling the attempt, a rebound NOT banking a
+    second one, a concede settling it for nothing, the attemptT failsafe, and the run ending on
+    attempts rather than on a clock — then the record, which is a SAVE COUNT and is beaten by a
+    BIGGER number. */
+ const SRG=A.trialById('lastline').goal;
+ S.time=0;cfg.trials={};
+ arm(A,'lastline');
+ R.eq(TRL.saveRun,SRG,'SR1 the goal block is the live saveRun');
+ R.eq(TRL.att,0,'SR2 the reset serves no ball');
+ R.eq(TRL.serving,true,'SR3 ...it arms the first serve instead');
+ R.eq(TRL.serveAt,SRG.serveDelay,'SR4 ...after the same beat every other attempt gets');
+ A.trialTick();
+ R.eq(TRL.att,0,'SR5 nothing is served before the beat');
+ S.time=SRG.serveDelay;A.trialTick();
+ R.eq(TRL.att,1,'SR6 the first attempt lands after it');
+ R.eq(TRL.run,true,'SR7 the clock starts on the SERVE — a keeper never swings');
+ R.eq(A.RODRST.resets>0,true,'SR8 every attempt opens from rest');
+ R.eq(TRN.lastSpot.x,SRG.spawns[0].x,'SR9 attempt 1 uses the first authored spawn');
+ R.eq(TRL.spawn.x,SRG.spawns[0].x,'SR10 ...and redropBall is pointed at it');
+ // a SAVE settles the attempt and arms the next
+ S.stats.saves[0]=1;A.trialTick();
+ R.eq(TRL.saves,1,'SR11 a save is banked');
+ R.eq(TRL.res,true,'SR12 ...settling the attempt');
+ R.eq(TRL.att,1,'SR13 ...without serving the next one in the same frame');
+ S.time+=SRG.serveDelay;A.trialTick();
+ R.eq(TRL.att,2,'SR14 the next attempt lands after the beat');
+ R.eq(TRN.lastSpot.z,SRG.spawns[1].z,'SR15 ...from the NEXT authored spawn');
+ /* THE INVARIANT THE WHOLE SCORE RESTS ON: a rebound cannot bank a second save off one attempt,
+    so "7 / 10" can never read as more saves than attempts. */
+ S.stats.saves[0]=2;A.trialTick();          // settles attempt 2
+ S.stats.saves[0]=3;A.trialTick();          // a second save on an already-settled attempt
+ R.eq(TRL.saves,2,'SR16 a save on a settled attempt banks nothing');
+ // a CONCEDED goal settles it with nothing banked
+ S.time+=SRG.serveDelay;A.trialTick();
+ R.eq(TRL.att,3,'SR17 attempt 3 served');
+ A.trialGoal(1,{mss:null});
+ R.eq(TRL.res,true,'SR18 a conceded goal settles the attempt');
+ R.eq(TRL.saves,2,'SR19 ...and banks no save');
+ // a goal YOU somehow put in at the far end is no part of the objective
+ const attWas=TRL.att,svWas=TRL.saves;
+ A.trialGoal(0,{mss:null});
+ R.eq(TRL.att===attWas&&TRL.saves===svWas,true,'SR20 a goal at the far end changes nothing');
+ // the attemptT FAILSAFE — a stalled attempt must not hang the run
+ S.time+=SRG.serveDelay;A.trialTick();
+ const t4=TRL.attT0;
+ S.time=t4+SRG.attemptT-0.01;A.trialTick();
+ R.eq(TRL.res,false,'SR21 inside the attempt failsafe');
+ S.time=t4+SRG.attemptT;A.trialTick();
+ R.eq(TRL.res,true,'SR22 the failsafe settles a stalled attempt');
+ R.eq(TRL.saves,2,'SR23 ...as a miss');
+ drain(A,false);
+ R.eq(TRL.done,true,'SR24 the run ends when the attempts run out');
+ R.eq(TRL.ok,true,'SR25 ...as a COMPLETION whatever the score');
+ R.eq(TRL.att,SRG.n,'SR26 exactly n attempts were served');
+ R.ok(TRL.saves<=TRL.att,'SR27 saves never outrun attempts','saves '+TRL.saves+' of '+TRL.att);
+ R.eq(TRL.medal,null,'SR28 two saves earns no medal');
+ R.eq(best(cfg,'lastline'),2,'SR29 the record is the SAVE COUNT, not the elapsed time');
+ // a full run, and the record direction
+ S.time=0;arm(A,'lastline');drain(A,true);
+ R.eq(TRL.saves,SRG.n,'SR30 every attempt saved');
+ R.eq(TRL.medal,'gold','SR31 ...earns gold');
+ R.eq(best(cfg,'lastline'),SRG.n,'SR32 a HIGHER score overwrites the best');
+ R.eq(TRL.pb,true,'SR33 ...and is flagged as one');
+ S.time=0;arm(A,'lastline');drain(A,false);
+ R.eq(best(cfg,'lastline'),SRG.n,'SR34 a WORSE score does not overwrite it');
+ R.eq(TRL.pb,false,'SR35 ...and is not flagged');
+ /* A 0-SAVE RUN IS AN HONEST RECORD, not the untimed-run hole. The clock guard that refuses a
+    0.00s gold cannot apply here: a saveRun completes only by playing out its attempts, so a
+    keeper who stood still finishes on 0 and the next attempt beats it. */
+ cfg.trials={};
+ S.time=0;arm(A,'lastline');drain(A,false);
+ R.eq(TRL.saves,0,'SR36 standing still saves nothing');
+ R.eq(best(cfg,'lastline'),0,'SR37 ...and that 0 is banked as a beatable record');
+ R.eq(TRL.medal,null,'SR38 ...with no medal');
+
  /* ================= N. AI from the spec ================= */
  arm(A,'snap');
  R.eq(JSON.stringify(TRN.ai),'[false,false]','N1 no ai block = both teams idle');
@@ -624,11 +776,12 @@ const MUTANTS=[
  ['the default tab is simply the first one',
   s=>s.replace("for(const c of cs)if(trialsIn(c.id).length)return c.id;","")],
  ['a conceded goal counts toward the objective',
-  s=>s.replace('if(!TRL.def||TRL.done||team!==0)return;','if(!TRL.def||TRL.done)return;')],
+  s=>s.replace('if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}\n if(team!==0)return;',
+               'if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}')],
  ['the table stash is re-taken on every apply',
   s=>s.replace('if(!TRL.tbl)TRL.tbl=cfg.table;','TRL.tbl=cfg.table;')],
- ['a best is written whatever the time',
-  s=>s.replace('if(!prev||TRL.secs<prev.best){','if(true){')],
+ ['a best is written whatever the score',
+  s=>s.replace('if(!prev||trialBetter(d,val,prev.best)){','if(true){')],
  ['a repeated role clears another slot',
   s=>s.replace('if(i>=0)TRL.roles.splice(i,1);','TRL.roles.pop();')],
  // THE most important property in the file: the clock must be SIM time, so a dropped frame can
@@ -636,11 +789,11 @@ const MUTANTS=[
  ['the clock runs on wall time instead of sim time',
   s=>s.replace('TRL.secs=S.time-TRL.t0;','TRL.secs=(Date.now()/1000)-TRL.t0;')],
  ['the clock starts on entry rather than on your first swing',
-  s=>s.replace('if(!TRL.run&&S.stats&&S.stats.kicks[0]>0)','if(!TRL.run)')],
+  s=>s.replace('if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0))','if(!TRL.run)')],
  // the SHIPPED bug, kept as a mutation: a trial spawns the ball touching a boot, so any-contact
  // is indistinguishable from "the player has started"
  ['the clock keys off any contact instead of a swing',
-  s=>s.replace('if(!TRL.run&&S.stats&&S.stats.kicks[0]>0)','if(!TRL.run&&S.lastTouch>=0)')],
+  s=>s.replace('if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0))','if(!TRL.run&&S.lastTouch>=0)')],
  ['the sandbox hide list is not restored on exit',
   s=>s.replace('if(TRL.hidWas){TRN.hidden=TRL.hidWas;TRL.hidWas=null;}','')],
  ['a stat trial completes on goals instead of its counter',
@@ -658,10 +811,38 @@ const MUTANTS=[
  ['a missed day still continues the streak',
   s=>s.replace("c.streak=(c.date&&dailyPrev(date)===c.date)?(c.streak||0)+1:1;","c.streak=(c.streak||0)+1;")],
  ['a daily writes into the per-trial best map',
-  s=>s.replace('if(d.daily)TRL.pb=dailyRecord(TRL.secs,TRL.medal,d.date);','if(false){}')],
+  s=>s.replace('if(d.daily)TRL.pb=dailyRecord(val,TRL.medal,d.date,trialDir(d)>0);','if(false){}')],
  ['an untimed run banks a 0.00s record',
-  s=>s.replace(/TRL\.medal=TRL\.run\?trialMedal\(d,TRL\.secs\):null;(\s*\n\s*)if\(TRL\.run\)\{/,
-                 'TRL.medal=trialMedal(d,TRL.secs);$1if(true){')]
+  s=>s.replace('const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;',
+               'const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=true;')],
+
+ /* ---- the 'saveRun' (GK) kind ---- */
+ // THE invariant the score rests on: settle on the FIRST outcome, or a rebound banks a second
+ // save off one attempt and "7 / 10" stops meaning anything.
+ ['a rebound banks a second save off one attempt',
+  s=>s.replace('if(!TRL.saveRun||TRL.res||TRL.done)return;','if(!TRL.saveRun||TRL.done)return;')],
+ ['a conceded goal in a saveRun costs the keeper nothing',
+  s=>s.replace('if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}',
+               'if(TRL.saveRun){trialHudSync();return;}')],
+ ['a saveRun is scored on the clock like every other kind',
+  s=>s.replace('const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;',
+               'const sr=false,val=TRL.secs,keep=TRL.run;')],
+ // one direction for every kind is the state this file was in before the GK work; it makes a
+ // saveRun's thresholds read backwards and hands gold to the worst run.
+ ['medal thresholds are read in one direction only',
+  s=>s.replace("function trialDir(d){return (d&&d.goal&&d.goal.kind==='saveRun')?1:-1;}",
+               'function trialDir(d){return -1;}')],
+ ['every attempt is served from the same spawn',
+  s=>s.replace('return (sp&&sp.length)?sp[i%sp.length]:TRL.def.ball;','return TRL.def.ball;')],
+ ['a stalled attempt never settles',
+  s=>s.replace('else if(TRL.att>0&&g.attemptT>0&&S.time-TRL.attT0>=g.attemptT)trialAttemptEnd(false);','')],
+ // the gap this whole kind exists to close: a keeper never swings, so a clock keyed on kicks
+ // alone leaves the run untimed and banking nothing.
+ ['the clock never starts for a keeper who does not swing',
+  s=>s.replace('if(!TRL.run){TRL.run=true;TRL.t0=S.time;}','')],
+ ['the next ball is served the instant the attempt settles',
+  s=>s.replace('TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();\n trialHudSync();',
+               'TRL.serving=true;TRL.serveAt=S.time;\n trialHudSync();')]
  // NOT mutated, deliberately: trialFinish's own `if(TRL.done)return;`. Both callers already gate
  // on TRL.done, so that guard is defence-in-depth and unreachable — a mutation of it changes
  // nothing observable, which would look like a harness gap rather than the no-op it is.

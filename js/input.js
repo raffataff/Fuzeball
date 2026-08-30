@@ -21,6 +21,10 @@ addEventListener('keydown',e=>{
  // would be swallowed by the skip and the clip would end where you asked to keep it.
  if(S.phase==='replay'){if(e.code===REPLAY.save.key)replaySaveClip();else replaySkip();return;}
  if(e.code==='Escape'){
+  /* Chrome never delivers this press while the pointer is locked — it releases the lock and eats
+     the key, which is why the release itself is read as the pause (pointerlockchange, below).
+     Some browsers deliver BOTH, and two pauses in one press is a pause that never happened. */
+  if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
   // out of a match, Esc walks one step back up the screen tree (js/screens.js). backScreen()
@@ -36,35 +40,65 @@ addEventListener('keydown',e=>{
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(!S.seats.length)return;                       // nobody playing (AI showdown / spectate)
+ mouseLockRequest();                              // any in-match key is a gesture too — so the lock catches within a beat of play starting
  const ks=devSeat('kbd'),ur=ks?seatRod(ks):null;
  if(e.code==='KeyB'){toggleSweetGuide(ks);return;}  // sweet-spot guide follows whoever asked (controller ○ mirrors this)
  if(!ur)return;
- if(e.code==='Space')kickRod(ur);
- if(e.code==='ShiftLeft'||e.code==='ShiftRight')ur.raise=true;
+ if(e.code==='Space'){kickRod(ur);ur.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
+ if(e.code==='ShiftLeft'||e.code==='ShiftRight'){ur.raise=true;rodRaiseRelease(ur);}   // your hand on it ends any inherited raise
  if(e.code==='ArrowLeft'||e.code==='KeyQ')seatStep(ks,-1);
  if(e.code==='ArrowRight'||e.code==='KeyE')seatStep(ks,1);
  if(/^Digit[1-4]$/.test(e.code))setSeatCtrl(ks,+e.code[5]-1,1);
 });
 addEventListener('keyup',e=>{keys[e.code]=false;
  if(S.freeRoam)return;
- if(e.code==='ShiftLeft'||e.code==='ShiftRight'){const ur=devRod('kbd');if(ur)ur.raise=false;}});
+ if(e.code==='Space'){const ur=devRod('kbd');if(ur)ur.kickHold=false;}   // the swing resumes from its held pose and drops
+ if(e.code==='ShiftLeft'||e.code==='ShiftRight'){const ur=devRod('kbd');if(ur){ur.raise=false;rodRaiseRelease(ur);}}});
+/* FOCUS LOST WITH A BUTTON DOWN. Alt-tab, or the pointer lock releasing into a pause, means the
+   keyup / mouseup for a held key never arrives — and updateRods does not run while paused, so a rod
+   would come back still held forward or still raised with no key left to let it go. Nothing here is
+   a control: it is only the RELEASE half of every hold, plus the stick re-arm, since a pad left
+   deflected while away would otherwise drive the rod on the first poll back. */
+addEventListener('blur',()=>{
+ for(const k in keys)keys[k]=false;
+ if(!S.seats)return;
+ S.seats.forEach(s=>{
+  const r=seatRod(s);
+  if(r){r.kickHold=false;r.raise=false;rodRaiseRelease(r);}
+  s.padRaise=false;s.padAngleArm=false;
+ });
+});
 const cvs=$('game');
 // Every mouse path below is gated on S.photo for the same reason as the keyboard: in photo mode the
 // canvas is a viewfinder, and drag/click/wheel belong to the camera rig (photo.js), not to a rod.
 cvs.addEventListener('mousemove',e=>{
  if(S.photo||S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
  const r=devRod('mouse');if(!r)return;
- r.target=((e.clientY/innerHeight)-.5)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens;
+ /* THE MOUSE SLIDE IS RELATIVE, and used to be ABSOLUTE (screen Y mapped straight onto r.target).
+    Absolute meant the cursor's position WAS the rod's position, so the first twitch after taking
+    over a rod yanked it to wherever the cursor happened to be sitting — almost always the middle
+    of the screen. A rod parked by a wall snapped away from that wall before you could move it.
+    The rate is unchanged: a full screen-height of travel still covers the full rod, so the feel at
+    a given sensitivity is identical. movementY works locked or unlocked, so this needs no pointer
+    lock — but with the lock on it also stops costing you travel at the edges of the screen. */
+ const dy=e.movementY||0;
+ if(dy)r.target=clamp(r.target+(dy/innerHeight)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens,-r.maxOff,r.maxOff);
 });
 cvs.addEventListener('mousedown',e=>{
  if(S.photo)return;
  if(S.phase==='replay'){replaySkip();return;}   // click skips the goal replay
  if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
  const r=devRod('mouse');if(!r)return;
- if(e.button===0)kickRod(r);
- if(e.button===2)r.raise=true;
+ mouseLockRequest();                            // a click is a user gesture, which is what the lock needs
+ if(e.button===0){kickRod(r);r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
+ if(e.button===2){r.raise=true;rodRaiseRelease(r);}
 });
-addEventListener('mouseup',e=>{if(!S.photo&&!S.freeRoam&&e.button===2){const ur=devRod('mouse');if(ur)ur.raise=false;}});
+addEventListener('mouseup',e=>{
+ if(S.photo||S.freeRoam)return;
+ const ur=devRod('mouse');if(!ur)return;
+ if(e.button===0)ur.kickHold=false;                                  // the swing resumes from its held pose and drops
+ if(e.button===2){ur.raise=false;rodRaiseRelease(ur);}
+});
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'){const ms=devSeat('mouse');if(ms)seatStep(ms,e.deltaY>0?1:-1);}});
 function userControlUpdate(dt){
@@ -85,9 +119,15 @@ function userControlUpdate(dt){
     if(s.rods.length<2)return;
     let bi=s.ctrl,bd=1e9;
     s.rods.forEach((rr,i)=>{if(rodTaken(rr,s))return;const d=Math.abs(bp.x-rr.x);if(d<bd){bd=d;bi=i;}});
-    if(bi!==s.ctrl){clearRodAI(s.rods[bi]);s.ctrl=bi;updateChips();}
+    if(bi!==s.ctrl){rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;s.padAngleArm=false;updateChips();}
    });
   }
+ /* INHERITED RAISE. A rod handed over mid-point keeps whatever lift the AI had on it (clearRodAI),
+    and this is what lets it go again: the SAME rule a benched rod runs, so the men drop on the
+    frame the ball reaches the feet rather than the frame you grabbed the handle. It can only ever
+    RELEASE — the latch is set at handoff and never re-armed here — so this can't start raising a rod
+    behind the player's back. One check per held rod, and only while a latch is live. */
+ S.seats.forEach(s=>{const r=seatRod(s);if(r&&r.raiseKeep&&!rodHoldRaise(r))r.raiseKeep=false;});
 }
 /* ---- gamepad (Steam controller) ----------------------------------------
    Standard-layout pad mapped onto the SAME rod controls as mouse+keyboard,
@@ -172,7 +212,7 @@ function padSeatUpdate(dt,gp,s,just){
  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
  // A rod this seat has let go of (switched away, match over) must not keep a live wind-up: the
  // charge would sit armed on a rod the AI is now driving and turn up on its next contact.
- if(s.shotRod&&s.shotRod!==r)shotReset(s.shotRod);
+ if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}
  s.shotRod=r;
  if(!r){s.padRaise=false;return;}
  const DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
@@ -216,13 +256,23 @@ function padSeatUpdate(dt,gp,s,just){
  // eases toward the forward strike angle, the other toward the raised-back angle. Centre = feet down.
  // sd is that same signed value hoisted out for shots.js: −1 fully pulled back … +1 fully forward.
  let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0,sd=0;
- if(Math.abs(rs)>DZ){
+ /* RE-CENTRE GATE. The stick maps to angle ABSOLUTELY and, at the default padAngleLerp of 0, with
+    no smoothing at all — so a stick already pushed forward at the moment you switch rods would
+    snap the newly claimed rod from the raised angle to the strike angle in ONE frame. That is the
+    ~85 rad/s angVel spike behind the tunnelling and the sideways glitch (see the kickA0 note in
+    js/rods.js), arriving unasked-for on a rod you had only just picked up. So a switch disarms the
+    stick (seats.js padAngleArm) and it takes authority back only after passing through the
+    deadzone. Until then sd stays 0, so a held stick can't arm a wind-up on the new rod either, and
+    the inherited raise holds the men up untouched. */
+ if(!s.padAngleArm&&Math.abs(rs)<=DZ)s.padAngleArm=true;
+ if(s.padAngleArm&&Math.abs(rs)>DZ){
   if(cfg.padAngleInvert)rs=-rs;
   let d=(Math.abs(rs)-DZ)/(1-DZ)*Math.sign(rs);      // 0 at deadzone edge → ±1 at full deflection
   d=clamp(-d*cfg.padAngleSens,-1,1);                 // sens scales reach; sign keeps the old push direction
   sd=d;
   r.padAngleTarget=(d>=0?d*KICK.strikeA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
   r.padAngleOn=true;
+  rodRaiseRelease(r);                                // the stick is driving the angle now — inherited raise done
  }else{r.padAngleTarget=0;r.padAngleOn=false;}
  // TC SWERVE: the right-stick axis NOT bound to angle is the swerve line. Sampled via the
  // shared tcSwerveFromAxes (also what the options tester previews) and stored on the rod;
@@ -250,7 +300,7 @@ function padSeatUpdate(dt,gp,s,just){
  // actively driving the angle, or a wind-up is being held, skip the binary raise so it doesn't fight.
  // LT is the alternate raise only while shots are off — with them on it is the finesse trigger.
  const raise=gpDown(gp,2)||(!TC&&gpDown(gp,6)&&!shotsOn());
- if(!r.padAngleOn&&!r.chgSrc){if(raise){r.raise=true;s.padRaise=true;}else if(s.padRaise){r.raise=false;s.padRaise=false;}}
+ if(!r.padAngleOn&&!r.chgSrc){if(raise){r.raise=true;s.padRaise=true;rodRaiseRelease(r);}else if(s.padRaise){r.raise=false;s.padRaise=false;rodRaiseRelease(r);}}
 }
 function toggleFreeRoam(){
  S.freeRoam=!S.freeRoam;
@@ -265,8 +315,45 @@ function toggleFreeRoam(){
  Au.ui();
 }
 cvs.addEventListener('click',()=>{if(S.freeRoam&&S.phase!=='menu')cvs.requestPointerLock();});
+/* ---- POINTER LOCK IN A MATCH (cfg.mouseLock) ----------------------------------------------
+   With the slide relative, the cursor no longer means anything during play — it is just an object
+   that runs out of screen, pops the taskbar at the bottom edge, and stops feeding movement once it
+   is pinned. Locking it hides it and makes the movement stream endless.
+
+   THE STATE IS RE-ASSERTED EVERY FRAME (mouseLockTick, from the main loop) rather than toggled at
+   each transition, for the same reason hud.js hides the match clock that way: there is no exit path
+   — pause, goal, replay, menu, photo, the sandbox panel — that can strand a match with the cursor
+   trapped. But a lock can only be REQUESTED from a user gesture, so the request side hangs off a
+   click or a keypress and simply gives up if the browser says no; the next input tries again.
+
+   ESC IS THE ONE THAT NEEDS EXPLAINING. The browser owns Esc while locked: it releases the pointer
+   and swallows the keydown, so input.js never sees it and the pause menu never opened. Reading the
+   RELEASE as the pause press instead puts that back to one key, one pause. mlSelf marks the
+   releases we asked for ourselves so they don't read as an Esc. */
+let mlSelf=false,mlEsc=0;   // mlEsc: when a lock release stood in for an Escape press (see the keydown grace above)
+function mouseLockWant(){
+ if(!cfg.mouseLock)return false;
+ if(S.freeRoam||S.photo)return false;                     // both drive the cursor themselves
+ if(S.phase!=='play'&&S.phase!=='count')return false;
+ if(!devSeat('mouse'))return false;                       // nobody is steering with the mouse
+ if(S.trial&&S.trial.done)return false;                   // the result card takes clicks (plain data — safe with no trials.js)
+ const p=$('trnPanel');
+ if(p&&!p.classList.contains('hidden'))return false;      // sandbox tools are clicks
+ return true;
+}
+function mouseLockRequest(){
+ if(!mouseLockWant()||document.pointerLockElement)return;
+ const p=cvs.requestPointerLock();
+ if(p&&p.catch)p.catch(()=>{});   // no gesture yet, or Chrome's cooldown after an Esc release — the next input retries
+}
+function mouseLockTick(){
+ if(document.pointerLockElement===cvs&&!mouseLockWant()){mlSelf=true;document.exitPointerLock();}
+}
 document.addEventListener('pointerlockchange',()=>{
- if(!document.pointerLockElement&&S.freeRoam)S.freeRoam=false;
+ if(document.pointerLockElement)return;
+ if(mlSelf){mlSelf=false;return;}                         // we let it go on purpose
+ if(S.freeRoam){S.freeRoam=false;return;}
+ if(mouseLockWant()){mlEsc=performance.now();togglePause();}   // Esc, or focus lost — read the release as the pause press
 });
 document.addEventListener('mousemove',e=>{
  if(!S.freeRoam||!document.pointerLockElement)return;

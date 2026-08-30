@@ -72,6 +72,7 @@
   <div id="ballSpeed"></div>
   <div id="ballVel"></div>
   <div id="fps"></div>
+  <div id="dbgDead"></div>
 </div>
 
 <div id="replayUI" class="hidden">
@@ -448,7 +449,8 @@
       <h3>Mouse &amp; Keyboard</h3>
       <div class="czSlide"><label>Mouse sens</label><input type="range" id="optMouseSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optMouseSensV"></span></div>
       <div class="czSlide"><label>Key slide</label><input type="range" id="optKbdSens" min="0.2" max="2.5" step="0.05"><span class="czVal" id="optKbdSensV"></span></div>
-      <div class="optHint">Slide with ▲ ▼ / W S or the mouse · kick with SPACE / click · raise with SHIFT / R-click. These sliders scale how fast each responds.</div>
+      <div class="row"><label>Lock cursor in match</label><input type="checkbox" id="optMouseLock"></div>
+      <div class="optHint">Slide with ▲ ▼ / W S or the mouse · kick with SPACE / click · raise with SHIFT / R-click. These sliders scale how fast each responds. Locking the cursor hides it and lets the mouse keep going past the edge of the screen — ESC releases it and pauses.</div>
     </div>
     <div class="panel optPanel">
       <h3>Live Tester</h3>

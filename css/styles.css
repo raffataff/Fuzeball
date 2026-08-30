@@ -261,6 +261,12 @@ input[type=text]{width:110px;text-transform:uppercase}
 #fps{position:fixed;top:140px;left:16px;font-family:'Russo One',monospace;font-size:12px;letter-spacing:.06em;color:#2af5ff;background:rgba(0,0,0,.7);border:1px solid rgba(42,245,255,.25);border-radius:8px;padding:8px 12px;line-height:1.5;z-index:25;pointer-events:none;display:none}
 #fps span{color:#7f93ba;margin-right:4px}
 #fps .val{color:#fff;font-weight:400}
+/* dead-ball clock readout (debug overlay only, js/debug.js updateDeadBall). Sits under #fps,
+   which is TWO lines in debug mode because of the leak-watch row — hence the 206px, not 182. */
+#dbgDead{position:fixed;top:206px;left:16px;font-family:'Russo One',monospace;font-size:12px;letter-spacing:.06em;color:#2af5ff;background:rgba(0,0,0,.7);border:1px solid rgba(42,245,255,.25);border-radius:8px;padding:8px 12px;line-height:1.5;z-index:25;pointer-events:none;display:none}
+#dbgDead span{color:#7f93ba;margin-right:4px}
+#dbgDead .val{color:#fff;font-weight:400}
+#dbgDead .hot{color:#ff8c3a}
 /* ===== frame profiler (js/perf.js · M) — dev overlay, bottom-right so it clears the
    left-hand debug readouts and the top-right AI panel. Deliberately NOT a .panel: it's an
    instrument, not game chrome, and it must not carry a backdrop-filter (a blurred layer
@@ -1142,9 +1148,19 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .trlClock{font-family:var(--font-ui);font-size:34px;letter-spacing:.04em;color:var(--tx-bright);
  text-shadow:0 3px 0 rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
 .trlClock.warn{color:#ff7a5a}
-.trlCard{margin-top:12px;padding:14px 26px;border-radius:14px;background:rgba(8,10,18,.86);
- border:1px solid var(--edge);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+/* THE RESULT PANEL is a body-level sibling of #trlHud, not a child of it (see buildTrialHud in
+   js/trials.js): #trlHud is transformed, and a transformed ancestor is what position:fixed
+   descendants resolve against, so nesting it there would pin it to the HUD instead of the screen.
+   z-index sits above the HUD layer and below .screen (40), so pause and options still cover it. */
+.trlCard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:34;
+ min-width:280px;padding:26px 34px 20px;border-radius:16px;background:rgba(8,10,18,.94);
+ border:1px solid var(--edge);box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:center;
+ pointer-events:auto;animation:trlCardIn .22s ease-out both}
 .trlCard.hidden{display:none}
+@keyframes trlCardIn{from{opacity:0;transform:translate(-50%,-46%) scale(.96)}
+ to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.trlBtns{display:flex;gap:12px;justify-content:center;margin-top:20px}
+.trlBtns .btn{padding:11px 26px;font-size:14px}
 .trlRes{font-family:var(--font-ui);font-size:26px;letter-spacing:.1em}
 .trlRes.ok{color:#2bff88} .trlRes.no{color:#ff7a5a}
 .trlSecs{margin-top:4px;font-family:var(--font-ui);font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-strong)}

@@ -1071,6 +1071,7 @@ function debugUpdate(){
    $('ballVel').style.display=show?'block':'none';
    $('fps').style.display=fpsShow?'block':'none';
    if(fpsShow)updateFps(false);else dbgFpsLast=0;   // hidden: drop the clock so re-entry doesn't read one giant frame
+   dbgDeadShow(false);   // dead-ball clock is debug-only — it doesn't ride along into free roam
    if(!show)return;
    updateCamInfo();
    updateBallSpeed();
@@ -1086,6 +1087,7 @@ function debugUpdate(){
   updateBallSpeed();
   updateBallVel();
   updateFps(true);                   // debug: append the once-a-second leak-watch line
+  dbgDeadShow(true);updateDeadBall();
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];
@@ -1151,6 +1153,42 @@ function updateBallVel(){
   if(!S.balls.length){$('ballVel').innerHTML='<span>VEL</span>no ball';return;}
   const v=S.balls[0].v;
   $('ballVel').innerHTML='<span>VEL X</span><b class="val">'+v.x.toFixed(1)+'</b><span>Z</span><b class="val">'+v.z.toFixed(1)+'</b>';
+}
+/* DEAD-BALL CLOCK (js/powerups.js deadBallUpdate). Shows the stall timer the whistle is
+   read from, the multiplier being applied to it right now, and how much of the live-zone grace
+   budget this ball has spent — the three numbers you need to tune CONFIG.deadball.live.
+   The trailing figure is a PROJECTION at the current multiplier: how long until the whistle IF
+   nothing changes. The ball moving changes the multiplier, so treat it as a reading, not a promise.
+   Everything here is computed from state the sim already keeps, and only inside debugUpdate's
+   dbgOn branch, so a closed overlay costs nothing. */
+function dbgDeadShow(on){const el=$('dbgDead');if(el)el.style.display=on?'block':'none';}
+function updateDeadBall(){
+ const el=$('dbgDead');if(!el)return;
+ if(typeof deadzoneMult!=='function'){el.innerHTML='<span>DEAD BALL</span>n/a';return;}
+ if(S.trn&&!S.trn.deadball){el.innerHTML='<span>DEAD BALL</span>off (sandbox)';return;}
+ if(!S.balls.length){el.innerHTML='<span>DEAD BALL</span>no ball';return;}
+ const L=DEAD.live,lines=[];
+ for(let i=0;i<S.balls.length&&i<3;i++){
+  const b=S.balls[i],p=b.cur,st=b.stuckT||0,gr=b.graceT||0;
+  const zm=deadzoneMult(p);
+  // Mirror deadBallUpdate's own gate exactly, or the readout will disagree with the whistle.
+  const live=zm===1&&L&&L.on&&gr<L.graceMax&&typeof liveZone==='function'&&liveZone(p);
+  const mult=live?L.mult:zm;
+  let left;
+  if(live&&L.mult<1){
+   const graceReal=(L.graceMax-gr)/(1-L.mult);   // real seconds the remaining budget still buys
+   const gain=graceReal*L.mult;                  // …and the stall time that adds while it lasts
+   left=(st+gain>=DEAD.stallT)?(DEAD.stallT-st)/L.mult:graceReal+(DEAD.stallT-st-gain);
+  }else left=(DEAD.stallT-st)/Math.max(mult,1e-6);
+  const tag=live?'IN REACH':(zm>1?'DEADZONE':'PLAIN');
+  const cls=(left<1.5)?' hot':'';
+  lines.push((S.balls.length>1?'<span>B'+i+'</span>':'')
+   +'<span>STALL</span><b class="val">'+st.toFixed(2)+'</b>/'+DEAD.stallT.toFixed(1)
+   +'<span>x</span><b class="val">'+mult.toFixed(2)+'</b>'
+   +(L?'<span>GRACE</span><b class="val">'+gr.toFixed(2)+'</b>/'+L.graceMax.toFixed(1):'')
+   +'<span>'+tag+'</span><b class="val'+cls+'">'+(left>99?'99+':left.toFixed(1))+'</b>s');
+ }
+ el.innerHTML='<span>DEAD BALL</span>'+lines.join('<br>');
 }
 /* FPS readout: measured from a private performance.now() clock (not the loop's rdt, which is
    capped at .05) so a real stall reads as a true dip. dbgFpsEma is a smoothed frame time in ms

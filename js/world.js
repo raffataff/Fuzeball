@@ -847,7 +847,7 @@ function buildRods(){
     const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
-     kickT:-1,kickStyle:null,kickCurve:null,kickDir:d.team===0?1:-1,raise:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
+     kickT:-1,kickStyle:null,kickCurve:null,kickDir:d.team===0?1:-1,raise:false,raiseKeep:false,kickHold:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
      // player shot verbs (js/shots.js). chg = live charge 0..1 (-1 = not winding up); chgA is the
      // WORLD wind-up angle sweepClips allowed; shotOn/Pow/Ctl is what the NEXT contact is worth and
      // is the only thing physics.js reads; trem is display-only and is added on the render pivot.

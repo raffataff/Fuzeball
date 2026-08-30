@@ -42,6 +42,7 @@ function makeSeat(team,devs,lockRole){
   rods:[],ctrl:0,
   tcMult:1,        // live Total-Control slide multiplier for THIS seat's pad (was the global S.tcMult)
   padRaise:false,  // pad raise is a hold — per seat, or two pads would clobber each other's raise
+  padAngleArm:true,// right-stick angle authority; a rod switch drops it until the stick re-centres (js/input.js)
   shotRod:null,    // rod this seat drove LAST frame, so js/shots.js can clear a wind-up left on a rod it let go of
   padPrev:{}};     // per-seat button edge state (was the global gpPrev)
 }
@@ -106,13 +107,31 @@ function seatForDev(tok){
  return null;
 }
 /* Clear AI-driven state from a rod when a player takes control. The AI skips user rods each
-   frame (ai.js:isUserRod), but any state it set before the switch persists — raise latch,
-   behindFlag, active actions (trap/dribble/safeRaise/lane/evade), hold-evade timers, man
-   selection, etc. Without clearing these the rod stays raised, continues AI angle overrides,
-   or mid-action when the player expects a clean handoff. */
+   frame (ai.js:isUserRod), but any state it set before the switch persists — active actions
+   (trap/dribble/safeRaise/lane/evade), hold-evade timers, man selection, etc. Without clearing
+   these the rod carries on with AI angle overrides, or sits mid-action when the player expects a
+   clean handoff.
+
+   THE RAISE IS THE ONE THING WE KEEP, and that is a change. Wiping it dropped the men the instant
+   you took the rod — including on an AUTO switch, which fires precisely when the ball is arriving
+   from behind that rod and is therefore exactly when the AI had it lifted. The rod you were handed
+   then sat down in front of the very ball you were handed it for. So the raise carries across as
+   an INHERITED LATCH (r.raiseKeep): userControlUpdate runs the same rodHoldRaise rule on it every
+   frame and lets it drop when the ball reaches the feet — the same frame the AI would have dropped
+   it, and the frame you want the men down. Any raise input, or a kick, ends it on the spot
+   (rodRaiseRelease). */
 function clearRodAI(r){
  if(!r)return;
- r.raise=false;r.behindFlag=false;r.act=null;r.heldFwd=false;
+ r.raiseKeep=!!r.raise;                     // inherited raise — released by rodRaiseRelease / userControlUpdate
+ if(!r.raiseKeep)r.behindFlag=false;
+ r.act=null;r.heldFwd=false;
+ /* AND THE ROD HOLDS ITS GROUND. r.target was left wherever the AI last wanted the rod, so a rod
+    you took over set off for the AI's destination before you had touched anything — and on
+    keyboard or pad, which add to r.target rather than setting it, your first nudge was added to
+    that stale destination instead of to where the rod actually is. Pinning it to the live offset
+    means "you now have it, exactly here". */
+ r.target=r.offset;r.slideV=0;
+ rodInputRelease(r);                        // a stale stick angle or held kick from an earlier stint would pin this rod
  if(r.hold)r.hold.on=false;                 // …and any L2 grip: the AI drives this rod now
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;
  r.aiMan=-1;
@@ -121,6 +140,18 @@ function clearRodAI(r){
  r.laneDir=0;
  r.passTo=null;r.aimEv=null;
 }
+/* The player has put their own hand on the raise — button down, button up, right stick, or a kick
+   — so the inherited latch is done and their input is the only thing driving the men from here.
+   Harmless on a rod that never had one. */
+function rodRaiseRelease(r){if(r)r.raiseKeep=false;}
+/* A rod a seat has just let GO of — drop every HELD input still sitting on it. Each of these is
+   written only for the rod a device is currently driving, so the release event (stick re-centre,
+   button up) lands on the NEW rod and the abandoned one would keep the hold for ever:
+     padAngleOn/Target  the last right-stick angle. In updateRods that branch outranks both the
+                        raise latch and the rest-drop, so the AI could never lower it again —
+                        in training, with the AI off, nothing could.
+     kickHold           a held kick button, which pins the swing at full stretch (js/rods.js). */
+function rodInputRelease(r){if(r){r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;}}
 /* Absolute rod select, skipping rods other seats hold. `dir` is the direction to keep searching
    when the requested rod is taken (so a wheel/Q/E press lands on the next FREE rod rather than
    silently doing nothing). Returns true if the held rod actually changed. */
@@ -134,6 +165,8 @@ function setSeatCtrl(s,i,dir){
  }
  if(s.ctrl===was)return false;
  clearRodAI(s.rods[s.ctrl]);                 // handoff: wipe AI state from the newly claimed rod
+ rodInputRelease(s.rods[was]);               // …and every held input off the one we just dropped
+ s.padAngleArm=false;                        // a stick already held must re-centre before it drives the new rod
  S.lastSwitch=S.time;updateChips();Au.ui();
  return true;
 }
