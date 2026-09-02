@@ -38,7 +38,8 @@ function arenaContact(b,pen,nx,ny,nz){
   // layer (physics.js rollProbe skips the bowl walls precisely because this does it better —
   // it already knows the surface normal, so the tangential speed here is exact).
   if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;
-   if(hitFresh(b,ny>ARENA.fricNy?0:1,-vn,ny>ARENA.fricNy?PHY.floorHitSnd:PHY.wallHitSnd))Au.wall(-vn,b.t.audio?.wall);}
+   if(hitFresh(b,ny>ARENA.fricNy?0:1,-vn,ny>ARENA.fricNy?PHY.floorHitSnd:PHY.wallHitSnd)){Au.wall(-vn,b.t.audio?.wall);
+    if(ny<=ARENA.fricNy)spawnMark(b,nx,ny,nz,-vn);}}   // bowl WALL only — the floor and its fillet get nothing
   else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;
    // tangential = what's left of v once the normal component is removed (just done, so |v| IS it)
    Au.rollFeed(ny>ARENA.fricNy?0:1,Math.hypot(v.x,v.y,v.z),b.t.audio);}
@@ -180,6 +181,7 @@ function applyTable(onReady){
  activeTable=CONFIG.tables[id];
  ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
  ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
+ if(typeof clearMarks==='function')clearMarks();   // scuffs belong to the table that wore them
  // show only the selected table's group (its skin sub-groups + primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
  // NOTE: the environment (room GLB + shared ground backdrop) is owned by applyRoom (world.js) now —

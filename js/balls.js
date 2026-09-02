@@ -24,7 +24,7 @@ function makeBall(key){
   // (physics.js hitFresh). A one-shot only fires on a surface that was clear for PHY.contactHold;
   // sustained contact becomes a roll instead. -1e9 = "never touched" — NOT 0, which would read as
   // "touched at kick-off" and swallow the first contact of the session (S.time also starts at 0).
-  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,graceT:0,knuckT:0,overBar:0,cT:[-1e9,-1e9,-1e9],
+  const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,graceT:0,knuckT:0,overBar:0,outWall:0,cT:[-1e9,-1e9,-1e9],
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
    prev:new THREE.Vector3(),cur:new THREE.Vector3(),

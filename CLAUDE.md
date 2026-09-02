@@ -694,6 +694,64 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
 
+### 2026-08-31
+- **THE BALL'S SHADOW STROBED ON AND OFF EVERY OTHER FRAME — the ball-reflection cube pass was
+  EATING the frame's shadow update, and `autoUpdate` is the wrong flag to stop it with**
+  (`js/world.js` `updateBallReflect`; new `tools/ballshadow-harness.js`). Reported from play: "the
+  shadow for the balls is flickering. is it being turned on/off every other frame or something?" —
+  which is exactly what it was, at exactly that rate.
+  - **THE SUPPRESSION LINE READ CORRECTLY AND DID NOTHING.** `updateBallReflect` opened with
+    `renderer.shadowMap.autoUpdate=false` to "reuse last frame's shadow map for the 6 faces". But
+    `CONFIG.render.shadow.autoUpdate` has been **false** since 2026-08-23 (the frozen-map work), so
+    that assignment is a no-op and **`needsUpdate` is the only gate left**. r128's shadow pass is
+    `if(!1===y.autoUpdate&&!1===y.needsUpdate)return; … y.needsUpdate=!1` — read out of
+    `vendor/three.min.js`, not assumed — so it CLEARS the flag whenever it runs, and
+    `CubeCamera.update` calls `renderer.render` six times. **Worth knowing: r128's CubeCamera does
+    NOT touch `shadowMap.autoUpdate` itself** (later versions do), which is why that line was there.
+  - **SO CUBE FACE 1 RENDERED THE SHADOW MAP WITH THE LEAD BALL HIDDEN.** The ball is hidden one
+    line below so it cannot reflect itself; the pending update `main.js`'s `shadowDirty()` had just
+    raised was consumed there, and the MAIN pass then early-outed with nothing to do — so the frame
+    was drawn against a shadow map the ball is not in. The next frame runs no cube pass
+    (`ballReflect.every:2`), the map renders normally, and the shadow comes back. **A ball shadow
+    present on exactly alternate frames.**
+  - **The fix is to take BOTH flags down for the 6 faces and hand `needsUpdate` BACK to the main
+    render.** The faces then genuinely reuse the map already on the card, which is what the original
+    comment always claimed. **It costs nothing: exactly one shadow render per frame before and
+    after** — the pass simply happens in the main render instead of inside the cube pass.
+  - **WORTH KNOWING GENERALLY, because this will recur: under `autoUpdate:false`, ANY extra
+    `renderer.render` in a frame silently steals that frame's shadow update.** `updateBallReflect`
+    is the only one on the play path today, but a second off-screen pass, a thumbnail bake, or a
+    warm that used the MAIN renderer would do the same, and the symptom is a strobe rather than an
+    error. `PRV` (the shared preview context, world.js) is safe by construction — separate
+    renderer, separate `shadowMap`.
+  - **This is the 2026-08-25 lesson inverted.** That entry dropped `shadowMap.needsUpdate` as a
+    dirty SIGNAL because it latches true with shadows off. Still correct — and it says nothing about
+    WRITING the flag, which is what this was. Reading it is poison; clearing it is a promise to
+    re-raise it.
+  - **CRLF, again**: `js/world.js` is a CRLF file, so the first multi-line patch matched nothing
+    (2026-08-20 / 2026-08-23). Spliced by LINE INDEX instead, which is immune either way.
+  - **`tools/ballshadow-harness.js` — 20 assertions.** It slices the REAL `updateBallReflect` out of
+    world.js and drives it through `main.js`'s own frame ordering (`shadowDirty` -> reflect -> main
+    render) against a renderer stub reproducing r128's gating verbatim. It pins: no frame missing
+    the ball, one shadow render per frame, the cube pass rendering no shadow map at all, the pending
+    update surviving it, both flags restored exactly in BOTH `autoUpdate` modes, and the ball still
+    hidden from its own reflection. **It has teeth** — re-applying the old `autoUpdate`-only line
+    fails with the ball missing on exactly the 6 cube frames of 12, alternating.
+    `node tools/ballshadow-harness.js --pattern` prints the strobe itself:
+    `BEFORE: # . # . # . # .` against `AFTER: # # # # # # # #`.
+  - **NODE RUNS ON THIS MACHINE NOW (v24.19.0).** An earlier session found none and stood up a
+    PowerShell HttpListener instead; `node --check`, the harnesses and the 42-module concat +
+    `vm.Script` duplicate-top-level-name check all run locally, and the chain parses clean. The
+    browser route is still the only way to verify anything needing a real WebGL context or rAF.
+  - **NOT VERIFIED LIVE, and it is the one thing left**: this was proved against a stub of r128's
+    gating, not on the running game. The fix is one flag and the harness reproduces the reported
+    symptom exactly, but nobody has yet WATCHED the shadow hold still.
+  - **FOUND, NOT FIXED (a look decision, and blind-tuned):** `CONFIG.render.shadow.normalBias` is
+    **0.35** against a ball radius of **1.9** — an 18% offset along the normal on a small sphere,
+    which shrinks a contact shadow and can detach it. The 2026-07-20 entry that set it records
+    bias/normalBias as "picked blind". If the ball shadow still reads as floating now that it holds
+    still, that is the number to try, not this code path.
+
 ### 2026-08-29
 - **THE GK SECTION HAS ITS SAVE TRIAL — and it needed a SECOND SCORING DIRECTION, which is the
   thing 2026-08-20 said it would take** (`js/config.js` new `saveRun` objective kind + THE LAST

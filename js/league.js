@@ -359,44 +359,20 @@ function lgApply(a,b,ga,gb){
 function lgOrder(){const a=LG.teams.map((t,i)=>({i,t}));a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgOrderDiv(tier){const a=LG.teams.map((t,i)=>({i,t})).filter(e=>e.t.div===tier);a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);return a;}
 function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round];return R?R.find(f=>f[0]===LG.playerId||f[1]===LG.playerId):null;}
-/* ---- figurine render image map ----
-   model id → the filename stem its Blender renders were exported under. The stem does NOT always
-   match the id (womanAndroid → jennyBot, manrichie → richie, rocko → rocko2, mechaMan → mechaman),
-   and this map is the ONE place that discrepancy is allowed to live — config.js's `mug` paths
-   follow the same convention.
-   This replaces a RENDER_MAP gate plus a ternary ladder whose final `:id` fallback meant an id
-   listed in the gate but missing from the ladder silently resolved to a guessed filename and 404'd
-   on the tape (which is what the dead `manStumpy` entry did). A plain map can't drift like that:
-   no entry means no render, and the tape draws its '?' box, which is a designed state. */
+/* ---- figurine render image map ---- */
 const RENDER_STEM={
  cyborg:'cyborg',deltaborg:'deltaborg',irnman:'irnman',mechaMan:'mechaman',stormer:'stormer',
- rocko:'rocko2',manJerry:'jerry',manrichie:'richie',womanMaria:'maria',womanKimi:'kimi',
+ rocko:'rocko',manJerry:'jerry',manrichie:'richie',womanMaria:'maria',womanKimi:'kimi',
  womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanAndroid:'jennyBot',
  womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
  alienKodus:'kodus',alienZargon:'zargon',animalAzlar:'azlar'};
 function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
-/* Stems that HAVE a team-parts matte exported. tools/render_team_masks.py prints this exact line
-   at the end of a run — re-paste it rather than hand-editing.
-   This is a declared list rather than a runtime probe ON PURPOSE. The tape used to just request
-   the mask and let a 404 tell it the file wasn't there. That worked, and it degraded correctly,
-   but it meant every figurine without a matte logged a red 404 in the console on every visit to
-   the lobby — and console errors in a shipping build read as a broken game even when nothing is
-   wrong. So the roster's mask coverage is stated up front and a file is only requested when we
-   already know it exists.
-   sasha and jennyBot are deliberately absent: their mattes rendered empty and they're no longer in
-   the in-game selection, so requesting them would cost a fetch to tint nothing. */
+
 const MASK_STEMS=new Set([
- 'cyborg','deltaborg','irnman','mechaman','stormer','rocko2','jerry','richie','maria','kimi',
+ 'cyborg','deltaborg','irnman','mechaman','stormer','rocko','jerry','richie','maria','kimi',
  'talia','tanya','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
-/* Team-parts matte for that same render, from the same camera, with the matte baked into the ALPHA
-   channel. Used as a CSS mask on the tint layer so the tape can colour the KIT and only the kit —
-   skin, hair and eyes are excluded by construction, because they're separate materials in the
-   blend and the matte is cut from config.js's own `teamParts` list by Blender's Cryptomatte
-   Material pass.
-   Alpha, not luminance, is deliberate: `mask-image` keys off alpha, so a plain black-and-white PNG
-   would be fully opaque and the tint would cover the whole portrait.
-   Null for a figurine with no matte — the tape then shows the untinted render it showed before, so
-   the roster can gain masks one figurine at a time with no console noise in between. */
+
+
 function modelRenderMask(id){
  const s=RENDER_STEM[id];
  return (s&&MASK_STEMS.has(s))?'assets/renders/render_'+s+'_teammask.png':null;
@@ -404,27 +380,12 @@ function modelRenderMask(id){
 /* ---- live-match bridge (flow.js/rods.js/ai.js read these) ---- */
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
 function teamCol(t){return S.lg?S.lg.cols[t]:(t===0?cfg.redColor:cfg.blueColor);}
-/* MATCH RULES — ONE source of truth for a league save, and the CUP READS THE SAME ONES.
-   A league owns four rules: goals to win, game time, special balls, power-ups. They're picked on
-   the create screen and stay editable from the lobby's Match Settings panel. The cup is the
-   post-season of THAT league, so it inherits all four — a 10-minute no-power-ups league handing
-   you an unlimited power-up final was the mode contradicting itself, and it's what the player hit.
-   Only the VENUE stays the cup's own (CUP.table/room/pitches) — that's showpiece dressing, not a rule.
-   CUP.goals/special/power survive in config purely as the fallback for a save written before
-   LG.goals existed; lgGoalCap/lgMins are what everything should read.
-   special/power aren't here because they're pushed straight onto cfg at kickoff (balls.js /
-   powerups.js read cfg directly) and restored from S.lg.prevKit on the way out.
-   NOT named lgGoals: an element `id` becomes a property on window, and #lgGoals is the lobby's
-   goal select — a same-named global function shadows it, which works but is a trap worth dodging. */
+
 function lgGoalCap(){return (LG&&LG.goals!=null)?LG.goals:(S.lg&&S.lg.cup?CUP.goals:LGC.goals);}
 function lgMins(){return (LG&&LG.gameTime)||0;}   // match time limit in MINUTES (0 = unlimited)
-// One-line readout of those rules, phrased like flow.js's kickoff banner — used on screen subtitles.
 function lgRulesLabel(){const m=lgMins();return (m?m+' MIN · TO ':'FIRST TO ')+lgGoalCap()+(LG&&LG.special?' · SPECIALS':'')+(LG&&LG.power?' · POWER-UPS':'');}
-/* The league lobby and the cup lobby both put the four rules on screen, so the seed/bind pair
-   lives here ONCE against an id map rather than being written twice. They are ONE value on the
-   save, not two screens' settings: change the clock in the cup and the league lobby shows it on
-   its next render. Element ids can't be shared (both panels are in the DOM at the same time),
-   which is the only reason these take a map at all. */
+
+
 const LG_RULE_IDS={goals:'lgGoals',time:'lgGameTime',special:'lgSpecial',power:'lgPower'};
 const CUP_RULE_IDS={goals:'cupGoals',time:'cupGameTime',special:'cupSpecial',power:'cupPower'};
 function seedRuleCtls(ids){
@@ -469,33 +430,12 @@ function primeMatchExplosions(idA,idB){
  if(typeof ensureExplosionModel!=='function')return;
  for(const id of [idA,idB])if(id)ensureExplosionModel(id);
 }
-/* Same idea, for the pre-match tape's FIGURINE PORTRAITS (assets/renders/render_*_cycles.png).
-   Those were only ever requested at the instant #lgTape was revealed — renderLgTape builds them as
-   raw <img src> inside an innerHTML string — so on a cold cache the portrait streamed in top-to-
-   bottom over the splash screen it is supposed to BE. They're big PNGs into a fixed 600x700 box,
-   which is why it reads as a swipe rather than as a delay. The lobby is where the player actually
-   sits, so the fetch belongs there, next to primeMatchExplosions.
-   NOTE the scout panel's portrait does NOT cover this: mugImg loads render_*_MUGSHOT.png, a
-   different file, so the tape's render was always cold no matter how long you sat in the lobby.
-   Images are HELD in TAPE_IMG rather than fired and forgotten — a live reference keeps the decoded
-   bitmap around, so the tape's own <img> paints from cache with no second decode. Kept to the two
-   figurines of the NEXT match only: each decoded portrait is several MB, and a season's worth of
-   past opponents accruing in a map would be a slow leak. Re-entering the lobby re-issues nothing.
-   The team-part MASKS are primed on the same pass. They're tiny next to the portraits, but they
-   arrive as a CSS mask-image on a layer stacked over the render, so a late mask would show as the
-   portrait painting untinted and then popping to the team colour — worse than the swipe this
-   function exists to kill. Priming them here means both are warm before the tape is ever revealed.
-   Which masks exist is settled by MASK_STEMS before anything is requested, so this never fetches a
-   file that isn't there. An earlier version probed instead — request the mask, let a 404 report
-   its absence — which degraded correctly but logged a console error per un-exported figurine on
-   every lobby visit, and console errors in a shipping build read as a broken game.
-   Pass figurine model IDS, same as primeMatchExplosions. */
+
 let TAPE_IMG={};
 function primeMatchTape(idA,idB){
  const keep={};
  for(const id of [idA,idB]){
-  // modelRenderMask returns null unless MASK_STEMS says the file is there, so nothing here can
-  // request a mask that doesn't exist — no 404, no probe, no console noise.
+
   for(const src of [id&&modelRender(id),id&&modelRenderMask(id)]){
    if(!src||keep[src])continue;
    if(TAPE_IMG[src]){keep[src]=TAPE_IMG[src];continue;}
@@ -504,45 +444,21 @@ function primeMatchTape(idA,idB){
  }
  TAPE_IMG=keep;                                       // anything not in the next match is dropped
 }
-/* Hold the tape up for LGC.tapeT AFTER its portraits can paint, not from the moment it's revealed.
-   Without this the dwell was spent watching the PNG arrive and then cut to kickoff at the exact
-   moment the screen finally looked right. decode() resolves when the bitmap is ready to paint
-   (and rejects on a broken image — caught, so a missing render is a clean skip); tapeReadyCap is a
-   hard ceiling so nothing here can ever stall a match start.
-   Returns a CANCEL fn, and the click-to-skip path must call it: it has to kill BOTH timers and
-   disarm the pending decode handler, or a skipped tape re-fires go() a beat later against whatever
-   screen came next. */
+
 function tapeDwell(cb){
  let t1=0,t2=0,armed=false;
  const arm=()=>{if(armed)return;armed=true;clearTimeout(t2);t1=setTimeout(cb,LGC.tapeT*1000);};
  const cap=(LGC.tapeReadyCap||0)*1000;
  if(cap>0){
   t2=setTimeout(arm,cap);
-  // The portraits are in the DOM as <img>; the masks are not (they're CSS mask-image on the tint
-  // layer, which exposes no load event), so we wait on the primed Image objects standing in for
-  // them. Both have to be ready or the dwell starts on a portrait that's about to change colour.
+
   const imgs=[].slice.call($('lgTapeBody').querySelectorAll('.lgFigImg'))
               .concat(Object.keys(TAPE_IMG).map(k=>TAPE_IMG[k]));
   Promise.all(imgs.map(im=>im&&im.decode?im.decode().catch(()=>0):0)).then(arm,arm);
  }else arm();
  return ()=>{clearTimeout(t1);clearTimeout(t2);armed=true;};
 }
-/* The tape's figurine card. renderLgTape and renderCupTape read different data (LG.teams vs cup
-   entrants) but draw the SAME card, and it was copy-pasted between them — so the tint layer would
-   have had to be added twice and kept in sync twice. One builder, two callers.
-   The tint is a layer stacked OVER the portrait, masked to the team parts and composited in
-   `color` blend mode: hue and saturation come from the team colour, luminance stays the render's.
-   That's what keeps the Cycles lighting — the specular hits, the ambient occlusion in the folds,
-   the bounce — instead of flooding the kit with flat colour the way a straight overlay would.
-   `flip` has to be carried onto the tint as well as the portrait, or the mask lands on the mirrored
-   figurine's other side.
-   MASK-IMAGE IS SET INLINE, NOT VIA A CUSTOM PROPERTY. This looks like the uglier option and is
-   the only correct one: a relative url() inside a CSS variable is resolved against the stylesheet
-   that CONSUMES it, not the document. `--mask:url(assets/renders/x.png)` read by a rule in
-   css/styles.css therefore requested css/assets/renders/x.png — a folder that does not exist — so
-   every mask 404'd and no figurine ever tinted. An inline mask-image resolves against the document
-   like the <img> beside it does. The sizing/repeat/position half of the mask stays in the
-   stylesheet; only the URL has to live here. */
+
 function tapeFig(col,src,mask,flip,name){
  const f=flip?' flip':'';
  if(!src)return '<div class="lgTapeFig" style="--tc:'+col+'"><div class="lgFigBox lgFigEmpty">?</div>'+
@@ -565,9 +481,7 @@ function renderLgTape(op){
  const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
  const rA=modelRender(me.model),rB=modelRender(them.model);
  const kA=modelRenderMask(me.model),kB=modelRenderMask(them.model);
- // the caption used to be prefixed with the figurine's emoji ico — pointless beside an actual
- // render of that same figurine, and it was '🤖' on half the roster and '🏃' on the rest.
- // Card markup lives in tapeFig() so the cup tape draws an identical one from its own data.
+ 
  const teamCard=(col,name,off,def,figHtml)=>
   '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
  $('lgTapeBody').innerHTML=
@@ -580,11 +494,7 @@ function lgPlayMatch(){
  const fx=lgPlayerFixture();if(!fx)return;
  const pid=LG.playerId,op=fx[0]===pid?fx[1]:fx[0],T=LG.teams;
  S.teamStats=[T[pid].bld,T[op].bld];
- const pdConf=LGC.divisions[playerDiv()];              // this division's brain difficulty (falls back to baseDiff)
- // prevKit is KIT ONLY. The venue (table+skin+room+pitch) belongs to the league SESSION now — it
- // went on when the lobby opened and comes off when you leave league land (lgVenueEnter/Exit), so
- // the match neither swaps it in nor hands it back. Putting it here is what made every round load
- // the player's room on the way out and the division's room on the way back in.
+ const pdConf=LGC.divisions[playerDiv()];
  S.lg={op,diff:(pdConf&&pdConf.diff)||LGC.baseDiff,names:[T[pid].name,T[op].name],cols:[T[pid].col,T[op].col],rec:false,
         prevKit:{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,special:cfg.special,power:cfg.power}};
  const sel=$('lgControl').value;
@@ -593,10 +503,7 @@ function lgPlayMatch(){
    document.documentElement.style.setProperty('--c0',cfg.redColor);
    document.documentElement.style.setProperty('--c1',cfg.blueColor);
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
- // The venue is normally already resident (openLeague applied it), so this resolves SYNCHRONOUSLY
- // and the tape is pure showpiece. It stays a GATE because table assets are lazy: a division can
- // force a table the player has never opened, and Play can be clicked before the lobby's fetch has
- // landed. The tape screen (or the brief hidden beat when tape is off) IS the loading room.
+
  let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
  const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
  lgVenueEnter(lgDivVenue(playerDiv()),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen here
@@ -605,11 +512,11 @@ function lgPlayMatch(){
   renderLgTape(op);
   $('lgTape').classList.remove('hidden');
   const go=()=>{tapeDone=true;check();};
-  const cancel=tapeDwell(go);            // dwell starts once the portraits can paint (see tapeDwell)
+  const cancel=tapeDwell(go);           
   $('lgTape').onclick=()=>{cancel();go();};
  }
 }
-function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisions
+function lgRecord(w){ 
  if(!LG||!S.lg||S.lg.rec)return;S.lg.rec=true;
  const prevRanks=[];for(let t=0;t<3;t++)prevRanks[t]=lgOrderDiv(t).map(e=>e.i);
  const pd=playerDiv(),pdiv=LG.divs[pd];
@@ -640,7 +547,7 @@ function lgRecord(w){ // called by endMatch while S.lg is live; sims ALL divisio
  saveLG();
 }
 function lgReturn(){$('lgSeasonEnd').classList.add('hidden');if(LG&&LG.seasonEnd){LG.seasonEnd.shown=true;saveLG();}gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg/S.teamStats; hide the season-end overlay + mark shown so openLeague doesn't re-pop it)
-/* ---- end-of-season summary (plays after the final match, before the lobby) ---- */
+
 function lgFinalize(){ // freeze final standings + promotion/relegation + apply player's relegation penalty
   const orders=[lgOrderDiv(0),lgOrderDiv(1),lgOrderDiv(2)];
   const promotedIds=[[],[]],relegatedIds=[[],[]];
@@ -648,8 +555,8 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   for(let t=0;t<2;t++)relegatedIds[t]=orders[t+1].slice(-LGC.relegateN).map(e=>e.i);
   const divs=[];
   for(let t=0;t<3;t++){
-   const promotedSet=new Set(t<2?promotedIds[t]:[]);   // top of this div → up
-   const dropSet=new Set(t>0?relegatedIds[t-1]:[]);     // bottom of this div → down
+   const promotedSet=new Set(t<2?promotedIds[t]:[]);   
+   const dropSet=new Set(t>0?relegatedIds[t-1]:[]);    
    const champ=orders[t][0];
    divs.push({name:LGC.divisions[t].name,tier:t,champ:champ.t.name,champId:champ.i,
     order:orders[t].map((e,pi)=>({i:e.i,name:e.t.name,col:e.t.col,w:e.t.w,l:e.t.l,gf:e.t.gf,ga:e.t.ga,p:e.t.p,
@@ -663,8 +570,7 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
    const pChamp=oldPd===2&&orders[2][0].i===LG.playerId;
    const pCup=oldPd===2&&pPos<=2; // Premier top 2 qualify for the Champions Cup
    const fate=pChamp?'champion':pPromoted?'promoted':pRelegated?'relegated':'stayed';
-  // Apply the player's stat change NOW (before lgNewSeason swaps divisions) so the lobby squad
-  // already reflects it; lgNewSeason skips the player for the same reason.
+
   let playerLosses=[],playerGains=[];
   if(pRelegated)playerLosses=lgRelegatePenalty(LG.teams[LG.playerId]);
   else if(pPromoted)playerGains=lgPromoteBoost(LG.teams[LG.playerId],pPos-1);
@@ -723,9 +629,7 @@ function lgSEFate(se){
   };
   const m=map[se.playerFate];
   const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
-  // the label MUST be wrapped: .lgSEFate is a COLUMN flex container, so the trophy <span> and the
-  // bare ' CHAMPIONS' text node would each become their own flex item and stack on separate rows.
-  // (It only worked before because the emoji made the whole label one text node.)
+
   return '<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+
    '<span class="lgSEPos">'+posTxt+'</span></div>';
 }
@@ -779,7 +683,7 @@ function lgSEGain(se){
     let pips='';
     for(let i=0;i<STC.max;i++){
      if(i<before)pips+='<b class="on">▮</b>';
-     else if(i<after)pips+='<b class="gain">▮</b>'; // the added pip(s)
+     else if(i<after)pips+='<b class="gain">▮</b>'; 
      else pips+='<b>▯</b>';
     }
     h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
@@ -802,10 +706,9 @@ function renderLgSeasonEnd(){
    lgSERewards(r,se)+
    lgSELoss(se)+
    lgSEGain(se);
-  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){ // wire the Enter Cup button (created in lgSERewards)
+  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){ 
     const b=$('lgSEEnterCup');
-    // cupLive, NOT cupValid: a FINISHED bracket from an earlier championship is still "valid", so
-    // the old test meant the second cup was never drawn — this button re-opened last season's.
+   
     if(b)b.onclick=()=>{if(!cupLive())cupCreate();openCup();};
   }
 }
@@ -815,10 +718,10 @@ function showSeasonEnd(){
   $('lgSeasonEnd').classList.remove('hidden');
   renderLgSeasonEnd();
   confetti(0);
-  S.lgChampDone=true; // don't also fire lobby confetti
+  S.lgChampDone=true;
 }
 function lgWinContinue(){
-  if(S.lg&&S.lg.cup){openCup();return;} // finished a cup tie → show the updated bracket
+  if(S.lg&&S.lg.cup){openCup();return;}
   if(LG&&LG.seasonEnd&&!LG.seasonEnd.shown){
     LG.seasonEnd.shown=true;saveLG();
     showSeasonEnd();
@@ -840,8 +743,7 @@ function renderLgScout(ti){
   '<div class="lgRateBar"><span class="def">DEF</span><div class="lgRate"><div class="def" style="width:'+(def/10*100|0)+'%"></div></div><span class="num">'+(def*10|0)/10+'</span></div>'+
    '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
   lgBuildHTML(t.bld,false);
- // portrait goes on AFTER the innerHTML build — .figMug holds the fallback figure mark and
- // mugImg overlays the render on top of it if this figurine has one (core.js).
+
  if(m)mugImg(m,$('lgScoutBody').querySelector('.figMug'),'figMugImg','hasMug');
  $('lgScout').classList.remove('hidden');
 }
@@ -850,8 +752,7 @@ function renderLgHist(){
  $('lgHistPanel').classList.remove('hidden');
   const playerName=LG.teams[LG.playerId].name;
   const titles=LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===playerName).length;
-   // cupTitles was incremented on every cup win and then read by nothing at all — the only trace of
-   // a Champions Cup anywhere in the lobby was a trophy glyph on one history row.
+  
    const cups=LG.cupTitles||0;
    $('lgTitles').textContent=(titles?'· '+titles+'x Premier Champion':'')+(cups?(titles?' · ':'· ')+cups+'x Cup Winner':'');
    let h='<div class="row head"><span>Season</span><span>Division</span><span>Pos</span></div>';
@@ -866,10 +767,7 @@ function renderLgHist(){
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
   showScreen('league');   // hides menu/lgSlots + applies the saved panel arrangement (js/screens.js → layApply)
-  // THE LOBBY IS THE DIVISION'S VENUE. Applied on the way in, not at kickoff — so the table/room
-  // behind the panels is where the next fixture is played, and a season is one asset swap instead
-  // of one per round. Must sit ABOVE the season-end return: it also cancels the restore that the
-  // screen change above (or gotoMenu, on the way back from a match) just scheduled.
+ 
   lgVenueEnter(lgDivVenue(playerDiv()));
   if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
   const pd=playerDiv(),dv=LG.divs[pd];
@@ -894,8 +792,7 @@ function renderLeague(reveal){
  }
  $('lgSeasonTag').innerHTML=(ban||'')+'<span>'+dv.name+' · SEASON '+LG.season+(dv.champ?' · COMPLETE':' · ROUND '+(LG.round+1)+' / '+dv.fixtures.length)+'</span>';
   $('lgNew').textContent=dv.champ?'Next Season ▶':'Reset League';
-  // Resume an in-progress cup, or review the one just decided. Both are THIS season's only — a cup
-  // stops being reachable at rollover, which is also what frees the slot for the next one.
+ 
   $('lgCup').classList.toggle('hidden',!cupCurrent());
   $('lgCup').textContent=cupLive()?'Champions Cup':'Cup Result';
  renderLgTable();renderLgFix();renderLgLast(reveal);renderLgSquad();renderLgHist();
@@ -919,8 +816,7 @@ function renderLgTable(){
 function renderLgFix(){
  const pd=playerDiv(),dv=LG.divs[pd],done=!!dv.champ,T=LG.teams,pid=LG.playerId;
  $('lgSettingsPanel').classList.toggle('hidden',done); // no match to configure once a division is complete
- // The save's four match rules, seeded from LG so they survive a reload. Editable per round —
- // and the cup reads the SAME values, so changing one here changes the final too.
+ 
  seedRuleCtls(LG_RULE_IDS);
  $('lgControl').value=LG.control||''; // seed from the save's default so it survives reloads
  $('lgPlay').classList.toggle('hidden',done);
@@ -955,12 +851,7 @@ function renderLgLast(reveal){
  });
  $('lgLast').innerHTML=h;
 }
-/* Squad + upgrade spend, hosted by BOTH lobbies now (league and cup) off the same
-   LG.teams[playerId] block — hence the host ids and the `again` re-render callback. Parts were
-   never a per-mode currency: winning a cup tie pays `CUP.tieParts` into the same pool the league
-   pays into, and the cup screen used to show you neither the pool nor a way to spend it.
-   Spending mid-cup lands IMMEDIATELY on the table — cupEnt('player') reads the live `bld`, so an
-   upgrade bought here is in the tie you start next. */
+
 function renderSquadInto(squadId,upId,again){
  const t=LG.teams[LG.playerId];
  $(upId).textContent=t.up;
@@ -1045,10 +936,7 @@ function openSlots(){
 }
 /* ---- setup form ---- */
 /* ---- 3D figurine preview for setup form ---- */
-// Renders through the SHARED preview context (PRV, world.js) into #lgSetupFig as a plain 2D
-// canvas. The old dedicated renderer needed preserveDrawingBuffer because it drew straight to a
-// visible canvas once per interaction with no rAF loop; blitting to 2D removes that need — the
-// destination canvas holds the pixels and the compositor won't clear them.
+
 let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null,plat:null,lid:null,bs:1,
  init(){
   if(this.ready)return;
@@ -1114,8 +1002,7 @@ function openSetup(slot){
  $('lgSetupLgName').maxLength=$('lgSetupName').maxLength=CONFIG.control.nameMaxLength;
  $('lgSetupColor').value=cfg.redColor;
  $('lgSetupHex').textContent=cfg.redColor;
- // Match rules seed from the quick-match prefs — the numbers the player already knows they like —
- // then belong to the SAVE from here on (lgGoalCap/lgMins), cup ties included.
+
  $('lgSetupGoals').value=String(cfg.goals||LGC.goals);
  $('lgSetupGameTime').value=String(cfg.gameTime||0);
  $('lgSetupSpecial').checked=cfg.special;
@@ -1166,25 +1053,8 @@ function openSetup(slot){
   openLeague();
  };
 }
-/* =========================================================================
-   CHAMPIONS CUP — post-season KO for the top of the Premier League.
-   The player is one of 8 seeds; the other 7 are drawn from a PERSISTED pool of
-   ~12 elite "special teams" (top-tier builds), leaving spares for variety. All
-   ties single-leg on the cup's own table/room/pitch (CONFIG.league.cup).
-   The player's ties are played live; every other tie is simmed with lgSimBlds.
-   State lives on LG.cup (roundsTies = full bracket history, round = current).
+/* ============== CHAMPIONS CUP ================ */
 
-   THE BRACKET IS A TREE, and that is the whole shape of this file's cup half.
-   Entrants are ranked by rating and dropped into the standard KO seeding order
-   (1v8 · 4v5 · 2v7 · 3v6), then a round's winners KEEP THEIR SLOT: the winner of
-   tie 2j meets the winner of tie 2j+1, so the top two seeds can only meet in the
-   final. Nothing is reshuffled between rounds — the columns renderCup draws
-   actually connect. `cupNextRound` is the ONE place that pairing lives and both
-   live play and the sim-ahead go through it, so the two can't drift apart.
-   ========================================================================= */
-// `pool` lets cupCreate resolve entrants BEFORE LG.cup is assigned (it's assigned last and whole —
-// see cupCreate). An id with no entrant resolves to a grey placeholder rather than throwing: one
-// bad row in a save should cost you that row, not the entire bracket screen.
 function cupEnt(id,pool){
   if(id==='player'){const t=LG.teams[LG.playerId];return{id:'player',name:t.name,col:t.col,model:t.model,bld:t.bld};}
   const p=pool||(LG.cup&&LG.cup.pool)||[];
@@ -1192,15 +1062,9 @@ function cupEnt(id,pool){
 }
 function cupRate(e){return lgOff(e.bld)+lgDef(e.bld);}   // seeding strength — the same two numbers the tape shows
 function cupChampName(){const c=LG&&LG.cup&&LG.cup.champion;return c?(c==='player'?LG.teams[LG.playerId].name:cupEnt(c).name):null;}
-// A cup is only usable once it has a DRAWN BRACKET. Anything less (a save written while
-// cupCreate was part-way through) must read as "no cup" so cupCreate re-runs, or the Enter
-// Cup button is dead forever with no way back.
+
 function cupValid(){return !!(LG&&LG.cup&&LG.cup.roundsTies&&LG.cup.roundsTies.length);}
-// …and only THIS season's cup counts as one. LG.cup is never cleared (it carries the persisted
-// elite pool between championships), so without the season test a finished bracket reads as "a cup
-// exists" forever: the second time the player qualified, ENTER CHAMPIONS CUP re-opened the old
-// completed bracket and a second cup could never be drawn. cupLive = playable, cupCurrent = this
-// season's, decided or not (so a just-won bracket stays reviewable from the lobby until rollover).
+
 function cupLive(){return cupValid()&&!LG.cup.done&&LG.cup.season===LG.season;}
 function cupCurrent(){return cupValid()&&LG.cup.season===LG.season;}
 function cupMakePool(existing){ // generate the elite pool ONCE; persists on LG across seasons
@@ -1222,10 +1086,7 @@ function cupMakePool(existing){ // generate the elite pool ONCE; persists on LG 
   }
   return pool;
 }
-// Standard single-elimination seeding order for a power-of-two field, built by mirror-folding:
-// [0] → [0,1] → [0,3,1,2] → [0,7,3,4,1,6,2,5]. Read it as slot→seed, so consecutive PAIRS of slots
-// are the first-round ties (1v8, 4v5, 2v7, 3v6) and each half of the list is a half of the draw.
-// Generating it beats a hand-written table because it stays correct if the field ever grows to 16.
+
 function cupSeedOrder(n){
   let o=[0];
   while(o.length<n){const m=o.length*2-1,x=[];for(let i=0;i<o.length;i++){x.push(o[i]);x.push(m-o[i]);}o=x;}

@@ -326,7 +326,7 @@ const CONFIG = {
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, prad:1.0, grav:250,
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, prad:1.0, grav:200,
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
    footBox:{x:1.3,y:1.0,z:1.35},     // foot box half-extents: x along leg, y perpendicular, z along rod
    footBoxOff:{x:-0.65,y:0.4},        // foot box centre offset from foot-base, rod-local
@@ -338,6 +338,10 @@ physics:{
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
    /* ---- contact audio gates: is this contact an impact or a roll? ---- */
    wallHitSnd:16,                         // |v| into a side/end wall above this plays a tap
+   /* true = a ball that clears a wall in the air is really OUT: it falls away and gets the
+      out-of-play whistle, instead of being caught on the way down OUTSIDE the table and clamped
+      back onto the pitch. false restores the old behaviour. See wallLatch in js/physics.js. */
+   wallEscape:true,
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
    contactEps:0.35,                       // gap below which the roll probe counts a ball as touching
@@ -367,7 +371,7 @@ kick:{
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0.01, restPower:0.8,      // passive touch / struck shot
    powFrom:0.03, powTo:0.2,       // swing-time window in which restPower is used instead of rest
-   grip:0.08,                     // fraction of the foot's velocity lerped into the ball on contact
+   grip:0.15,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.85,
    // Bonus power for a clean strike in the centre of the foot, scaled by the acc stat.
    sweetSpot:{
@@ -441,8 +445,22 @@ kick:{
    pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
 
    pullLerp:24,                    // ease rate toward it
+   blockAt:0.30,                   // wind-up shortfall (asked minus got) that reads as "no room to swing"
+   blockLerp:9,                    // how fast that reading eases in and out — a rolling ball must not strobe it
    tapMax:0.11,                    // 'kick'/'both': a press shorter than this is a plain tap
    trem:{amp:0.055, hz:34},        // overcharge tremble — DISPLAY ONLY (see the banner in shots.js)
+   holdT:0.42,                     // how long the marker holds its verdict after the wind-up ends
+   holdRise:5.5,                   // …and how far it lifts away from the rod while that settles
+   /* THE VERDICT. Indexed by the band js/shots.js stamps on the rod when a wind-up ends:
+      0 too early · 1 clean · 2 overcooked · 3 no room to swing. Lives here and not in fx.js so the
+      marker colour and the words can never drift apart — they are one verdict shown two ways. */
+   bandCol:['#8fa6c8','#ffd24d','#ff3b3b','#7d8796'],
+   text:{
+    on:true,                       // the words. Colour alone teaches the band once you know it;
+    inMatch:false,                 //   the words are for LEARNING it, so Training and Trials only
+    dur:0.85,
+    labels:['TOO EARLY','CLEAN STRIKE','OVERCOOKED','NO ROOM']
+   },
    
    tone:{
     on:true,
@@ -468,7 +486,7 @@ ai:{
    ttaMax:0.8,                                // only lead the ball's z if it arrives within this (s)
    inFrontMin:2, inFrontMax:6.3,            // ahead-window a forward swing can reach
    underFootFront:6.5, underFootBack:2.9,     // ahead/behind window where a swung rod stays forward
-   lowY:2.2,                                    // only swing when the ball is below this height
+   lowY:2.05,                                    // only swing when the ball is below this height
    raiseBehind:-7.8,                          // ball must be this far behind before the rod will raise
    overFoot:2.2,                              // |Δx| under which the ball is at the feet and strikeable
    overFootOffset:1.4,                        // shift the overFoot zone this far forward of the rod
@@ -606,7 +624,7 @@ ai:{
       windup:0.08,  windupA:-0.35,  // token pull-back
       strike:0.20,  strikeA:0.85,   // forward sweep end time / peak angle (≈10 rad/s)
       hold:0.28,                    // hold peak
-      drop:0.42,                    // return to neutral
+      drop:0.35,                    // return to neutral
       powFrom:0.08, powTo:0.20,     // power window (covers the contact)
       restPower:0.35,               // restitution inside the power window
       rest:0                        // passive touch outside it
@@ -617,9 +635,9 @@ ai:{
       angle:-0.8,        // lift angle the rod eases to (rod-local; full raiseA is -1.6)
       lerp:4,             // ease rate toward the angle
       back:-5.8,          // x band behind the rod where a loitering ball triggers it…
-      front:0.5,        // …up to this line
-      maxVX:55,            // ball |v.x| must be under this
-      maxSpeed:55,        // total ball speed cap
+      front:0.85,        // …up to this line
+      maxVX:85,            // ball |v.x| must be under this
+      maxSpeed:85,        // total ball speed cap
       abortT:6.5          // give up after this long (s, keep under deadball.stallT)
    },
    // Evade: slide the men away from a slow ball stuck behind them so play can restart.
@@ -669,7 +687,7 @@ ai:{
       minAcc:0.25,        // minimum aim accuracy to bother gap-aiming
       sprayMix:0.2,       // fraction of the normal spray still added onto the gap target
       openMargin:0.8,     // lane clearance at or above this counts as an open shot
-      holdMax:2.5         // how long a smart ATT/MID holds a covered shot (s)
+      holdMax:3.5         // how long a smart ATT/MID holds a covered shot (s)
    },
    // Defensive positioning: GK and DEF sit on the ball→own-goal line instead of tracking ball z.
    defend:{
@@ -714,16 +732,10 @@ ai:{
  playerModel:{
   default:'cyborg',
   /* SHADOW CASTERS PER FIGURINE. A figurine GLB arrives as one sub-mesh PER MATERIAL — the
-     shipped ones are 5 (kit / visor / skin / hair / trim) — and every one of them used to be
-     castShadow=true, so 22 men submitted 110 draws into the main pass AND 110 more into the
-     shadow pass. But the shadow only needs the SILHOUETTE, and measured on the cyborg the kit
-     mesh spans 0.94 of the figure's bounding diagonal while the next-largest spans 0.38 — i.e.
-     every other part is enclosed by it and contributes nothing a soft shadow can resolve.
-     A part casts only if its bounding diagonal is at least this fraction of the whole
-     figure's; the LARGEST part always casts, so a model split into many even pieces can never
-     end up with no shadow at all. Decided ONCE on the template at load, not per clone.
-     0 = every part casts (the old behaviour). */
-  shadowMinFrac:0.5,
+     shipped ones are 5 (kit / visor / skin / hair / trim) — and each one is its own draw in
+     the shadow pass, so 22 men can cost 110 of them instead of 22. HOW MANY PARTS ACTUALLY
+     CAST is a shadow-quality decision, not a model one: it lives in `casterFrac` on the tiers
+     in CONFIG.render.shadow.quality. */
   // Figurine registry — add an entry + its .glb and it appears in the Customize panel.
   //   teamParts  material names that get team-coloured
   //   hairParts  material names tinted by the hair swatch
@@ -879,8 +891,8 @@ ai:{
   // Quick-pick kit colour swatches for the panel.
   swatches:['#ff0011','#ff8c3a','#fff94d','#00fa19','#2af5ff','#3d8bff','#5900ff','#ff2bd6','#f2ede2','#757983'],
   // Natural hair colours for random tinting.
-  hairSwatches:['#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#c9b896','#e8d4b9','#f5f1c8','#c49a6c','#8b5a2b','#6b3f1a','#4a2c1a','#b8860b','#daa520','#cd853f'],
-  // Max figurine GLB templates kept resident, LRU (the 2 on the table are always protected).
+  hairSwatches:[  '#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#583b00','#985d29',
+                  '#f6f1ba','#c49a6c','#aa7d53','#6b3f1a','#4a2c1a','#b8860b','#daa520','#cd853f'],
   cacheMax:6
  },
 
@@ -915,8 +927,8 @@ ai:{
   //   cd          kick cooldown multiplier · aim  goal accuracy 0..1
   //   iq          chance of making the smart choice 0..1
   rookie:{speed:30,react:.23,err:0.9,range:5.0,pred:.45,cd:0.9,aim:.5,iq:.40,reactDelay:.1},
-  pro:   {speed:39,react:.18,err:0.75,range:5.8,pred:.75,cd:.75,aim:.65,iq:.55,reactDelay:.07},
-  legend:{speed:43,react:.13,err:.55, range:6.6,pred:0.95,cd:.50,aim:.9,iq:.8,reactDelay:.04}
+  pro:   {speed:39,react:.18,err:0.75,range:5.8,pred:.7,cd:.75,aim:.65,iq:.55,reactDelay:.07},
+  legend:{speed:43,react:.13,err:.55, range:6.6,pred:0.9,cd:.50,aim:.9,iq:.8,reactDelay:.04}
  },
 
  /* ---- rod stats (league builds) ---------------------------------------
@@ -981,7 +993,7 @@ ai:{
     promoteBoost1:2, promoteBoost2:1, // stat-floor boost per still-at-base stat, 1st / 2nd place
     relegateLose:1,           // stat points removed from every stat per role block on relegation
     relegateFloor:1,          // a stat can't drop below this via relegation
-    slots:3,                  // number of save slots
+    slots:6,                  // number of save slots
     // Zone-rating weights for the statistical sim (relative — lgRodScore normalizes).
     // offMix/defMix are the ATT-vs-MID and GK-vs-DEF shares.
     rate:{
@@ -1005,8 +1017,8 @@ ai:{
        'PIVOT PIRATES','THE SWERVE','CLEAN SHEETS FC','TOE-POKE TOWN','LOB CITY',
        'WALL PASS WANDERERS','SPINNERS UTD','THE DEADLOCKS','CROSSBAR CREW',
        'SCREWBALL CITY','THE HANDLERS','BENCHWARMERS FC','WRATH OF ROD','TACTICAL FOULS', 
-       'Net Busters', 'Last Minute FC', 'The Nutmeggers', 'Handlebar Heroes', 'The Rod Squad', 
-       'Spin Masters', 'The Misfits', 'Relegation Rovers', 'The Slide Tackleers', 'The Foosballers', 'The Table Titans'
+       'NET BUSTERS', 'LAST MINUTE FC', 'THE NUTMEGERS', 'HANDLEBAR HEROES', 'THE ROD SQUAD', 
+       'SPIN MASTERSS', 'THE MISFITS', 'RELEGATION ROVERS', 'SLIDE TACKLERS', 'THE FOOSBAWLERS', 'TABLETOP TROOPERS'
     ],
     cols:[
        '#ff8c3a','#ffcf4d','#7dff8a','#2af5ff','#3d8bff','#74abff',
@@ -1173,7 +1185,7 @@ ai:{
    fractureFadeOut:.5,// seconds fracture debris fades out before disposal (players and ball)
    // --- ball self-fracture ---
    explosionSrc:'assets/animations/cannonball_explosion.glb', // baked ball fracture GLB, one clip per shard
-   fractureLife:2.9,   // seconds the ball debris lives (keep ≥ the baked clip length)
+   fractureLife:1.9,   // seconds the ball debris lives (keep ≥ the baked clip length)
    fractureScale:1,    // scale for the ball-fracture instance
    // --- respawn swirl: particles rising to the rod before a removed player reforms ---
    respawnSwirlSrc:'assets/animations/swirl_particles.glb', // baked particle GLB, shared by every figurine
@@ -1223,58 +1235,61 @@ ai:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
       mass:1.25,maxV:135,w:70,trail:'#ffffff',
       audio:{
-       kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
-             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
-       // Wall/floor tap. noiseVol is the quietest audible tap, noiseVolScale how fast it
-       // grows with impact speed; body* adds a low thump under hard hits.
-       wall:{noiseDur:.045,noiseFreq:2200,noiseFreqScale:4,noiseVol:.012,noiseVolScale:.0035,noiseVolMax:.30,q:.9,
-             bodyFrom:55,bodyFreq:150,bodyDur:.055,bodyVolScale:.0016,bodyVolMax:.16,bodySlide:-55},
-       // Sustained-contact roll: warm floor, thin bright scrape.
-       roll:{floor:{vol:.26,freq:250,freqScale:5.0,q:.7},
-             wall: {vol:.20,freq:620,freqScale:11,q:1.5}},
-       post:{noiseDur:.03,noiseFreq:3200,noiseVolScale:.5,freqs:[523,832,1290,1900],droop:.94,
-             attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
+         kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
+               beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
+         // Wall/floor tap. noiseVol is the quietest audible tap, noiseVolScale how fast it
+         // grows with impact speed; body* adds a low thump under hard hits.
+         wall:{noiseDur:.045,noiseFreq:2200,noiseFreqScale:4,noiseVol:.012,noiseVolScale:.0035,noiseVolMax:.30,q:.9,
+               bodyFrom:55,bodyFreq:150,bodyDur:.055,bodyVolScale:.0016,bodyVolMax:.16,bodySlide:-55},
+         // Sustained-contact roll: warm floor, thin bright scrape.
+         roll:{floor:{vol:.26,freq:250,freqScale:5.0,q:.7},
+               wall: {vol:.20,freq:620,freqScale:11,q:1.5}},
+         post:{noiseDur:.03,noiseFreq:3200,noiseVolScale:.5,freqs:[523,832,1290,1900],droop:.94,
+               attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
       }
    },
    fire:   {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1,maxV:100,w:14,trail:'#ff8c3a',light:0xff5500,
+      mass:1,maxV:100,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
-       kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
-             beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.001,beepVolScale:.002,beepVolMax:.015,beepSlide:-80,attack:.08,decay:1.1,},
-       wall:{noiseDur:.05,noiseFreq:2800,noiseFreqScale:6,noiseVol:.014,noiseVolScale:.0025,noiseVolMax:.16,q:.7,
-             bodyFrom:70,bodyFreq:120,bodyDur:.07,bodyVolScale:.0012,bodyVolMax:.10,bodySlide:-40},
-       roll:{floor:{vol:.30,freq:420,freqScale:7,q:.5},          // airy hiss
-             wall: {vol:.24,freq:1100,freqScale:16,q:.9}},
-       post:{noiseDur:.04,noiseFreq:4000,noiseVolScale:.6,freqs:[587,932,1397,2100],droop:.93,
-             attack:.003,decay:.8,vol:.15,volScale:.005,volMax:.35}
+         kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
+               beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
+         wall:{noiseDur:.05,noiseFreq:2800,noiseFreqScale:6,noiseVol:.014,noiseVolScale:.0025,noiseVolMax:.16,q:.7,
+               bodyFrom:70,bodyFreq:120,bodyDur:.07,bodyVolScale:.0012,bodyVolMax:.10,bodySlide:-40},
+         roll:{floor:{vol:.30,freq:420,freqScale:7,q:.5},          // airy hiss
+               wall: {vol:.24,freq:1100,freqScale:16,q:.9}},
+         post:{noiseDur:.04,noiseFreq:4000,noiseVolScale:.6,freqs:[587,932,1397,2100],droop:.93,
+               attack:.003,decay:.8,vol:.15,volScale:.005,volMax:.35}
       }
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:7,maxV:100,w:30,trail:'#000000',
+      mass:7,maxV:60,w:30,trail:'#000000',
       audio:{
-       kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
-             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
-       wall:{noiseDur:.075,noiseFreq:900,noiseFreqScale:2.5,noiseVol:.02,noiseVolScale:.004,noiseVolMax:.38,q:1.1,
-             bodyFrom:30,bodyFreq:85,bodyDur:.12,bodyVolScale:.0028,bodyVolMax:.30,bodySlide:-30},
-       roll:{floor:{vol:.42,freq:130,freqScale:2.2,q:1.0},       // low grinding rumble
-             wall: {vol:.34,freq:300,freqScale:5,q:1.8}},
-       post:{noiseDur:.04,noiseFreq:2200,noiseVolScale:.4,freqs:[328,523,784,1100],droop:.95,
-             attack:.004,decay:.32,vol:.2,volScale:.006,volMax:.6}
+         kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
+               beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
+         wall:{noiseDur:.075,noiseFreq:900,noiseFreqScale:2.5,noiseVol:.02,noiseVolScale:.004,noiseVolMax:.38,q:1.1,
+               bodyFrom:30,bodyFreq:85,bodyDur:.12,bodyVolScale:.0028,bodyVolMax:.30,bodySlide:-30},
+         roll:{floor:{vol:.42,freq:130,freqScale:2.2,q:1.0},       // low grinding rumble
+               wall: {vol:.34,freq:300,freqScale:5,q:1.8}},
+         post:{noiseDur:.04,noiseFreq:2200,noiseVolScale:.4,freqs:[328,523,784,1100],droop:.95,
+               attack:.004,decay:.32,vol:.2,volScale:.006,volMax:.6}
       }
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.5,maxV:140,w:3,splits:true,trail:'#c39bff',
+      mass:1.5,maxV:140,w:6,splits:true,trail:'#c39bff',
       audio:{
-       kick:{noiseDur:.05,noiseFreq:6000,noiseFreqScale:10,noiseVol:.05,noiseVolScale:.002,noiseVolMax:.02,
-             beepFreq:80,beepDur:.17,beepType:'sine',beepVol:.01,beepVolScale:.04,beepVolMax:.25,beepSlide:-55},
-       wall:{noiseDur:.035,noiseFreq:3400,noiseFreqScale:7,noiseVol:.010,noiseVolScale:.0030,noiseVolMax:.24,q:1.6,
-             bodyFrom:65,bodyFreq:210,bodyDur:.04,bodyVolScale:.0012,bodyVolMax:.11,bodySlide:-70},
-       roll:{floor:{vol:.20,freq:380,freqScale:8,q:1.2},         // glassy and light
-             wall: {vol:.17,freq:1400,freqScale:18,q:2.4}},
-       post:{noiseDur:.025,noiseFreq:3600,noiseVolScale:.55,freqs:[659,988,1480,2200],droop:.92,
-             attack:.002,decay:.22,vol:.12,volScale:.003,volMax:.4}
+         kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
+            beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
+         // Wall/floor tap. noiseVol is the quietest audible tap, noiseVolScale how fast it
+         // grows with impact speed; body* adds a low thump under hard hits.
+         wall:{noiseDur:.045,noiseFreq:2200,noiseFreqScale:4,noiseVol:.012,noiseVolScale:.0035,noiseVolMax:.30,q:.9,
+               bodyFrom:55,bodyFreq:150,bodyDur:.055,bodyVolScale:.0016,bodyVolMax:.16,bodySlide:-55},
+         // Sustained-contact roll: warm floor, thin bright scrape.
+         roll:{floor:{vol:.26,freq:250,freqScale:5.0,q:.7},
+               wall: {vol:.20,freq:620,freqScale:11,q:1.5}},
+         post:{noiseDur:.03,noiseFreq:3200,noiseVolScale:.5,freqs:[523,832,1290,1900],droop:.94,
+               attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
       }
    },
    knuckle: {
@@ -1298,14 +1313,14 @@ ai:{
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
       mass:3,maxV:140,w:3,value:2,trail:'#ffd75e',metal:.85,
       audio:{
-       kick:{noiseDur:.055,noiseFreq:1500,noiseFreqScale:3,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
-             beepFreq:500,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
-       wall:{noiseDur:.05,noiseFreq:2000,noiseFreqScale:3.5,noiseVol:.013,noiseVolScale:.0034,noiseVolMax:.28,q:2.2,
-             bodyFrom:45,bodyFreq:190,bodyDur:.09,bodyVolScale:.0020,bodyVolMax:.20,bodySlide:-25},
-       roll:{floor:{vol:.30,freq:200,freqScale:4,q:1.4},         // dense and ringy
-             wall: {vol:.25,freq:900,freqScale:9,q:3.0}},
-       post:{noiseDur:.028,noiseFreq:3000,noiseVolScale:.48,freqs:[587,880,1319,1760],droop:.93,
-             attack:.003,decay:.26,vol:.15,volScale:.0045,volMax:.52}
+         kick:{noiseDur:.055,noiseFreq:1500,noiseFreqScale:3,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
+               beepFreq:500,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
+         wall:{noiseDur:.05,noiseFreq:2000,noiseFreqScale:3.5,noiseVol:.013,noiseVolScale:.0034,noiseVolMax:.28,q:2.2,
+               bodyFrom:45,bodyFreq:190,bodyDur:.09,bodyVolScale:.0020,bodyVolMax:.20,bodySlide:-25},
+         roll:{floor:{vol:.30,freq:200,freqScale:4,q:1.4},         // dense and ringy
+               wall: {vol:.25,freq:900,freqScale:9,q:3.0}},
+         post:{noiseDur:.028,noiseFreq:3000,noiseVolScale:.48,freqs:[587,880,1319,1760],droop:.93,
+               attack:.003,decay:.26,vol:.15,volScale:.0045,volMax:.52}
       }
    },
   },
@@ -1346,41 +1361,13 @@ ai:{
    exposure:1.08,
    roomLight:{ gain:0.8, reach:3, decay:2, minDist:20, max:0 },
    roomLightPool:{ pad:{point:1,spot:1,dir:0}, max:12, shadow:{point:1,spot:2,dir:0} },
-   shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:46, bottom:-46, far:260,
-            type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024,
-   /* SHADOW QUALITY (Options -> Display -> Shadow quality). The values above are the shared
-      base; a tier below overrides only what it changes, so the extents, the far plane and the
-      freeze are never per-tier and cannot drift apart.
-
-      THE TIERS USE DIFFERENT SHADOW TECHNIQUES, and the cheap-looking one is the expensive one.
-      Measured on this project before choosing:
-
-      LOW - 2048 map, PCF, radius 1. The shipped tuning, untouched. r128's PCF is a fixed 17-tap
-      grid run PER RECEIVING FRAGMENT, so it is paid in proportion to how much screen the table
-      fills. That is why PCFSoft was dropped here originally: same per-fragment shape, and its
-      blur is locked to ONE texel, so it cost more and looked the same.
-
-      HIGH - 1024 map, VSM, radius 6. Variance shadow maps invert the cost: a two-pass gaussian
-      blur (8 samples each) runs once over the MAP, and every receiving fragment then costs ONE
-      texture read instead of seventeen. Counted in texture fetches per frame at 1440p:
-        PCF 2048 : 37.6M   (all of it per-fragment, every frame)
-        VSM 1024 : 19.0M   (16.8M blur + 2.2M receiver)
-      and the blur sits inside the shadow pass, so the autoUpdate:false freeze skips it entirely
-      in menus, photo mode and the room editor - where PCF's per-fragment cost is still paid.
-
-      The LOW resolution is deliberate, not a compromise: VSM blurs the map, so map coarseness
-      disappears into the blur, and blur width in world units is radius x texel - a coarser map
-      buys a WIDER soft edge for the same sample spacing.
-
-      TUNING, in order: `radius` first (blur width; the 8 samples sit radius/4 texels apart, so
-      much past 6 starts to undersample). Then `bias`, which is 0 on purpose - VSM resolves
-      self-shadowing through the variance maths and a negative bias only feeds light bleeding.
-      Keep `normalBias` small for the same reason. VSM's one real artifact is that bleeding:
-      light leaking where two casters overlap at different depths. The rods sitting directly
-      above the men are the place to look for it. */
+   
+   shadow:{ bias:-0.0002, normalBias:0.35, left:-76, right:76, top:80, bottom:-80, far:260,
+            type:'pcf', mapSize:2048, autoUpdate:false, roomMapSize:1024, casterFrac:0.5,
+   
             quality:{
-              low :{ mapSize:2048, type:'pcf', radius:1, bias:-0.0002, normalBias:0.35 },
-              high:{ mapSize:1024, type:'vsm', radius:6, bias:0,       normalBias:0.15 }
+              low :{ mapSize:2048, type:'pcf', radius:1, bias:-0.0002, normalBias:0.35, casterFrac:0.5 },
+              high:{ mapSize:1024, type:'vsm', radius:6, bias:0,       normalBias:0.15, casterFrac:0   }
             } },
    idle:{ on:true, hz:4, settle:0.4, phases:['menu'], camEps:0.01, camRotEps:1e-4 }
  },
@@ -1498,7 +1485,22 @@ ai:{
    // Resident PointLights effects borrow from, keeping the scene's light count constant
    // (changing it forces a shader recompile). Overflow just drops the extra glow.
    lightPool:3,
-   warmMatch:true }, // true = compile every fx a match can fire before kickoff
+   warmMatch:true, // true = compile every fx a match can fire before kickoff
+  
+   marks:{
+    on:true,
+    count:28,                      // marks on screen at once
+    minImp:34, fullImp:80,         // softest hit that leaves anything / hit that leaves the most
+    sizeMin:1.3, sizeMax:4.0,      // mark width in table units (the ball is 3.8 across)
+    alphaMin:0.22, alphaMax:0.52,  // how dark: softest hit -> hardest
+    streak:0.02, streakMax:2.4,    // how much sideways travel smears it / longest smear, x its width
+    tilt:22,                       // degrees a square-on hit may lean, so no two look stamped
+    hold:36, fade:5,                // seconds at full strength, then seconds fading away
+    lift:0.25                      // how far it floats off the wall (stops the two z-fighting)
+    // NO COLOUR HERE ON PURPOSE. A mark multiplies the wall down rather than painting on it,
+    // so it has no colour to get wrong and can never lighten a dark wall or a dark skin.
+    // A ball type that should burn harder sets `markMul` on itself instead (see fire).
+   } },
 
  /* ---- training mode (js/training.js) ---------------------------------- */
  training:{
@@ -2087,7 +2089,7 @@ const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeb
 // Never leaves this computer. Display, performance, hardware calibration, window geometry.
 const CFG_MACHINE=new Set([
  'renderScale','shadows','shadowQuality','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
- 'particles','reflections','fog','profiler',
+ 'particles','marks','reflections','fog','profiler',
  'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
  'padDeadzone'     // stick calibration: a drifty pad on ONE machine, not a preference
 ]);
@@ -2182,6 +2184,7 @@ if(typeof cfg.physQuality!=='string')cfg.physQuality='high';
 if(typeof cfg.reducedFx!=='boolean')cfg.reducedFx=false;
 if(typeof cfg.trails!=='boolean')cfg.trails=true;
 if(typeof cfg.particles!=='boolean')cfg.particles=true;
+if(typeof cfg.marks!=='boolean')cfg.marks=true;
 // (legacy cfg.theme is left as-is — only the pitch migration below reads it)
 // Per-table chosen skin: table-id -> skin-id; missing = the table's defSkin.
 if(!cfg.skins||typeof cfg.skins!=='object')cfg.skins={};

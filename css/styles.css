@@ -153,7 +153,7 @@ input[type=text]{width:110px;text-transform:uppercase}
 /* Russo One ships ONE weight (400). Every font-weight:800/900 on it was synthetic bolding — the
    browser smearing the outlines — which is why the HUD read slightly mushy rather than punchy.
    Weights below are the ones the family actually has. Same applies to Rajdhani (500/600/700). */
-#sb .nm{font-family:var(--font-ui);font-weight:400;font-size:20px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sb .nm{font-family:var(--font-ui);font-weight:400;font-size:20px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 6px #ffd04d}
 #sb .nm.r{color:var(--c0);justify-self:end;text-align:right}
 #sb .nm.b{color:var(--c1);justify-self:start;text-align:left}
 .sbMid{display:flex;align-items:center;gap:14px}

@@ -531,9 +531,10 @@
         <h3>Effects</h3>
         <div class="row"><label>Ball trails</label><input type="checkbox" id="optTrails"></div>
         <div class="row"><label>Particles</label><input type="checkbox" id="optParticles"></div>
+        <div class="row"><label>Wall marks</label><input type="checkbox" id="optMarks"></div>
         <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
         <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
-        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
+        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Wall marks are the scuffs a hard hit leaves on the rails; they fade on their own after about ten seconds and cost a single draw call, so leave them on unless you prefer a clean table. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
@@ -692,7 +693,7 @@
   {srcs:['vendor/KTX2Loader.js','https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/loaders/KTX2Loader.js']},
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/marks.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/photo.js','js/roomedit.js','js/main.js'
  ];
  /* CDN FALLBACK — OFF BY DEFAULT, AND THAT IS THE SECURITY-RELEVANT CHOICE.

@@ -57,6 +57,7 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optReducedFx').checked=!!cfg.reducedFx;
  $('optTrails').checked=cfg.trails!==false;
  $('optParticles').checked=cfg.particles!==false;
+ $('optMarks').checked=cfg.marks!==false;
  $('optFog').checked=cfg.fog!==false;
  $('optFpsCap').value=String(cfg.fpsCap||0);
  $('optPhysQ').value=cfg.physQuality||'high';
@@ -274,6 +275,7 @@ function bindOptions(){
  $('optReducedFx').onchange=e=>{cfg.reducedFx=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';applyReducedFx();saveCfg();};
  $('optTrails').onchange=e=>{cfg.trails=e.target.checked;saveCfg();};        // fx.js spawnTrail reads cfg.trails live
  $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live
+ $('optMarks').onchange=e=>{cfg.marks=e.target.checked;if(!cfg.marks)clearMarks();saveCfg();};  // off wipes what is already up
  // Deliberately does NOT flip the preset to 'custom': fog is a LOOK, not one of the four heavy
  // knobs a preset bundles, so it is no more a preset member than ball trails are.
  $('optFog').onchange=e=>{cfg.fog=e.target.checked;applyFog();saveCfg();};   // world.js: one recompile per real change

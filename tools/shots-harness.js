@@ -64,7 +64,7 @@ function build(srcShots){
   'shotsOn,shotTrigD,shotAxis,shotPadAxis,shotChord,shotAxisPow,shotAxisCtl,shotAxisTrack,shotAxisExert,'+
   'shotBlend,SHOT_CURVE_KEYS,shotChgPow,shotChgCtl,shotChgBand,shotOver,shotArm,shotDisarm,shotConsume,'+
   'shotReset,shotPullCap,shotPullAngle,shotTrackMult,shotPassTarget,shotFire,shotSpray,shotPadUpdate,'+
-  'shotKickPress,shotCharge,shotChargeBand};',ctx,{filename:'export.js'});
+  'shotKickPress,shotCharge,shotChargeBand,shotChargeBlock,shotVerdict};',ctx,{filename:'export.js'});
  ctx.__c.rngSeed(12345);
  return ctx;
 }
@@ -75,6 +75,7 @@ function rod(over){
   removedUntil:[],kickT:-1,kickStyle:null,kickCurve:null,passTo:null,passEv:null,passEvT:0,
   raise:false,padAngleOn:false,padAngleTarget:0,kickA0:0,
   chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
+ chgBlock:0,chgEndT:null,chgEndBand:-1,chgEndK:0,
   shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1};
  return Object.assign(r,over||{});
 }
@@ -525,6 +526,106 @@ function run(src,label){
    'shots off: shotFire is the plain kickRod(r) it replaced');
   SH.on=wasOn;}
 
+
+ /* ===== 13. THE READOUT MUST NOT LIE =====
+    Two separate claims. A wind-up the sweep guard REFUSES buys no arc, and the arc is where the
+    power is — so the charge number climbing while the rod goes nowhere is the readout promising a
+    shot that cannot happen. And the verdict has to outlive the release, or the one frame the
+    player needs it is the frame it disappears. */
+ {
+  const frames=(r,s,lt,rt,TC,stick,n,fn)=>{for(let i=0;i<n;i++){ctx.S.time+=1/60;
+   C.shotPadUpdate(1/60,pad(lt,rt),s,r,TC,stick);if(fn)fn(i,r);}};
+  const bandFrame=Math.ceil(CH.sweetFrom/CH.rate*60);   // when the sweet band opens, in frames
+
+  // --- a free swing is NEVER reported as blocked. The lerp lag alone would say otherwise, which
+  //     is exactly why the detector needs the guard's own verdict as well as the angle shortfall.
+  {ctx.__clip=false;
+   const r=rod(),s=seat();let worst=0;
+   frames(r,s,0,1,false,0,40,(i,r)=>{worst=Math.max(worst,C.shotChargeBlock(r));});
+   ok(worst<CH.blockAt,'a free wind-up NEVER reads as blocked (worst '+worst.toFixed(3)+')');
+   ok(r.chg>CH.sweetFrom,'…and it really did charge through the band');}
+
+  // --- a refused wind-up is caught, and caught BEFORE the band opens: a warning that arrives
+  //     after the moment it is warning about is not a warning.
+  {ctx.__clip=true;
+   const r=rod(),s=seat();let trip=-1;
+   frames(r,s,0,1,false,0,40,(i,r)=>{if(trip<0&&C.shotChargeBlock(r)>=CH.blockAt)trip=i;});
+   ok(trip>=0,'a refused wind-up reads as blocked');
+   ok(trip>=0&&trip<bandFrame,'…and says so BEFORE the sweet band opens (frame '+trip+' of '+bandFrame+')');
+   eq(r.chgA,r.angle,'a refused wind-up authors NO pull-back at all');
+   ctx.__clip=false;}
+
+  // --- the tone stops climbing with the rod, so the block is audible without looking up
+  {ctx.__clip=true;
+   const r=rod(),s=seat();frames(r,s,0,1,false,0,25);
+   const blocked=rec.fed;
+   ctx.__clip=false;
+   const r2=rod(),s2=seat();frames(r2,s2,0,1,false,0,25);
+   ok(blocked<rec.fed,'the charge tone is DRAINED while the swing is refused ('+blocked.toFixed(2)+' vs '+rec.fed.toFixed(2)+')');}
+
+  // --- and the sweet-band chime is not handed out over a swing that is not happening
+  {ctx.__clip=false;rec.mark.length=0;
+   const r=rod(),s=seat();frames(r,s,0,1,false,0,30);
+   ok(rec.mark.some(m=>m===true),'a clean wind-up earns the sweet-band mark');
+   ctx.__clip=true;rec.mark.length=0;
+   const r2=rod(),s2=seat();frames(r2,s2,0,1,false,0,30);
+   ok(!rec.mark.some(m=>m===true),'a BLOCKED wind-up never earns it, whatever the number says');
+   ctx.__clip=false;}
+
+  // --- the verdict stamp, classic. One stamp per release, and it says what actually happened.
+  const stamp=(lt,rt,hold,clip)=>{
+   ctx.__clip=!!clip;
+   const r=rod(),s=seat();
+   for(let i=0;i<hold;i++){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(lt,rt),s,r,false,0);}
+   ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(0,0),s,r,false,0);
+   ctx.__clip=false;return r;};
+  {const r=stamp(0,1,20,false);
+   ok(r.chgEndT!=null,'a classic release leaves a verdict on screen');
+   eq(r.chgEndBand,1,'…stamped CLEAN for a release inside the band');}
+  {const r=stamp(0,1,38,false);eq(r.chgEndBand,2,'a long hold is stamped OVERCOOKED');}
+  {const r=stamp(0,1,2,false);eq(r.chgEndBand,0,'a flinch under minFire is stamped TOO EARLY');}
+  {const r=stamp(0,1,20,true);
+   eq(r.chgEndBand,3,'a BLOCKED release is stamped NO ROOM even though the number was mid-band');}
+
+  /* --- Total Control. Its release is not the shot — the chord only banks what the wind-up was
+     worth and the forward flick spends it — so the stamp waits for the CONTACT, and reports the
+     RELEASE TIMING rather than whatever the faded bank finally delivered. */
+  {const r=rod(),s=seat();
+   while(r.chg<0.60){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(1,1),s,r,true,-1);}
+   const banked=r.chg;
+   ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(0,0),s,r,true,0);          // drop the chord
+   ok(r.chgEndT==null,'Total Control does NOT stamp at the chord release — nothing has been struck');
+   for(let i=0;i<10;i++){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(0,0),s,r,true,0);}
+   const faded=r.chg;
+   ok(faded<banked&&C.shotChgBand(faded)!==C.shotChgBand(banked),
+    '…the bank really did fade out of its band while the player dithered');
+   C.shotConsume(r);
+   ok(r.chgEndT!=null,'the CONTACT is what stamps a Total Control verdict');
+   eq(r.chgEndBand,C.shotChgBand(banked),'…and it reports the RELEASE timing, not the faded charge');}
+
+  // --- one wind-up, ONE charged contact. The banked charge used to re-arm itself every frame.
+  {const r=rod(),s=seat();
+   while(r.chg<0.60){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(1,1),s,r,true,-1);}
+   ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(0,0),s,r,true,0);
+   let charged=0;
+   for(let i=0;i<40;i++){if(r.shotOn){charged++;C.shotConsume(r);}
+    ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(0,0),s,r,true,0);}
+   eq(charged,1,'ONE CONTACT, ONE SHOT — a banked Total Control charge cannot re-arm itself');}
+
+  // --- but a wind-up still being HELD survives a graze: nothing has been shot yet.
+  {const r=rod(),s=seat();
+   while(r.chg<0.50){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(1,1),s,r,true,-1);}
+   const before=r.chg;C.shotConsume(r);
+   ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(1,1),s,r,true,-1);
+   ok(r.chg>before&&r.shotOn,'a graze during a LIVE wind-up does not spend it');}
+
+  // --- and a fresh wind-up clears the last verdict, so two shots never share one stamp
+  {const r=stamp(0,1,20,false);
+   ok(r.chgEndT!=null,'stamped');
+   ctx.S.time+=1/60;r.kickT=-1;C.shotPadUpdate(1/60,pad(0,1),seat(),r,false,0);
+   ok(r.chgEndT==null,'a fresh wind-up clears the old stamp off the screen');}
+ }
+
  return {pass,fail,fails:fails.slice()};
 }
 
@@ -547,8 +648,13 @@ const MUTS=[
         ' return C.powMax;','holding too long is free (no power falloff)'),
  mutate('  if(clip)break;\n  best=a;','  best=a;','the wind-up ignores sweepClips'),
  mutate(' if(C.on&&r.kickT<0){',' if(C.on){','a charge builds during the swing'),
- mutate('function shotConsume(r){if(r.shotOn)shotDisarm(r);}',
-        'function shotConsume(r){}','a charge applies to every contact, not one'),
+ mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}\n shotDisarm(r);',
+        '','a charge applies to every contact, not one'),
+ mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}',
+        ' if(r.chgRel>0){shotVerdict(r,r.chgRel);}',
+        'a banked Total Control charge survives the contact and re-arms itself'),
+ mutate('shotVerdict(r,r.chgRel)','shotVerdict(r,r.chg)',
+        'Total Control stamps what landed instead of the release timing'),
  mutate(' const a=SHOTC.charge.spray*(1-clamp(r.shotCtl,0,1));',
         ' const a=SHOTC.charge.spray*clamp(r.shotCtl,0,1);','spray scales with control instead of against it'),
  mutate('   if(shotChord(lt,rt)&&back>=C.stickBack){src=\'stick\';depth=back;}',
@@ -559,9 +665,17 @@ const MUTS=[
  mutate(' if(k>=0&&k<SHOTC.charge.minFire)k=-1;','','a flinch fires a weak charged shot instead of a normal swing'),
  mutate('   if(bend>maxBend)continue;','   if(false)continue;',
         'the player passes at a receiver the assist could never turn the ball toward'),
- mutate('   const want=C.pullA*r.kickDir*clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1);',
-        '   const want=C.pullA*r.kickDir*clamp(C.sweetTo>0?r.chg/C.sweetTo:1,0,1);',
+ mutate('ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1)',
+        'ask=clamp(C.sweetTo>0?r.chg/C.sweetTo:1,0,1)',
         'the wind-up saturates at the band TOP, so power peaks past the band'),
+ mutate(' const deny=(shotPullOk>=1)?0:clamp(ask-got,0,1);',
+        ' const deny=clamp(ask-got,0,1);',
+        'the pull-back lerp lag alone reads as a blocked swing'),
+ mutate(' shotPullOk=ok;',' shotPullOk=1;',
+        'the guard never admits it refused a wind-up'),
+ mutate(' r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));',
+        ' r.chgEndBand=(k<C.minFire?0:shotChgBand(k));',
+        'a blocked wind-up is stamped as a clean shot'),
  mutate('   shotFire(r,(r.chgMod!=null?r.chgMod:m),tap?-1:k);',
         '   shotFire(r,m,tap?-1:k);','the release reads the axis at the release frame, not the one it was held at'),
  mutate(' if(r.kickT>=0)return;\n if(k>=0','\n if(k>=0','a swing already in flight can be re-armed'),

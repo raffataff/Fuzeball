@@ -35,6 +35,22 @@ function toast(main,sub,dur){
  t.classList.remove('show');void t.offsetWidth;t.classList.add('show');
  clearTimeout(toastTO);toastTO=setTimeout(()=>t.classList.remove('show'),(dur||1.6)*1000);
 }
+/* Charge verdict colours, indexed by the band js/shots.js stamps on the rod when a wind-up ends:
+   0 too early, 1 clean, 2 overcooked, 3 no room to swing. The two scratch Colors are what lets the
+   stamp settle back to the seat tint without allocating a Color every frame it is on screen. */
+const CHG_COL=CONFIG.shots.charge.bandCol;
+const chgC=new THREE.Color(),chgC2=new THREE.Color();
+/* …and the same verdict IN WORDS. The marker's colour is the whole readout once you know what gold
+   means; the words are how you learn it, so they are a coaching tool and stay in Training and
+   Trials unless CONFIG.shots.charge.text.inMatch says otherwise (a trial runs as training, so one
+   S.trn test covers both). Driven off the MARKER's edge rather than called from shots.js: the shot
+   code stays clear of the DOM, and one place decides that a verdict is on screen. */
+function chgSay(r){
+ const T=CONFIG.shots.charge.text;
+ if(!T.on||(!S.trn&&!T.inMatch))return;
+ const lab=T.labels[r.chgEndBand];
+ if(lab)notice(lab,T.dur,CHG_COL[r.chgEndBand]);
+}
 function spawnTrail(b){
  if(!cfg.trails)return;                    // Options → Display · Effects
  for(const s of sprites){if(s.visible)continue;
@@ -165,6 +181,7 @@ function fxUpdate(rdt){
  // under the shutter. Zeroing rdt holds the whole fx layer on the exact frame you froze, which is
  // the difference between catching a blast and photographing its smoke.
  if(S.photo&&S.photo.freeze&&S.photo.freezeFx)rdt=0;
+ marksUpdate(rdt);   // wall scuffs age and fade (js/marks.js) — after the freeze, so they hold too
  for(const s of sprites){if(!s.visible)continue;
   s.userData.life-=rdt;
   if(s.userData.life<=0){s.visible=false;continue;}
@@ -198,15 +215,40 @@ function fxUpdate(rdt){
      held rod, already tinted per seat and already built — so the wind-up gets its meter for the cost
      of a scale and a colour, with no new geometry and nothing to dispose. It DIPS toward the rod as
      the charge builds (the marker is being drawn back with the men), swells across the sweet band,
-     and goes red once the charge is overcooked. Charge -1 = every term below is the old expression. */
-  const k=shotCharge(r);
-  const band=k<0?-1:shotChargeBand(r);
-  m.position.set(r.x,ROD_H+9+Math.sin(S.time*5+i*1.7)*.8-(k>0?k*3.2:0),r.offset);
-  const c=(band===1)?'#ffd24d':(band===2?'#ff3b3b':seatCol(s));   // parsing a hex string per frame is the
-  if(m.userData.col!==c){m.userData.col=c;m.material.color.set(c);}  // only real cost here — cache it
-  const sc=k<0?1:1+(band===1?.34+Math.sin(S.time*22)*.08:k*.28);
+     and goes red once the charge is overcooked. Charge -1 = every term below is the old expression.
+     TWO THINGS IT NO LONGER LIES ABOUT.
+     · A wind-up the sweep guard is REFUSING (a ball sat against the boot) drains it to grey and
+       drops both the dip and the swell. The charge number still climbs, but the arc is where the
+       power is, so gold over a swing that is not happening was the readout promising a rocket.
+     · The verdict OUTLIVES the release. It used to vanish on the frame you most wanted to read it.
+       Now the marker holds that colour, lifts away from the rod and settles back to the seat tint
+       over CONFIG.shots.charge.holdT. */
+  const CH=CONFIG.shots.charge,base=seatCol(s);
+  const k=shotCharge(r),blk=shotChargeBlock(r),bad=blk>=CH.blockAt;
+  // 0..1 through the post-release hold; 1 means there is no verdict on screen.
+  const vt=(k<0&&r.chgEndT!=null)?clamp((S.time-r.chgEndT)/Math.max(.01,CH.holdT),0,1):1;
+  let sc=1,dip=0,spin=2;
+  if(k>=0){                                                       // winding up
+   const band=shotChargeBand(r),c=bad?CHG_COL[3]:(band>=1?CHG_COL[band]:base);
+   if(m.userData.col!==c){m.userData.col=c;m.material.color.set(c);}  // parsing a hex string per frame
+   dip=bad?0:k*3.2;                              // no pull-back means no dip: the men are not moving
+   sc=bad?1:1+(band===1?.34+Math.sin(S.time*22)*.08:k*.28);
+   spin=bad?2:2+k*7;                                              // it spins up as it winds up
+  }else if(vt<1){                                                 // the verdict, still settling
+   // …and the words, ONCE, on the frame the stamp changes. This branch already guarantees there is
+   // a stamp to read, so the edge test needs no null case of its own.
+   if(m.userData.vT!==r.chgEndT){m.userData.vT=r.chgEndT;chgSay(r);}
+   const e=1-vt;
+   chgC.set(CHG_COL[r.chgEndBand]||base);chgC2.set(base);
+   m.material.color.copy(chgC.lerp(chgC2,vt));
+   m.userData.col=null;                        // colour is written every frame here, so drop the cache
+   sc=1+e*(r.chgEndBand===1?.55:.26);          // a clean shot gets the bigger stamp
+   dip=-e*CH.holdRise;
+   spin=2+e*7;
+  }else if(m.userData.col!==base){m.userData.col=base;m.material.color.set(base);}
+  m.position.set(r.x,ROD_H+9+Math.sin(S.time*5+i*1.7)*.8-dip,r.offset);
   if(m.userData.sc!==sc){m.userData.sc=sc;m.scale.setScalar(sc);}
-  m.rotation.y+=rdt*(k<0?2:2+k*7);                      // it spins up as it winds up
+  m.rotation.y+=rdt*spin;
  }
  bigGoalUpdate(rdt);
 }

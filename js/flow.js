@@ -145,7 +145,7 @@ function startMatchNow(mode,rodLockRole){
  S.serveAt=null;   // a restart spot left over from the last match must not aim its first kickoff
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
-  clearBalls();clearPU();clearFractures();replayAbort();replayCut();
+  clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();
   // Prime BOTH teams' shatter GLBs here — every mode funnels through startMatch, so this covers
   // quick/AI matches AND league/cup (whose loadPlayerModel setup skips reloadPlayerModel's prime).
   // clearFractures() above means no live instance references any template, so it's safe to then
@@ -326,7 +326,7 @@ function gotoMenu(){
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
   if(typeof lgVenueExit==='function')lgVenueExit();
-  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();
+  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();clearMarks();
   // No match live — free every shatter GLB except the two figurines the menu now shows (kept warm
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);

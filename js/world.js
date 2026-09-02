@@ -167,7 +167,9 @@ function initThree(){
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
  /* bias/normalBias fight shadow acne — both were 0 (three.js defaults, never set). The extents
     were 160x140 for a table spanning ~138x68 incl. goal depth, so most of the shadow map was
-    spent on empty space. Room meshes are castShadow=false, so nothing outside the table casts.
+    spent on empty space — but the box is ROTATED to the table, so the short axis cannot be
+    tightened to the table's width; see the extents comment in config.js before touching it.
+    Room meshes are castShadow=false, so nothing outside the table casts.
     Map size, filter and bias come from the ACTIVE quality tier (see shadowQ below), so a saved
     High is live on the very first frame rather than being switched in a moment later — which
     would recompile every material that exists by then, at boot, for nothing. */
@@ -372,10 +374,11 @@ function renderIdleSkip(rdt){
      surfaces receive it. Flipping shadowMap.enabled changes material shader defines, so every
      material needs a one-time recompile on the change — done here, and ONLY when it actually
      changes (tracked in _dispShadows), so re-applying render scale alone never triggers it.
-   • shadowQuality swaps the map size, the filter and the bias for the tier in
-     CONFIG.render.shadow.quality. The filter is another shader define, so it rides the SAME
-     one-time recompile rather than paying a second one, and the map has to be thrown away for a
-     new size to take — three.js allocates it once and reuses it forever otherwise.
+   • shadowQuality swaps the map size, the filter, the bias and HOW MUCH OF EACH FIGURINE CASTS
+     for the tier in CONFIG.render.shadow.quality. The filter is another shader define, so it
+     rides the SAME one-time recompile rather than paying a second one, and the map has to be
+     thrown away for a new size to take — three.js allocates it once and reuses it forever
+     otherwise.
    Reflections + fps-cap live elsewhere (refreshBallReflect / the main loop). */
 let _dispShadows=true;   // matches initThree's shadowMap.enabled=true starting state
 let _dispShadowQ=null;   // set by initThree to the tier the light was built with
@@ -414,6 +417,9 @@ function applyDisplay(){
    d.bias=S.bias;d.normalBias=S.normalBias;d.radius=S.radius;
   }
   if(renderer.shadowMap.type!==t){renderer.shadowMap.type=t;recompile=true;}
+  /* Low casts the silhouette mesh alone; High casts every part, so the hair and the head reach
+     the ground shadow. A draw-list change only, so it rides along here for nothing. */
+  refreshShadowCasters();
   _dispShadowQ=q;redraw=true;
  }
  // The map is frozen (autoUpdate off), so a discarded or newly-enabled map stays blank until
@@ -623,10 +629,20 @@ function updateBallReflect(){
  if(++ballReflN%CONFIG.ballReflect.every)return;                                // throttle whole-cube updates
  let lead=S.balls[0],bd=1e30;                                                   // lead = ball nearest the camera (its reflection is the one the player sees)
  for(const b of S.balls){const d=b.m.position.distanceToSquared(camera.position);if(d<bd){bd=d;lead=b;}}
- const sa=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;    // reuse last frame's shadow map for the 6 faces
+ // THE SHADOW PASS MUST BE FULLY SUPPRESSED HERE, AND autoUpdate ALONE DOES NOT DO IT — that is
+ // what made the ball's own shadow strobe on and off at exactly every other frame. r128's shadow
+ // pass early-outs on `autoUpdate===false && needsUpdate===false` and clears needsUpdate whenever
+ // it DOES run, so under the frozen-map model (CONFIG.render.shadow.autoUpdate:false) needsUpdate
+ // is the only gate — and the update this frame's shadowDirty() raised was CONSUMED by cube face
+ // 1, which renders with the lead ball hidden one line below. The main pass then skipped, drawing
+ // a map with no ball in it; the next frame runs no cube pass and the shadow came back. Both flags
+ // go down for the 6 faces, and needsUpdate is handed BACK to the main render, which draws it with
+ // the ball present. Same cost as before: still exactly one shadow render per frame.
+ const sa=renderer.shadowMap.autoUpdate,sn=renderer.shadowMap.needsUpdate;
+ renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=false;      // 6 faces reuse the map already on the card
  const vis=lead.m.visible;lead.m.visible=false;                                 // don't let the ball reflect itself
  ballCube.position.copy(lead.m.position);ballCube.update(renderer,scene);
- lead.m.visible=vis;renderer.shadowMap.autoUpdate=sa;
+ lead.m.visible=vis;renderer.shadowMap.autoUpdate=sa;renderer.shadowMap.needsUpdate=sn;
 }
 
 function buildTable(){
@@ -782,26 +798,46 @@ function loadPlayerModel(onReady){
  });
 }
 
-/* Stamp userData.castsShadow on a figurine TEMPLATE's sub-meshes — see
-   CONFIG.playerModel.shadowMinFrac for the reasoning and the measured numbers. Done on the
-   template rather than in makePlayer because makePlayer runs 22 times per rebuild and
-   Box3.setFromObject walks every vertex; clone(true) deep-copies userData, so each man
-   inherits the decision for free. A part that is not a caster is still DRAWN normally —
-   this only keeps it out of the shadow pass. */
+/* Measure a figurine TEMPLATE's sub-meshes and stamp each one's SIZE AS A FRACTION of the whole
+   figure — see `casterFrac` in CONFIG.render.shadow.quality for the reasoning and the numbers.
+   Measured on the template rather than in makePlayer because makePlayer runs 22 times per
+   rebuild and Box3.setFromObject walks every vertex; clone(true) deep-copies userData, so each
+   man inherits the measurement for free. The SIZE is stored rather than a yes/no so the Shadow
+   quality setting can re-decide live (refreshShadowCasters) without reloading the model.
+   A part that is not a caster is still DRAWN normally — this only keeps it out of the shadow
+   pass. */
 function markShadowCasters(root){
  if(!root)return;
- const frac=(CONFIG.playerModel&&CONFIG.playerModel.shadowMinFrac);
  const parts=[];root.traverse(o=>{if(o.isMesh)parts.push(o);});
  if(!parts.length)return;
- if(!(frac>0)){parts.forEach(o=>{o.userData.castsShadow=true;});return;}   // 0/undefined = old behaviour
  const v=new THREE.Vector3(),whole=new THREE.Box3().setFromObject(root).getSize(v).length();
  let big=null,bigD=-1;
  parts.forEach(o=>{
   const d=new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).length();
-  o.userData._shDiag=d;if(d>bigD){bigD=d;big=o;}
-  o.userData.castsShadow=whole>1e-6&&(d/whole)>=frac;
+  o.userData._shFrac=whole>1e-6?d/whole:1;o.userData._shBig=false;
+  if(d>bigD){bigD=d;big=o;}
  });
- if(big)big.userData.castsShadow=true;   // never leave a figurine with no shadow at all
+ if(big)big.userData._shBig=true;   // never leave a figurine with no shadow at all
+ parts.forEach(o=>{o.castShadow=partCasts(o);});
+}
+
+/* Does this sub-mesh go into the shadow pass? Reads the ACTIVE quality tier every time it is
+   asked, so the answer follows Options -> Display -> Shadow quality. 0 = every part casts. */
+function partCasts(o){
+ const frac=shadowQ().casterFrac;
+ if(!(frac>0)||o.userData._shBig)return true;
+ return (o.userData._shFrac||1)>=frac;
+}
+
+/* Re-decide the casters on every man already on the table, after a Shadow quality change.
+   castShadow on a MESH only moves it in and out of the shadow pass's draw list — unlike
+   castShadow on a LIGHT it is not a shader define, so this needs no recompile and no rebuild;
+   the walk is 22 groups of five meshes. */
+function refreshShadowCasters(){
+ const redo=g=>{if(g)g.traverse(c=>{if(c.isMesh&&c.userData._shFrac!==undefined)c.castShadow=partCasts(c);});};
+ playerModel.forEach(redo);            // the templates too, so the next clone starts out right
+ rods.forEach(r=>r.men.forEach(redo));
+ shadowDirty();
 }
 
 function makePlayer(team){
@@ -824,7 +860,7 @@ function makePlayer(team){
     const sw=CONFIG.playerModel.hairSwatches;
     child.material.color.set(sw[Math.floor(Math.random()*sw.length)]);
    }
-   child.castShadow=child.userData.castsShadow!==false;   // set by markShadowCasters on the template
+   child.castShadow=partCasts(child);   // sized by markShadowCasters, gated by the quality tier
   });
   return g;
 }
@@ -954,6 +990,7 @@ function buildFxPools(){
   const m=new THREE.Mesh(indGeo,new THREE.MeshBasicMaterial({color:0xffffff}));
   m.rotation.x=Math.PI;m.visible=false;scene.add(m);indicators.push(m);
  }
+ buildMarkPool();   // wall scuffs — one batched mesh of its own (js/marks.js)
 }
 
 /* ===== fx light pool =====

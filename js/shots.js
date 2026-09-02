@@ -140,6 +140,17 @@ function shotChgCtl(k){
 // 0 below the band, 1 inside it, 2 past it — what fx.js tints from and the tone edges off.
 function shotChgBand(k){const C=SHOTC.charge;return k<C.sweetFrom?0:(k<=C.sweetTo?1:2);}
 function shotOver(k){const C=SHOTC.charge;return C.sweetTo>=1?0:clamp((k-C.sweetTo)/(1-C.sweetTo),0,1);}
+/* WHAT THAT WIND-UP WAS WORTH, stamped on the rod the instant it ends so the readout can outlive
+   it. The marker's colour IS the verdict, and it used to vanish on the frame you most wanted to
+   read it — by then you are watching the ball, not the marker. 0 too early, 1 clean, 2 overcooked,
+   3 no room. BLOCKED OUTRANKS THE BAND: a sweet-band charge that never got its pull-back is a dud
+   whatever the number said, and calling that one clean is the same lie the live readout told. */
+function shotVerdict(r,k){
+ const C=SHOTC.charge;
+ r.chgEndT=S.time;
+ r.chgEndK=Math.max(0,k);
+ r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));
+}
 
 /* ---- arming ------------------------------------------------------------------------------- */
 // r.shotOn is the ONLY thing physics.js tests. Armed while a charge is live and for as long as the
@@ -155,12 +166,30 @@ function shotDisarm(r){r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.shotExert=1;}
 // Called by collideRod the moment a contact has taken its power. One contact, one shot — a swing
 // that grazes and then strikes cleanly spends its charge on the graze, the same rule r.kickHit and
 // msSw already run on, and the only rule that is well defined for a stick swing with no kickT.
-function shotConsume(r){if(r.shotOn)shotDisarm(r);}
+/* AND THAT RULE HAD A HOLE THE SIZE OF TOTAL CONTROL. Disarming is enough for a classic shot,
+   whose charge is already spent by the time the swing lands (the release sets r.chg to -1). Total
+   Control has no discrete fire: dropping the chord only BANKS what the wind-up was worth and lets
+   it decay, so the decay branch in shotPadUpdate re-armed r.shotOn on the very next frame and one
+   banked charge powered EVERY contact until it bled out — a second and third free shot off one
+   wind-up. Spending the bank here closes it. Gated on r.chgRel because that is the one field only
+   the stick path ever sets: it is 0 through a live wind-up, so a charge still being HELD survives
+   an incidental graze (you have not shot yet), and 0 on a classic shot, which is already spent. */
+function shotConsume(r){
+ if(!r.shotOn)return;
+ /* …and THIS is where Total Control's verdict belongs, for the same reason. Classic stamps at the
+    release because the release is the swing; here the contact is, so the stamp waits for it.
+    Stamped on r.chgRel — WHAT THE PLAYER RELEASED AT, not what the faded charge finally delivered.
+    The band exists to test the timing of the release, so both modes report the same thing; how
+    long you then dithered before flicking is a different skill and the decay already prices it. */
+ if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}
+ shotDisarm(r);
+}
 // Full teardown: charge, arming, tremble, blended curve. Called from resetRodRotation (every goal,
 // dead ball and out) and whenever a seat lets go of a rod, so a charge can never outlive its owner.
 function shotReset(r){
  if(!r)return;
  r.chg=-1;r.chgRel=0;r.chgMod=null;r.chgSrc=null;r.chgA=null;r.chgHeld=0;r.chgSweet=false;r.trem=0;
+ r.chgBlock=0;r.chgEndT=null;r.chgEndBand=-1;r.chgEndK=0;   // the blocked reading and the held verdict
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
 }
@@ -194,19 +223,24 @@ function shotLegClips(r,b,a){
  }
  return false;
 }
+/* How much of the requested pull-back the guard allowed on the last call: 1 = a free swing, 0 =
+   refused outright. A module field rather than a second return value because this runs once per
+   frame per seat and must not allocate — the one caller reads it on the very next line. */
+let shotPullOk=1;
 function shotPullCap(r,aFrom,aTo){
  const SW=AIC.trap.sweep;
- if(!SW||!SW.on)return aTo;
+ if(!SW||!SW.on){shotPullOk=1;return aTo;}
  const n=Math.max(1,SW.clampSteps|0);
- let best=aFrom;
+ let best=aFrom,ok=0;
  for(let s=1;s<=n;s++){
   const a=aFrom+(aTo-aFrom)*(s/n);
   let clip=false;
   for(const b of S.balls){if(b.scored)continue;
    if(sweepClips(r,b,aFrom,a)||shotLegClips(r,b,a)){clip=true;break;}}
   if(clip)break;
-  best=a;
+  best=a;ok=s/n;
  }
+ shotPullOk=ok;
  return best;
 }
 // updateRods asks for this once per sim step. null = no authored wind-up (not charging, or the
@@ -327,6 +361,12 @@ function shotPadUpdate(dt,gp,s,r,TC,stickD){
   r.chgSrc=null;r.chgA=null;
   if(was!=='stick'){
    const tap=(was==='kick'&&r.chgHeld<C.tapMax);
+   /* Stamp the verdict HERE and not at the top of this branch: Total Control's chord release is
+      not the shot — the charge stays live and decaying and the forward flick spends it later — so
+      a verdict there would be judging a shot that has not happened. Stamped on the EFFECTIVE
+      charge, so a tap that fired an ordinary swing is stamped as one rather than as whatever the
+      number happened to read. Before shotFire, which clears the state it is read from. */
+   shotVerdict(r,tap?-1:k);
    /* FIRE ON THE AXIS THE WIND-UP WAS HELD AT, not the one live on the release frame — and this is
       the whole reason r.chgMod exists. In classic the charge is held on RT, so at the instant of
       release RT is on its way UP: reading the axis then gives 0, and a charged shot came out on a
@@ -345,7 +385,7 @@ function shotPadUpdate(dt,gp,s,r,TC,stickD){
 
  // WIND UP, or bleed off what is left of an abandoned one.
  if(src){
-  if(r.chgSrc!==src){r.chgSrc=src;r.chg=Math.max(0,r.chg);r.chgRel=0;r.chgMod=null;r.chgHeld=0;r.chgSweet=false;}
+  if(r.chgSrc!==src){r.chgSrc=src;r.chg=Math.max(0,r.chg);r.chgRel=0;r.chgMod=null;r.chgHeld=0;r.chgSweet=false;r.chgEndT=null;r.chgBlock=0;}
   r.chgHeld+=dt;
   r.chg=clamp(r.chg+C.rate*depth*dt,0,1);
   r.chgMod=m;                                    // what the triggers said WHILE winding up (see the release)
@@ -359,9 +399,20 @@ function shotPadUpdate(dt,gp,s,r,TC,stickD){
      what a sweet spot is, and leaves the overcook paying only the penalty.
      Total Control authors no angle: the stick is already where the player put it. */
   if(src!=='stick'){
-   const want=C.pullA*r.kickDir*clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1);
-   r.chgA=shotPullCap(r,r.angle,want);
-  }else r.chgA=null;
+   const full=C.pullA*r.kickDir,ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1);
+   r.chgA=shotPullCap(r,r.angle,full*ask);
+   /* IS THE SWING ACTUALLY THERE? Needs BOTH tests, and neither alone survives a live match. The
+      angle on its own — how far back we are against how far back this charge asked for — reads as
+      blocked for the few frames the rod is still easing back, which is only the lerp. shotPullOk on
+      its own fires once the rod is fully back and resting against the ball, which is a FINISHED
+      wind-up, not a refused one. Blocked is the two together: the guard is saying no AND we never
+      got the pull-back. Without it the number climbs, the tone rises and the marker goes gold over
+      a swing that is not happening — and the arc is where the power is, so that readout was
+      promising a rocket and handing over a tap. */
+   const got=Math.abs(full)>1e-4?clamp(r.angle/full,0,1):1;
+   const deny=(shotPullOk>=1)?0:clamp(ask-got,0,1);
+   r.chgBlock=lerp(r.chgBlock||0,deny,Math.min(1,C.blockLerp*dt));
+  }else{r.chgA=null;r.chgBlock=0;}               // Total Control authors no angle: nothing to refuse
  }else if(r.chg>0&&!fired){
   /* AN ABANDONED WIND-UP ONLY EVER FADES — and it has to be written this way rather than by
      re-deriving from the shrinking charge, which is what the first cut did. Power is FLAT across
@@ -385,14 +436,18 @@ function shotPadUpdate(dt,gp,s,r,TC,stickD){
  // and one distinct mark on the way in. Tremble amplitude is the overcharge, and nothing reads
  // r.trem but the render pivot.
  if(r.chg>=0){
-  const band=shotChgBand(r.chg);
+  const band=shotChgBand(r.chg),blk=r.chgBlock||0,good=(band===1&&blk<C.blockAt);
   if(C.tone.on){
    // FED, not ticked. audio.js owns a held voice that sweeps with this value and fades itself out
    // the moment we stop feeding it — so there is nothing to stop on release, on a quit, or on a
    // match that ends mid-wind-up, and the build-up is continuous instead of a train of blips.
-   Au.chargeFeed(r.chg,band);
-   const sw=(band===1);
-   if(sw!==r.chgSweet){r.chgSweet=sw;if(sw)Au.chargeMark(true);else if(band===2)Au.chargeMark(false);}
+   // DRAINED while the swing is refused, so the tone stops climbing at the moment the rod does and
+   // "there is no room here" becomes something you hear without looking up at the marker.
+   Au.chargeFeed(r.chg*(1-blk),band);
+   // The band mark is the reward for good timing, so a blocked wind-up must not earn it — and
+   // being blocked mid-band plays the DULL mark, the same "you just lost it" the overcook already
+   // uses. One meaning per sound.
+   if(good!==r.chgSweet){r.chgSweet=good;if(good)Au.chargeMark(true);else if(band===2||blk>=C.blockAt)Au.chargeMark(false);}
   }
   const T=C.trem,ov=shotOver(r.chg);
   r.trem=ov>0?T.amp*ov*Math.sin(r.chgHeld*T.hz):0;
@@ -418,3 +473,6 @@ function shotKickPress(TC){
 function shotCharge(r){return (r&&shotsOn()&&r.chg>=0)?r.chg:-1;}
 /* Band of the live charge for a readout: -1 none, 0 building, 1 in the sweet band, 2 overcooked. */
 function shotChargeBand(r){const k=shotCharge(r);return k<0?-1:shotChgBand(k);}
+/* How much of this rod's wind-up the sweep guard is refusing, 0..1 and smoothed. Non-zero means the
+   charge is buying nothing: the number climbs but the boot is not going anywhere. */
+function shotChargeBlock(r){return (r&&shotsOn()&&r.chg>=0)?(r.chgBlock||0):0;}

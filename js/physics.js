@@ -77,6 +77,32 @@ function rollProbe(b){
  if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
  else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
 }
+/* HAS THIS BALL LEFT THE CABINET?
+   Every wall has a top, so a lofted ball can genuinely end up OUTSIDE one — and the wall tests
+   below have no memory, they only ask "is the ball past the plane and low enough". A ball that
+   cleared a rail on the way up therefore re-enters their height band on the way DOWN, outside the
+   table, and is clamped straight back onto the pitch. Measured before this: a ball 17 units past
+   the goal line — well beyond the end of the table — teleported back to the wall and fired down
+   the pitch. Roughly half of all lofted shots that cleared the goal line came back like that,
+   which is why it looked random.
+
+   So latch it, the same way overBar latches a lob over the crossbar: what decides the ball's fate
+   is the CROSSING, not where it happens to be a few frames later. Once out, every wall and the
+   pitch floor stop reaching for it, it falls away, and the out-of-play test in physStep gives it
+   the whistle. Cleared the moment it is back inside both planes, so a ball that merely grazes a
+   rail and drops back in behaves exactly as before.
+
+   The goal mouth is deliberately NOT latched: a lob into the mouth is the overBar / net-roof case
+   and has its own machinery. Set PHY.wallEscape false to restore the old behaviour outright. */
+function wallLatch(b){
+ if(b.scored||!PHY.wallEscape){b.outWall=0;return;}
+ const p=b.m.position,zl=F.W/2-BALL_R,xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
+ if(Math.abs(p.z)<=zl&&Math.abs(p.x)<=xl){b.outWall=0;return;}   // back inside — walls live again
+ if(b.outWall)return;
+ if(Math.abs(p.z)>zl){if(p.y>=F.wallH+BALL_R)b.outWall=1;return;}          // over a side rail
+ const gh=F.goalHalf*(S.eff[p.x>0?0:1].big>S.time?PHY.bigGoalMult:1);
+ if(Math.abs(p.z)>=gh&&p.y>=ew+BALL_R)b.outWall=1;                        // over an end wall
+}
 function stepBall(b,h){
  const p=b.m.position,v=b.v;
  // safety: if physics ever produces a non-finite state, re-drop this ball instead of poisoning the sim.
@@ -101,7 +127,8 @@ function stepBall(b,h){
  v.y-=GRAV*h;
  p.x+=v.x*h;p.y+=v.y*h;p.z+=v.z*h;
  if(!ARENA_ON){
-  if(p.y<BALL_R){
+  wallLatch(b);              // decide, once, whether this ball is still inside the cabinet
+  if(p.y<BALL_R&&!b.outWall){
    p.y=BALL_R;
    if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
@@ -112,11 +139,11 @@ function stepBall(b,h){
   // which is exactly what a boot pressing it into the wall produces: collideRod resolves by writing p
   // directly, and its grip lerp then drags v.z toward the foot's own velocity, so the ball is never
   // "arriving" again. That is the ball-buried-in-the-wall case. See staticClamp for the other half.
-  if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R){
+  if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R&&!b.outWall){
    const sz=p.z>0?1:-1;
    // gated on FRESH contact + PHY.wallHitSnd: a ball riding the wall re-enters this branch every
    // substep, and firing a tap each time is what made the buzzsaw. The ride is a roll (rollProbe).
-   if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}
+   if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,0,0,-sz,im);}}   // the tap AND the scuff ride the same fresh-contact gate
    p.z=sz*zl;
   }
   if(!b.scored){
@@ -130,13 +157,13 @@ function stepBall(b,h){
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
      else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}                // goal ONLY under the bar, whole ball over the line, and NOT dropping in from over the top
-    else if(p.y<ew+BALL_R){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
+    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,-1,0,0,im);}}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
      else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<ew+BALL_R){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd))Au.wall(im,b.t.audio?.wall);}p.x=-xl;}
+    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,1,0,0,im);}}p.x=-xl;}
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
   }else{
@@ -161,8 +188,11 @@ function stepBall(b,h){
   }else{
    const sd=arenaSD(p.x,p.z,gh0,gh1); // pocket is open at all heights → lob over the bar can drop in
    const d=-sd,CR=ARENA.creaseR;
-   let contacted=false;
-   if(CR>0&&d<CR){
+   // the bowl has the same hole as the flat walls, and worse: its contact pushes the ball out by
+   // the FULL penetration, so a ball caught far outside is thrown back in hard. Same latch.
+   if(!PHY.wallEscape||d>=0)b.outWall=0; else if(!b.outWall&&p.y>=F.wallH+BALL_R)b.outWall=1;
+   let contacted=!!b.outWall;   // outside and over the rim — nothing below reaches for it
+   if(!b.outWall&&CR>0&&d<CR){
     // ---- curved crease (fillet) zone: quarter-torus wall→floor blend ----
     const g=arenaGrad(p.x,p.z,gh0,gh1);
     if(p.y<CR){
@@ -185,7 +215,7 @@ function stepBall(b,h){
      const g=arenaGrad(p.x,p.z,gh0,gh1),nx=-g.x,ny=0,nz=-g.z,pen=BALL_R-d;
      arenaContact(b,pen,nx,ny,nz);contacted=true;
     }
-    if(p.y<BALL_R){
+    if(p.y<BALL_R&&!b.outWall){
      p.y=BALL_R;if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
@@ -225,7 +255,7 @@ function stepBall(b,h){
    gate, so a bowl wall already re-resolves a pushed-in ball on the next substep by itself.
    Scored balls are exempt too: they live behind the line under their own in-net clamps. */
 function staticClamp(b){
- if(ARENA_ON)return;
+ if(ARENA_ON||b.outWall)return;   // a ball that has cleared a wall is outside; do not drag it back
  const p=b.m.position,v=b.v;
  if(p.y<BALL_R){p.y=BALL_R;if(v.y<0)v.y=0;}
  const zl=F.W/2-BALL_R;
