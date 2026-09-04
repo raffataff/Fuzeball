@@ -807,6 +807,9 @@ function rodHoldRaise(r){
    continue;                                // we own target + man: no re-aim, no kick
   }
   const TR=AIC.trap, SR=AIC.safeRaise;
+  // Keeper gets a longer safe-raise window in FRONT of the rod: the ball loiters further out
+  // from the goal line than it does for an outfield row, so the lift has to reach for it.
+  const srFront=SR.front+(r.role==='GK'?(SR.gkFront||0):0);
   // ---- safe-raise action (r.act='safeRaise') — DECOUPLED from the trap action, its OWN
   //      thresholds. A slow, sideways ball loiters in the safe-raise x-band behind the rod but
   //      isn't far enough back to trip the raiseBehind latch, so the rod would otherwise sit
@@ -824,9 +827,9 @@ function rodHoldRaise(r){
    const srKick=(overFoot||inFront)&&aligned&&r.kickT<0&&r.cd<=0;
    // footStuck bail: if the ball has drifted into a foot's back-swing reach while we're lifted,
    // abort NOW so the men drop instead of the lift sweeping back through it (own-goal guard).
-   if(srKick||footStuck||relReal<=SR.back||relReal>=SR.front||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT){r.act=null;r.raise=false;r.behindFlag=false;}
+   if(srKick||footStuck||relReal<=SR.back||relReal>=srFront||speed>SR.maxSpeed||Math.abs(best.v.x)>=SR.maxVX||bp.y>AIC.lowY||r.actT>SR.abortT){r.act=null;r.raise=false;r.behindFlag=false;}
    else{r.raise=false;r.behindFlag=false;}         // the action owns the angle while it holds
-  }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<SR.front&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!footStuck){
+  }else if(SR.on&&r.aiIQ&&!r.act&&bp.y<AIC.lowY&&relReal>SR.back&&relReal<srFront&&Math.abs(best.v.x)<SR.maxVX&&speed<SR.maxSpeed&&!footStuck){
    r.act='safeRaise';r.actT=0;r.raise=false;r.behindFlag=false;
   }
   // ---- trap action (r.act='trap'): a smart rod (iq roll) PINS a slow ball under the boot rather

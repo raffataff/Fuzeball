@@ -99,11 +99,14 @@ function loop(t){
   /* --- render interpolation --- */
   perfMark('p');
   const alpha=clamp(physAcc/FIXED,0,1);
+   heatOpen();                        // balls.js: one red-hot readout per BALL TYPE, so same-type balls can't fight over their shared material
    for(const b of S.balls){
     b.m.position.lerpVectors(b.prev,b.cur,alpha);
     if(b.light)b.light.position.copy(b.m.position);
     cannonballWarn(b);
+    heatFeed(b.m,b.key,b.v.length(),b);
    }
+   heatClose();
     for(const r of rods){
      if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
     r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);

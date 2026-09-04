@@ -140,11 +140,25 @@ function msRallyEnd(){
    which is why the credit reads b.mss (last SWING) and not b.msc. */
 function msGoal(team,b){
  if(!msOn())return;
- const st=S.stats,last=b.msc,own=!!(last&&last.sw&&last.team===1-team),src=own?last:(b.mss||last);
- st.scorers.push({team:team,role:src?src.role:'',own:own,t:S.matchTime});
- if(!src||!src.rod)return;
- const rb=msRod(src.rod);if(!rb)return;
- if(own)rb.og++;else if(src.rod.team===team)rb.goals++;
+ const st=S.stats,g=msScorer(b,team);
+ st.scorers.push({team:team,role:g.role,own:g.own,t:S.matchTime});
+ if(!g.rod)return;
+ const rb=msRod(g.rod);if(!rb)return;
+ if(g.own)rb.og++;else if(g.rod.team===team)rb.goals++;
+}
+/* WHO SCORED, AS A ROD — and the ONLY derivation of that question in the codebase.
+   Split out of msGoal so the goal FX can flash the scorer's own rod-hole ring (js/fx.js
+   rodHoleGoal) off exactly the answer the ledger used. Two independent derivations of "who
+   scored" is the kind of thing that agrees for a year and then disagrees on the one goal anybody
+   remembers — a deflected winner lighting the wrong ring while the sheet credits the right rod.
+   Reads the same two records msGoal always did: b.msc (last CONTACT) decides whether it was an own
+   goal, and b.mss (last SWING) takes the credit otherwise, so a passive deflection off a defender
+   stays the striker's goal. Deliberately NOT gated on msOn(): with stats off both records are
+   null, which falls through to rod:null and simply means no flash.
+   MUST be called before removeBall — the records hang off the ball. */
+function msScorer(b,team){
+ const last=b&&b.msc,own=!!(last&&last.sw&&last.team===1-team),src=own?last:((b&&b.mss)||last);
+ return {src:src||null,rod:(src&&src.rod)||null,role:src?src.role:'',own:own};
 }
 
 /* =========================================================================

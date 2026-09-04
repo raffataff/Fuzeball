@@ -1025,7 +1025,27 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 #phPanel.phCollapsed .phBody{display:none}
 .phMin{cursor:pointer;width:22px;height:22px;border-radius:6px;background:#0d1322;border:1px solid var(--edge);color:#bcd0f2;font-size:12px;line-height:1;pointer-events:auto}
 .phMin:hover{border-color:#9fd2ff;color:#fff}
-.phSect{font-family:var(--font-ui);font-size:10px;letter-spacing:.22em;color:#7f93ba;margin:10px 0 4px;text-transform:uppercase;border-bottom:1px solid var(--edge);padding-bottom:3px}
+/* Collapsible sections. The body animates a one-row grid 0fr -> 1fr rather than a max-height
+   guess: no measured height means a section whose contents change size (the spin row, the path
+   order strip) can never end up clipped or padded by a stale number. visibility is what actually
+   takes a shut section out of the tab order - a 0fr grid row is still focusable. */
+.phGrpBody{display:grid;grid-template-rows:0fr;transition:grid-template-rows .18s ease}
+.phGrp.open>.phGrpBody{grid-template-rows:1fr}
+/* the negative margin gives a button's hover glow somewhere to spill sideways; vertical clipping
+   is the whole mechanism, horizontal clipping was only ever a side effect */
+.phGrpIn{min-height:0;overflow:hidden;margin:0 -6px;padding:0 6px;visibility:hidden;transition:visibility 0s .18s}
+.phGrp.open>.phGrpBody>.phGrpIn{visibility:visible;transition:visibility 0s}
+.phSect{display:flex;align-items:center;gap:7px;width:100%;box-sizing:border-box;font-family:var(--font-ui);font-weight:400;font-size:10px;letter-spacing:.22em;color:#7f93ba;margin:9px 0 4px;padding:0 0 4px;text-transform:uppercase;border:0;border-bottom:1px solid var(--edge);background:none;cursor:pointer;text-align:left;transition:color .12s,border-color .12s;pointer-events:auto}
+.phSect:hover{color:#9fd2ff;border-bottom-color:rgba(159,210,255,.45)}
+.phSect span{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the collapsed-state summary: what is set inside, so shutting a section costs no awareness */
+.phSect em{margin-left:auto;padding-left:8px;font-style:normal;font-size:10px;letter-spacing:.06em;color:#5d6f92;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phGrp.open>.phSect{color:#9fd2ff}
+.phGrp:first-child>.phSect{margin-top:3px}
+.phChev{flex:0 0 auto;width:0;height:0;border-left:4px solid currentColor;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;transform-origin:1.8px 50%;transition:transform .18s ease}
+.phGrp.open>.phSect .phChev{transform:rotate(90deg)}
+/* inside a group the header's own rule already draws the divider */
+.phGrp .phKeys{margin-top:2px;padding-top:0;border-top:0}
 .phRow{display:flex;align-items:center;gap:6px;margin:5px 0;font-weight:600;color:#c6d2ea}
 .phRow label{flex:0 0 auto}
 .phRow select{flex:1;min-width:0;background:#0d1322;border:1px solid var(--edge);border-radius:6px;color:#e8ecf5;padding:3px 5px;font:inherit;font-size:12px}
@@ -1060,6 +1080,17 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .phBtn.seq:disabled:hover{background:#0d1322}
 /* two selects sharing one row (height + fps) */
 .phRow select+select{flex:0 0 auto}
+/* camera path: the order strip reads as a run, and a slot that has gone empty is struck
+   through in red rather than only reported after you press play */
+.phOrder{margin:3px 0 6px;font-family:var(--font-ui);font-size:11px;letter-spacing:.1em;color:#7f93ba;line-height:1.6;word-break:break-word}
+.phOrder.ok{color:#9fd2ff}
+.phOrder s{color:#ff8a8a}
+.phBtn:disabled{opacity:.4;cursor:not-allowed;border-color:var(--edge);color:#7f93ba}
+.phBtn:disabled:hover{background:#0d1322;border-color:var(--edge);color:#7f93ba}
+.phS.off{opacity:.35}
+.phBtn.play{padding:8px 7px;letter-spacing:.1em;border-color:rgba(159,210,255,.35);color:#bfe2ff}
+.phBtn.play:hover{border-color:#9fd2ff;color:#fff;background:#132a3d}
+.phBtn.play.on{color:#fff;border-color:#2af5ff;background:linear-gradient(180deg,#124a52,#0d2b33);box-shadow:0 0 14px rgba(42,245,255,.4)}
 .phSlots{display:flex;gap:4px;margin-left:auto}
 .phHint{margin-left:auto;color:#9fd2ff;font-family:var(--font-ui);font-size:11px;letter-spacing:.05em}
 .phMsg{margin-top:8px;min-height:13px;font-family:var(--font-ui);font-size:11px;letter-spacing:.08em;color:var(--gold);opacity:0;transition:opacity .18s}

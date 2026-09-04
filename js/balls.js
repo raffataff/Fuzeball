@@ -82,7 +82,72 @@ function cannonballWarn(b){
     b.warnLight.intensity=(0.3+CB.warnLightMax*k)*flash+0.2*k;
    }
 }
-function removeBall(b){scene.remove(b.m);if(b.light)fxLightPut(b.light);   // release the pooled glow (NOT scene.remove — that would change the light count)
+/* ================= ball heat =================
+   A ball glows red as it closes on its own top speed — the maxV of its ball type, which physics
+   already clamps it to — so a screamer reads as one at a glance. Knobs in CONFIG.fx.heat.
+   Render-side only: this is called from the interpolation pass in main.js and never writes the sim.
+
+   Every GLB ball of one type SHARES its material (the model is clone()d, and a clone shares
+   materials), so a type is written ONCE per frame, at whichever of its balls is hottest. That is
+   what stops two split balls fighting over one material, and it means the glow can never claim a
+   speed nothing actually reached. Trails are per-sprite, so they stay honest to the ball that
+   spawned them (b.hot, read in fx.js spawnTrail).
+
+   Feed every ball on screen between heatOpen() and heatClose() — live balls from the main loop,
+   replay ghosts from replay.js, which share those same materials. */
+const _heatCol=new THREE.Color();          // scratch, reused; never held between calls
+const _heatFeed=[];let _heatN=0;const _heatPeak={};
+function ballHeatColor(){return _heatCol.setHex(CONFIG.fx.heat.col);}
+function heatOpen(){_heatN=0;for(const k in _heatPeak)_heatPeak[k]=0;}
+// obj = the mesh actually on screen, key = ball type, sp = its speed, owner = whatever carries
+// .hot for the trail (the ball itself live, the ghost's shim in a replay). Pooled slots, no alloc.
+function heatFeed(obj,key,sp,owner){
+ const H=CONFIG.fx.heat,mv=BALL_TYPES[key]?BALL_TYPES[key].maxV:0;
+ const k=(H&&H.on&&mv>0)?clamp((sp/mv-H.from)/Math.max(1e-4,H.full-H.from),0,1):0;
+ if(owner)owner.hot=k;
+ const s=_heatFeed[_heatN]||(_heatFeed[_heatN]={});
+ s.obj=obj;s.key=key;_heatN++;
+ _heatPeak[key]=Math.max(k,_heatPeak[key]||0);   // Math.max, not a >, so the key always EXISTS: heatClose would otherwise hand ballHeatSet an undefined for a type whose every ball is cold
+}
+function heatClose(){for(let i=0;i<_heatN;i++)ballHeatSet(_heatFeed[i].obj,_heatPeak[_heatFeed[i].key]);}
+// Drop the stash: call this whenever a material has been RE-AUTHORED under the heat system (the
+// replay's fallback spheres are recoloured per ball type), so the next cool-down restores what the
+// material looks like now rather than what it looked like two ball types ago.
+function ballHeatForget(obj){
+ obj.traverse(o=>{if(!o.isMesh)return;
+  const ms=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of ms){if(!m)continue;delete m.userData.heatEm;m.userData.heatOn=false;}});
+}
+/* Write heat k (0..1) onto every lit material under obj. The authored emissive/colour are stashed
+   on the material the first time it heats and put straight back at k=0 — same stash-and-restore
+   shape as setBallEnv's envMapIntensity in world.js, and the reason this is safe to call on a ball
+   that is about to be thrown away. Colours and intensities are uniforms, not shader switches, so
+   none of this recompiles anything. */
+function ballHeatSet(obj,k){
+ const H=CONFIG.fx.heat;
+ const hot=ballHeatColor();
+ const pulse=1+H.pulseAmt*k*Math.sin(S.time*H.pulse*6.2832);
+ obj.traverse(o=>{
+  if(!o.isMesh)return;
+  const ms=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of ms){
+   if(!m||!m.emissive)continue;   // no emissive = not a lit material: skips the cannonball's additive warn shell
+   const u=m.userData;
+   if(u.heatEm===undefined){u.heatEm=m.emissive.getHex();u.heatEmI=m.emissiveIntensity;u.heatCol=m.color.getHex();}
+   if(k<=0){
+    if(!u.heatOn)continue;        // already cold — don't rewrite a settled material every frame
+    m.emissive.setHex(u.heatEm);m.emissiveIntensity=u.heatEmI;m.color.setHex(u.heatCol);u.heatOn=false;
+    continue;
+   }
+   m.emissive.setHex(u.heatEm).lerp(hot,k);
+   m.emissiveIntensity=u.heatEmI+H.glow*k*pulse;
+   m.color.setHex(u.heatCol).lerp(hot,H.tint*k);
+   u.heatOn=true;
+  }
+ });
+}
+function removeBall(b){ballHeatSet(b.m,0);   // hand the shared material back cold, or the next ball of this type (and the goal replay, which clones the same materials) opens red
+ scene.remove(b.m);if(b.light)fxLightPut(b.light);   // release the pooled glow (NOT scene.remove — that would change the light count)
  if(b.warnLight)fxLightPut(b.warnLight);
  if(b.warnShell){b.warnShell.geometry.dispose();b.warnShell.material.dispose();}
  // only the generated-sphere fallback owns its geo/mat; GLB-clone balls share the cached

@@ -10,7 +10,7 @@ const CONFIG = {
 
   /* ---- logo ----------------------------------------------------------- */
   logo:{
-   src:'assets/fuzeball_logo_TC.png',  // path to the logo image
+   src:'assets/fuzeball_logo_tc_cycles.png',  // path to the logo image
    width:460,                       // max width in px
    glow:'#5090ff',                  // glow colour for the drop-shadow + pulse
    glowSize:28,                     // base glow spread (px)
@@ -215,7 +215,7 @@ const CONFIG = {
       premierLeague:{name:'Premier League', glb:'fuzeball_table_classic_premierLeague.glb'},
       strike:{name:'Strike', glb:'fuzeball_table_classic_strike.glb'},
       alienTech:{name:'Alien Tech', glb:'fuzeball_table_classic_alienTech.glb'},                            
-      alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
+      //alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
    },
    // Unreachable pockets where the dead-ball timer runs faster. Each entry covers
    // all four corners: |x|>xMin AND |z|>zMin. Optional `mult` overrides zoneMult.
@@ -373,6 +373,29 @@ kick:{
    powFrom:0.03, powTo:0.2,       // swing-time window in which restPower is used instead of rest
    grip:0.15,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.85,
+   /* SPEED CEILING - what a CONTACT may leave the ball at, as a fraction of that ball type's maxV.
+      The impulse is a restitution bounce off closing speed, so an ordinary strike routinely lands
+      well past maxV, and the hard clamp used to flatten every one of them onto the same number:
+      `str` stopped paying above about 7, the sweet-spot bonus above about 4, and a charge or a
+      POWER HITS boost never showed at all. Each contact now aims at its OWN ceiling and eases into
+      it rather than clipping - the whole mechanism is capSpeed in js/physics.js, read that first.
+      Read the fractions as a SUM: base, moved by strength, plus whatever the strike itself earned.
+      At the values below a base-5 rod tops out at 0.82 of maxV on an ordinary touch, and a str-10
+      sweet charged strike is the only thing that reaches the top of the range.
+      `base` IS THE KNOB TO REACH FOR FIRST - raise it if play feels slow, lower it to push the
+      teams further apart. `on:false` restores the old hard clip exactly. */
+   cap:{
+      on:true,
+      knee:0.62,     // speed under this fraction of the ceiling is passed through UNCHANGED
+      base:0.72,     // ceiling at base str
+      str:0.16,      // ...moved this far either way at str 0 / str 10
+      sweet:0.10,    // a clean centre strike earns this much more ceiling
+      shot:0.75,     // ...and a player shot earns this x its own power trim (r.shotPow-1), so a
+                     //   finesse touch LOWERS its ceiling and a well-timed charge raises it
+      boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
+      min:0.42,      // a contact can never be capped below this...
+      max:1.1       // ...nor above it. OVER 1 ON PURPOSE
+   },
    // Bonus power for a clean strike in the centre of the foot, scaled by the acc stat.
    sweetSpot:{
       on:true,
@@ -451,9 +474,7 @@ kick:{
    trem:{amp:0.055, hz:34},        // overcharge tremble — DISPLAY ONLY (see the banner in shots.js)
    holdT:0.42,                     // how long the marker holds its verdict after the wind-up ends
    holdRise:5.5,                   // …and how far it lifts away from the rod while that settles
-   /* THE VERDICT. Indexed by the band js/shots.js stamps on the rod when a wind-up ends:
-      0 too early · 1 clean · 2 overcooked · 3 no room to swing. Lives here and not in fx.js so the
-      marker colour and the words can never drift apart — they are one verdict shown two ways. */
+   
    bandCol:['#8fa6c8','#ffd24d','#ff3b3b','#7d8796'],
    text:{
     on:true,                       // the words. Colour alone teaches the band once you know it;
@@ -636,6 +657,7 @@ ai:{
       lerp:4,             // ease rate toward the angle
       back:-5.8,          // x band behind the rod where a loitering ball triggers it…
       front:0.85,        // …up to this line
+      gkFront:3.3,         // GK only: push that front line this much further in front of the keeper
       maxVX:85,            // ball |v.x| must be under this
       maxSpeed:85,        // total ball speed cap
       abortT:6.5          // give up after this long (s, keep under deadball.stallT)
@@ -952,17 +974,26 @@ ai:{
   predIq:.06,         // ball anticipation: scales the pred lead ±6%/pt of iq
   predFloor:.7,       // …floor on that scale, so low-iq rods still lead the ball
   // Stamina channel A — the clock: a uniform ramp over the match.
-  fatStart:60, fatEnd:180,   // seconds where fatigue starts / reaches full
-  fatMax:.25,        // total fatigue budget (max slow-down at sta=0); both channels share it
+  fatStart:30, fatEnd:180,   // seconds where fatigue starts / reaches full
+  fatMax:.25,        // slow-down at a FULLY tired rod. sta scales the RATE of tiring (stTire),
+                     //   not this depth, so every rod converges here — it just takes a fit rod far
+                     //   longer to arrive, and at tireFloor 0 a sta=10 rod never arrives at all.
+  tireFloor:0.2,       // slowest a rod may tire, as a fraction of a sta-0 rod's rate.
+                     //   0 keeps the pre-change balance EXACTLY: a max-stamina rod never tires, and
+                     //   its rod-hole ring is a gauge that never moves. Any value in (0, 0.1)
+                     //   touches ONLY sta 10 — enough to make its ring drain visibly, for a couple
+                     //   of percent of top speed. Above 0.1 it starts flattening sta 9 and below
+                     //   too, nerfing rods that were already balanced: the stat steps are 1-sta/max,
+                     //   i.e. 0.1 apart.
   // Stamina channel B — exertion: each swing costs the swinging rod, and bleeds off again.
   kickFat:{
    on:true,
-   weight:.55,      // share of fatMax driven by swinging (the clock keeps the rest)
+   weight:.55,      // share of the ramp driven by swinging (the clock keeps the rest)
    per:1,           // exertion banked per swing
    full:30,         // swings at which this channel is fully spent
    recover:.12,     // exertion bled off per second
    cap:1.25,        // ceiling as a multiple of `full`
-   userDrain:false  // whether human-held rods accrue it too
+   userDrain:true  // whether human-held rods accrue it too
   }
  },
 
@@ -1233,7 +1264,7 @@ ai:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.25,maxV:135,w:70,trail:'#ffffff',
+      mass:1.45,maxV:150,w:70,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1248,8 +1279,9 @@ ai:{
                attack:.003,decay:.28,vol:.14,volScale:.004,volMax:.5}
       }
    },
-   fire:   {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1,maxV:100,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+   fire:   
+      {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
+      mass:1,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -1277,10 +1309,10 @@ ai:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.5,maxV:140,w:6,splits:true,trail:'#c39bff',
+      mass:1.5,maxV:180,w:6,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
-            beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
+            beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
          // Wall/floor tap. noiseVol is the quietest audible tap, noiseVolScale how fast it
          // grows with impact speed; body* adds a low thump under hard hits.
          wall:{noiseDur:.045,noiseFreq:2200,noiseFreqScale:4,noiseVol:.012,noiseVolScale:.0035,noiseVolMax:.30,q:.9,
@@ -1296,7 +1328,7 @@ ai:{
       // Flutter ball: its side-spin is re-rolled on a short timer so the flight weaves.
       // No GLB mesh slot, so it renders as a glowing-cyan sphere.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.0,maxV:100,w:12,trail:'#8fe8ff',light:0x33cfff,
+      mass:1.0,maxV:100,w:12,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -1311,10 +1343,10 @@ ai:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:3,maxV:140,w:3,value:2,trail:'#ffd75e',metal:.85,
+      mass:3,maxV:160,w:3,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.055,noiseFreq:1500,noiseFreqScale:3,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
-               beepFreq:500,beepDur:.085,beepType:'triangle',beepVol:.09,beepVolScale:.0035,beepVolMax:.28,beepSlide:-40},
+               beepFreq:500,beepDur:.85,beepType:'triangle',beepVol:.009,beepVolScale:.0035,beepVolMax:.028,beepSlide:-10},
          wall:{noiseDur:.05,noiseFreq:2000,noiseFreqScale:3.5,noiseVol:.013,noiseVolScale:.0034,noiseVolMax:.28,q:2.2,
                bodyFrom:45,bodyFreq:190,bodyDur:.09,bodyVolScale:.0020,bodyVolMax:.20,bodySlide:-25},
          roll:{floor:{vol:.30,freq:200,freqScale:4,q:1.4},         // dense and ringy
@@ -1325,18 +1357,6 @@ ai:{
    },
   },
 
-  /* ---- ball reflections (local cube-map) -------------------------------
-     A cube camera rides the lead ball so metallic balls reflect the real scene.
-     Costs one extra scene pass; also gated by the Options 'Reflections' toggle.
-        on         master switch. Off = balls keep the distant room bake (scene.environment)
-                   and the extra pass never runs, i.e. exactly the Reflections-off look.
-        res        cube face resolution. 32 is the ball-sized balance, 256 sharper + costlier;
-                   anything tiny (this sat at 8 for a while) is a mush, not a saving worth having
-                   — the pass costs what it costs, the face size is nearly free by comparison.
-        every      update the cube every Nth frame
-        near/far   cube camera clip range (must span the table + room)
-        intensity  reflection strength on the ball. Applied ONLY while the cube map is bound —
-                   see setBallEnv, which restores each material's authored value on the way out. */
   ballReflect:{on:true,res:32,every:2,near:1,far:300,intensity:1},
 
   /* ---- debug / toggles -------------------------------------------------- */
@@ -1486,7 +1506,17 @@ ai:{
    // (changing it forces a shader recompile). Overflow just drops the extra glow.
    lightPool:3,
    warmMatch:true, // true = compile every fx a match can fire before kickoff
-  
+
+   heat:{
+    on:true,
+    from:0.94, full:1.0,
+    col:0xff2a10,
+    glow:1.5,
+    tint:0.3,
+    pulse:7, pulseAmt:0.22,
+    trail:0.8
+   },
+
    marks:{
     on:true,
     count:28,                      // marks on screen at once
@@ -1500,6 +1530,69 @@ ai:{
     // NO COLOUR HERE ON PURPOSE. A mark multiplies the wall down rather than painting on it,
     // so it has no colour to get wrong and can never lighten a dark wall or a dark skin.
     // A ball type that should burn harder sets `markMul` on itself instead (see fire).
+   },
+
+   /* ---- rod holes as a STAMINA gauge (js/fx.js rodHolesUpdate) ----------
+      stFat() has driven slide speed, agility, reaction and the AI's aim and decisions since it was
+      written, and has never had one pixel on screen — so the price of leaning on the power trigger
+      (the only thing that tires a HELD rod, see stats.kickFat.userDrain) was invisible. The grommet
+      a rod passes through is the diegetic place for it: welded to the rod it describes, and far
+      enough from the ball to be glanced at rather than watched.
+
+      THE LEVEL IS THE READING. The ring drains top-down on stFatRamp(), because LENGTH is the
+      encoding an eye measures without being taught: you can see a half-empty ring without knowing
+      what any colour means. An earlier version leaned on hue for the magnitude instead and a tiring
+      rod just looked slightly washed out.
+
+      THE COLOUR IS THE SAME NUMBER, LEADING SLIGHTLY. `gamma` below 1 bends the hue ahead of the
+      drain, so a ring that still looks three-quarters full has already gone amber — the warning
+      lands before the level looks alarming. Redundant by design, which is the one arrangement in
+      which green->red is legitimate: it is the pair ~8% of men cannot separate, so it must never
+      be the SOLE carrier of a magnitude. Green is also neither team colour, so a ring can never be
+      mistaken for an ownership marker.
+
+      STAMINA IS ALREADY IN THE RAMP (CONFIG.stats.tireFloor / stTire), so a fit rod's ring drains
+      slowly and a poor one's drains fast, and the gauge needs no per-rod normalisation of its own.
+      At tireFloor 0 a sta=10 rod never tires and its ring never moves — see that setting for the
+      one number that changes it.
+
+      Needs a `rod_hole*` object per rod in the table skin GLB — see registerRodHoles (models.js).
+      Every shipped skin HAS the ring geometry already; what differs is whether it has been split
+      out yet. `node tools/rodholes-check.mjs` says which files are done and where the rings are in
+      the ones that are not. A skin that has not been converted simply stays inert. */
+   rodHoles:{
+    on:true,
+    /* the LEVEL. `fillMin` keeps a sliver lit at zero stamina so a spent ring still reads as a
+       ring rather than as a hole the effect forgot about; `fillSoft` is the softness of the
+       waterline as a fraction of ring height — hard edges alias badly at this size. */
+    fillMin:0.06, fillSoft:0.07,
+    /* the COLOUR of the lit part. idle = costing nothing, hot = fully slowed. */
+    idle:0x36e07a, warm:0xffb648, hot:0xff3b3b,
+    mid:0.55,              // where `warm` sits on the 0..1 cost axis
+    gamma:0.75,            // <1 opens up the shallow end, where a default-stamina rod lives
+    glow:1.6,              // emissive ADDED to the lit part (the authored material is left alone)
+    lerp:6,                // smoothing per second — stops a ring flickering on a noisy value
+    pulseFrom:0.70, pulseHz:2.2, pulseDepth:0.45,  // a badly-slowed ring breathes rather than sitting flat
+
+    /* The wind-up, in the SAME four colours as the seat marker (CONFIG.shots.charge.bandCol), so
+       two readouts of one thing can never disagree about what gold means. A charge is not a level,
+       so the ring fills completely while one is held. Worth knowing before tuning it: this is
+       DUPLICATE information — the marker above the held rod already shows the band, and it sits
+       nearer the ball. If the rings ever feel busy, this is the half to switch off. */
+    charge:{ on:true, glow:3.2, min:0.35 },       // min = how lit a charge is the instant it arms
+
+    /* A GOAL flashes the SCORER'S OWN ring, and only that one — which makes it a readout as much
+       as a celebration. Nothing else on screen says WHICH ROD scored: the banner names the team,
+       the sub chip describes the shot, and both are gone in two seconds. The ring is attached to
+       the answer.
+       It borrows the LED strips' clock AND their square wave (fx.js ledUpdate), including the
+       per-room `curLeds` override, so the whole table celebrates on one rhythm instead of two
+       nearly-identical ones — which is the version that looks broken.
+       AN OWN GOAL FLASHES THE OFFENDING ROD IN `own`, never in the beneficiary's colour.
+       Congratulating the wrong team's colour on the wrong rod is the one reading this must never
+       give, and it is exactly what "flash the scoring team's colour" would do. */
+    goal:{ on:true, glow:4.5, dim:0.12, hz:0, hold:0, own:0x7d8796 }
+    //         hz 0 = follow the LED strobe rate · hold 0 = follow MATCH.goalHold
    } },
 
  /* ---- training mode (js/training.js) ---------------------------------- */
@@ -1870,6 +1963,14 @@ ai:{
   hideDebug:true,      // the C-overlay's proxies are SCENE meshes and would land in the shot; restored on exit
   hideMarks:true,      // opening state of the markers toggle (held-rod cones, drop ring, sweet-spot guide)
 
+  /* --- panel groups ------------------------------------------------------
+     Ten sections is a long scroll on a laptop, and most of a session is spent
+     in two or three of them. Every section collapses, and which ones are open
+     is remembered in cfg.photoGroups - so the list below is only ever the
+     FIRST-RUN state, not something the player is stuck with.
+     Ids, in panel order: shot cam look frame scene shots path cap seq keys. */
+  defOpen:['shot','cam','cap'],
+
   /* --- rig ---------------------------------------------------------------
      ALWAYS an orbit: camera position is derived from target + dist + yaw/pitch,
      so every number on the panel means the same thing in both modes. 'Free look'
@@ -1993,6 +2094,38 @@ ai:{
    prefix:'fuzeball_turntable'
   },
 
+  /* --- camera path (V) ---------------------------------------------------
+     A saved shot is already a keyframe: target, distance, yaw, pitch, roll and
+     fov is the complete rig. So a "path" is nothing more than an ORDER of slots
+     plus a duration, and playing it is the rig easing through them.
+
+     The slots are REFERENCED, not copied. Re-compose slot 3, press play, and the
+     move updates - that is the whole authoring loop, and it is the reason this
+     stores indices rather than poses. A slot that is empty when the move runs is
+     dropped from it with a count in the message, not treated as a fault.
+
+     Both recorders drive off this. R rolls a real-time take from the top and
+     writes it out when the move lands; SHIFT+R renders the same move offline at
+     full resolution and an exact frame rate, which is the one to ship. */
+  path:{
+   on:true,
+   secs:8, secsMin:1, secsMax:60,   // how long the whole move takes, end to end
+   maxPts:12,        // waypoints per path. A slot may repeat - 1 - 3 - 1 is a there-and-back
+   /* Catmull-Rom through the waypoints instead of straight legs between them. Off is a
+      dolly-and-cut look: right for a two-point move, visibly kinked at every corner past that. */
+   smooth:true,
+   /* Ease in and out over the WHOLE move rather than per leg. One accelerate at the top and one
+      settle at the end is most of what separates a camera move from a slider being dragged.
+      Ignored on a loop, where an ease at the seam is a stutter once per revolution. */
+   ease:true,
+   loop:false,
+   live:false,       // sweep with the sim RUNNING. Real-time recorder only - see phSeqStart
+   recAutoPlay:true, // R restarts the move from the top and rolls
+   recAutoStop:true, // ...and writes the take out when it lands
+   recTail:0.4,      // seconds held on the end pose before the take closes, so there is a cut point
+   prefix:'fuzeball_path'
+  },
+
   slots:6               // saved-shot slots (persisted in cfg.photoShots)
  },
 
@@ -2089,7 +2222,7 @@ const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeb
 // Never leaves this computer. Display, performance, hardware calibration, window geometry.
 const CFG_MACHINE=new Set([
  'renderScale','shadows','shadowQuality','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
- 'particles','marks','reflections','fog','profiler',
+ 'particles','marks','rodHoles','reflections','fog','profiler',
  'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
  'padDeadzone'     // stick calibration: a drifty pad on ONE machine, not a preference
 ]);
@@ -2107,7 +2240,7 @@ const CFG_PLAYER=new Set([
  'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
  'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock',
- 'trials','daily','trnSpots','photoShots',                       // progress + authored content
+ 'trials','daily','trnSpots','photoShots','photoPath','photoGroups',  // progress + authored content
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);
 /* Bucket a key. Unlisted -> PLAYER, reported ONCE per key per session (not per save, or every
@@ -2185,6 +2318,7 @@ if(typeof cfg.reducedFx!=='boolean')cfg.reducedFx=false;
 if(typeof cfg.trails!=='boolean')cfg.trails=true;
 if(typeof cfg.particles!=='boolean')cfg.particles=true;
 if(typeof cfg.marks!=='boolean')cfg.marks=true;
+if(typeof cfg.rodHoles!=='boolean')cfg.rodHoles=true;   // rod-hole stamina rings
 // (legacy cfg.theme is left as-is — only the pitch migration below reads it)
 // Per-table chosen skin: table-id -> skin-id; missing = the table's defSkin.
 if(!cfg.skins||typeof cfg.skins!=='object')cfg.skins={};

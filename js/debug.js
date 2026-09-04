@@ -573,11 +573,13 @@ function buildDebug(){
  // slide range) where a slow, sideways ball is lifted to SR.angle instead of left on the floor.
  // Static position; material goes hot lime while that rod's r.act==='safeRaise'.
  const srDim=dbgMat(0xc2ff4d,.15),srHot=dbgMat(0xc2ff4d,.5);
- const srW=AIC.safeRaise.front-AIC.safeRaise.back;
  for(const r of rods){
   const dir=r.team===0?1:-1;
   const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=plate(srDim,srW,0.05,zMax-zMin||0.1,r.x+(AIC.safeRaise.back+AIC.safeRaise.front)/2*dir,0.045,(zMin+zMax)/2);
+  // keepers get safeRaise.gkFront extra reach in front, so their box is longer
+  const srF=AIC.safeRaise.front+(r.role==='GK'?(AIC.safeRaise.gkFront||0):0);
+  const srW=srF-AIC.safeRaise.back;
+  const m=plate(srDim,srW,0.05,zMax-zMin||0.1,r.x+(AIC.safeRaise.back+srF)/2*dir,0.045,(zMin+zMax)/2);
   dbgSafeRaise.push({mesh:m,rod:r,matDim:srDim,matHot:srHot});
  }
 

@@ -11,15 +11,32 @@ function ST(r,k){const t=S.teamStats&&S.teamStats[r.team],s=r.stats||(t&&(t[r.ro
      A · the CLOCK   — a uniform ramp over the matchTime window (0 until fatStart, full at fatEnd).
      B · EXERTION    — this rod's own accumulated swinging (r.exert), so the rods that do the work
                        are the ones that are spent by the whistle instead of everyone fading alike.
-   `stFat` is the ≤1 multiplier both produce, scaled by how far sta sits below max — sta=10 never
-   fades at all (which is what makes sta the SINGLE stamina knob, and why neither channel scales
-   itself by it again). It feeds every tiring channel: slide speed (stSpeed), agility (stAgil),
+   STAMINA SCALES THE RATE, NOT THE DEPTH. `sta` multiplies BOTH channels through stTire, so a fit
+   rod banks less from each swing AND crawls up the match clock more slowly — it takes longer to GET
+   tired rather than shrugging tiredness off once tired. That is what the stat's name promises, and
+   it is the only reading that makes the rod-hole ring (js/fx.js) mean anything: the gauge drains
+   slowly on a fit rod and fast on a spent one, which is a thing a player can act on.
+
+   THE ALGEBRA IS THE SAME AS THE OLD MODEL, which is why this was safe to change. It used to read
+   `1 - fatMax*(1-sta/max)*ramp` — the stat scaling the PENALTY. Multiplication is associative, so
+   moving that factor onto the ramp leaves `stFat` byte-identical at every stat value (asserted
+   across sta 0..10 in tools/rodholes-harness.js). Only two things actually differ: what the ring
+   shows, and `tireFloor` — which, above 0, is the one real balance change, because a sta=10 rod's
+   old factor was exactly 0 and it therefore never tired at all.
+
+   `stFat` is the ≤1 multiplier all of this produces. It feeds every tiring channel: slide speed (stSpeed), agility (stAgil),
    reaction (stReact), AI aim (stErr/stAim) and AI decisions (stIQ/stPred). Deliberately left OUT
    of shared execution (stHit/stGrip/stAccFrac/aimAssist) so a tired team plays sluggish + sloppy +
    dozy, but the HUMAN's kick feel never degrades. */
+/* HOW FAST THIS ROD TIRES, as a multiplier on BOTH channels — 1 at sta 0, falling to `tireFloor`
+   at sta max. Applied on the READ rather than where exertion is banked, so `r.exert` stays a plain
+   count of swings for the debug (js/debug.js) and training (js/training.js) readouts that print
+   it raw. */
+function stTire(r){return Math.max(STC.tireFloor,1-ST(r,'sta')/STC.max);}
 // 0..1 — how spent this rod is from SWINGING alone, independent of the clock. r.exert is banked by
 // stExertKick (one unit a swing) and bled off by stExertTick; both are called from rods.js.
-function stExert(r){const K=STC.kickFat;return (K.on&&K.full>0)?clamp((r.exert||0)/K.full,0,1):0;}
+// Scaled by stTire, so the same twenty swings cost a fit rod less than a poor one.
+function stExert(r){const K=STC.kickFat;return (K.on&&K.full>0)?clamp((r.exert||0)/K.full,0,1)*stTire(r):0;}
 // Bank one swing's exertion. Called from kickRod — the ONE place every swing in the game passes
 // through, human or AI, shot or pass. NOT charged per kick style on purpose: a pass is as much of a
 // swing as a strike. seatOf(r) is the "a human is holding this right now" test; see
@@ -42,12 +59,21 @@ function stExertKick(r){
 // Recovery. Ticked once per sim step from updateRods, alongside the rod's other cooldowns — the
 // same set of phases in which a swing can happen, so both halves of the channel run on one clock.
 function stExertTick(r,dt){if(r.exert>0)r.exert=Math.max(0,r.exert-STC.kickFat.recover*dt);}
-function stFat(r){
+/* HOW TIRED THIS ROD IS, 0..1 — the blend of the two channels, both already scaled by stTire, so
+   this IS the per-rod answer rather than a stat-free one. It is what the rod-hole ring shows as a
+   level (js/fx.js rodHoleFill), and it has to stay the number stFat is built from or the gauge and
+   the slow-down it represents can drift apart.
+   Each channel is clamped to 0..1 BEFORE stTire scales it, not after — and that order is the
+   whole reason `stFat` stays byte-identical to the old model. stExertKick banks up to full*cap
+   (1.25x full), so t*clamp(x) and clamp(t*x) differ exactly when x>1: scaling first would let a fit
+   rod spend headroom that a poor rod has already had clipped away, quietly making high stamina
+   better than the old maths ever made it. */
+function stFatRamp(r){
  const K=STC.kickFat,w=K.on?clamp(K.weight,0,1):0;
- const clockR=clamp((S.matchTime-STC.fatStart)/(STC.fatEnd-STC.fatStart),0,1);
- const ramp=w?clockR*(1-w)+stExert(r)*w:clockR;   // w=0 → byte-identical to the old clock-only ramp
- return 1-STC.fatMax*(1-ST(r,'sta')/STC.max)*ramp;
+ const clockR=clamp((S.matchTime-STC.fatStart)/(STC.fatEnd-STC.fatStart),0,1)*stTire(r);
+ return clamp(w?clockR*(1-w)+stExert(r)*w:clockR,0,1);   // w=0 → the clock-only ramp, stat-scaled
 }
+function stFat(r){return 1-STC.fatMax*stFatRamp(r);}
 function stSpeed(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.spd)*stFat(r));}
 // AI slide AGILITY: scales the accel cap on an AI rod's direction changes (see updateRods). Keyed
 // on spd too — a 'fast' rod both tops out higher AND reverses quicker — with its own coefficient so
@@ -55,6 +81,10 @@ function stSpeed(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.spd)*stFat(
 // AI-only: the user rod stays instant. Base 5 = ×1.
 function stAgil(r){return Math.max(.2,(1+(ST(r,'spd')-STC.base)*STC.agil)*stFat(r));}
 function stHit(r){return Math.max(.2,1+(ST(r,'str')-STC.base)*STC.str);}
+// -1 at str 0, 0 at base, +1 at max: how far this rod's strength sits from neutral, signed. Scales
+// the per-contact SPEED CEILING (js/physics.js capSpeed); stHit above is the impulse half of the
+// same stat. Left out of the fatigue channels with the rest of shared execution - see the banner.
+function stCapFrac(r){return clamp((ST(r,'str')-STC.base)/(STC.max-STC.base),-1,1);}
 function stGrip(r){return clamp(KICK.grip*(1+(ST(r,'ctl')-STC.base)*STC.ctl),0,.6);}
 function stReact(r){return Math.max(.2,1-(ST(r,'rea')-STC.base)*STC.rea)/stFat(r);}
 function stCd(r){return Math.max(.25,1-(ST(r,'rea')-STC.base)*STC.cd);}

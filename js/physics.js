@@ -308,6 +308,45 @@ function goalFrameCollide(b,h){
   }
  }
 }
+/* PER-CONTACT SPEED CEILING (CONFIG.kick.cap).
+   The impulse below is a restitution bounce off CLOSING speed, so an ordinary strike routinely
+   produces more than the ball type's maxV: measured on a classic ball against a ball arriving at
+   40, a base-str power swing at mid-boot leaves at ~127 and a str-10 sweet hit at ~245, against a
+   maxV of 150. The hard clamp at the end of stepBall then flattened every one of those onto the
+   SAME 150 - which is why str stopped paying above about 7, the sweet-spot bonus above about 4,
+   and a charge or a POWER HITS boost never showed at all. It is also what the heat glow was
+   reporting: most touches were sitting on the clip, not near a top speed anyone had earned.
+   TWO HALVES, AND BOTH ARE NEEDED. The CEILING is per contact, so a weak rod and a strong one aim
+   at different numbers - that is what makes only a strong, clean or charged strike able to reach
+   the top. The KNEE eases the outgoing speed into that ceiling instead of clipping it: under the
+   knee nothing changes at all (the curve's slope is 1 there, so there is no step to feel), over it
+   the excess compresses and only ever APPROACHES the ceiling, so speeds spread out along the top
+   of the range instead of piling on one line.
+   THE FLOOR AT THE ARRIVING SPEED is what keeps it honest: this bounds what a boot may ADD, it
+   never slows a ball that was already travelling faster. Without it a weak defender grazing a
+   screamer would kill it, which is not what any of this is for. A head-on deflection still sheds
+   speed exactly as it always did - that is the impulse doing it, not this.
+   NOTHING HERE TOUCHES stepBall's OWN maxV CLAMP, which stays as the last word. cap.max sits
+   deliberately over 1 so the best strikes ask for a ceiling past maxV and that clamp is what
+   finishes them: the ease is asymptotic, so a ceiling of exactly maxV could never be reached and
+   the heat glow would never fill. */
+function capSpeed(b,r,sweet,in2){
+ const C=KICK.cap;
+ if(!C.on)return;
+ const v=b.v,sp2=v.x*v.x+v.y*v.y+v.z*v.z,lo=b.t.maxV*C.min*C.knee;
+ if(sp2<=lo*lo)return;              // under the LOWEST knee any contact could have - skips the stat reads on every passive touch and every slide substep
+ let f=C.base+C.str*stCapFrac(r);
+ if(sweet)f+=C.sweet;
+ if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's OWN power trim: a finesse touch lowers its ceiling, a well-timed charge raises it
+ if(S.eff[r.team].boost>S.time)f+=C.boost;
+ const cap=b.t.maxV*clamp(f,C.min,C.max),knee=cap*C.knee;
+ if(sp2<=knee*knee)return;
+ const sp=Math.sqrt(sp2),span=cap-knee;
+ let out=knee+span*(1-Math.exp(-(sp-knee)/span));
+ const inSp=Math.sqrt(in2);
+ if(out<inSp)out=Math.min(sp,inSp);     // the cap limits what this contact ADDED, never the speed it arrived with
+ const k=out/sp;v.x*=k;v.y*=k;v.z*=k;   // components, not multiplyScalar: collideRod writes b.v by hand everywhere and the harnesses stub it as a plain object
+}
 function collideRod(b,r){
  if(r.trnHidden)return;                   // training sandbox: hidden rods are ghosts — no contact
  const p=b.m.position;
@@ -365,6 +404,7 @@ function collideRod(b,r){
     //   z offset from the foot; relR is how far ahead of the rod it contacts.
     const relR=(p.x-r.x)*r.kickDir;
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
+    const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
@@ -378,6 +418,7 @@ function collideRod(b,r){
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
+    if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling - see the banner above collideRod. A HELD contact is exempt for the same reason it takes no sweet bonus and no aim-assist: those improve a STRIKE, and this bounds one
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
@@ -447,6 +488,7 @@ function collideRod(b,r){
     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
     const HLD=holdCfg(r),trapping=!!HLD;        // dead + sticky while trapping/dribbling — see the foot-box pass
     const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
+    const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
@@ -454,6 +496,7 @@ function collideRod(b,r){
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
+    if(!trapping)capSpeed(b,r,false,in2);   // per-contact speed ceiling - a leg graze is no more entitled to a top-speed ball than a boot
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact

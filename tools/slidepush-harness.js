@@ -19,7 +19,9 @@ const real=[
  slice(rd('js/shots.js'),'function shotsOn(){',NL+NL+'/* ---- the modifier axis'),
  slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+NL+'/* The swing CURVE'),
  slice(rd('js/stats.js'),'function stHit(r){',NL),
- slice(rd('js/stats.js'),'function stGrip(r){',NL)
+ slice(rd('js/stats.js'),'function stGrip(r){',NL),
+ slice(rd('js/stats.js'),'function stCapFrac(r){',NL),
+ slice(rd('js/physics.js'),'function capSpeed(b,r,sweet,in2){',NL+'function collideRod(')
 ].join(NL);
 
 /* ---- stubs: everything collideRod touches that is not the contact algebra ----
@@ -130,8 +132,12 @@ ok('and proportional — no knee in the curve',near(rows[3].ball/rows[1].ball,3,
  '60/20 = '+(rows[3].ball/rows[1].ball).toFixed(2)+'x');
 
 console.log(NL+'=== 2. slidePush is the knob, and 1 is the old behaviour ===');
-const was=K.slidePush;
-K.slidePush=1;const old80=slideInto(80).ball;
+const was=K.slidePush,capOn=K.cap&&K.cap.on;
+/* The 'as it shipped' figures are measured with the per-contact SPEED CEILING OFF, because it
+   did not exist then - this section is about what slidePush alone did, and leaving the ceiling
+   in would quietly fold a later, separate mechanism into a historical number. */
+const capOff=()=>{if(K.cap)K.cap.on=false;},capBack=()=>{if(K.cap)K.cap.on=capOn;};
+K.slidePush=1;capOff();const old80=slideInto(80).ball;capBack();
 K.slidePush=was;const now80=slideInto(80).ball;
 console.log('   slidePush 1 (as it shipped): '+old80.toFixed(1)+' u/s      slidePush '+was+': '+now80.toFixed(1)+' u/s');
 ok('slidePush 1 = the ball leaves at the boot speed (the ping)',near(old80/80,1,0.02),
@@ -196,9 +202,9 @@ types.forEach(k=>console.log('   '+k.padEnd(8)+' mass '+String(X.BALL_TYPES[k].m
 ok('no ball leaves a slide faster than the boot that pushed it',
  types.every(k=>slideInto(80,{type:k}).ball<=80),
  'worst '+Math.max.apply(null,types.map(k=>slideInto(80,{type:k}).ball)).toFixed(1));
-K.slidePush=1;
+K.slidePush=1;capOff();
 const oldWorst=Math.max.apply(null,types.map(k=>slideInto(80,{type:k}).ball));
-K.slidePush=was;
+K.slidePush=was;capBack();
 ok('...which was NOT true before (a light ball outran its own boot)',oldWorst>80,
  'was '+oldWorst.toFixed(1));
 

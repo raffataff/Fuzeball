@@ -51,12 +51,113 @@ function chgSay(r){
  const lab=T.labels[r.chgEndBand];
  if(lab)notice(lab,T.dur,CHG_COL[r.chgEndBand]);
 }
+/* ---- rod holes: the stamina gauge ------------------------------------------------------------
+   The one system in the game that changes how a rod PLAYS and had no readout. stFat() scales slide
+   speed, direction-change agility, AI reaction, AI aim and AI decision-making, and the player's
+   only clue was that a rod felt slightly worse than it did twenty swings ago.
+
+   ONE NUMBER, SHOWN TWICE, AND THAT IS DELIBERATE. The ring drains from the top on stFatRamp and
+   the colour of what is left runs off the same figure. Length is the channel an eye measures
+   without being taught, so the level is the reading; the colour is redundant reinforcement, which
+   is the ONE arrangement in which a green->red ramp is legitimate (~8% of men cannot separate the
+   pair, so it must never be the sole carrier of a magnitude — and green is neither team colour, so
+   a ring can never be misread as an ownership marker).
+   `gamma` below 1 is what stops the colour being pure decoration: it makes the hue LEAD the level,
+   so a ring that still looks three-quarters full has already gone amber. The warning arrives before
+   the level looks alarming, which is the point of having two channels at all.
+   An earlier version put the magnitude in the hue ALONE and a tiring rod simply looked washed
+   out — no level to read, and, because the cost was normalised against the worst rod in the game,
+   the useful half of the ramp was unreachable in a normal match.
+
+   THE LEVEL IS DRAWN IN THE SHADER, not by lighting sub-objects — see rodHoleShader (models.js).
+   Everything here does is move two uniforms per ring.
+
+   WHAT IT COSTS. Nothing allocates: the ramp colours are parsed once below rather than per frame,
+   which is the trap the seat marker caches `userData.col` to avoid, and the per-ring scratch Colors
+   live on the registry entries. Switched off, each ring is reset once and then skipped.
+
+   IT IS DECORATION AND MUST STAY SO. Nothing here is read by the sim — it only ever writes uniform
+   values on its own material clones. A table skin whose rings have not been split into `rod_hole*`
+   objects yet leaves rodHoleMeshes empty and every line below is skipped, so an unconverted skin
+   costs nothing and looks exactly as it did. `node tools/rodholes-check.mjs` reports which are
+   done. */
+const RH=CONFIG.fx.rodHoles;
+const RH_IDLE=new THREE.Color(RH.idle),RH_WARM=new THREE.Color(RH.warm),RH_HOT=new THREE.Color(RH.hot);
+const RH_BAND=CHG_COL.map(h=>new THREE.Color(h));      // the charge verdict colours, pre-parsed
+const _rhA=new THREE.Color();
+/* HOW TIRED, 0..1, for the COLOUR — the same ramp the level uses, bent by `gamma` so the hue runs
+   ahead of the drain (see the header). Since stFatRamp is already stat-scaled, a fit rod's ring
+   stays green far longer simply because it takes far longer to fill. */
+function rodHoleSpent(r){return Math.pow(clamp(stFatRamp(r),0,1),RH.gamma);}
+// HOW MUCH IS LEFT, 0..1, straight off the fatigue ramp — the same number stFat is built from, so
+// the level can never disagree with the slow-down it represents. fillMin keeps a sliver lit at
+// empty so a spent ring still reads as a ring.
+function rodHoleFill(r){return RH.fillMin+(1-RH.fillMin)*(1-clamp(stFatRamp(r),0,1));}
+function rodHolesUpdate(rdt){
+ // ticked BEFORE the early-out, or an unconverted skin would freeze the countdown and the flash
+ // would be waiting to fire the moment a converted one loaded.
+ if(rhGoalT>0)rhGoalT=Math.max(0,rhGoalT-rdt);
+ if(!rodHoleMeshes.length)return;
+ const off=!RH.on||cfg.rodHoles===false,k=Math.min(1,rdt*RH.lerp);
+ const GC=RH.goal,goalOn=!off&&GC&&GC.on&&rhGoalT>0;
+ // the LED strips' own strobe rate, per-room override included, so the table celebrates on ONE
+ // rhythm — two nearly-identical ones read as a bug rather than as a flourish.
+ const LZ=(typeof curLeds!=='undefined'&&curLeds)?curLeds:CONFIG.leds;
+ const gHz=(GC&&GC.hz>0)?GC.hz:LZ.goalStrobe;
+ const gPh=goalOn?((GC.hold>0?GC.hold:MATCH.goalHold)-rhGoalT):0;
+ const gStrobe=goalOn?(Math.sin(gPh*gHz*Math.PI*2)>0?1:GC.dim):0;
+ for(let i=0;i<rodHoleMeshes.length;i++){
+  const e=rodHoleMeshes[i],u=e.mat.userData.rhU;
+  if(!u)continue;                                    // program not compiled yet (before first render)
+  if(off){                                           // hand the ring back once, then skip it
+   if(!e.off){e.off=true;e.fill=1;e.v=0;u.rhFill.value=1;u.rhGlow.value.setRGB(0,0,0);}
+   continue;
+  }
+  e.off=false;
+  /* A GOAL OUTRANKS EVERYTHING, and it SNAPS rather than lerping: a flash that eases in over a
+     sixth of a second is not a flash. Writing e.fill/e.col directly also means that when the
+     countdown runs out the ring settles back to its stamina reading from the goal colour, which
+     is the fade you want, for free. */
+  if(goalOn&&e.rod===rhGoalRod){
+   e.fill=1;e.v=0;e.col.copy(rhGoalCol);
+   u.rhFill.value=1;
+   u.rhGlow.value.copy(rhGoalCol).multiplyScalar(GC.glow*gStrobe);
+   continue;
+  }
+  const r=rods[e.rod];
+  let tf=1,tv=0,tc=RH_IDLE,tg=RH.glow;
+  if(r){
+   const ch=RH.charge.on?shotCharge(r):-1;
+   if(ch>=0){
+    /* A wind-up owns the ring while it lasts, and a charge is not a level — it fills completely
+       and speaks in the seat marker's own four colours. The sweet band is a FLAT maximum for the
+       same reason it is in the power it reports: holding longer inside the band must not look
+       better than hitting it. */
+    const band=(shotChargeBlock(r)>=CONFIG.shots.charge.blockAt)?3:shotChargeBand(r);
+    tc=RH_BAND[band]||RH_IDLE;tg=RH.charge.glow;
+    tv=(band===1)?1:Math.max(RH.charge.min,ch);
+   }else{
+    tf=rodHoleFill(r);
+    const sp=rodHoleSpent(r);tv=sp;
+    tc=(sp<RH.mid)?_rhA.copy(RH_IDLE).lerp(RH_WARM,RH.mid>0?sp/RH.mid:1)
+                  :_rhA.copy(RH_WARM).lerp(RH_HOT,RH.mid<1?(sp-RH.mid)/(1-RH.mid):1);
+   }
+  }
+  e.fill+=(tf-e.fill)*k;e.v+=(tv-e.v)*k;e.col.lerp(tc,k);
+  const pulse=e.v>=RH.pulseFrom?1-RH.pulseDepth*(.5-.5*Math.cos(S.time*RH.pulseHz*Math.PI*2)):1;
+  u.rhFill.value=e.fill;
+  u.rhGlow.value.copy(e.col).multiplyScalar(tg*pulse);
+ }
+}
 function spawnTrail(b){
  if(!cfg.trails)return;                    // Options → Display · Effects
  for(const s of sprites){if(s.visible)continue;
   s.visible=true;s.position.copy(b.m.position);
   s.userData.life=.38;
   s.material.color.set(b.t.trail);
+  // a ball at its top speed drags its heat into the trail behind it (ballHeat*, js/balls.js)
+  const hk=(b.hot||0)*CONFIG.fx.heat.trail;
+  if(hk>0)s.material.color.lerp(ballHeatColor(),hk);
   s.scale.set(3.2,3.2,1);s.material.opacity=.75;
   return;}
 }
@@ -115,7 +216,22 @@ function burstUp(pos,c1,c2,n,speed){
  pGeo.attributes.position.needsUpdate=true;pGeo.attributes.color.needsUpdate=true;
 }
 let ledGoalTeam=-1,ledGoalT=0;
-function goalFx(team,b){
+/* The goal flash on ONE ring, deliberately shaped like ledGoalTeam/ledGoalT above: a rod index and
+   a countdown, ticked in rodHolesUpdate off the same wall-clock rdt the LED strobe uses. It expires
+   on its own, so nothing has to remember to cancel it — a goal that ends the match leaves a flash
+   that has finished long before the win screen is dismissed. */
+let rhGoalRod=-1,rhGoalT=0;const rhGoalCol=new THREE.Color();
+/* `scorer` is msScorer's record (js/matchstats.js) — the SAME answer the stats sheet credits, which
+   is the whole reason it is passed in rather than worked out again here. Null (stats off, or a goal
+   nothing ever touched) simply means no flash. */
+function rodHoleGoal(scorer,team){
+ const G=CONFIG.fx.rodHoles.goal;
+ if(!G||!G.on||!scorer||!scorer.rod)return;
+ rhGoalRod=scorer.rod.idx;
+ rhGoalT=G.hold>0?G.hold:MATCH.goalHold;
+ rhGoalCol.set(scorer.own?G.own:(team===0?cfg.redColor:cfg.blueColor));
+}
+function goalFx(team,b,scorer){
  const col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor);
  const gold=new THREE.Color(0xffcf4d);
  const white=new THREE.Color(0xffffff);
@@ -128,6 +244,7 @@ function goalFx(team,b){
  const gi=team===0?1:0;
  goalLights[gi].color.copy(col);goalLights[gi].intensity=4;
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
+ rodHoleGoal(scorer,team);   // …and the scorer's own rod-hole ring, on the same clock
 }
 /* Cannonball detonation FX at world `pos` (the ball's spot at the instant it
    blows). Layered particle blast + white flash + screen shake + boom, then the
@@ -195,6 +312,7 @@ function fxUpdate(rdt){
  if(any)pGeo.attributes.position.needsUpdate=true;
  goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
+ rodHolesUpdate(rdt);   // rod-hole stamina rings — decoration only, writes material colour and nothing else
  if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);
  let fb=null;
  for(const b of S.balls)if(b.m.position.y>7&&b.v.y<0&&!b.scored){fb=b;break;}

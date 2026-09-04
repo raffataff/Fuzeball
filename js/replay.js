@@ -180,10 +180,11 @@ function replayGhostModel(g,ti){
 // Hide a ghost entirely (end of footage for this slot, replay end/abort).
 function replayGhostHide(g){
  g.m.visible=false;g.m.quaternion.set(0,0,0,1);
+ ballHeatSet(g.m,0);          // park it cold; a still-live ghost of the same type re-heats the shared material at heatClose
  // rest the orientation as well as the roll accumulator, so REPLAY.roll:false is a true
  // off-switch even after a session that had it on (a parked mesh would otherwise keep its
  // last rolled pose and the next replay would open on a crooked ball).
- if(g.models)for(const k in g.models){const mm=g.models[k];if(mm){mm.visible=false;
+ if(g.models)for(const k in g.models){const mm=g.models[k];if(mm){mm.visible=false;ballHeatSet(mm,0);
   const b=mm.userData.rqBase;if(b)mm.quaternion.copy(b);else mm.quaternion.set(0,0,0,1);}}
  g.active=null;g.primed=false;g.rq.set(0,0,0,1);
 }
@@ -224,6 +225,7 @@ function replayTint(g,ti){
   g.m.material.emissive.set(t.em||0x000000);
   g.m.material.emissiveIntensity=t.em?0.7:0;
   g.m.material.metalness=t.metal||.05;
+  ballHeatForget(g.m);        // re-authored just now — the heat system must re-read its base colours (js/balls.js)
  }
  g.shim.t.trail=t.trail||'#ffffff';
 }
@@ -296,7 +298,7 @@ function replayStart(){
  RP.queued=false;RP.on=true;S.phase='replay';
  RP.len=Math.min(RB.n/SIM.hz,REPLAY.len);
  RP.start=RB.n-RP.len*SIM.hz;
- RP.t=0;RP.hold=0;RP.mode='play';RP.snap=true;RP.sting=false;
+ RP.t=0;RP.hold=0;RP.mode='play';RP.snap=true;RP.sting=false;RP.prevJ=-1;
  RP.gx=(RP.team===0?1:-1)*F.L/2;             // the goal that was scored INTO
  // sound cursor: skip past everything that fired BEFORE the stretch of footage being shown,
  // so a long rally trimmed to REPLAY.len doesn't dump its whole history in the first frame
@@ -364,6 +366,9 @@ function replayUpdate(rdt){
    if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();}}
  }else{RP.hold-=rdt;if(RP.hold<=0){replayEnd();return;}}
  const j=clamp(RP.start+RP.t*SIM.hz,0,RB.n-1);
+ // SIM steps advanced since the last rendered frame -> the sim time they took. Ghost speed is
+ // measured against THAT, not rdt, so the slow-mo doesn't cool a ball that was flying (js/balls.js).
+ const jDt=(RP.prevJ>=0?Math.max(0,j-RP.prevJ):0)/SIM.hz;RP.prevJ=j;
  replaySndUpdate(rbAbs(j),zk);   // re-fire everything the footage clock has just passed
  /* rods straight from the buffer (display only — r.offset/r.angle untouched) */
  const j0=Math.floor(j),j1=Math.min(j0+1,RB.n-1),a=j-j0,r0=rbIdx(j0)*rods.length*2,r1=rbIdx(j1)*rods.length*2;
@@ -373,11 +378,13 @@ function replayUpdate(rdt){
  }
  /* ghost balls + trails off the live sprite pool */
  let focusSet=false;
+ heatOpen();                                   // the ghosts clone the LIVE ball materials, so they heat the same way (js/balls.js)
   for(let s=0;s<RB.slots;s++){
    const g=RP.ghosts[s],ti=rbBall(s,j,g.m.position);
    if(ti<0){replayGhostHide(g);continue;}
    if(ti!==g.typ)replayTint(g,ti);
    if(!g.primed){g.primed=true;g.prev.copy(g.m.position);}
+   heatFeed(g.active||g.m,RB.keys[ti],jDt>0?g.prev.distanceTo(g.m.position)/jDt:0,g.shim);
    // roll off the step just travelled — BEFORE prev is advanced (the trail test below reads it too)
    if(REPLAY.roll){
     replayRoll(g,g.m.position.x-g.prev.x,g.m.position.z-g.prev.z);
@@ -392,6 +399,7 @@ function replayUpdate(rdt){
   }
   g.prev.copy(g.m.position);
  }
+ heatClose();
  /* camera: hand-held chase toward the shot's placement + broadcast push-in on the slow-mo.
     Default gaze = the ball; a shot that set RP.hasLook aims the gaze itself (ball cam). */
  RP.hasLook=false;

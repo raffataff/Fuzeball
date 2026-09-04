@@ -109,6 +109,7 @@ function loadSkin(id,skinId,cb){
    applyEmissiveStrength(gltf.scene);               // r128 ignores KHR_materials_emissive_strength
    grp.add(gltf.scene);gltf.scene.updateMatrixWorld(true);
    registerBigGoalMeshes(gltf.scene);               // wire baked frame + end-walls into the big-goal widen
+   registerRodHoles(gltf.scene,id,skinId);          // wire the rod-hole rings into the stamina readout
    if(T.collision==='bowl')registerArenaMorph(gltf.scene); // bowl shells open via SDF re-projection
    console.log(S.glb+' loaded ('+id+'/'+skinId+')');
   }catch(e){console.warn('skin GLB hookup failed',e);}
@@ -143,6 +144,10 @@ function disposeTableSkin(id,skinId){
   delete skinLed[id][skinId];
  }
  if(skinHasFrame[id])delete skinHasFrame[id][skinId];
+ if(skinRodHoles[id]&&skinRodHoles[id][skinId]){
+  if(rodHoleMeshes===skinRodHoles[id][skinId])rodHoleMeshes=[];   // don't leave fx.js driving freed materials
+  delete skinRodHoles[id][skinId];
+ }
  if(tableGroups[id])tableGroups[id].remove(grp);
  delete skinGroups[id][skinId];
  const oi=skinOrder.indexOf(key);if(oi>=0)skinOrder.splice(oi,1);
@@ -207,6 +212,127 @@ function registerBigGoalMeshes(root){
   glbGoalWall[gi].push({o:c,inner:near?bb.min.z:bb.max.z,outer:near?bb.max.z:bb.min.z,sgn:Math.sign(bb.min.z+bb.max.z)});nWall++;
  });
  console.log('registerBigGoalMeshes: '+nGrow+' frame + '+nWall+' wall mesh(es) ('+glbGoalSplit.length+' split)');
+}
+
+/* Register a skin's ROD-HOLE RINGS for the stamina readout (js/fx.js rodHolesUpdate).
+
+   The rings already exist in every table skin as their own material slot inside a wall mesh — they
+   are not cut into the wall surface — but the grouping and the material name differ per skin
+   (`metal` under two wall objects on classic, `slide_holes` under one on strike, `rod_metal` under
+   the other one on circuit). So the contract here is the OBJECT NAME and nothing else: name it
+   `rod_hole*` in Blender and it works, whatever material it wears and whatever it hangs under.
+   Do NOT prefix it `led`, `field`, `goal_` or `wall_end` — loadSkin's traverse claims all four.
+
+   WHICH ROD A RING BELONGS TO IS DECIDED BY WORLD X against CONFIG.rods.defs, the same
+   classification registerBigGoalMeshes uses on goal parts — so a ring keeps working when Blender
+   renames it `rod_hole_3.001`, and an export that numbers them backwards still lights the right
+   rods. A ring further than half a rod-spacing from every rod is REFUSED with a console line
+   rather than snapped to the nearest one: silently lighting the wrong rod all match is the worse
+   failure, and it is the one nobody would think to look for.
+
+   EACH RING TAKES ITS OWN MATERIAL CLONE. Eight objects split out of one wall in Blender still
+   share a single material datablock, and one material cannot show eight different values. The
+   clone carries the authored rest look in userData.rhRest so a ring can always settle back to
+   exactly what the artist made. disposeModelTemplate frees the clones with the rest of the skin
+   (it disposes whatever material is ON the mesh), so nothing extra is needed at teardown.
+
+   Shadow casting is turned OFF here. loadSkin stamps castShadow on every mesh in a skin GLB, and
+   these rings run to ~2000 triangles each in the current exports for something that is never a
+   visible caster — 30k triangles in the shadow map for no shadow anybody can see. */
+/* Turn one ring's material into a LEVEL GAUGE, by height, in the shader.
+
+   The alternative was to cut each ring into horizontal bands in Blender and light them from the
+   bottom up — eight rings times eight bands is sixty-four objects and sixty-four draw calls for a
+   thing thirty pixels across, and it would have to be re-authored in every skin. A world-Y
+   threshold in the fragment shader does the same job on the geometry that is already there, at no
+   extra draw call, with a soft waterline instead of eight steps, and it works on whatever ring an
+   artist exports next.
+
+   WORLD Y, NOT OBJECT Y. The contract says transforms are applied, so the two are normally equal —
+   but "normally" is how a table that gets parented or scaled later turns into a bug nobody can
+   find, and `modelMatrix * transformed` costs one multiply in a vertex shader that is already
+   doing several.
+
+   ADDED TO gl_FragColor RATHER THAN TO material.emissive. The authored material is then never
+   written to at all: no rest state to capture, nothing to restore when the effect is switched off,
+   and a skin whose rings carry their own emissive keeps it. The add happens before
+   <tonemapping_fragment>, i.e. in linear space, which is exactly where emissive would have landed.
+
+   BOTH ANCHORS ARE CHECKED. r128 is pinned, but a chunk name is still a string in someone else's
+   file — if either goes missing the ring keeps its authored look and says so in the console,
+   rather than rendering black. */
+function rodHoleShader(m,y0,y1){
+ m.userData.rhU=null;                      // filled in when the program compiles (first render)
+ m.onBeforeCompile=sh=>{
+  m.userData.rhU=null;                     // a RE-compile that fails an anchor must not leave a handle on the dead program
+  sh.uniforms.rhFill={value:1};            // 0..1 waterline, as a fraction of the ring's height
+  sh.uniforms.rhY0={value:y0};
+  sh.uniforms.rhY1={value:y1};
+  sh.uniforms.rhSoft={value:CONFIG.fx.rodHoles.fillSoft};
+  sh.uniforms.rhGlow={value:new THREE.Color(0,0,0)};
+  const v=sh.vertexShader.replace('#include <begin_vertex>',
+   '#include <begin_vertex>\n\tvRhY=(modelMatrix*vec4(transformed,1.0)).y;');
+  if(v===sh.vertexShader){console.warn('rod hole shader: begin_vertex anchor missing - ring left plain');return;}
+  sh.vertexShader='varying float vRhY;\n'+v;
+  let anchor=null;
+  for(const a of ['#include <tonemapping_fragment>','#include <encodings_fragment>','#include <dithering_fragment>'])
+   if(sh.fragmentShader.indexOf(a)>=0){anchor=a;break;}
+  if(!anchor){console.warn('rod hole shader: no fragment anchor - ring left plain');return;}
+  sh.fragmentShader='varying float vRhY;\nuniform float rhFill,rhY0,rhY1,rhSoft;\nuniform vec3 rhGlow;\n'+
+   sh.fragmentShader.replace(anchor,
+    '\tfloat rhT=(vRhY-rhY0)/max(1e-4,rhY1-rhY0);\n'+
+    '\tgl_FragColor.rgb+=rhGlow*smoothstep(rhFill+rhSoft,rhFill-rhSoft,rhT);\n'+anchor);
+  m.userData.rhU=sh.uniforms;
+ };
+}
+
+/* Register a skin's ROD-HOLE RINGS for the stamina readout (js/fx.js rodHolesUpdate).
+
+   The rings already exist in every table skin as their own material slot inside a wall mesh — they
+   are not cut into the wall surface — but the grouping and the material name differ per skin
+   (`metal` under two wall objects on classic, `slide_holes` under one on strike, `rod_metal` under
+   the other one on circuit, `Metal`/`Gold` merged into the bowl on the two arenas). So the contract
+   here is the OBJECT NAME and nothing else: name it `rod_hole*` in Blender and it works, whatever
+   material it wears and whatever it hangs under. Do NOT prefix it `led`, `field`, `goal_` or
+   `wall_end` — loadSkin's traverse claims all four.
+
+   WHICH ROD A RING BELONGS TO IS DECIDED BY WORLD X against CONFIG.rods.defs, the same
+   classification registerBigGoalMeshes uses on goal parts — so a ring keeps working when Blender
+   renames it `rod_hole_3.001`, and an export that numbers them backwards still lights the right
+   rods. A ring further than half a rod-spacing from every rod is REFUSED with a console line
+   rather than snapped to the nearest one: silently lighting the wrong rod all match is the worse
+   failure, and it is the one nobody would think to look for.
+
+   EACH RING TAKES ITS OWN MATERIAL CLONE. Eight objects split out of one wall in Blender still
+   share a single material datablock, and one material cannot show eight different levels. The
+   clones share one compiled program (their onBeforeCompile source is identical, so r128's cache
+   key matches) and differ only in uniform values, which is exactly the split we want.
+   disposeModelTemplate frees them with the rest of the skin.
+
+   Shadow casting is turned OFF here. loadSkin stamps castShadow on every mesh in a skin GLB, and
+   an unconverted ring set runs to ~2000 triangles per ring for something that is never a visible
+   caster. */
+function registerRodHoles(root,id,skinId){
+ const defs=CONFIG.rods.defs;
+ let gap=Infinity;for(let i=1;i<defs.length;i++)gap=Math.min(gap,Math.abs(defs[i].x-defs[i-1].x));
+ const tol=gap*.5,bb=new THREE.Box3(),list=[];
+ let bad=0;
+ root.traverse(c=>{
+  if(!c.isMesh||!onm(c).startsWith('rod_hole'))return;
+  bb.setFromObject(c);const cx=(bb.min.x+bb.max.x)/2;
+  let ri=-1,best=tol;
+  for(let i=0;i<defs.length;i++){const d=Math.abs(defs[i].x-cx);if(d<best){best=d;ri=i;}}
+  if(ri<0){bad++;console.warn('rod hole '+onm(c)+' at x='+cx.toFixed(1)+' matches no rod - skipped ('+id+'/'+skinId+')');return;}
+  c.castShadow=false;
+  const m=c.material.clone();
+  rodHoleShader(m,bb.min.y,bb.max.y);      // this ring's OWN height — it differs per skin
+  c.material=m;
+  list.push({o:c,mat:m,rod:ri,fill:1,v:0,col:new THREE.Color(CONFIG.fx.rodHoles.idle),off:false});
+ });
+ if(list.length||bad){
+  (skinRodHoles[id]=skinRodHoles[id]||{})[skinId]=list;
+  console.log('registerRodHoles: '+list.length+' ring(s) on '+new Set(list.map(e=>e.rod)).size+' rod(s) ('+id+'/'+skinId+')'+(bad?' - '+bad+' refused':''));
+ }
 }
 
 /* --- rooms / locations (environment backdrops) ------------------------------

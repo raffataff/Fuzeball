@@ -221,7 +221,7 @@ function onGoal(team,b){
  const M=momGoal(team,b);
  msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit + the longest-rally clock. Same constraint as momGoal — both read records that hang off the ball, and removeBall frees it three lines down.
  S.score[team]+=val;
- goalFx(team,b);
+ goalFx(team,b,msScorer(b,team));   // the ring flash wants the SCORING ROD, and msScorer is where that is decided (matchstats.js)
  updateScoreUI(team);
  removeBall(b);
  const wins=S.suddenDeath||S.score[team]>=goalTarget();   // golden goal after a level time-up, or the target reached

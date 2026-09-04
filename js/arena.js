@@ -66,6 +66,8 @@ let activeTable=CONFIG.tables.classic; // the currently-selected table def; appl
 const skinGroups={};                   // table id -> { skinId -> THREE.Group holding that skin's loaded GLB }. Filled by models.js loadSkin.
 const skinHasFrame={};                 // table id -> { skinId -> true if that skin's GLB supplies its own goal_frame posts }
 const skinLed={};                      // table id -> { skinId -> that skin's LED material } (applySkin repoints ledMat at the active skin)
+const skinRodHoles={};                 // table id -> { skinId -> [{o,mat,rod,...}] } — the rod-hole rings, one entry per ring (models.js registerRodHoles)
+let rodHoleMeshes=[];                  // the ACTIVE skin's rings, and the only ones fx.js drives
 const tablePrimObjs={};                // table id -> [procedural fallback meshes]; shown only when the active skin has no GLB. Set by buildTable / buildArenaTable.
 // big-goal morph of the baked arena shell (arena_bowl + led ring). Registered from the arena GLB
 // load; driven by arenaMorphUpdate. Each entry precomputes per-vertex deltas to the widened mouth.
@@ -235,6 +237,10 @@ function applySkin(id){
  // procedural one the primitives use while a skin GLB is still loading / absent.
  if(active&&skinLed[id]&&skinLed[id][sk])ledMat=skinLed[id][sk];
  else if(!active&&primLedMat)ledMat=primLedMat;
+ // Rod-hole rings follow the same rule, for the same reason: with cacheSkins:2 a second skin is
+ // still resident, and writing its materials every frame would be work for a table nobody is
+ // looking at. Empty for a skin that ships no rings (the arena bowl), which makes fx.js inert.
+ rodHoleMeshes=(active&&skinRodHoles[id]&&skinRodHoles[id][sk])||[];
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
  goalFrames.forEach(gf=>{if(gf.userData&&gf.userData.front)gf.userData.front.visible=!custom;});
  if(typeof shadowDirty==='function')shadowDirty();   // table shell swapped — casters changed

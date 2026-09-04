@@ -246,7 +246,7 @@ function trainingGoal(team,b){
  // struck it, and the mesh plus its records are freed a few lines down.
  if(S.trial&&typeof trialGoal==='function')trialGoal(team,b);
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
- goalFx(team,b);
+ goalFx(team,b,msScorer(b,team));   // same scorer record the trial credit reads, so the ring agrees with it
  removeBall(b);
  notice(teamName(team)+' GOAL',1.1,teamCol(team));
  // A FINISHED trial keeps the table as it was: dropping a fresh ball behind the result card reads

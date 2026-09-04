@@ -19,6 +19,9 @@
    file tests that and nothing else, so a missing photo.js can never break the game.
    All tuning is CONFIG.photo. Saved shots persist in cfg.photoShots. */
 const PHR=PHOTO.rig;
+// Fallback so an older config.js can only cost the path feature, not the whole mode.
+const PHP=PHOTO.path||{on:false,secs:8,secsMin:1,secsMax:60,maxPts:12,smooth:true,ease:true,
+ loop:false,live:false,recAutoPlay:true,recAutoStop:true,recTail:.4,prefix:'fuzeball_path'};
 const PH={on:false,freeze:false,stepQ:0,free:false,seeded:false,fromPause:false,
  tx:PHR.target.x,ty:PHR.target.y,tz:PHR.target.z,
  dist:PHR.dist,yaw:PHR.yaw,pitch:PHR.pitch,roll:PHR.roll,fov:PHR.fov,
@@ -32,6 +35,11 @@ const PH={on:false,freeze:false,stepQ:0,free:false,seeded:false,fromPause:false,
  seqH:PHOTO.seq.defHeight,seqFps:PHOTO.seq.defFps,seqSecs:PHOTO.seq.secs,seqFmt:PHOTO.seq.fmt,
  hideBall:false,hideRods:false,hideMarks:PHOTO.hideMarks,
  scale:PHOTO.defScale,shots:null,
+ // camera path — see the block above phPathPts. `path` is slot INDICES; the poses are resolved
+ // at play time, which is what lets a slot be re-composed between takes.
+ path:null,pathDur:PHP.secs,pathSmooth:PHP.smooth,pathEase:PHP.ease,pathLoop:PHP.loop,
+ pathLive:PHP.live,play:false,playT:0,playHold:-1,playPose:null,pathPts:null,recPath:false,
+ open:null,                                     // which panel sections are expanded — see phGrp
  drag:null,camSave:null,dbgWas:false,busy:false,msg:'',msgT:0,readT:0};
 let phBuilt=false,phSyncing=false,phPanel=null,phMaxCache=0;
 const _pv=new THREE.Vector3(),_pv2=new THREE.Vector3(),_pv3=new THREE.Vector3(),
@@ -253,24 +261,33 @@ function phRecStart(){
  PH.recCtx=null;
  try{PH.recCtx=cv.getContext('2d',{alpha:false});}catch(e){}
  if(!PH.recCtx){phMsg('RECORDER UNAVAILABLE');return;}
+ // A path armed and idle means the take you want is THE MOVE, so start it from the top rather
+ // than rolling on whatever the rig happened to be pointing at. It has to happen before the seed
+ // blit AND get a frame onto the canvas, or the clip opens on one frame of the old composition.
+ if(PHP.on&&PHP.recAutoPlay&&phPathArmed()&&!PH.play&&phPathStart()){
+  try{phApply();renderer.render(scene,camera);}catch(e){}
+ }
  phRecBlit();      // seed a frame BEFORE the stream attaches, or its first sample is a blank canvas
  // the button's own click has to happen BEFORE the recorder attaches, or with record.audio on it
  // is the first thing on the soundtrack
  if(typeof Au!=='undefined'&&Au.ui)Au.ui();
  if(!clipStart(cv,{audio:R.audio,fps:R.fps,bitrate:R.bitrate,mime:R.mime})){phMsg('RECORDER REFUSED');return;}
- PH.rec=true;PH.recSweep=0;PH.recT=0;PH.recSpin=PH.spin;
+ PH.rec=true;PH.recSweep=0;PH.recT=0;PH.recSpin=PH.spin;PH.recPath=PH.play;
  phSyncUI();
- phMsg('REC  '+cv.width+'×'+cv.height+((PH.recSpin&&R.autoStop)?'  ONE SWEEP':''));
+ phMsg('REC  '+cv.width+'×'+cv.height+
+  ((PH.recPath&&PHP.recAutoStop)?('  PATH  '+PH.pathDur+'s'):
+   ((PH.recSpin&&R.autoStop)?'  ONE SWEEP':'')));
 }
 /* Always PROMOTES the take. Unlike a goal clip — recorded speculatively on every goal and discarded
    unless someone asks for it — this recording only exists because it was started by hand, so an
    exit or a fault writes out what it got rather than binning it. */
 function phRecStop(why){
  if(!PH.rec)return;
- PH.rec=false;
+ const wasPath=PH.recPath;
+ PH.rec=false;PH.recPath=false;
  const cv=PH.recCv,dim=cv?(cv.width+'×'+cv.height):'',t=Math.round(PH.recT*10)/10;
  let kept=false;
- try{kept=(typeof clipKeep==='function')&&clipKeep(PHOTO.record.prefix+'_'+
+ try{kept=(typeof clipKeep==='function')&&clipKeep((wasPath?PHP.prefix:PHOTO.record.prefix)+'_'+
   (typeof clipStamp==='function'?clipStamp():Date.now()));}catch(e){}
  try{if(typeof clipStop==='function')clipStop();}catch(e){}
  phSyncUI();
@@ -292,8 +309,10 @@ function phRecSync(){
     // which container you'll actually get, BEFORE recording 40s of it — MP4 everywhere that
     // supports it, WebM on Firefox. Cached per list, so this is free at the panel's 10Hz.
     ct=(typeof clipContainer==='function')?clipContainer(R.mime):'';
-   el.textContent=r.w+' × '+r.h+(ct?('  ·  '+ct):'')+
+   // whichever move a take would MAKE — an armed path takes the button over from the turntable
+   const mv=(PHP.on&&phPathArmed()&&PHP.recAutoStop)?('  ·  path '+PH.pathDur+'s'):
     ((PH.spin&&R.autoStop&&PH.spinSpeed>0)?('  ·  '+(Math.round(3600/PH.spinSpeed)/10)+'s'):'');
+   el.textContent=r.w+' × '+r.h+(ct?('  ·  '+ct):'')+mv;
   }
   el.classList.toggle('rec',PH.rec);
  }
@@ -310,13 +329,20 @@ function phSeqSync(){
  const el=$('phSeqOut'),b=$('phSeqBtn'),pl=phSeqPlan(),Q=PHOTO.seq,
        over=(pl.n>Q.maxFrames)||(pl.bytes>Q.maxBytes);
  if(el){
-  el.textContent=pl.w+' × '+pl.h+'  ·  '+pl.n+' frames  ·  ~'+phBytes(pl.bytes);
+  el.textContent=(pl.path?'path':'turntable')+'  ·  '+pl.w+' × '+pl.h+'  ·  '+pl.n+
+   ' frames  ·  ~'+phBytes(pl.bytes);
   el.classList.toggle('warn',over);
  }
+ // The turntable's own Length is dead while a path is armed — the path's duration drives the
+ // render instead, so the slider is greyed rather than quietly ignored.
+ const sr=$('phSeqSecR'),sn=$('phSeqSecN'),sw=$('phSeqSecRow');
+ if(sr)sr.disabled=pl.path;if(sn)sn.disabled=pl.path;
+ if(sw)sw.classList.toggle('off',pl.path);
  if(b){
   b.classList.toggle('on',PH.seq);
-  b.disabled=!PH.seq&&over;
-  const t=PH.seq?'■ CANCEL RENDER (ESC)':'▦ RENDER SEQUENCE (SHIFT+R)';
+  b.disabled=!PH.seq&&(over||(pl.path&&PH.pathLive));
+  const t=PH.seq?'■ CANCEL RENDER (ESC)':
+   ((pl.path&&PH.pathLive)?'▦ LIVE SWEEP — RECORD WITH R':'▦ RENDER SEQUENCE (SHIFT+R)');
   if(b.textContent!==t)b.textContent=t;
  }
 }
@@ -329,6 +355,9 @@ function phRecTick(rdt){
  PH.recT+=rdt;
  if(PH.spin)PH.recSweep+=Math.abs(PH.spinSpeed*rdt);
  if(PH.recSpin&&R.autoStop&&PH.recSweep>=360){phRecStop();return;}
+ // the path was the take: if it was stopped by hand, the recording goes with it rather than
+ // running on to maxSec over a rig that is no longer moving
+ if(PH.recPath&&!PH.play&&PHP.recAutoStop){phRecStop();return;}
  if(PH.recT>=R.maxSec)phRecStop('time limit');
 }
 /* Called from main.js immediately after renderer.render — see the note above on why 'immediately'
@@ -448,11 +477,15 @@ function phSeqSize(){
  w-=w&1;h-=h&1;
  return{w:Math.max(2,w),h:Math.max(2,h)};
 }
+/* An armed path OWNS this button — it is the move you composed, and rendering a turntable instead
+   because the panel still says 'turntable' would be the wrong shot at very high quality. Its
+   duration also replaces the turntable's Length, so there is only ever one live number. */
 function phSeqPlan(){
- const Q=PHOTO.seq,sz=phSeqSize(),
-       n=Math.max(1,Math.round(PH.seqFps*PH.seqSecs)),
+ const Q=PHOTO.seq,sz=phSeqSize(),path=PHP.on&&phPathArmed(),
+       secs=path?PH.pathDur:PH.seqSecs,
+       n=Math.max(1,Math.round(PH.seqFps*secs)),
        bpp=(PH.seqFmt==='png')?Q.bpp.png:Q.bpp.jpeg;
- return{w:sz.w,h:sz.h,n:n,step:360/n,bytes:Math.round(sz.w*sz.h*bpp*n)};
+ return{w:sz.w,h:sz.h,n:n,secs:secs,path:path,step:360/n,bytes:Math.round(sz.w*sz.h*bpp*n)};
 }
 function phSeqCancel(){
  if(!PH.seq)return;
@@ -463,6 +496,12 @@ async function phSeqStart(){
  if(PH.seq||PH.busy||PH.rec||!renderer)return;
  if(!Q.on){phMsg('SEQUENCE RENDER IS OFF');return;}
  const pl=phSeqPlan();
+ // A LIVE sweep cannot be rendered offline. Each frame takes ~100ms to encode while the sim keeps
+ // running at wall-clock underneath, so the action would come out in extreme slow motion against
+ // a camera moving at the right speed. Refused rather than silently frozen — see the caps below.
+ if(pl.path&&PH.pathLive){phMsg('LIVE SWEEP CANNOT RENDER OFFLINE — USE R');return;}
+ const pathPts=pl.path?phPathPts():null;
+ if(pl.path&&!pathPts){phMsg('PATH POINTS AT EMPTY SLOTS');return;}
  // Both caps are refusals, not clamps: silently rendering something other than what the panel
  // promised is worse than not starting. The panel prints both numbers before you commit.
  if(pl.n>Q.maxFrames){phMsg('TOO MANY FRAMES — '+pl.n+' > '+Q.maxFrames);return;}
@@ -473,7 +512,11 @@ async function phSeqStart(){
  phSyncUI();
  if(typeof Au!=='undefined'&&Au.ui)Au.ui();
 
- const yaw0=PH.yaw,frz0=PH.freeze;
+ // The turntable only ever moved yaw, so restoring it was one number. A path moves all eight.
+ const pose0={tx:PH.tx,ty:PH.ty,tz:PH.tz,dist:PH.dist,yaw:PH.yaw,pitch:PH.pitch,roll:PH.roll,fov:PH.fov},
+       frz0=PH.freeze;
+ if(PH.play)phPathStop();                            // the live preview and the render cannot both drive the rig
+ if(pathPts)PH.pathPts=phPathCtrl(pathPts,PH.pathLoop);
  PH.freeze=true;                                   // a turntable of a moving sim is not a turntable
  const pr=renderer.getPixelRatio(),sz0=renderer.getSize(new THREE.Vector2()),
        fov0=camera.fov,asp0=camera.aspect;
@@ -484,7 +527,7 @@ async function phSeqStart(){
  const octx=out.getContext('2d',{alpha:false}),
        png=(PH.seqFmt==='png'),mime=png?'image/png':'image/jpeg',ext=png?'.png':'.jpg',
        stamp=(typeof clipStamp==='function')?clipStamp():String(Date.now()),
-       dir=Q.prefix+'_'+stamp,
+       dir=(pl.path?PHP.prefix:Q.prefix)+'_'+stamp,
        files=[];
  let total=0,err='';
  try{
@@ -499,7 +542,11 @@ async function phSeqStart(){
   for(let i=0;i<pl.n;i++){
    if(PH.seqCancel)break;
    PH.seqI=i;
-   PH.yaw=phWrap(yaw0+i*pl.step);
+   // A LOOP stops one step short of the seam so the sequence repeats with no duplicate frame,
+   // exactly as the turntable does. A one-shot move runs to u=1 inclusive: the last frame IS the
+   // end pose, which is the frame the shot was composed for.
+   if(pathPts)phPathApply(PH.pathLoop?(i/pl.n):(pl.n>1?i/(pl.n-1):0));
+   else PH.yaw=phWrap(pose0.yaw+i*pl.step);
    phApply();
    phSceneApply();            // fxUpdate re-shows the markers in the rAF frames between ours
    const c=phCrop();
@@ -526,7 +573,9 @@ async function phSeqStart(){
    if(msMoved&&sh){sh.mapSize.set(msOld.x,msOld.y);shadowMapDrop(sh);}
    renderer.setPixelRatio(pr);renderer.setSize(sz0.x,sz0.y,false);
    camera.fov=fov0;camera.aspect=asp0;camera.updateProjectionMatrix();
-   PH.yaw=yaw0;PH.freeze=frz0;
+   PH.pathPts=null;
+   PH.tx=pose0.tx;PH.ty=pose0.ty;PH.tz=pose0.tz;PH.dist=pose0.dist;PH.yaw=pose0.yaw;
+   PH.pitch=pose0.pitch;PH.roll=pose0.roll;PH.fov=pose0.fov;PH.freeze=frz0;
    phApply();renderer.render(scene,camera);         // put the live view back before anything composites
   }catch(e){}
   PH.seq=false;PH.busy=false;PH.seqI=0;PH.seqN=0;
@@ -553,15 +602,21 @@ async function phSeqStart(){
 /* Everything an editor needs to use these, in the zip, because a folder of PNGs three months from
    now does not remember what frame rate it was meant to be. */
 function phSeqReadme(pl,n,png){
- return 'Fuzeball turntable\r\n'+
+ return 'Fuzeball '+(pl.path?'camera path':'turntable')+'\r\n'+
   '\r\n'+
   'frames      '+n+'\r\n'+
   'resolution  '+pl.w+' x '+pl.h+'\r\n'+
   'frame rate  '+PH.seqFps+' fps  ('+(Math.round(n/PH.seqFps*100)/100)+'s)\r\n'+
   'format      '+(png?'PNG (lossless)':'JPEG q'+PHOTO.seq.quality)+'\r\n'+
   '\r\n'+
-  'The sweep is exactly one revolution and the last frame stops one step short of the\r\n'+
-  'first, so the sequence LOOPS seamlessly - no duplicate frame to trim.\r\n'+
+  ((!pl.path)?
+   'The sweep is exactly one revolution and the last frame stops one step short of the\r\n'+
+   'first, so the sequence LOOPS seamlessly - no duplicate frame to trim.\r\n':
+   (PH.pathLoop?
+    'The move is a closed loop and the last frame stops one step short of the first, so\r\n'+
+    'the sequence LOOPS seamlessly - no duplicate frame to trim.\r\n':
+    'The move runs start to end: frame 1 is the first waypoint and the last frame is the\r\n'+
+    'final one, so nothing is missing off either end.\r\n'))+
   '\r\n'+
   'Import as an image sequence at '+PH.seqFps+' fps (Premiere, Resolve, After Effects and\r\n'+
   'Final Cut all read numbered sequences natively - point them at frame_0001 and tick\r\n'+
@@ -590,10 +645,11 @@ function phShotsLoad(){
 }
 function phShotSave(i){
  PH.shots[i]={tx:PH.tx,ty:PH.ty,tz:PH.tz,dist:PH.dist,yaw:PH.yaw,pitch:PH.pitch,roll:PH.roll,fov:PH.fov,free:PH.free};
- cfg.photoShots=PH.shots;saveCfg();phShotChips();phMsg('SHOT '+(i+1)+' SAVED');
+ cfg.photoShots=PH.shots;saveCfg();phShotChips();phPathOrder();phMsg('SHOT '+(i+1)+' SAVED');
  if(typeof Au!=='undefined'&&Au.ui)Au.ui();
 }
 function phShotLoad(i){
+ if(PH.play){phMsg('STOP THE PATH FIRST (V)');return;}
  const s=PH.shots&&PH.shots[i];if(!s){phMsg('SLOT '+(i+1)+' EMPTY');return;}
  PH.tx=s.tx;PH.ty=s.ty;PH.tz=s.tz;PH.dist=s.dist;PH.yaw=s.yaw;PH.pitch=s.pitch;PH.roll=s.roll;PH.fov=s.fov;PH.free=!!s.free;
  phSyncUI();phMsg('SHOT '+(i+1));
@@ -605,6 +661,286 @@ function phShotChips(){
   b.classList.toggle('on',!!s);
   b.title=s?('yaw '+Math.round(s.yaw)+'° · pitch '+Math.round(s.pitch)+'° · '+Math.round(s.dist)+'u · '+Math.round(s.fov)+'mm-ish'):'empty — save first';
  }
+}
+
+/* ===== panel groups =====
+   Ten sections in one 272px column is more scrolling than composing. Every section is a group that
+   collapses to its header, and which ones are open persists in cfg.photoGroups — a panel that
+   reopens the way you left it is the entire point of being able to shut it.
+
+   A COLLAPSED SECTION STILL REPORTS ITSELF. The header carries a one-line summary of what is inside
+   it (the aspect, how many slots are filled, whether a path is playing), so closing a section costs
+   you awareness of its state rather than trading it away. Without that, collapsing turns the panel
+   into nine places you have to open to check nothing is set wrong — which is worse than the scroll.
+
+   The body is a one-row grid animating 0fr → 1fr rather than a max-height guess: it needs no
+   measured height, so a section whose contents change size (the spin row, the path order strip)
+   cannot end up clipped or padded by a stale number. */
+const PH_GRPS=['shot','cam','look','frame','scene','shots','path','cap','seq','keys'];
+function phGrp(id,title,body){
+ return '<div class="phGrp" id="phG_'+id+'">'+
+  '<button class="phSect" data-grp="'+id+'" title="'+title+
+   ' — click to open, shift-click for this section only">'+
+   '<i class="phChev"></i><span>'+title+'</span><em id="phSum_'+id+'"></em></button>'+
+  '<div class="phGrpBody"><div class="phGrpIn">'+body+'</div></div></div>';
+}
+function phGrpOpen(id){return !!PH.open&&PH.open.indexOf(id)>=0;}
+function phGrpLoad(){
+ const s=cfg.photoGroups;
+ PH.open=(Array.isArray(s)?s:(PHOTO.defOpen||[])).filter(k=>PH_GRPS.indexOf(k)>=0);
+}
+function phGrpSave(){cfg.photoGroups=PH.open.slice();saveCfg();}
+/* Shift-click SOLOS. With ten sections, "show me only the one I am working in" is worth a modifier
+   rather than nine separate clicks, and soloing the section already alone collapses everything. */
+function phGrpClick(id,e){
+ if(e&&e.shiftKey)PH.open=(phGrpOpen(id)&&PH.open.length===1)?[]:[id];
+ else{const i=PH.open.indexOf(id);if(i>=0)PH.open.splice(i,1);else PH.open.push(id);}
+ phGrpSave();phGrpSync();
+ if(typeof Au!=='undefined'&&Au.ui)Au.ui();
+}
+/* What a header says while its section is shut. Deliberately the SETTING, not a restatement of the
+   title — 'Framing  16:9' earns its line, 'Framing  framing' does not. */
+function phGrpSummary(id){
+ switch(id){
+  case 'shot':{const a=[];
+   if(PH.freeze)a.push('frozen');if(PH.free)a.push('free look');
+   if(PH.spin)a.push('turntable');if(PH.clean)a.push('clean');
+   return a.join(' · ');}
+  case 'cam':  return Math.round(PH.fov)+'° · '+Math.round(PH.dist)+'u';
+  case 'look': return Math.round(PH.tx)+', '+Math.round(PH.ty)+', '+Math.round(PH.tz);
+  case 'frame':{for(const a of PHOTO.aspects)if(a.a===PH.aspect)return a.lab;return '';}
+  case 'scene':{let n=0;if(PH.hideBall)n++;if(PH.hideRods)n++;if(PH.hideMarks)n++;
+   return n?(n+' hidden'):'';}
+  case 'shots':{let n=0;for(let i=0;i<PHOTO.slots;i++)if(PH.shots&&PH.shots[i])n++;
+   return n?(n+' saved'):'empty';}
+  case 'path': {if(!PHP.on)return '';
+   if(PH.play)return 'playing';
+   const n=PH.path?PH.path.length:0;
+   return n?(n+' pts · '+PH.pathDur+'s'+(PH.pathLoop?' · loop':'')):'none';}
+  case 'cap':  {if(PH.rec)return 'recording';const o=phOutSize();return o.w+' × '+o.h;}
+  case 'seq':  {if(PH.seq)return 'rendering';const q=phSeqPlan();return q.n+'f · '+phBytes(q.bytes);}
+ }
+ return '';
+}
+/* Split for the same reason phSyncNums is split off phSyncUI: the open/shut classes only move when
+   something is clicked, but 'cam' and 'look' summaries track a live drag and need the 10Hz slot.
+   Computing a summary for an OPEN section would be wasted — its controls are right there. */
+function phGrpSums(){
+ if(!phBuilt||!PH.open)return;
+ for(const id of PH_GRPS){
+  const e=$('phSum_'+id);if(!e)continue;
+  const t=phGrpOpen(id)?'':phGrpSummary(id);
+  if(e.textContent!==t)e.textContent=t;
+ }
+}
+function phGrpSync(){
+ if(!phBuilt||!PH.open)return;
+ for(const id of PH_GRPS){
+  const g=$('phG_'+id);if(g)g.classList.toggle('open',phGrpOpen(id));
+ }
+ phGrpSums();
+}
+
+/* ===== camera path (V) =====
+   A saved shot is a whole rig pose, so a path is an ORDER of slots plus a duration. Three things
+   separate this from lerping a list of numbers, and all three are load-bearing:
+
+     · YAW IS UNWRAPPED FIRST. -170 to 170 is a 20-degree step, not a 340-degree one, and a plain
+       lerp takes the long way round every single time. The waypoints are re-based onto a running
+       continuous angle before anything interpolates, so every leg takes the short way — and a
+       deliberate full turn is still available by dropping a waypoint into the middle of it.
+     · CATMULL-ROM, NOT LINEAR. It passes THROUGH every waypoint (a Bezier would not) and leaves
+       no corner at any of them. The end phantoms are duplicates rather than extrapolations: an
+       extrapolated point can throw the curve outside the poses actually composed, which on a
+       camera means a frame or two of somewhere nobody chose.
+     · THE CURVE OVERSHOOTS ANYWAY on a tight corner, so every channel is clamped to the same rig
+       limits a slider obeys. Without that a three-point path can push dist under distMin and put
+       the camera inside the table on the way past.
+
+   Playback RESTORES the rig when it ends. A play is a preview; losing the composition you were
+   working on because you wanted to see the move once is the wrong trade, and the offline renderer
+   already restores for the same reason. */
+function phPathArmed(){return !!(PHP.on&&PH.path&&PH.path.length>=2);}
+/* Slots → poses, empties dropped, yaw re-based onto one continuous angle. Null if fewer than two
+   waypoints survive — there is no move through one point. */
+function phPathPts(){
+ if(!PH.path||!PH.shots)return null;
+ const pts=[];
+ for(const i of PH.path){
+  const s=PH.shots[i];
+  if(s)pts.push({tx:s.tx,ty:s.ty,tz:s.tz,dist:s.dist,yaw:s.yaw,pitch:s.pitch,roll:s.roll,fov:s.fov});
+ }
+ if(pts.length<2)return null;
+ let y=pts[0].yaw;
+ for(let i=1;i<pts.length;i++){y+=phWrap(pts[i].yaw-y);pts[i].yaw=y;}
+ return pts;
+}
+/* Control points, with the phantom ends Catmull-Rom needs to have a tangent at the first and last
+   waypoint. A LOOP closes back onto the first pose and carries its yaw one full circuit further,
+   so the seam gets the same curvature as any other corner instead of a flat spot once a lap. */
+function phPathCtrl(pts,loop){
+ const n=pts.length,A=[],
+  cl=(q,dy)=>({tx:q.tx,ty:q.ty,tz:q.tz,dist:q.dist,yaw:q.yaw+dy,pitch:q.pitch,roll:q.roll,fov:q.fov});
+ if(loop){
+  const close=pts[n-1].yaw+phWrap(pts[0].yaw-pts[n-1].yaw),   // carry on round to the start pose
+        Y=close-pts[0].yaw;                                   // total yaw travelled in one circuit
+  A.push(cl(pts[n-1],-Y));
+  for(const q of pts)A.push(cl(q,0));
+  A.push(cl(pts[0],Y));A.push(cl(pts[1],Y));
+  return{A:A,seg:n};
+ }
+ A.push(cl(pts[0],0));
+ for(const q of pts)A.push(cl(q,0));
+ A.push(cl(pts[n-1],0));
+ return{A:A,seg:n-1};
+}
+/* Uniform Catmull-Rom, tension 1/2. Runs between p1 and p2; p0 and p3 only set the tangents. */
+function phCR(p0,p1,p2,p3,t){
+ const t2=t*t,t3=t2*t;
+ return .5*(2*p1+(p2-p0)*t+(2*p0-5*p1+4*p2-p3)*t2+(3*p1-3*p2+p3-p0)*t3);
+}
+/* Smootherstep rather than the smoothstep intro.js uses. Smoothstep's acceleration jumps at both
+   ends — over a two-second wipe nobody sees it, over an eight-second hero move it reads as the
+   camera being nudged rather than starting. */
+function phEase(t){return t*t*t*(t*(t*6-15)+10);}
+const PH_CH=['tx','ty','tz','dist','yaw','pitch','roll','fov'];
+const _phPose={};
+function phPathPose(u){
+ const C=PH.pathPts;if(!C)return null;
+ let x=clamp(u,0,1);
+ if(PH.pathEase&&!PH.pathLoop)x=phEase(x);
+ const s=x*C.seg,i=clamp(Math.floor(s),0,C.seg-1),t=s-i,A=C.A,
+       p0=A[i],p1=A[i+1],p2=A[i+2],p3=A[i+3];
+ for(const k of PH_CH)_phPose[k]=PH.pathSmooth?phCR(p0[k],p1[k],p2[k],p3[k],t):(p1[k]+(p2[k]-p1[k])*t);
+ return _phPose;
+}
+/* Write an interpolated pose onto the rig. Yaw is wrapped only HERE — the interpolation upstream
+   runs on the continuous angle, and wrapping on the way in is what keeps the panel's -180..180
+   slider meaning something while a move plays. */
+function phPathApply(u){
+ const q=phPathPose(u);if(!q)return;
+ PH.tx=clamp(q.tx,-PHR.tXMax,PHR.tXMax);
+ PH.ty=clamp(q.ty,PHR.tYMin,PHR.tYMax);
+ PH.tz=clamp(q.tz,-PHR.tZMax,PHR.tZMax);
+ PH.dist=clamp(q.dist,PHR.distMin,PHR.distMax);
+ PH.pitch=clamp(q.pitch,-PHR.pitchMax,PHR.pitchMax);
+ PH.roll=clamp(q.roll,-PHR.rollMax,PHR.rollMax);
+ PH.fov=clamp(q.fov,PHR.fovMin,PHR.fovMax);
+ PH.yaw=phWrap(q.yaw);
+}
+function phPathStart(){
+ if(PH.play||PH.seq)return false;
+ if(!PHP.on){phMsg('CAMERA PATHS ARE OFF');return false;}
+ const pts=phPathPts();
+ if(!pts){phMsg(phPathArmed()?'PATH POINTS AT EMPTY SLOTS':'ADD AT LEAST TWO WAYPOINTS');return false;}
+ const drop=PH.path.length-pts.length;
+ PH.pathPts=phPathCtrl(pts,PH.pathLoop);
+ PH.playPose={tx:PH.tx,ty:PH.ty,tz:PH.tz,dist:PH.dist,yaw:PH.yaw,pitch:PH.pitch,roll:PH.roll,
+              fov:PH.fov,free:PH.free,freeze:PH.freeze};
+ PH.play=true;PH.playT=0;PH.playHold=-1;
+ PH.spin=false;                 // a turntable under a path is two camera moves fighting each other
+ PH.freeze=!PH.pathLive;
+ phPathApply(0);phApply();
+ phSyncUI();
+ phMsg('PATH  '+pts.length+' POINTS  '+PH.pathDur+'s'+(PH.pathLoop?'  LOOP':'')+
+       (drop?('  ('+drop+' EMPTY SKIPPED)'):''));
+ if(typeof Au!=='undefined'&&Au.ui)Au.ui();
+ return true;
+}
+function phPathStop(){
+ if(!PH.play)return;
+ PH.play=false;PH.playHold=-1;PH.pathPts=null;
+ const s=PH.playPose;
+ if(s){PH.tx=s.tx;PH.ty=s.ty;PH.tz=s.tz;PH.dist=s.dist;PH.yaw=s.yaw;PH.pitch=s.pitch;
+       PH.roll=s.roll;PH.fov=s.fov;PH.free=s.free;PH.freeze=s.freeze;}
+ PH.playPose=null;
+ phApply();phSyncUI();
+ if(typeof Au!=='undefined'&&Au.ui)Au.ui();
+}
+function phPathToggle(){if(PH.play)phPathStop();else phPathStart();}
+/* Wall-clock, like the turntable, so the move plays at its real speed with the sim frozen.
+   THE TAIL IS NOT A FLOURISH. phRecStop runs from this tick, but the blit for the frame the move
+   lands on happens after the NEXT render (phPostRender) — closing the take the instant playT hits
+   the duration cuts the last frame off it. Holding the end pose fixes that, and while it is there
+   it may as well be long enough to cut on. */
+function phPathTick(rdt){
+ if(PH.playHold>=0){
+  PH.playHold+=rdt;
+  if(PH.playHold>=PHP.recTail){
+   if(PH.rec&&PH.recPath&&PHP.recAutoStop)phRecStop();
+   phPathStop();
+  }
+  return;
+ }
+ PH.playT+=rdt;
+ const dur=Math.max(.05,PH.pathDur);
+ if(PH.pathLoop){
+  // a looping take stops after exactly ONE circuit and one frame short of the seam, so the clip
+  // loops the way the turntable's does — no duplicate frame to trim
+  if(PH.rec&&PH.recPath&&PHP.recAutoStop&&PH.playT>=dur){phRecStop();phPathStop();return;}
+  let u=(PH.playT/dur)%1;if(u<0)u+=1;
+  phPathApply(u);return;
+ }
+ if(PH.playT>=dur){PH.playT=dur;PH.playHold=0;phPathApply(1);return;}
+ phPathApply(PH.playT/dur);
+}
+/* Editing. Every one of these writes cfg — a path is authored content like the slots it points at,
+   and losing it to a refresh is the same annoyance. */
+function phPathLoad(){
+ const s=cfg.photoPath;
+ PH.path=[];
+ if(!s||typeof s!=='object')return;
+ if(Array.isArray(s.pts))
+  PH.path=s.pts.filter(i=>Number.isFinite(i)&&i>=0&&i<PHOTO.slots).slice(0,PHP.maxPts);
+ if(isFinite(s.secs))PH.pathDur=clamp(s.secs,PHP.secsMin,PHP.secsMax);
+ if(typeof s.smooth==='boolean')PH.pathSmooth=s.smooth;
+ if(typeof s.ease==='boolean')PH.pathEase=s.ease;
+ if(typeof s.loop==='boolean')PH.pathLoop=s.loop;
+ if(typeof s.live==='boolean')PH.pathLive=s.live;
+}
+function phPathSave(){
+ cfg.photoPath={pts:(PH.path||[]).slice(),secs:PH.pathDur,smooth:PH.pathSmooth,
+                ease:PH.pathEase,loop:PH.pathLoop,live:PH.pathLive};
+ saveCfg();
+}
+function phPathAdd(i){
+ if(!PH.path)PH.path=[];
+ if(PH.path.length>=PHP.maxPts){phMsg('PATH IS FULL — '+PHP.maxPts+' WAYPOINTS');return;}
+ PH.path.push(i);phPathSave();phSyncUI();
+ phMsg((PH.shots&&PH.shots[i])?('WAYPOINT '+(i+1)+' ADDED'):('WAYPOINT '+(i+1)+' ADDED — SLOT IS EMPTY'));
+ if(typeof Au!=='undefined'&&Au.ui)Au.ui();
+}
+function phPathAll(){
+ PH.path=[];
+ for(let i=0;i<PHOTO.slots;i++)if(PH.shots&&PH.shots[i])PH.path.push(i);
+ PH.path=PH.path.slice(0,PHP.maxPts);
+ phPathSave();phSyncUI();
+ phMsg(PH.path.length>=2?('PATH  '+PH.path.length+' POINTS'):'SAVE AT LEAST TWO SHOTS FIRST');
+ if(typeof Au!=='undefined'&&Au.ui)Au.ui();
+}
+function phPathUndo(){
+ if(!PH.path||!PH.path.length){phMsg('PATH IS EMPTY');return;}
+ PH.path.pop();phPathSave();phSyncUI();
+}
+function phPathClear(){
+ if(PH.play)phPathStop();
+ PH.path=[];phPathSave();phSyncUI();phMsg('PATH CLEARED');
+}
+/* The order strip. Prints the run as it will actually play, with any slot that has gone empty
+   struck through — the one failure mode of storing indices, so it has to be visible before you
+   press play rather than in the message after. */
+function phPathOrder(){
+ const el=$('phPathOrder');if(!el)return;
+ if(!PH.path||!PH.path.length){el.textContent='no waypoints — add two or more';el.className='phOrder';return;}
+ let bad=0,s='';
+ for(let j=0;j<PH.path.length;j++){
+  const i=PH.path[j],has=!!(PH.shots&&PH.shots[i]);
+  if(!has)bad++;
+  s+=(j?' → ':'')+(has?String(i+1):'<s>'+(i+1)+'</s>');
+ }
+ if(PH.pathLoop&&PH.path.length>1)s+=' ↻';
+ el.innerHTML=s+(bad?('   '+bad+' empty'):'');
+ el.className='phOrder'+((PH.path.length>=2&&!bad)?' ok':'');
 }
 
 /* ===== scene hides =====
@@ -668,7 +1004,7 @@ function phField(k,v){
 }
 function phBindRow(f){
  const r=$('phR_'+f.k),n=$('phN_'+f.k);
- const set=e=>{if(phSyncing)return;phField(f.k,parseFloat(e.target.value));phSyncNums();};
+ const set=e=>{if(phSyncing||PH.play)return;phField(f.k,parseFloat(e.target.value));phSyncNums();};
  r.oninput=set;n.oninput=set;
 }
 /* Split in two on purpose. phSyncNums runs at 10Hz off the tick (the rig moves under mouse drags,
@@ -683,6 +1019,7 @@ function phSyncNums(){
   if(r)r.value=v;if(n)n.value=Math.round(v*10)/10;
  }
  phSyncing=false;
+ phGrpSums();          // 'cam' and 'look' read out a live drag, so they ride the 10Hz slot
 }
 function phSyncUI(){
  if(!phBuilt)return;
@@ -703,12 +1040,29 @@ function phSyncUI(){
  $('phSeqFmt').value=PH.seqFmt;
  $('phSeqSecR').value=PH.seqSecs;$('phSeqSecN').value=PH.seqSecs;
  $('phHideBall').checked=PH.hideBall;$('phHideRods').checked=PH.hideRods;$('phHideMarks').checked=PH.hideMarks;
+ if(PHP.on){
+  $('phPathR').value=PH.pathDur;$('phPathN').value=PH.pathDur;
+  $('phPathSmooth').classList.toggle('on',PH.pathSmooth);
+  $('phPathEase').classList.toggle('on',PH.pathEase&&!PH.pathLoop);
+  $('phPathEase').disabled=PH.pathLoop;          // an ease at a loop seam is a stutter once a lap
+  $('phPathLoop').classList.toggle('on',PH.pathLoop);
+  $('phPathLive').classList.toggle('on',PH.pathLive);
+  const pb=$('phPathBtn');
+  pb.classList.toggle('on',PH.play);
+  pb.disabled=!PH.play&&!phPathArmed();
+  const pt=PH.play?'■ STOP PATH (V)':'▶ PLAY PATH (V)';
+  if(pb.textContent!==pt)pb.textContent=pt;
+  for(let i=0;i<PHOTO.slots;i++){
+   const c=$('phPathChip'+i);if(c)c.classList.toggle('on',(PH.path||[]).indexOf(i)>=0);
+  }
+  phPathOrder();
+ }
  phSyncing=false;
- phFrameSync();phChromeSync();phRecSync();phSeqSync();
+ phFrameSync();phChromeSync();phRecSync();phSeqSync();phGrpSync();
 }
 function phBuild(){
  if(phBuilt)return;phBuilt=true;
- phShotsLoad();
+ phShotsLoad();phPathLoad();phGrpLoad();
  // framing overlay — separate element from the panel so it can sit under the panel's z-index and
  // still be pointer-transparent across the whole window.
  const fr=document.createElement('div');fr.id='phFrame';fr.className='hidden';
@@ -735,52 +1089,66 @@ function phBuild(){
  p.innerHTML=
   '<h3>PHOTO MODE <button class="phMin" id="phMin" title="collapse — F1 exits">—</button></h3>'+
   '<div class="phBody">'+
-  '<div class="phSect">Shot</div>'+
+  phGrp('shot','View',
   '<div class="phBtns"><button class="phBtn" id="phFreeze">Freeze (P)</button><button class="phBtn" id="phStep">Step (O)</button></div>'+
   '<div class="phBtns"><button class="phBtn" id="phMode">ORBIT (F)</button><button class="phBtn" id="phSpin">Turntable (T)</button></div>'+
   '<div class="phBtns"><button class="phBtn" id="phClean">Clean view (C)</button></div>'+
-  '<div class="phS hidden" id="phSpinRow"><label>Spin</label><input type="range" id="phSpinR" min="'+PHOTO.spin.min+'" max="'+PHOTO.spin.max+'" step="1"><input type="number" id="phSpinN" min="'+PHOTO.spin.min+'" max="'+PHOTO.spin.max+'" step="1"><i>°/s</i></div>'+
-  '<div class="phSect">Camera</div>'+
+  '<div class="phS hidden" id="phSpinRow"><label>Spin</label><input type="range" id="phSpinR" min="'+PHOTO.spin.min+'" max="'+PHOTO.spin.max+'" step="1"><input type="number" id="phSpinN" min="'+PHOTO.spin.min+'" max="'+PHOTO.spin.max+'" step="1"><i>°/s</i></div>')+
+  phGrp('cam','Camera',
   PH_RIG.map(phRowHTML).join('')+
-  '<div class="phBtns"><button class="phBtn" id="phLevel">Level roll</button><button class="phBtn" id="phFromCam">Match cam</button><button class="phBtn" id="phReset">Reset</button></div>'+
-  '<div class="phSect">Look at</div>'+
+  '<div class="phBtns"><button class="phBtn" id="phLevel">Level roll</button><button class="phBtn" id="phFromCam">Match cam</button><button class="phBtn" id="phReset">Reset</button></div>')+
+  phGrp('look','Look at',
   PH_TGT.map(phRowHTML).join('')+
   '<div class="phBtns">'+
    '<button class="phBtn" data-fo="ball">Ball</button>'+
    '<button class="phBtn" data-fo="mid">Centre</button>'+
    '<button class="phBtn" data-fo="rod">Held rod</button>'+
    '<button class="phBtn" data-fo="g0">Goal 1</button>'+
-   '<button class="phBtn" data-fo="g1">Goal 2</button></div>'+
-  '<div class="phSect">Framing</div>'+
+   '<button class="phBtn" data-fo="g1">Goal 2</button></div>')+
+  phGrp('frame','Framing',
   '<div class="phRow"><label>Aspect</label><select id="phAspect">'+asp+'</select></div>'+
   '<div class="phRow"><label>Frame line</label><input type="checkbox" id="phLine"></div>'+
   '<div class="phRow"><label>Mask outside</label><input type="checkbox" id="phMask"></div>'+
   '<div class="phRow"><label>Rule of thirds</label><input type="checkbox" id="phThirds"></div>'+
-  '<div class="phRow"><label>Centre cross</label><input type="checkbox" id="phCross"></div>'+
-  '<div class="phSect">Scene</div>'+
+  '<div class="phRow"><label>Centre cross</label><input type="checkbox" id="phCross"></div>')+
+  phGrp('scene','Scene',
   '<div class="phRow"><label>Hide ball</label><input type="checkbox" id="phHideBall"></div>'+
   '<div class="phRow"><label>Hide rods &amp; players</label><input type="checkbox" id="phHideRods"></div>'+
-  '<div class="phRow"><label>Hide markers</label><input type="checkbox" id="phHideMarks"></div>'+
-  '<div class="phSect">Shots</div>'+
+  '<div class="phRow"><label>Hide markers</label><input type="checkbox" id="phHideMarks"></div>')+
+  phGrp('shots','Shots',
   '<div class="phRow"><label>Save</label><span class="phSlots" id="phSave"></span></div>'+
-  '<div class="phRow"><label>Load</label><span class="phSlots" id="phLoad"></span></div>'+
-  '<div class="phSect">Capture</div>'+
+  '<div class="phRow"><label>Load</label><span class="phSlots" id="phLoad"></span></div>')+
+  (PHP.on?phGrp('path','Camera path',
+   '<div class="phRow"><label>Add</label><span class="phSlots" id="phPathAdd"></span></div>'+
+   '<div class="phOrder" id="phPathOrder"></div>'+
+   '<div class="phBtns"><button class="phBtn" id="phPathAll">Use all</button>'+
+    '<button class="phBtn" id="phPathUndo">Undo</button>'+
+    '<button class="phBtn" id="phPathClear">Clear</button></div>'+
+   '<div class="phS"><label>Length</label><input type="range" id="phPathR" min="'+PHP.secsMin+
+    '" max="'+PHP.secsMax+'" step="1"><input type="number" id="phPathN" min="'+PHP.secsMin+
+    '" max="'+PHP.secsMax+'" step="1"><i>s</i></div>'+
+   '<div class="phBtns"><button class="phBtn" id="phPathSmooth">Smooth</button>'+
+    '<button class="phBtn" id="phPathEase">Ease</button>'+
+    '<button class="phBtn" id="phPathLoop">Loop</button>'+
+    '<button class="phBtn" id="phPathLive">Live sim</button></div>'+
+   '<div class="phBtns"><button class="phBtn wide play" id="phPathBtn">▶ PLAY PATH (V)</button></div>')
+   :'')+
+  phGrp('cap','Capture',
   '<div class="phRow"><label>Size</label><select id="phScale">'+scl+'</select><span class="phHint" id="phOut"></span></div>'+
   '<div class="phBtns"><button class="phBtn wide snap" id="phSnapBtn">◉ TAKE PHOTO (SPACE)</button></div>'+
   '<div class="phBtns"><button class="phBtn wide rec" id="phRecBtn">● RECORD CLIP (R)</button></div>'+
-  '<div class="phRow"><label>Clip</label><span class="phHint" id="phRecOut"></span></div>'+
-  '<div class="phSect">Turntable sequence</div>'+
+  '<div class="phRow"><label>Clip</label><span class="phHint" id="phRecOut"></span></div>')+
+  phGrp('seq','Sequence',
   '<div class="phRow"><label>Height</label><select id="phSeqH">'+hgt+'</select>'+
    '<select id="phSeqFps">'+fps+'</select></div>'+
-  '<div class="phS"><label>Length</label><input type="range" id="phSeqSecR" min="'+PHOTO.seq.secsMin+
+  '<div class="phS" id="phSeqSecRow"><label>Length</label><input type="range" id="phSeqSecR" min="'+PHOTO.seq.secsMin+
    '" max="'+PHOTO.seq.secsMax+'" step="1"><input type="number" id="phSeqSecN" min="'+PHOTO.seq.secsMin+
    '" max="'+PHOTO.seq.secsMax+'" step="1"><i>s</i></div>'+
   '<div class="phRow"><label>Format</label><select id="phSeqFmt">'+
    '<option value="jpeg">JPEG</option><option value="png">PNG</option></select></div>'+
   '<div class="phBtns"><button class="phBtn wide seq" id="phSeqBtn">▦ RENDER SEQUENCE (SHIFT+R)</button></div>'+
-  '<div class="phRow"><label>Sequence</label><span class="phHint" id="phSeqOut"></span></div>'+
-  '<div class="phMsg" id="phMsg"></div>'+
-  '<div class="phInfo" id="phInfo"></div>'+
+  '<div class="phRow"><label>Sequence</label><span class="phHint" id="phSeqOut"></span></div>')+
+  phGrp('keys','Controls',
   '<div class="phKeys">'+
    '<b>drag</b><span>orbit / look</span>'+
    '<b>R-drag</b><span>pan</span>'+
@@ -792,11 +1160,16 @@ function phBuild(){
    '<b>SHIFT / CTRL</b><span>fast / fine</span>'+
    '<b>1 – '+PHOTO.slots+'</b><span>load shot</span>'+
    '<b>SHIFT 1 – '+PHOTO.slots+'</b><span>save shot</span>'+
+   (PHP.on?'<b>V</b><span>play path</span>':'')+
    '<b>G</b><span>guides</span><b>H</b><span>hide panel</span>'+
    '<b>C</b><span>clean view</span><b>R</b><span>record clip</span>'+
    '<b>SHIFT R</b><span>render sequence</span>'+
    '<b>F1 / ESC</b><span>exit</span>'+
-  '</div>'+
+  '</div>')+
+  // pinned under every section: the message and the live readout are what you check WITHOUT
+  // opening anything, so neither belongs inside a group that can be shut
+  '<div class="phMsg" id="phMsg"></div>'+
+  '<div class="phInfo" id="phInfo"></div>'+
   '</div>';
  document.body.appendChild(p);
  // blur any clicked control so SPACE (take photo) can't re-fire the button under the cursor
@@ -819,6 +1192,7 @@ function phBuild(){
  $('phFromCam').onclick=()=>{phSeed();phSyncUI();phMsg('RIG FROM MATCH CAM');};
  $('phReset').onclick=()=>{phReset();phSyncUI();};
  p.querySelectorAll('[data-fo]').forEach(b=>{b.onclick=()=>phFocus(b.dataset.fo);});
+ p.querySelectorAll('[data-grp]').forEach(b=>{b.onclick=e=>phGrpClick(b.dataset.grp,e);});
  // locked while rolling — the recorder's destination canvas is sized once and can't be re-shaped
  // mid-stream, so a re-frame here would either tear the clip or silently squash it.
  $('phAspect').onchange=e=>{
@@ -847,7 +1221,31 @@ function phBuild(){
   const a=document.createElement('button');a.className='phBtn slot';a.textContent=String(i+1);a.onclick=()=>phShotSave(i);sv.appendChild(a);
   const b=document.createElement('button');b.className='phBtn slot';b.id='phSlot'+i;b.textContent=String(i+1);b.onclick=()=>phShotLoad(i);ld.appendChild(b);
  }
- phShotChips();
+ if(PHP.on){
+  const pa=$('phPathAdd');
+  for(let i=0;i<PHOTO.slots;i++){
+   const c=document.createElement('button');c.className='phBtn slot';c.id='phPathChip'+i;
+   c.textContent=String(i+1);c.title='append slot '+(i+1)+' to the path';
+   c.onclick=()=>phPathAdd(i);pa.appendChild(c);
+  }
+  $('phPathAll').onclick=()=>phPathAll();
+  $('phPathUndo').onclick=()=>phPathUndo();
+  $('phPathClear').onclick=()=>phPathClear();
+  $('phPathBtn').onclick=()=>phPathToggle();
+  const pd=e=>{if(phSyncing)return;
+   PH.pathDur=clamp(parseFloat(e.target.value)||PHP.secs,PHP.secsMin,PHP.secsMax);
+   phPathSave();phSyncUI();};
+  $('phPathR').oninput=pd;$('phPathN').oninput=pd;
+  $('phPathSmooth').onclick=()=>{PH.pathSmooth=!PH.pathSmooth;phPathSave();phSyncUI();};
+  $('phPathEase').onclick=()=>{PH.pathEase=!PH.pathEase;phPathSave();phSyncUI();};
+  // Changing the shape mid-play would need the control points rebuilt under the playhead; a
+  // restart is both simpler and what you want anyway — you are about to watch it again.
+  $('phPathLoop').onclick=()=>{const w=PH.play;if(w)phPathStop();
+   PH.pathLoop=!PH.pathLoop;phPathSave();phSyncUI();if(w)phPathStart();};
+  $('phPathLive').onclick=()=>{const w=PH.play;if(w)phPathStop();
+   PH.pathLive=!PH.pathLive;phPathSave();phSyncUI();if(w)phPathStart();};
+ }
+ phShotChips();phGrpSync();
 }
 /* Focus presets. Goal x is ±L/2; the aim point sits at bar height so a goal shot frames the mouth
    rather than the floor in front of it. */
@@ -911,6 +1309,7 @@ function photoExit(){
  if(PH.seq){phSeqCancel();return;}
  // a take still rolling is written out, not binned — it was started deliberately (see phRecStop)
  if(PH.rec)phRecStop('photo mode closed');
+ if(PH.play)phPathStop();          // ...and after it, so the take keeps the frames the move made
  PH.on=false;S.photo=null;PH.drag=null;
  document.body.classList.remove('photoOn');
  PH.clean=false;PH.panelHid=false;phChromeSync();
@@ -938,26 +1337,34 @@ function phTick(rdt){
  // An offline render drives the rig itself, one frame at a time. Letting the tick spin, nudge or
  // re-apply the camera in the gaps between those frames would corrupt the sweep.
  if(PH.seq)return;
- const SP=PHOTO.speed;
- let m=1;
- if(keys.ShiftLeft||keys.ShiftRight)m*=SP.fast;
- if(keys.ControlLeft||keys.ControlRight||keys.AltLeft||keys.AltRight)m*=SP.fine;
- const dt=rdt*m;
- let f=0,s=0,u=0,dy=0,dp=0,dd=0;
- if(keys.KeyW)f+=SP.keyPan*dt; if(keys.KeyS)f-=SP.keyPan*dt;
- if(keys.KeyD)s+=SP.keyPan*dt; if(keys.KeyA)s-=SP.keyPan*dt;
- if(keys.KeyQ)u+=SP.keyRise*dt;if(keys.KeyE)u-=SP.keyRise*dt;
- if(keys.ArrowLeft)dy-=SP.keyOrbit*dt; if(keys.ArrowRight)dy+=SP.keyOrbit*dt;
- if(keys.ArrowUp)dp+=SP.keyOrbit*dt;   if(keys.ArrowDown)dp-=SP.keyOrbit*dt;
- if(keys.KeyZ)dd-=SP.keyDolly*dt;      if(keys.KeyX)dd+=SP.keyDolly*dt;
- if(f||s||u)phMove(f,s,u);
- if(dy||dp)phOrbit(dy,dp);
- if(dd)PH.dist=clamp(PH.dist+dd,PHR.distMin,PHR.distMax);
- if(PH.spin)phOrbit(PH.spinSpeed*rdt,0);           // turntable: wall-clock, so it sweeps while frozen
+ let moved=false;
+ // A PLAYING PATH OWNS THE RIG, the same way an offline render does — the key nudges, the
+ // turntable and the drag handlers all stand down for the duration. Two things writing the pose
+ // in one tick is how you get a move that judders under someone's resting hand on the arrow keys.
+ if(PH.play){phPathTick(rdt);moved=true;}
+ else{
+  const SP=PHOTO.speed;
+  let m=1;
+  if(keys.ShiftLeft||keys.ShiftRight)m*=SP.fast;
+  if(keys.ControlLeft||keys.ControlRight||keys.AltLeft||keys.AltRight)m*=SP.fine;
+  const dt=rdt*m;
+  let f=0,s=0,u=0,dy=0,dp=0,dd=0;
+  if(keys.KeyW)f+=SP.keyPan*dt; if(keys.KeyS)f-=SP.keyPan*dt;
+  if(keys.KeyD)s+=SP.keyPan*dt; if(keys.KeyA)s-=SP.keyPan*dt;
+  if(keys.KeyQ)u+=SP.keyRise*dt;if(keys.KeyE)u-=SP.keyRise*dt;
+  if(keys.ArrowLeft)dy-=SP.keyOrbit*dt; if(keys.ArrowRight)dy+=SP.keyOrbit*dt;
+  if(keys.ArrowUp)dp+=SP.keyOrbit*dt;   if(keys.ArrowDown)dp-=SP.keyOrbit*dt;
+  if(keys.KeyZ)dd-=SP.keyDolly*dt;      if(keys.KeyX)dd+=SP.keyDolly*dt;
+  if(f||s||u)phMove(f,s,u);
+  if(dy||dp)phOrbit(dy,dp);
+  if(dd)PH.dist=clamp(PH.dist+dd,PHR.distMin,PHR.distMax);
+  if(PH.spin)phOrbit(PH.spinSpeed*rdt,0);          // turntable: wall-clock, so it sweeps while frozen
+  if(f||s||u||dy||dp||dd||PH.spin)moved=true;
+ }
  if(PH.rec)phRecTick(rdt);
  phApply();
  phSceneApply();
- if(f||s||u||dy||dp||dd||PH.spin)PH.readT=0;       // moving → refresh the numbers on the next tick
+ if(moved)PH.readT=0;                              // moving → refresh the numbers on the next tick
  PH.readT-=rdt;
  if(PH.readT<=0){PH.readT=.1;phSyncNums();phReadout();phRecSync();}
  if(PH.msgT>0){PH.msgT-=rdt;if(PH.msgT<=0){const el=$('phMsg');if(el)el.classList.remove('on');}}
@@ -989,10 +1396,11 @@ addEventListener('keydown',e=>{
  if(e.repeat)return;
  if(e.code==='Escape'){photoExit();return;}
  if(e.code==='Space'){e.preventDefault();phSnap();return;}
- if(e.code==='KeyP'){phToggleFreeze();return;}
- if(e.code==='KeyO'){phStep();return;}
- if(e.code==='KeyF'){PH.free=!PH.free;phSyncUI();return;}
- if(e.code==='KeyT'){PH.spin=!PH.spin;phSyncUI();return;}
+ if(e.code==='KeyP'){if(PH.play){phMsg('STOP THE PATH FIRST (V)');return;}phToggleFreeze();return;}
+ if(e.code==='KeyO'){if(PH.play)return;phStep();return;}
+ if(e.code==='KeyF'){if(PH.play)return;PH.free=!PH.free;phSyncUI();return;}
+ if(e.code==='KeyT'){if(PH.play)phPathStop();PH.spin=!PH.spin;phSyncUI();return;}
+ if(e.code==='KeyV'){phPathToggle();return;}
  if(e.code==='KeyH'){PH.panelHid=!PH.panelHid;phChromeSync();return;}
  if(e.code==='KeyC'){PH.clean=!PH.clean;phChromeSync();return;}
  if(e.code==='KeyR'){if(e.shiftKey)phSeqStart();else phRecToggle();return;}
@@ -1009,7 +1417,7 @@ addEventListener('keydown',e=>{
  if(d){const i=+d[1]-1;if(i<PHOTO.slots){if(e.shiftKey)phShotSave(i);else phShotLoad(i);}return;}
 });
 cvs.addEventListener('mousedown',e=>{
- if(!PH.on||PH.seq)return;
+ if(!PH.on||PH.seq||PH.play)return;
  e.preventDefault();
  // 0 = orbit/look · 2 (or shift+0) = pan · 1 = dolly. Shift is also the 'fast' modifier for keys,
  // which is deliberate: a modifier that changes what a drag DOES can't also change how fast it does it.
@@ -1029,7 +1437,7 @@ addEventListener('mousemove',e=>{
 });
 addEventListener('mouseup',()=>{if(PH.on&&PH.drag){PH.drag=null;cvs.style.cursor='crosshair';}});
 cvs.addEventListener('wheel',e=>{
- if(!PH.on||PH.seq)return;
+ if(!PH.on||PH.seq||PH.play)return;
  e.preventDefault();
  // proportional dolly: one notch moves a fixed FRACTION of the current distance, so the step stays
  // useful at 8 units out and at 300. A linear step is unusable at one end or the other.

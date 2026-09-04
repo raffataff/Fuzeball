@@ -31,9 +31,9 @@
   <div id="introStage">
     <canvas id="introFx"></canvas>
     <div id="introLogoWrap">
-      <img id="introGR" class="introGhost" src="assets/fuzeball_logo_TC.png" alt="">
-      <img id="introGB" class="introGhost" src="assets/fuzeball_logo_TC.png" alt="">
-      <img id="introLogo" src="assets/fuzeball_logo_TC.png" alt="FUZEBALL">
+      <img id="introGR" class="introGhost" src="assets/fuzeball_logo_tc_cycles.png" alt="">
+      <img id="introGB" class="introGhost" src="assets/fuzeball_logo_tc_cycles.png" alt="">
+      <img id="introLogo" src="assets/fuzeball_logo_tc_cycles.png" alt="FUZEBALL">
       <div id="introShine"></div>
       <div id="introTag"></div>
       <div id="introLoad">Loading</div>
@@ -82,7 +82,7 @@
 
 <div id="home" class="screen introHide">
   <img class="logo" src="assets/fuzeball_logo_TC.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.29</div>
+  <div class="tagline">v0.1.30</div>
 
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" 
@@ -532,9 +532,10 @@
         <div class="row"><label>Ball trails</label><input type="checkbox" id="optTrails"></div>
         <div class="row"><label>Particles</label><input type="checkbox" id="optParticles"></div>
         <div class="row"><label>Wall marks</label><input type="checkbox" id="optMarks"></div>
+        <div class="row"><label>Rod stamina rings</label><input type="checkbox" id="optRodHoles"></div>
         <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
         <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
-        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Wall marks are the scuffs a hard hit leaves on the rails; they fade on their own after about ten seconds and cost a single draw call, so leave them on unless you prefer a clean table. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
+        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Wall marks are the scuffs a hard hit leaves on the rails; they fade on their own after about ten seconds and cost a single draw call, so leave them on unless you prefer a clean table. Rod stamina rings turn the hole each rod runs through into a small gauge: it drains from the top as that rod tires, and the colour of what is left says what the tiredness is costing &mdash; green for a rod shrugging it off, red for one being slowed right down. They also flash the charge colours while you wind a shot up, and the scorer&rsquo;s own ring strobes on a goal &mdash; so the table tells you which rod put it in. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
