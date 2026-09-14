@@ -172,6 +172,7 @@ function loadLG(slot){
    if(t.bld)for(const role of LG_ROLES){const blk=t.bld[role];if(blk)for(const k of LG_KEYS)if(blk[k]==null){blk[k]=STC.base;migrated=true;}}
   });
   if(!LG.hist)LG.hist=[];
+  if(trophyBackfill())migrated=true;   // honours record postdates this save — build it once, from hist
   if(!LG.divs){
    const allIds=LG.teams.map(t=>t.id);
    LG.divs=[{name:LGC.divisions[1].name,tier:1,teamIds:allIds,fixtures:LG.fixtures||[],results:LG.results||[],champ:LG.champ||null}];
@@ -377,6 +378,62 @@ function modelRenderMask(id){
  const s=RENDER_STEM[id];
  return (s&&MASK_STEMS.has(s))?'assets/renders/render_'+s+'_teammask.png':null;
 }
+/* ---- silverware -------------------------------------------------------------
+   Every division has a trophy and so does the cup. The definition lives on the division in
+   CONFIG (beside its table/room/skin) and is looked up by TIER, so a save only ever stores the
+   tier a title was won in and the art can be retuned without touching old leagues. `cup` is
+   passed as the tier for the Champions Cup.
+   ART IS FOUND BY CONVENTION off the trophy id, the same shape modelRender() uses for the
+   figurines: render_trophy_<id>_cycles.png big, render_trophy_<id>_thumb.png small. A render
+   that isn't drawn yet costs nothing — trophyFig lays the image OVER the inline trophy mark and
+   only hides the mark on the image's own load, so a miss leaves the mark and the exact same
+   layout behind (the mugImg rule, applied to an innerHTML string). */
+function trophyDef(tier){
+ if(tier==='cup')return (CUP&&CUP.trophy)||null;
+ const d=LGC.divisions[tier];
+ return (d&&d.trophy)||null;
+}
+function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.png';}
+function trophyFig(tier,cls,big){
+ const d=trophyDef(tier);if(!d)return '';
+ return '<span class="troFig'+(cls?' '+cls:'')+'" style="--tc:'+(d.col||'var(--gold)')+'">'+ico('trophy')+
+  '<img class="troImg" src="'+trophyImg(d.id,big)+'" alt="'+d.name+'" '+
+  'onload="this.parentNode.classList.add(\'on\')" onerror="this.remove()"></span>';
+}
+/* THE HONOURS RECORD. LG.trophies is the one source of truth for what the player has won.
+   The count it replaces filtered LG.hist for rows whose champion string matched the team's
+   CURRENT name, so renaming a team quietly erased its own history — and the row for a season is
+   only pushed at the rollover OUT of it, so a title never counted on the screen that awarded it.
+   Entries are {season,tier,id}; tier is 0-2 for a division title, 'cup' for the Champions Cup. */
+function trophyList(){return (LG&&LG.trophies)||[];}
+function trophyCount(id){let n=0;for(const t of trophyList())if(t.id===id)n++;return n;}
+// Idempotent on (season,tier): lgFinalize is already guarded, but a re-entry must never
+// double-stamp a season, and the backfill below leans on this too.
+function trophyAward(tier,season){
+ const d=trophyDef(tier);if(!d||!LG)return;
+ if(!LG.trophies)LG.trophies=[];
+ if(LG.trophies.some(t=>t.season===season&&t.tier===tier))return;
+ LG.trophies.push({season:season,tier:tier,id:d.id});
+}
+/* Saves written before the record exists get one built from what CAN be known: a hist row whose
+   champion for a tier carries the player's name. That is the old name-match, with the old
+   name-match's one hole (an AI team sharing your name claims your title) — it runs once, on load,
+   and every title won from here is recorded properly. LG.cupTitles was a bare counter with no
+   seasons on it, so any cup hist can't account for lands as season 0: the count is right, the
+   year is lost. Returns true if it wrote, so loadLG knows to save. */
+function trophyBackfill(){
+ if(!LG||LG.trophies)return false;
+ LG.trophies=[];
+ const me=(LG.teams&&LG.teams[LG.playerId])?LG.teams[LG.playerId].name:null;
+ if(me)for(const e of LG.hist||[]){
+  const champs=e.divChamps||(e.champ?[null,null,e.champ]:[]);
+  for(let t=0;t<champs.length;t++)if(champs[t]===me)trophyAward(t,e.season);
+  if(e.cup===me)trophyAward('cup',e.season);
+ }
+ const cd=trophyDef('cup');
+ if(cd){for(let i=trophyCount(cd.id);i<(LG.cupTitles||0);i++)LG.trophies.push({season:0,tier:'cup',id:cd.id});}
+ return true;
+}
 /* ---- live-match bridge (flow.js/rods.js/ai.js read these) ---- */
 function teamName(t){return S.lg?S.lg.names[t]:(t===0?cfg.redName:cfg.blueName);}
 function teamCol(t){return S.lg?S.lg.cols[t]:(t===0?cfg.redColor:cfg.blueColor);}
@@ -575,6 +632,10 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   if(pRelegated)playerLosses=lgRelegatePenalty(LG.teams[LG.playerId]);
   else if(pPromoted)playerGains=lgPromoteBoost(LG.teams[LG.playerId],pPos-1);
    LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,cupQualified:pCup,divs,playerLosses,playerGains,shown:false};
+   // Silverware, stamped HERE rather than at the rollover the way hist is: this is the moment the
+   // season is decided, it is what the summary screen about to open reads, and a player who quits
+   // before starting the next season still keeps the title. pPos===1, not `fate` — see lgSEFate.
+   if(pPos===1)trophyAward(oldPd,LG.season);
   saveLG();
 }
 function lgSeasonEarn(){
@@ -597,7 +658,7 @@ function lgSeasonEarn(){
   const earned=w*LGC.upWin+l*LGC.upLoss+cs*LGC.upCleanSheet+promoteBonus+champBonus;
   const pid2=LG.playerId;
   return {w,l,gf,ga,cs,earned,promoteBonus,champBonus,avail:LG.teams[pid2].up,
-   titles:LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===LG.teams[pid2].name).length};
+   titles:trophyCount((trophyDef(2)||{}).id)};
 }
 function lgSEDivCard(d){
   let rows='';
@@ -616,7 +677,7 @@ function lgSEDivCard(d){
   });
   return '<div class="lgSEDiv">'+
    '<div class="lgSEDivHead">'+d.name+'</div>'+
-   '<div class="lgSEChamp">'+ico('trophy','icoInline')+' '+d.champ+'</div>'+
+   '<div class="lgSEChamp">'+trophyFig(d.tier,'troSm')+' '+d.champ+'</div>'+
    '<div class="lgSEHead"><span></span><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GF</span><span>GA</span><span>PTS</span></div>'+
    rows+'</div>';
 }
@@ -627,10 +688,21 @@ function lgSEFate(se){
    relegated:['rel','▼ RELEGATED','#ff4d5a'],
    stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
   };
+  // FINISHING TOP lifts the silverware, not `playerFate` — lgFinalize sets 'champion' for the
+  // PREMIER ONLY, so a Sunday or Pro title lands here labelled 'promoted'. Gating the trophy on
+  // the fate would have silently hidden two of the three. The tier decides which one is lifted,
+  // and a lower-division winner gets both halves of what they did in the one label.
+  const won=se.playerPos===1, d=won?trophyDef(se.playerDiv):null;
   const m=map[se.playerFate];
+  if(won&&se.playerFate==='promoted')m[1]='▲ CHAMPIONS · PROMOTED';
   const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
+  // The hero shot sits ABOVE the fate plate and is the first thing on the screen. It is the big
+  // render, not the thumb: this is the one place worth the bytes.
+  const hero=d?'<div class="troHero" style="--tc:'+(d.col||'var(--gold)')+'">'+
+   trophyFig(se.playerDiv,'troBig',true)+
+   '<div class="troHeroName">'+d.name+'</div></div>':'';
 
-  return '<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+
+  return hero+'<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+
    '<span class="lgSEPos">'+posTxt+'</span></div>';
 }
 function lgSERewards(r,se){
@@ -751,9 +823,9 @@ function renderLgHist(){
  if(!LG.hist||!LG.hist.length){$('lgHistPanel').classList.add('hidden');return;}
  $('lgHistPanel').classList.remove('hidden');
   const playerName=LG.teams[LG.playerId].name;
-  const titles=LG.hist.filter(e=>((e.divChamps?e.divChamps[2]:null)||e.champ)===playerName).length;
+  const titles=trophyCount((trophyDef(2)||{}).id);
   
-   const cups=LG.cupTitles||0;
+   const cups=trophyCount((trophyDef('cup')||{}).id);
    $('lgTitles').textContent=(titles?'· '+titles+'x Premier Champion':'')+(cups?(titles?' · ':'· ')+cups+'x Cup Winner':'');
    let h='<div class="row head"><span>Season</span><span>Division</span><span>Pos</span></div>';
    for(let i=LG.hist.length-1;i>=0;i--){
@@ -763,10 +835,36 @@ function renderLgHist(){
    }
  $('lgHist').innerHTML=h;
 }
+/* ---- trophy cabinet ----
+   Reads LG.trophies, never the standings: a title won three seasons ago is still yours after the
+   relegation that followed it, which is exactly what a cabinet is for. Ordered cup-first then top
+   division down, so the biggest thing you own is the thing you look at. Seasons are listed rather
+   than just counted — "S3 · S7" is a career, "×2" is a number. */
+function renderLgCabinet(){
+  const all=trophyList();
+  $('lgCabinetPanel').classList.toggle('hidden',!all.length);
+  if(!all.length)return;
+  let h='';
+  for(const tier of ['cup',2,1,0]){
+   const won=all.filter(t=>t.tier===tier),d=trophyDef(tier);
+   if(!won.length||!d)continue;
+   // Backfilled cups carry season 0 (the old counter kept no year) — drop those rather than
+   // printing "S0", and the card falls back to the count on its own.
+   const yrs=won.map(t=>t.season).filter(s=>s>0).sort((a,b)=>a-b);
+   const recent=yrs.slice(-3),ell=yrs.length>recent.length?'… ':'';   // the ×N badge carries the total
+   h+='<div class="troCard" style="--tc:'+(d.col||'var(--gold)')+'">'+
+    trophyFig(tier,'troMd')+
+    '<span class="troCardTxt"><span class="troCardName">'+d.name+'</span>'+
+    '<span class="troCardYrs">'+(recent.length?ell+'S'+recent.join(' · S'):won.length+' won')+'</span></span>'+
+    (won.length>1?'<span class="troCardN">×'+won.length+'</span>':'')+'</div>';
+  }
+  $('lgCabinet').innerHTML=h;
+}
 /* ---- lobby UI ---- */
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
   showScreen('league');   // hides menu/lgSlots + applies the saved panel arrangement (js/screens.js → layApply)
+  $('lgWipe').classList.add('hidden');   // overlay, so hideScreens() doesn't reach it
  
   lgVenueEnter(lgDivVenue(playerDiv()));
   if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
@@ -791,11 +889,15 @@ function renderLeague(reveal){
   else if(LG.season>1)ban='<div class="lgProRelBanner stay">STAYED IN '+LGC.divisions[pd].name.toUpperCase()+'</div>';
  }
  $('lgSeasonTag').innerHTML=(ban||'')+'<span>'+dv.name+' · SEASON '+LG.season+(dv.champ?' · COMPLETE':' · ROUND '+(LG.round+1)+' / '+dv.fixtures.length)+'</span>';
-  $('lgNew').textContent=dv.champ?'Next Season ▶':'Reset League';
- 
-  $('lgCup').classList.toggle('hidden',!cupCurrent());
+  // Nothing that goes BACK or resets lives down here any more — that pair is the top-left
+  // corner on every screen. What's left is the two forward moves, and the row itself is hidden
+  // when neither applies, or its 22px top margin leaves a gap hanging under the panels.
+  const canNext=!!dv.champ,hasCup=!!cupCurrent();
+  $('lgNext').classList.toggle('hidden',!canNext);
+  $('lgCup').classList.toggle('hidden',!hasCup);
   $('lgCup').textContent=cupLive()?'Champions Cup':'Cup Result';
- renderLgTable();renderLgFix();renderLgLast(reveal);renderLgSquad();renderLgHist();
+  $('lgBtnRow').classList.toggle('hidden',!canNext&&!hasCup);
+ renderLgTable();renderLgFix();renderLgLast(reveal);renderLgSquad();renderLgHist();renderLgCabinet();
 }
 function renderLgTable(){
  const pd=playerDiv(),dv=LG.divs[pd];
@@ -1202,7 +1304,10 @@ function cupAdvance(ties){ // sim the rest of the bracket from `ties`' winners d
 function awardCupWin(){
   const pid=LG.playerId;
   LG.teams[pid].up+=CUP.winParts;
-  LG.cupTitles=(LG.cupTitles||0)+1;   // shown on the lobby history panel
+  LG.cupTitles=(LG.cupTitles||0)+1;   // kept: old saves are backfilled from it, and it costs a byte
+  // The cup is played in the gap between two seasons, so the season it belongs to is the one on
+  // the cup itself — LG.season has not rolled yet, but reading it here would be luck, not logic.
+  trophyAward('cup',(LG.cup&&LG.cup.season)||LG.season);
 }
 // `w` (winning team index) is accepted so flow.js can call cupRecord and lgRecord through one
 // expression, but it is deliberately IGNORED — S.score is the authoritative result and carries the
@@ -1336,7 +1441,10 @@ function renderCup(){
   // (nothing left to configure) and this is then the only record of what the ties were played to.
   $('cupSub').textContent='SEASON '+cup.season+' · '+(cup.done?(out?'ELIMINATED':'COMPLETE'):CUP.rounds[cup.round])+' · '+lgRulesLabel();
   renderCupBracket();renderCupFix();renderCupSquad();renderCupHist();
+  // Back moved to the corner, so Continue is the only thing left down here — and the row has to
+  // go with it, or its 22px top margin leaves a gap under the bracket on every unfinished cup.
   $('cupDone').classList.toggle('hidden',!cup.done);
+  $('cupBtnRow').classList.toggle('hidden',!cup.done);
   // Lifting the cup is the biggest thing in the mode and had no moment of its own — the win screen
   // celebrated the FINAL, then handed over to a bracket that just quietly said CHAMPION. Fires once
   // ever, latched on the save (not on S) so re-opening a won bracket doesn't re-trigger it.
@@ -1345,7 +1453,7 @@ function renderCup(){
 function openCup(){
   // overlays + the HUD aren't in the screen registry — arriving from a finished tie's win screen
   // means they can all still be up, so they're taken down by hand before routing.
-  $('lgSeasonEnd').classList.add('hidden');$('lgForfeit').classList.add('hidden');
+  $('lgSeasonEnd').classList.add('hidden');$('lgForfeit').classList.add('hidden');$('lgWipe').classList.add('hidden');
   $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');
   showScreen('championsCup');   // …and applies this screen's saved panel arrangement (js/layout.js)
   // The bracket sits in the cup's own venue, same rule as the league lobby — and it cancels the
@@ -1361,11 +1469,31 @@ function openCup(){
   else if(LG.cup.champion)renderCupScout(LG.cup.champion);
 }
 function cupReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg)
+/* Deal a new season and repaint the lobby around it. keep=true carries the save forward (a
+   settled table → next season); keep=false throws it away and starts the league again. This was
+   inline on one dual-purpose button — it's a function now because two buttons call it. */
+function lgRestart(keep){
+ lgNewSeason(keep);
+ renderLeague();
+ const fx=lgPlayerFixture();
+ if(fx)renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);
+ Au.ui();
+}
+/* Leaving the lobby with the confirm still up would strand it over #home — it's an overlay, so
+   hideScreens() walks straight past it. Covers Esc and the corner arrow in one place. */
+SCREENS.league.onHide=()=>{$('lgWipe').classList.add('hidden');};
 /* ---- bind ---- */
 function bindLeague(){
   $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
   $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
-  $('lgNew').onclick=()=>{lgNewSeason(!!LG&&!!LG.divs[playerDiv()].champ);renderLeague();const fx=lgPlayerFixture();if(fx){renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);}Au.ui();};
+  // Reset and Next Season used to be ONE button that swapped its own label, so at the end of a
+  // season the click that carried you forward sat exactly where the click that wiped the save
+  // had been. Split in two: the corner ↺ always resets, the bottom button always advances. The
+  // corner one is unlabelled and a thumb-width from Back, hence the confirm.
+  $('lgReset').onclick=()=>{$('lgWipe').classList.remove('hidden');Au.ui();};
+  $('btnWipeCancel').onclick=()=>{$('lgWipe').classList.add('hidden');Au.ui();};
+  $('btnWipe').onclick=()=>{$('lgWipe').classList.add('hidden');lgRestart(false);};
+  $('lgNext').onclick=()=>lgRestart(true);
    $('lgPlay').onclick=lgPlayMatch;
    // The save's four match rules, on BOTH lobbies against the same LG fields (bindRuleCtls). One
    // value, two sets of controls — the cup panel isn't a second config, it's the same one.

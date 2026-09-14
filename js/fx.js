@@ -246,19 +246,104 @@ function goalFx(team,b,scorer){
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
  rodHoleGoal(scorer,team);   // …and the scorer's own rod-hole ring, on the same clock
 }
+/* ---- explosion smoke -------------------------------------------------------------------------
+   The pool itself is built in world.js buildFxPools; CONFIG.fx.smoke explains every number and why
+   this is not just another burst() call. Nothing in here allocates: the colours are parsed once
+   below, each puff carries its own state in userData, and a spent puff is hidden, never destroyed.
+
+   COLOURS ARE GIVEN AS WHAT YOU SEE. The renderer encodes to sRGB on the way out (initThree), so a
+   hex set straight onto a material comes back lighter than the swatch — the config's #6a6e78 would
+   arrive as #97999d, and smoke lighter than the table just looks like fog. One convertSRGBToLinear
+   here undoes it, and toneMapped:false on the materials (world.js) keeps the Reinhard curve out of
+   the path too, so this single step is the whole transform and the round trip is exact. */
+const SMK=(CONFIG.fx&&CONFIG.fx.smoke)||{on:false,ring:{}};
+const _smkHot=new THREE.Color(SMK.hot||0xff8a3c).convertSRGBToLinear(),
+      _smkCool=new THREE.Color(SMK.cool||0x4a4d55).convertSRGBToLinear(),
+      _smkDust=new THREE.Color((SMK.ring&&SMK.ring.col)||0x6b6259).convertSRGBToLinear();
+let smkRingT=0,smkRingMax=0,smkRingA=0;   // the ground dust ring's own countdown, ticked in smokeUpdate
+/* Throw a cloud at `pos`, plus the dust ring on the floor beneath it. Puffs are handed out from the
+   pool oldest-first; if a second bang lands while the first is still burning it simply gets fewer,
+   which is the right failure — the pool can never grow and the frame cost can never spike. */
+function smokeBurst(pos){
+ if(!cfg.particles||!SMK.on||!smokePuffs.length)return;   // Options → Display · Effects
+ let n=0;
+ for(let i=0;i<smokePuffs.length&&n<SMK.burst;i++){
+  const s=smokePuffs[i],d=s.userData;
+  if(d.life>0)continue;                                   // still drifting from an earlier blast
+  d.max=d.life=rand(SMK.lifeMin,SMK.lifeMax);
+  d.wait=n*SMK.stagger;                                   // held back so the cloud grows, not pops
+  d.size=rand(SMK.sizeMin,SMK.sizeMax);
+  d.alpha=SMK.alpha*rand(.8,1);
+  d.spin=rand(-SMK.spin,SMK.spin);
+  const a=rand(0,Math.PI*2),sp=rand(.35,1)*SMK.spread;
+  d.vx=Math.cos(a)*sp;d.vz=Math.sin(a)*sp;
+  const off=rand(SMK.offset*.15,SMK.offset);   // spread them properly, or they stack into one grey ellipse
+  s.position.set(pos.x+Math.cos(a)*off,pos.y+rand(-1.5,4),pos.z+Math.sin(a)*off);
+  s.material.rotation=rand(0,Math.PI*2);   // no two puffs show their texture the same way up
+  s.material.color.copy(_smkHot);
+  s.material.opacity=0;
+  s.scale.set(d.size,d.size,1);
+  s.visible=false;                         // the stagger below switches it on
+  n++;
+ }
+ if(!dustRing||!SMK.ring.on)return;
+ dustRing.position.set(pos.x,SMK.ring.y,pos.z);
+ dustRing.scale.set(SMK.ring.from,SMK.ring.from,1);
+ dustRing.material.color.copy(_smkDust);
+ // weaker the higher the ball was: a blast up near the lights has no floor under it to lift
+ smkRingA=SMK.ring.alpha*clamp(1-(pos.y-2)/SMK.ring.fadeHi,.25,1);
+ dustRing.material.opacity=smkRingA;
+ smkRingMax=smkRingT=SMK.ring.life;
+ dustRing.visible=true;
+}
+/* Ticked from fxUpdate on wall-clock rdt, so photo mode's freeze holds the cloud exactly where the
+   shutter caught it — same as the particles and trails above. */
+function smokeUpdate(rdt){
+ for(let i=0;i<smokePuffs.length;i++){
+  const s=smokePuffs[i],d=s.userData;
+  if(d.life<=0)continue;
+  if(d.wait>0){d.wait-=rdt;if(d.wait>0)continue;}   // still queued behind the puffs in front
+  s.visible=true;
+  d.life-=rdt;
+  if(d.life<=0){s.visible=false;continue;}
+  const t=1-d.life/d.max;                           // 0 at birth, 1 at death
+  d.vx-=d.vx*SMK.drag*rdt;d.vz-=d.vz*SMK.drag*rdt;  // the shove off the blast bleeds away
+  s.position.x+=d.vx*rdt;
+  s.position.y+=SMK.rise*(1-t*.6)*rdt;              // rises hardest while it is still hot
+  s.position.z+=d.vz*rdt;
+  /* THE EXPANSION IS THE WHOLE READ. Fast at first, then all but stopped — a puff that grows at a
+     steady rate reads as a sprite being zoomed, not as gas running out of push. */
+  const sc=d.size*(1+(SMK.grow-1)*(1-Math.pow(1-t,1.7)));
+  s.scale.set(sc,sc,1);
+  s.material.rotation+=d.spin*rdt;
+  /* Opacity HOLDS, then goes. A smooth pow(1-t) curve is down to a third by halfway, so the
+     cloud thins out faster than it expands and you never see the shape it grew into. */
+  const up=SMK.fadeIn>0?Math.min(1,t/SMK.fadeIn):1;
+  const dn=SMK.fadeOut>0?Math.min(1,(1-t)/SMK.fadeOut):1;
+  s.material.opacity=d.alpha*up*dn;
+  s.material.color.copy(_smkHot).lerp(_smkCool,SMK.coolBy>0?Math.min(1,t/SMK.coolBy):1);
+ }
+ if(smkRingT<=0)return;
+ smkRingT-=rdt;
+ if(smkRingT<=0){dustRing.visible=false;return;}
+ const t=1-smkRingT/smkRingMax,R=SMK.ring;
+ dustRing.scale.setScalar(R.from+(R.to-R.from)*(1-Math.pow(1-t,2.6)));   // races out, then coasts
+ dustRing.material.opacity=smkRingA*Math.pow(1-t,1.5);
+}
 /* Cannonball detonation FX at world `pos` (the ball's spot at the instant it
-   blows). Layered particle blast + white flash + screen shake + boom, then the
-   3D shard debris (spawnBallFracture, fracture.js). The particles fire even if
-   the fracture GLB never loaded, so there's always a visible bang. Call from
-   balls.js cannonballUpdate BEFORE removeBall clears the ball mesh. */
+   blows). Layered particle blast + smoke cloud + dust ring + white flash + screen
+   shake + boom, then the 3D shard debris (spawnBallFracture, fracture.js). The
+   particles fire even if the fracture GLB never loaded, so there's always a
+   visible bang. Call from balls.js cannonballUpdate BEFORE removeBall clears the
+   ball mesh. The four Colors this used to build on every detonation are parsed
+   once, below. */
+const CX_FIRE=new THREE.Color(0xff6a1a),CX_SPARK=new THREE.Color(0xffd24d),CX_WHITE=new THREE.Color(0xffffff);
 function cannonExplodeFx(pos){
  const p=pos.clone();p.y=Math.max(p.y,1.5);                 // keep the puff off the floor for the ground-level rings
- const fire=new THREE.Color(0xff6a1a),spark=new THREE.Color(0xffd24d),
-       white=new THREE.Color(0xffffff),smoke=new THREE.Color(0x4a4a4a);
- burst(p,fire,spark,240,92);      // fireball core
- burstRing(p,fire,smoke,150,72);   // ground shockwave + smoke ring
- burstUp(p,spark,white,100,84);    // spark fountain
- burst(p,smoke,smoke,70,40);       // lingering smoke puff
+ burst(p,CX_FIRE,CX_SPARK,240,92);      // fireball core
+ burstRing(p,CX_FIRE,CX_SPARK,150,72);  // ground shockwave — all fire now, the grey in here only ever glowed
+ burstUp(p,CX_SPARK,CX_WHITE,100,84);   // spark fountain
+ smokeBurst(p);                         // the actual smoke, and the dust ring under it
  flash();S.shake=1.9;Au.boom();
  spawnBallFracture(pos);           // 3D debris at the TRUE pos (keeps its real height)
 }
@@ -310,6 +395,7 @@ function fxUpdate(rdt){
   arr[i*3]+=pd.vx*rdt;arr[i*3+1]+=pd.vy*rdt;arr[i*3+2]+=pd.vz*rdt;
   if(pd.life<=0||arr[i*3+1]<-2){pd.life=0;arr[i*3+1]=-999;}}
  if(any)pGeo.attributes.position.needsUpdate=true;
+ smokeUpdate(rdt);   // explosion smoke + its ground dust ring (own pool, see CONFIG.fx.smoke)
  goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
  rodHolesUpdate(rdt);   // rod-hole stamina rings — decoration only, writes material colour and nothing else

@@ -22,6 +22,7 @@ let rods=[],indicators=[],dropRing;   // indicators: one held-rod marker per sea
 let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
 let rodsDressedFor=null; // rod-set key the rods currently wear (reskinRods skips a no-op switch)
 let sprites=[],spriteTex,particles,pGeo,pData=[];
+let smokePuffs=[],dustRing;   // explosion smoke pool + its ground dust ring — spawned and driven by js/fx.js
 let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={}; const modelCacheOrder=[]; // LRU key order, most-recent at end
 
 /* ---- figurine template cache LRU (shared helpers; also used by PV.cache in customize.js) ----
@@ -961,6 +962,31 @@ function reskinRods(tableId){
  if(typeof applyColors==='function')applyColors();        // paint + finish the new materials
 }
 
+/* One soft, LUMPY puff, drawn on a canvas at boot. A plain radial gradient — what the trail sprites
+   use — reads as a glow dot whatever colour you tint it; overlapping a handful of off-centre blobs
+   gives the ragged edge that says "smoke" instead. Three are built and handed out round-robin so
+   neighbouring puffs are never the same shape, and the last step feathers the whole square back to
+   nothing at the border, so a puff blown up to 16 units wide never shows a seam. */
+function makeSmokeTex(){
+ const N=128,cv=document.createElement('canvas');cv.width=cv.height=N;
+ const c=cv.getContext('2d');
+ // FIVE fat blobs, not a crowd of small ones: too many and they average back into the plain disc
+ // this is trying not to be. Each is dense in the middle so a puff has a core to read, and sits
+ // far enough off centre to leave a bulge on one side.
+ for(let i=0;i<5;i++){
+  const a=rand(0,Math.PI*2),d=rand(N*.05,N*.16),x=N/2+Math.cos(a)*d,y=N/2+Math.sin(a)*d,r=rand(N*.2,N*.28);
+  const g=c.createRadialGradient(x,y,r*.15,x,y,r);
+  g.addColorStop(0,'rgba(255,255,255,.85)');
+  g.addColorStop(.45,'rgba(255,255,255,.42)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  c.fillStyle=g;c.fillRect(0,0,N,N);
+ }
+ // feather ONLY the last few pixels, or the mask sands the ragged edge straight back off
+ const m=c.createRadialGradient(N/2,N/2,N*.4,N/2,N/2,N*.5);
+ m.addColorStop(0,'rgba(0,0,0,1)');m.addColorStop(1,'rgba(0,0,0,0)');
+ c.globalCompositeOperation='destination-in';c.fillStyle=m;c.fillRect(0,0,N,N);
+ return new THREE.CanvasTexture(cv);
+}
 function buildFxPools(){
  const cv=document.createElement('canvas');cv.width=64;cv.height=64;
  const c=cv.getContext('2d');
@@ -989,6 +1015,32 @@ function buildFxPools(){
  for(let i=0;i<CONFIG.seats.max;i++){
   const m=new THREE.Mesh(indGeo,new THREE.MeshBasicMaterial({color:0xffffff}));
   m.rotation.x=Math.PI;m.visible=false;scene.add(m);indicators.push(m);
+ }
+ /* ---- explosion smoke (CONFIG.fx.smoke; spawned by smokeBurst, driven by smokeUpdate in fx.js) --
+    NormalBlending, not the additive the trails and particles use: additive smoke can only ever
+    brighten the table, and smoke that cannot darken anything is not smoke. toneMapped:false keeps
+    the colour the config asked for (see the note there). Resident and hidden like every other pool
+    here, so renderer.compile in warmMatchAssets covers it and the first bang never stalls. */
+ const SM=CONFIG.fx.smoke;
+ if(SM&&SM.on){
+  const stex=[makeSmokeTex(),makeSmokeTex(),makeSmokeTex()];
+  for(let i=0;i<SM.count;i++){
+   const m=new THREE.SpriteMaterial({map:stex[i%stex.length],transparent:true,opacity:0,
+     blending:THREE.NormalBlending,depthWrite:false,toneMapped:false});
+   const s=new THREE.Sprite(m);
+   s.visible=false;
+   s.renderOrder=-1;      // drawn under the additive fire, so the flames read THROUGH the cloud
+   s.userData={life:0,max:0,wait:0,vx:0,vz:0,size:1,alpha:0,spin:0};
+   scene.add(s);smokePuffs.push(s);
+  }
+  if(SM.ring&&SM.ring.on){
+   // a UNIT ring (outer radius 1) — smokeBurst only ever scales it, so one geometry covers every size
+   dustRing=new THREE.Mesh(new THREE.RingGeometry(.58,1,48),
+    new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false,
+      side:THREE.DoubleSide,toneMapped:false}));
+   dustRing.rotation.x=-Math.PI/2;dustRing.position.y=SM.ring.y;
+   dustRing.visible=false;dustRing.renderOrder=-1;scene.add(dustRing);
+  }
  }
  buildMarkPool();   // wall scuffs — one batched mesh of its own (js/marks.js)
 }

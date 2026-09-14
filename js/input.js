@@ -27,6 +27,7 @@ addEventListener('keydown',e=>{
   if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
+  if(!$('lgWipe').classList.contains('hidden')){$('lgWipe').classList.add('hidden');return;}   // same rule as the forfeit: Esc answers the dialog, it doesn't leave the screen behind it
   // out of a match, Esc walks one step back up the screen tree (js/screens.js). backScreen()
   // returns false at a top-level screen, so Esc on the menu still falls through to togglePause.
   if(S.phase==='menu'&&backScreen()){Au.ui();return;}
@@ -73,7 +74,7 @@ const cvs=$('game');
 // canvas is a viewfinder, and drag/click/wheel belong to the camera rig (photo.js), not to a rod.
 cvs.addEventListener('mousemove',e=>{
  if(S.photo||S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
- const r=devRod('mouse');if(!r)return;
+ const ms=devSeat('mouse'),r=ms?seatRod(ms):null;if(!r)return;
  /* THE MOUSE SLIDE IS RELATIVE, and used to be ABSOLUTE (screen Y mapped straight onto r.target).
     Absolute meant the cursor's position WAS the rod's position, so the first twitch after taking
     over a rod yanked it to wherever the cursor happened to be sitting — almost always the middle
@@ -82,7 +83,9 @@ cvs.addEventListener('mousemove',e=>{
     a given sensitivity is identical. movementY works locked or unlocked, so this needs no pointer
     lock — but with the lock on it also stops costing you travel at the edges of the screen. */
  const dy=e.movementY||0;
- if(dy)r.target=clamp(r.target+(dy/innerHeight)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens,-r.maxOff,r.maxOff);
+ // seatSlideOK: for a beat after an AUTO hand-over the slide is frozen, so the swipe you were
+ // already making on the old rod doesn't arrive on the new one (js/seats.js).
+ if(dy&&seatSlideOK(ms))r.target=clamp(r.target+(dy/innerHeight)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens,-r.maxOff,r.maxOff);
 });
 cvs.addEventListener('mousedown',e=>{
  if(S.photo)return;
@@ -103,8 +106,8 @@ cvs.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'){const ms=devSeat('mouse');if(ms)seatStep(ms,e.deltaY>0?1:-1);}});
 function userControlUpdate(dt){
  if(S.photo||S.freeRoam)return;
- const r=devRod('kbd');
- if(r){
+ const ks=devSeat('kbd'),r=ks?seatRod(ks):null;
+ if(r&&seatSlideOK(ks)){
   let dz=0;
   if(keys.ArrowUp||keys.KeyW)dz-=1;
   if(keys.ArrowDown||keys.KeyS)dz+=1;
@@ -113,13 +116,32 @@ function userControlUpdate(dt){
  // Auto rod-switch runs PER SEAT, and skips rods another seat is holding — otherwise two
  // players on one team would both be dragged onto whichever rod is nearest the ball. Silent
  // by design (no Au.ui, no S.lastSwitch stamp), so it keeps re-evaluating every frame.
+ // IT WILL NOT HAND YOU A ROD MID-SAVE. autoHoldRod (js/ai.js) withholds the keeper while the AI
+ // is actually stopping the shot, so the switch lands once the ball is dead at its feet instead of
+ // a few frames before it arrives — with your hand still on the defence. A withheld rod drops OUT
+ // of the scan rather than freezing the switch, so the nearest FREE rod still wins: a ball coming
+ // back at you from the attack walks you up to the defence instead of stranding you up-pitch.
+ // THE BALL IT CHASES IS THE THREAT TO THAT SEAT'S OWN GOAL (focusBall), not S.balls[0]. With one
+ // ball on the table they are the same object and nothing changes; with two, the old read followed
+ // whichever ball happened to be first in the array — neither the one attacking you nor per-seat.
   if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
-   const bp=S.balls[0].m.position;
    S.seats.forEach(s=>{
     if(s.rods.length<2)return;
+    const fb=focusBall(s.team);if(!fb)return;
+    const bx=fb.m.position.x;
     let bi=s.ctrl,bd=1e9;
-    s.rods.forEach((rr,i)=>{if(rodTaken(rr,s))return;const d=Math.abs(bp.x-rr.x);if(d<bd){bd=d;bi=i;}});
-    if(bi!==s.ctrl){rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;s.padAngleArm=false;updateChips();}
+    s.rods.forEach((rr,i)=>{
+     // the gate is asked FIRST, on every rod, so its own clock can never go stale behind a
+     // rodTaken skip — a rod another seat is holding still gets its state kept straight.
+     if(autoHoldRod(s,rr,fb)||rodTaken(rr,s))return;
+     const d=Math.abs(bx-rr.x);if(d<bd){bd=d;bi=i;}
+    });
+    if(bi!==s.ctrl){
+     rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;
+     s.padAngleArm=false;                          // a stick already deflected re-centres before it drives the new rod
+     s.slideArm=S.time+(CTRL.handover?CTRL.handover.settle||0:0);  // …and the swipe in flight doesn't come with it
+     updateChips();
+    }
    });
   }
  /* INHERITED RAISE. A rod handed over mid-point keeps whatever lift the AI had on it (clearRodAI),
@@ -248,7 +270,7 @@ function padSeatUpdate(dt,gp,s,just){
   if(cfg.padSlideInvert)ay=-ay;
  }
  if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
- if(ay)r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);
+ if(ay&&seatSlideOK(s))r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);  // frozen for a beat after an auto hand-over (js/seats.js)
  // ANGLE: ABSOLUTE rod tilt — the stick's *position* maps straight to a target angle, so a partial
  // push holds a partial angle (rate control snapped to the extremes). Axis is configurable — 'ry' =
  // right-stick up/down (axis 3), 'rx' = right-stick left/right (axis 2). Deflection past the deadzone

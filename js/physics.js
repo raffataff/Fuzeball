@@ -77,6 +77,21 @@ function rollProbe(b){
  if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
  else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
 }
+/* IS THE BALL PAST THE LINE SOMEWHERE OTHER THAN THE MOUTH?
+   A goal is the ball coming IN THROUGH THE OPENING — between the posts, under the bar, inside the
+   net box. The old test only asked where the ball WAS (past the line, |z| inside the posts, below
+   the bar), so anything that reached that box by another road counted. On the arena bowl that is
+   an easy accident: the goal box's side walls are only wallH tall while the crossbar sits at
+   goalH, so a ball that runs up the crease beside the goal clears a side wall and drops straight
+   into the net having never gone between the posts — and it was given. The flat tables have the
+   same hole via a ball lofted over an end wall and blown back in over the side of the net.
+   So this reports the illegal shapes, and the caller LATCHES them exactly the way an over-the-bar
+   lob is latched (b.noGoal, cleared the moment the ball is back out in front of the line): wide of
+   a post, over the bar, under the pitch, or out past the back of the net. Kept apart from
+   b.overBar because only overBar drives the net roof in goalFrameCollide. */
+function notMouth(p,gh){
+ return Math.abs(p.z)>=gh||p.y>=F.goalH||p.y<=-BALL_R||Math.abs(p.x)>F.L/2+F.goalDepth;
+}
 /* HAS THIS BALL LEFT THE CABINET?
    Every wall has a top, so a lofted ball can genuinely end up OUTSIDE one — and the wall tests
    below have no memory, they only ask "is the ball past the plane and low enough". A ball that
@@ -154,18 +169,21 @@ function stepBall(b,h){
    const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
+    if(p.x>F.L/2&&notMouth(p,gh))b.noGoal=1;                                                    // past the line but not in the opening → it did not come through the mouth (see notMouth)
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
-     else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}                // goal ONLY under the bar, whole ball over the line, and NOT dropping in from over the top
+     else if(b.overBar!==1&&b.noGoal!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}   // goal ONLY under the bar, whole ball over the line, in through the mouth
     else if(p.y<ew+BALL_R&&!b.outWall){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,-1,0,0,im);}}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
+    if(p.x<-F.L/2&&notMouth(p,gh))b.noGoal=-1;
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
-     else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
+     else if(b.overBar!==-1&&b.noGoal!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
     else if(p.y<ew+BALL_R&&!b.outWall){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,1,0,0,im);}}p.x=-xl;}
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
+   if(b.noGoal===1&&p.x<F.L/2)b.noGoal=0; else if(b.noGoal===-1&&p.x>-F.L/2)b.noGoal=0;         // same for the mouth latch
   }else{
    const bx=F.L/2+F.goalDepth-BALL_R;
    if(p.x>bx&&v.x>0){p.x=bx;v.x*=-PHY.behindDamp;}
@@ -220,18 +238,19 @@ function stepBall(b,h){
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
-   // goal detection — same over-the-bar guard as classic (the arena pocket is open at all heights, so lobs must be gated too)
-   const xl=F.L/2-BALL_R;
-   if(p.x>xl){
-    if(Math.abs(p.z)<gh0){
-     if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;
-     else if(b.overBar!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}
-   }else if(p.x<-xl){
-    if(Math.abs(p.z)<gh1){
-     if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
-     else if(b.overBar!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
+   // goal detection — the mouth latch does the work here (see notMouth); the bowl is the table
+   // that exposed it, because the goal box's side walls are shorter than the crossbar.
+   if(p.x>F.L/2){
+    if(notMouth(p,gh0))b.noGoal=1;
+    else if(b.noGoal!==1&&b.overBar!==1&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}
+    if(p.y>=F.goalH&&Math.abs(p.z)<gh0)b.overBar=1;                                             // lob over the bar — the net roof reads this flag
+   }else if(p.x<-F.L/2){
+    if(notMouth(p,gh1))b.noGoal=-1;
+    else if(b.noGoal!==-1&&b.overBar!==-1&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}
+    if(p.y>=F.goalH&&Math.abs(p.z)<gh1)b.overBar=-1;
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;
+   if(b.noGoal===1&&p.x<F.L/2)b.noGoal=0; else if(b.noGoal===-1&&p.x>-F.L/2)b.noGoal=0;
   }
  }
  if(!b.scored)goalFrameCollide(b,h);
@@ -300,7 +319,7 @@ function goalFrameCollide(b,h){
   // (b.overBar for this end) is caught at ANY depth below the roofline so a fast drop can't tunnel
   // through it into the net; an unflagged ball keeps the thin catch band as before.
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
-  const roofSolid=sx>0?b.overBar===1:b.overBar===-1;
+  const roofSolid=sx>0?(b.overBar===1||b.noGoal===1):(b.overBar===-1||b.noGoal===-1);
    if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
    p.y=GH+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;

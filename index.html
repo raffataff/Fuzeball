@@ -31,9 +31,9 @@
   <div id="introStage">
     <canvas id="introFx"></canvas>
     <div id="introLogoWrap">
-      <img id="introGR" class="introGhost" src="assets/fuzeball_logo_tc_cycles.png" alt="">
-      <img id="introGB" class="introGhost" src="assets/fuzeball_logo_tc_cycles.png" alt="">
-      <img id="introLogo" src="assets/fuzeball_logo_tc_cycles.png" alt="FUZEBALL">
+      <img id="introGR" class="introGhost" src="assets/fuzeball_render_tc_cycles_2K.png" alt="">
+      <img id="introGB" class="introGhost" src="assets/fuzeball_render_tc_cycles_2K.png" alt="">
+      <img id="introLogo" src="assets/fuzeball_render_tc_cycles_2K.png" alt="FUZEBALL">
       <div id="introShine"></div>
       <div id="introTag"></div>
       <div id="introLoad">Loading</div>
@@ -81,8 +81,8 @@
 </div>
 
 <div id="home" class="screen introHide">
-  <img class="logo" src="assets/fuzeball_logo_TC.png" alt="FUZEBALL">
-  <div class="tagline">v0.1.30</div>
+  <img class="logo" src="assets/fuzeball_render_tc_cycles_2K.png" alt="FUZEBALL">
+  <div class="tagline">v0.1.31</div>
 
   <div class="modeRow homeRow">
     <div class="modeCard kickoff" 
@@ -248,6 +248,12 @@
 </div>
 
 <div id="customize" class="screen hidden">
+  <!-- Done and Reset sit in the screen's top-left corner, not at the foot of the side panel:
+       they are the same two actions every other screen puts there, and at the bottom of a
+       scrolling panel Done was below the fold on a short window. Both are direct children of
+       #customize so they float over the stage rather than scrolling with the panel. -->
+  <button id="czDoneBtn" class="optGear backBtn" title="Done">&#9664;</button>
+  <button id="czResetBtn" class="optGear resetBtn" title="Reset all">&#10226;</button>
   <div class="czWrap">
     <div class="czStage">
       <canvas id="pvCanvas"></canvas>
@@ -286,24 +292,19 @@
         <div class="czSlide"><label>Size</label><input type="range" id="czScale" min="0.7" max="1.4" step="0.01"><span class="czVal" id="czScaleV"></span></div>
         <div class="czSlide"><label>Rotation</label><input type="range" id="czYaw" min="-3.15" max="3.15" step="0.01"><span class="czVal" id="czYawV"></span></div>
       </div>
-      <div class="btnRow">
-        <button class="btn" id="czDoneBtn">◀ Done</button>
-        <button class="btn ghost" id="czResetBtn">Reset all</button>
-      </div>
     </div>
   </div>
 </div>
 
 <div id="lgSlots" class="screen hidden">
+  <button id="lgSlotsBack" class="optGear backBtn" title="Main menu">&#9664;</button>
   <h2 class="lgTitle" style="margin-bottom:8px">LEAGUE MODE</h2>
   <div class="tagline" style="margin-bottom:20px">3 divisions · promotion & relegation · upgrade your squad</div>
   <div id="lgSlotCards" class="lgSlotCards"></div>
-  <div class="btnRow">
-    <button class="btn ghost" id="lgSlotsBack">◀ Main Menu</button>
-  </div>
 </div>
 
 <div id="lgSetup" class="screen hidden">
+  <button id="lgSetupCancel" class="optGear backBtn" title="Back">&#9664;</button>
   <h2 class="lgTitle">NEW LEAGUE</h2>
   <div class="lgSetupWrap">
     <div class="panel lgSetupPanel">
@@ -314,7 +315,7 @@
       <select id="lgSetupDiv" class="lgSetupSelect">
         <option value="0">Sunday League (weakest teams)</option>
         <option value="1" selected>Pro League</option>
-        <option value="2">Premier League (strongest teams)</option>
+        <option value="2">Premier Division (strongest teams)</option>
       </select>
 <h3>Match rules</h3>
       <div class="lgRuleNote">Used for every match in this league — Champions Cup ties included.</div>
@@ -347,11 +348,12 @@
   </div>
   <div class="btnRow">
     <button class="btn" id="lgSetupCreate">Create League</button>
-    <button class="btn ghost" id="lgSetupCancel">Cancel</button>
   </div>
 </div>
 
 <div id="league" class="screen hidden">
+  <button id="lgBack" class="optGear backBtn" title="Main menu">&#9664;</button>
+  <button id="lgReset" class="optGear resetBtn" title="Reset league">&#10226;</button>
   <button id="lgEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <h2 class="lgTitle">FUZEBALL LEAGUE</h2>
   <div class="lgSub" id="lgSeasonTag">SEASON 1</div>
@@ -364,6 +366,12 @@
     <div class="panel hidden lgHist" id="lgHistPanel">
       <h3>Season History <span style="color:var(--gold);font-weight:400" id="lgTitles"></span></h3>
       <div id="lgHist"></div>
+    </div>
+    <!-- Silverware you hold, filled by league.js renderLgCabinet. Starts hidden and stays
+         hidden until the first thing is won, so a new league isn't fronted by an empty case. -->
+    <div class="panel hidden lgCab" id="lgCabinetPanel">
+      <h3>Trophy Cabinet</h3>
+      <div id="lgCabinet"></div>
     </div>
     </div>
     <div class="lgSide">
@@ -405,21 +413,22 @@
     </div>
     
   </div>
-  <div class="btnRow">
+  <div class="btnRow hidden" id="lgBtnRow">
     <button class="btn gold hidden" id="lgCup">Champions Cup</button>
-    <button class="btn ghost" id="lgNew">Reset League</button>
-    <button class="btn ghost" id="lgBack">◀ Main Menu</button>
+    <button class="btn hidden" id="lgNext">Next Season ▶</button>
   </div>
 </div>
 
 <div id="options" class="screen hidden">
+  <button id="optDone" class="optGear backBtn" title="Done">&#9664;</button>
+  <button id="optReset" class="optGear resetBtn" title="Reset to defaults">&#10226;</button>
   <h2 class="lgTitle">OPTIONS</h2>
   <div class="tagline" style="margin-bottom:18px">Controller · Mouse · Keyboard · Display</div>
   <div class="optTabs">
-    <button class="optTabBtn on" id="optTabBtnControls" data-tab="controls">Controls</button>
-    <button class="optTabBtn" id="optTabBtnDisplay" data-tab="display">Display</button>
+    <button class="optTabBtn on" id="optTabBtnDisplay" data-tab="display" selected>Display</button>
+    <button class="optTabBtn" id="optTabBtnControls" data-tab="controls">Controls</button>
   </div>
-  <div class="optTab" id="optTab_controls">
+  <div class="optTab hidden" id="optTab_controls">
   <div class="optWrap">
     <div class="panel optPanel">
       <h3>Controller</h3>
@@ -515,7 +524,7 @@
     </div>
   </div>
   </div><!-- /optTab_controls -->
-  <div class="optTab hidden" id="optTab_display">
+  <div class="optTab" id="optTab_display">
     <div class="optWrap">
       <div class="panel optPanel">
         <h3>Graphics</h3>
@@ -525,7 +534,7 @@
         <div class="row"><label>Shadows</label><input type="checkbox" id="optShadows"></div>
         <div class="row" id="optShadowQRow"><label>Shadow quality</label><select id="optShadowQ"><option value="low">Low</option><option value="high">High</option></select></div>
         <div class="row"><label>Reflections</label><input type="checkbox" id="optReflect2"></div>
-        <div class="optHint">Resolution renders the game at a fraction of your screen and upscales it — the biggest speed-up on laptops and integrated graphics. Shadows and reflections are the next heaviest effects. Lower any of these if the frame rate dips. Shadow quality High uses a different shadow technique that blurs the shadow itself instead of sampling it over and over per pixel, so edges fall off softly rather than ending in a hard line. It is not a heavier setting — at 1440p and above it asks less of the graphics card than Low does. Drop back to Low if you ever see light leaking through the players or the rods.</div>
+        <div class="optHint">Turn off or reduce if affecting FPS</div>
       </div>
       <div class="panel optPanel">
         <h3>Effects</h3>
@@ -535,7 +544,7 @@
         <div class="row"><label>Rod stamina rings</label><input type="checkbox" id="optRodHoles"></div>
         <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
         <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
-        <div class="optHint">Ball trails and impact / goal particles are pure spectacle — turn them off to shave a little more off busy moments. Wall marks are the scuffs a hard hit leaves on the rails; they fade on their own after about ten seconds and cost a single draw call, so leave them on unless you prefer a clean table. Rod stamina rings turn the hole each rod runs through into a small gauge: it drains from the top as that rod tires, and the colour of what is left says what the tiredness is costing &mdash; green for a rod shrugging it off, red for one being slowed right down. They also flash the charge colours while you wind a shot up, and the scorer&rsquo;s own ring strobes on a goal &mdash; so the table tells you which rod put it in. Fog is the haze each room fades into the distance with; switch it off to see a room's far wall and the props out at its edges. Reduced effects strips the expensive glow, blur and animated shadows from the on-screen notifications and menus while keeping the motion.</div>
+        <div class="optHint">Turn off if affecting FPS - they are only cosmetic</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
@@ -544,13 +553,9 @@
         <div class="row"><label>Show FPS counter</label><input type="checkbox" id="optShowFps"></div>
         <div class="optDiv"></div>
         <div class="optStat"><span class="optStatV" id="optRefresh">—</span><span class="optStatL">display refresh detected</span></div>
-        <div class="optHint">A frame cap can steady the rate and reduce heat (which helps sustained performance on laptops). Refresh rate and V-Sync are controlled by your monitor and browser — they can't be changed here, only detected.</div>
+        <div class="optHint">Try different physics settings if affec</div>
       </div>
     </div>
-  </div>
-  <div class="btnRow">
-    <button class="btn" id="optDone">◀ Done</button>
-    <button class="btn ghost" id="optReset">Reset defaults</button>
   </div>
 </div>
 
@@ -570,6 +575,18 @@
   <div class="btnRow">
     <button class="btn" id="btnForfeit">Forfeit</button>
     <button class="btn ghost" id="btnForfeitCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- Reset confirm. An OVERLAY like #lgForfeit (deliberately not in the screen registry) because
+     the corner reset is now an unlabelled icon a thumb-width from Back, and a league save is
+     seasons of work. Options' reset has no confirm — that one is a handful of sliders. -->
+<div id="lgWipe" class="screen hidden">
+  <h2>RESET LEAGUE?</h2>
+  <div id="lgWipeMsg">Every season, trophy and upgrade on this save is lost</div>
+  <div class="btnRow">
+    <button class="btn" id="btnWipe">Reset League</button>
+    <button class="btn ghost" id="btnWipeCancel">Cancel</button>
   </div>
 </div>
 
@@ -607,6 +624,7 @@
 
 <!-- Champions Cup lobby -->
 <div id="championsCup" class="screen hidden">
+  <button id="cupBack" class="optGear backBtn" title="Back to league">&#9664;</button>
   <button id="cupEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
   <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
   <div class="lgSub" id="cupSub"></div>
@@ -653,9 +671,8 @@
       <div id="cupScoutBody"></div>
     </div>
   </div>
-  <div class="btnRow">
+  <div class="btnRow hidden" id="cupBtnRow">
     <button class="btn gold hidden" id="cupDone">Continue ▶</button>
-    <button class="btn ghost" id="cupBack">◀ League</button>
   </div>
 </div>
 

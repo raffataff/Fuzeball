@@ -44,6 +44,9 @@ function makeSeat(team,devs,lockRole){
   padRaise:false,  // pad raise is a hold — per seat, or two pads would clobber each other's raise
   padAngleArm:true,// right-stick angle authority; a rod switch drops it until the stick re-centres (js/input.js)
   shotRod:null,    // rod this seat drove LAST frame, so js/shots.js can clear a wind-up left on a rod it let go of
+  holdRod:null,    // rod the auto-switch is currently withholding mid-save (js/ai.js autoHoldRod)
+  holdT:0,         // …and when that started, so handover.maxHold can expire it
+  slideArm:0,      // slide input is ignored until this time — a hand-over must not inherit the swipe you were already making
   padPrev:{}};     // per-seat button edge state (was the global gpPrev)
 }
 /* The default solo seat: one human, every device. Keeps a plain quick match byte-identical. */
@@ -152,6 +155,16 @@ function rodRaiseRelease(r){if(r)r.raiseKeep=false;}
                         in training, with the AI off, nothing could.
      kickHold           a held kick button, which pins the swing at full stretch (js/rods.js). */
 function rodInputRelease(r){if(r){r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;}}
+/* THE SLIDE FREEZE. `false` = this seat's slide input does nothing this frame. Set for a beat by an
+   AUTO hand-over only (CONFIG.control.handover.settle), and for the same reason padAngleArm exists:
+   every slide device is RELATIVE — mouse movementY, a held W/S, a deflected stick — so whatever you
+   were already doing to the old rod carries straight onto the new one. On the switch you cared about
+   least (the keeper, arriving mid-save) that inherited swipe was throwing the rod off the ball before
+   you had even seen the handle change. It gates the slide ONLY: kick, raise and angle are untouched,
+   because those are things you press deliberately and a frozen kick button would just feel broken.
+   A manual switch is deliberate and stays byte-identical — set slideArm in setSeatCtrl too if you
+   ever want the same courtesy there. */
+function seatSlideOK(s){return !s||S.time>=(s.slideArm||0);}
 /* Absolute rod select, skipping rods other seats hold. `dir` is the direction to keep searching
    when the requested rod is taken (so a wheel/Q/E press lands on the next FREE rod rather than
    silently doing nothing). Returns true if the held rod actually changed. */

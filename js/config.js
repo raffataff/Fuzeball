@@ -10,7 +10,7 @@ const CONFIG = {
 
   /* ---- logo ----------------------------------------------------------- */
   logo:{
-   src:'assets/fuzeball_logo_tc_cycles.png',  // path to the logo image
+   src:'assets/fuzeball_render_tc_cycles_2K.png',  // path to the logo image
    width:460,                       // max width in px
    glow:'#5090ff',                  // glow colour for the drop-shadow + pulse
    glowSize:28,                     // base glow spread (px)
@@ -21,7 +21,7 @@ const CONFIG = {
   /* ---- intro cinematic (boot splash → main menu) ----------------------- */
   intro:{
    on:true,          // master switch
-   skip:true,        // allow key/click to skip
+   skip:false,        // allow key/click to skip
    fuseT:2.05,       // spark travel time before detonation (s)
    igniteT:0.35,     // darkness before the spark lights (s)
    slamDelay:0.10,   // detonation → logo slam start (s)
@@ -208,6 +208,7 @@ const CONFIG = {
    room:null,                               // no backdrop; uses the shared ground plane
    defTheme:'classic',
    defSkin:'wood', // must match a skins entry
+   rods:{folder:'assets/tables/classic/rods/'},
    skins:{
       wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},
       sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
@@ -220,7 +221,7 @@ const CONFIG = {
    // Unreachable pockets where the dead-ball timer runs faster. Each entry covers
    // all four corners: |x|>xMin AND |z|>zMin. Optional `mult` overrides zoneMult.
    deadzones:[
-    {xMin:46, zMin:15.7}   // corner pockets
+    {xMin:46, zMin:13.3}   // corner pockets
    ]
   },
   arena:{
@@ -231,8 +232,7 @@ const CONFIG = {
    defTheme:'neon',
    defSkin:'standard',
    skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena_standard.glb'} },
-   rods:{folder:'assets/tables/arena/rods/'},   // sci-fi rods (not built yet -> shared set)
-   // Bowl shape, table units. Mirrored by tools/build_arena_table.py.
+   rods:{folder:'assets/tables/classic/rods/'}, 
    bowl:{
    length:120,        // bowl length along x — keep at the table length (see TUNING.md)
    width:68,          // bowl width along z
@@ -247,7 +247,7 @@ const CONFIG = {
    seg:{loop:200,profile:10} // mesh resolution: samples around the perimeter / up the profile
    },
    deadzones:[
-    {xMin:46, zMin:15.7}   // corner pockets
+    {xMin:46, zMin:14.}   // corner pockets
    ]
   },
   circuit:{                                  // flat shape with a solid walled goal end
@@ -261,41 +261,14 @@ const CONFIG = {
    defTheme:'neon',                          // metadata only
    defSkin:'standard',
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
-   rods:{folder:'assets/tables/circuit/rods/'},   // circuit rods (not built yet -> shared set)
+   rods:{folder:'assets/tables/classic/rods/'},   // circuit rods (not built yet -> shared set)
    deadzones:[
-    {xMin:46, zMin:15.7}   // corner pockets
+    {xMin:46, zMin:14.}   // corner pockets
    ]
   }
  },
 
- /* ---- table asset residency (memory) ------------------------------------
-    Three separate budgets, because the three things cost wildly different amounts and the obvious
-    "just cache more" is only right for one of them.
 
-    cacheRooms IS THE EXPENSIVE ONE, and the number is not the GLB's file size. Measured with
-    memTex(): leaving the arcade drops the scene's texture walk 1158MB -> 821MB, so a second
-    RESIDENT room is up to ~337MB of texture, not ~20MB of download. On a machine already carrying
-    a gigabyte of figurine and pitch maps that is enough to push the renderer process into the
-    pagefile, which is exactly the "disk space dropping while switching rooms" symptom. Raise it to
-    2 only with memTex() open. Re-parsing a room is the cheap half of a switch anyway — the browser
-    HTTP cache usually serves the file, and the bake, which was the expensive half, is now kept
-    separately (cacheEnvs below).
-
-    cacheEnvs IS THE CHEAP ONE and is where the A/B-toggle win actually lives. A bake survives its
-    room being evicted, so a revisit installs the real reflections instantly instead of paying
-    another PMREM pass (six scene renders plus the blur convolution chain) and flashing the
-    synthetic stand-in on the way there. MEASURED, r128, this renderer: a bake is a 768x768
-    UnsignedByte render target = 2.25MB. Put that beside cacheRooms' ~337MB and the asymmetry is
-    the whole point of splitting them.
-
-    COUNT IT AS TWO PER ROOM, NOT ONE. A room that reflects can hold BOTH a `glb:` bake and the
-    `syn:` stand-in it showed while the GLB was downloading, and the synthetic one has to stay
-    because turning Reflections off in Options falls back to it. So the cap is rooms x 2 — 8 for
-    the four rooms in the game, about 18MB to hold every reflection map that exists. A cap sized
-    per-ROOM instead thrashes: measured at 4, six swaps across three rooms re-baked all three,
-    which is the behaviour this whole change exists to remove. ADD A ROOM AND RAISE THIS — the
-    roomenv harness asserts the relationship and will tell you.
- ----------------------------------------------------------------------- */
  tableAssets:{
   preloadAll:false,   // true = fetch every table skin + every room at boot
   cacheSkins:2,       // max skin GLBs resident, LRU (active always protected)
@@ -304,24 +277,7 @@ const CONFIG = {
   cachePitches:2      // max pitch GLBs resident, LRU (active always protected). 2 keeps an A/B warm
  },
 
- /* ---- staged venue swap (js/flow.js venueLoad) --------------------------
-    Changing the room, table, skin, pitch or reflections used to run in ONE synchronous burst
-    straight off a <select> change — GLB fetch + parse, PMREM bake, whole-scene recompile, prop
-    rebuild, then a first frame carrying the texture upload. Nothing yielded, so the browser
-    never got a paint in between: that is why it read as the tab hanging rather than as
-    something loading, and why simply adding a spinner did nothing (the spinner could not be
-    drawn either). venueLoad puts a veil up, WAITS FOR IT TO PAINT, does the work, warms it with
-    renderer.compile(), and only then reveals. The stall does not go away — it moves somewhere
-    it is allowed to happen.
-      on     false = call straight through, synchronously (the old behaviour).
-      fadeT  seconds to wait for the veil's CSS fade before starting work. Must be >= the
-             #matchLoad opacity transition in styles.css, or the stall lands mid-fade and the
-             veil freezes half-drawn, which looks worse than no veil at all.
-      minT   minimum total time the veil stays up, so a cached swap doesn't strobe.
-      maxT   hard ceiling on the wait. Every loader in the tree falls back on a miss, but a
-             hung fetch fires neither load nor error — and a veil that never lifts is a worse
-             bug than the freeze this replaces.
- ----------------------------------------------------------------------- */
+ /* ---- staged venue swap ------------------ */
  venue:{ on:true, fadeT:0.24, minT:0.45, maxT:9 },
 
  /* ---- core physics --------------------------------------------------- */
@@ -336,12 +292,9 @@ physics:{
    floorRest:0.42,                        // vertical restitution off the floor
    floorRestCut:6,                        // below this upward speed the bounce dies to 0
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
-   /* ---- contact audio gates: is this contact an impact or a roll? ---- */
+
    wallHitSnd:16,                         // |v| into a side/end wall above this plays a tap
-   /* true = a ball that clears a wall in the air is really OUT: it falls away and gets the
-      out-of-play whistle, instead of being caught on the way down OUTSIDE the table and clamped
-      back onto the pitch. false restores the old behaviour. See wallLatch in js/physics.js. */
-   wallEscape:true,
+      wallEscape:true,
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
    contactEps:0.35,                       // gap below which the roll probe counts a ball as touching
@@ -790,13 +743,13 @@ ai:{
       teamParts:['kit_mechaman_new'],hairParts:[],
       explosionSrc:'assets/animations/mechaman_explosion.glb'
    },
-   {id:'stormer',name:'Stormer',blurb:'Cold and endless',
+   /*{id:'stormer',name:'Stormer',blurb:'Cold and endless',
       src:'assets/fuzeball_stormer.glb',scale:0.8,
       mug:'assets/renders/render_stormer_mugshot.png',   
       teamParts:['kit_stormer'],hairParts:[],
       explosionSrc:'assets/animations/stormer_explosion.glb'
    },
-
+*/
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.8,
@@ -914,6 +867,7 @@ ai:{
   swatches:['#ff0011','#ff8c3a','#fff94d','#00fa19','#2af5ff','#3d8bff','#5900ff','#ff2bd6','#f2ede2','#757983'],
   // Natural hair colours for random tinting.
   hairSwatches:[  '#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#583b00','#985d29',
+                  '#242222','#1b0f06','#271d15','#382922','#634d32','#242320','#8b5526', 
                   '#f6f1ba','#c49a6c','#aa7d53','#6b3f1a','#4a2c1a','#b8860b','#daa520','#cd853f'],
   cacheMax:6
  },
@@ -978,7 +932,7 @@ ai:{
   fatMax:.25,        // slow-down at a FULLY tired rod. sta scales the RATE of tiring (stTire),
                      //   not this depth, so every rod converges here — it just takes a fit rod far
                      //   longer to arrive, and at tireFloor 0 a sta=10 rod never arrives at all.
-  tireFloor:0.2,       // slowest a rod may tire, as a fraction of a sta-0 rod's rate.
+  tireFloor:0.75,       // slowest a rod may tire, as a fraction of a sta-0 rod's rate.
                      //   0 keeps the pre-change balance EXACTLY: a max-stamina rod never tires, and
                      //   its rod-hole ring is a gauge that never moves. Any value in (0, 0.1)
                      //   touches ONLY sta 10 — enough to make its ring drain visibly, for a couple
@@ -1008,19 +962,22 @@ ai:{
     baseDiff:'rookie',    // brain difficulty for league teams; a division's `diff` overrides it
     upWin:3, upLoss:1, upCleanSheet:1, // upgrade parts awarded per result
     playerStart:10,       // parts the player starts a fresh league with
-    cost:[1,2,3,5,8],    // cost of raising a stat from level 5+i
+    cost:[1,2,2,3,5],    // cost of raising a stat from level 5+i
     tape:true, tapeT:3,   // pre-match splash on/off + duration (s); click to skip
     tapeReadyCap:2.5,     // max wait for the figurine portraits to decode first (0 = don't wait)
     graceT:10,             // seconds after match start where quitting does not forfeit
     simK:.5,              // sim: how steeply a stat edge shifts per-goal probability (logistic)
+    // Silverware, one per tier. `trophy.id` doubles as the art key: the renders are
+    // assets/renders/render_trophy_<id>_cycles.png (big) and _thumb.png (list size). Neither
+    // has to exist — until it does, the inline trophy mark shows through in its place.
     divisions:[            // tier order: 0 bottom .. 2 top
-      {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic'},
-      {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'cork'},
-      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'premierLeague',  table:'classic',  pitch:'royal'}
+      {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic', trophy:{id:'sunday',  name:'Sunday League Shield',   col:'#b9c6da'}},
+      {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'cork', trophy:{id:'pro',     name:'Pro League Cup',        col:'#d9a55e'}},
+      {name:'Premier League',base:5, diff:'legend',   aiBudget:[5,10], room:'arcade',  skin:'premierLeague',  table:'classic',  pitch:'royal', trophy:{id:'premier', name:'Premier League Trophy', col:'#ffcf4d'}}
     ],
     promoteN:2, relegateN:2,  // top/bottom N swap between divisions each season
     upPromote1:5, upPromote2:3, // upgrade parts for a 1st / 2nd place promotion
-    upChampTop:4,             // parts for winning the top division
+    upChampTop:5,             // parts for winning the top division
     promoteBoost1:2, promoteBoost2:1, // stat-floor boost per still-at-base stat, 1st / 2nd place
     relegateLose:1,           // stat points removed from every stat per role block on relegation
     relegateFloor:1,          // a stat can't drop below this via relegation
@@ -1064,6 +1021,7 @@ ai:{
       venue, independent of the Premier division's. ------------------------- */
    cup:{
       name:'Champions Cup',
+      trophy:{id:'champions', name:'The Champions Cup', col:'#ffd98a'},
       diff:'legend',
       seeded:true,     // false = random draw
       table:'arena', skin:'standard', room:'arcade', pitch:'champions_green', // venue; pitch is the fallback
@@ -1071,7 +1029,7 @@ ai:{
       goals:5, special:true, power:true,
       poolSize:12, drawSize:7,                      // elite teams generated / drawn per cup (+ player)
       base:8, budget:[3,5],                       // elite build base + weighted spend
-      enterParts:2, tieParts:2, winParts:8,         // parts for entering / winning a tie / lifting it
+      enterParts:3, tieParts:4, winParts:6,         // parts for entering / winning a tie / lifting it
       rounds:['QUARTER-FINAL','SEMI-FINAL','FINAL'],   // must be log2(drawSize+1) long
       names:[
          'NIGHTWATCH','GALACTICOS','VOID RAIDERS','IRON LEGION','CYBER WOLVES','NOVA KINGS',
@@ -1085,7 +1043,26 @@ ai:{
   },
 
  /* ---- player control ------------------------------------------------- */
- control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2, nameMaxLength:20 }, // keyboard slide, mouse range, auto rod-switch delay
+ control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2, nameMaxLength:20, // keyboard slide, mouse range, auto rod-switch delay
+  /* AUTO-SWITCH HAND-OVER (js/ai.js autoHoldRod, applied in js/input.js).
+     Nearest-rod-in-x alone put you on the KEEPER the frame the ball crossed the halfway point
+     between DEF and GK. That is 7.5 units of table — well under a tenth of a second on a real shot
+     — and it arrived while your hand was still sliding the defence, so the swipe you were already
+     making went straight onto the keeper. You were handed the last line of defence with no time to
+     use it and momentum pointing the wrong way.
+     So a rod named in `roles` is WITHHELD while the AI is actually dealing with the shot, and
+     handed over the moment it has been stopped, can't be reached, or the timer runs out. Everything
+     the keeper cannot save for you — a ball wide of its slide range, or one coming back out of the
+     corner — releases the gate immediately, because there is no save to wait for. */
+  handover:{
+   on:true,
+   roles:['GK'],   // rods held back mid-save. ['GK','DEF'] gives the defence the same courtesy
+   closing:25,     // ball must be running at our own goal faster than this (u/s) to be worth withholding for
+   reach:6,        // z distance BEYOND the keeper's slide range at which it plainly cannot get there — out wide is yours at once
+   behind:2.5,     // …and how far BEHIND it the ball still counts as AT its boot, not past it (a frame at 140 u/s is 2.3 units)
+   maxHold:1.4,    // hard cap: however the save goes, the rod is yours after this (s)
+   settle:0.09     // slide input ignored for this long after a hand-over, so an in-flight swipe can't fling the new rod (s)
+  }},
 
  /* ---- seats (local co-op roster, js/seats.js + js/roster.js) ---------- */
  seats:{
@@ -1264,7 +1241,7 @@ ai:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.45,maxV:150,w:70,trail:'#ffffff',
+      mass:1.15,maxV:150,w:50,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1295,7 +1272,7 @@ ai:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:7,maxV:60,w:30,trail:'#000000',
+      mass:7,maxV:100,w:20,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -1309,7 +1286,7 @@ ai:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.5,maxV:180,w:6,splits:true,trail:'#c39bff',
+      mass:1.25,maxV:180,w:10,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -1328,7 +1305,7 @@ ai:{
       // Flutter ball: its side-spin is re-rolled on a short timer so the flight weaves.
       // No GLB mesh slot, so it renders as a glowing-cyan sphere.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.0,maxV:100,w:12,trail:'#8fffda',light:0x33cfff,
+      mass:1.0,maxV:150,w:12,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -1343,7 +1320,7 @@ ai:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:3,maxV:160,w:3,value:2,trail:'#ffd75e',metal:.85,
+      mass:3,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.055,noiseFreq:1500,noiseFreqScale:3,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
                beepFreq:500,beepDur:.85,beepType:'triangle',beepVol:.009,beepVolScale:.0035,beepVolMax:.028,beepSlide:-10},
@@ -1515,6 +1492,48 @@ ai:{
     tint:0.3,
     pulse:7, pulseAmt:0.22,
     trail:0.8
+   },
+
+   /* ---- explosion smoke (js/fx.js smokeBurst / smokeUpdate) ---------------
+      The cannonball's smoke used to be 70 grey dots thrown into the shared particle pool, and it
+      could never have worked there: that pool is ADDITIVE, so grey can only ever brighten what is
+      behind it, and everything in it falls at 80/s. Smoke does the opposite of both — it HIDES the
+      table and it rises. So it gets a pool of its own: ten soft billboards on normal blending,
+      spawned a few frames apart so the cloud grows instead of appearing, each one expanding fast
+      then hanging, turning slowly, and cooling from fireball orange to grey as it thins out.
+
+      COLOURS ARE WHAT YOU SEE. The renderer tone maps and encodes to sRGB on the way out, so a hex
+      written straight onto a material lands much lighter on screen than the swatch you picked —
+      the #6a6e78 below would arrive as #97999d, and smoke lighter than the table is just fog. fx.js
+      converts these once at load and the materials sit out tone mapping, so what you type is what
+      shows up. Two knobs decide how heavy the cloud is: `alpha` and `cool`.
+
+      COST: ten quads for about two seconds, one texture drawn on a canvas at boot, no shader work,
+      nothing allocated per frame. Obeys Options → Display · Effects with everything else. */
+   smoke:{
+    on:true,
+    count:16,           // pool size — the most puffs that can be alive at once
+    burst:10,           // puffs one cannonball throws
+    stagger:0.04,       // seconds between them, so the cloud blooms instead of popping
+    lifeMin:1.6, lifeMax:2.6,
+    sizeMin:7.0, sizeMax:16.0, // width at birth, in table units (the table is 68 across)
+    offset:8,           // how far off the blast a puff may start — this is what stops the cloud being one blob
+    grow:4.2,           // how many times wider it ends up
+    rise:9,             // upward drift, units/sec
+    spread:12,          // sideways speed off the blast
+    drag:1.0,           // how fast that sideways push dies away
+    spin:1.4,           // turn rate, rad/sec, random direction per puff
+    alpha:0.4,          // peak opacity of one puff — the first knob to turn down if the cloud hides too much
+    fadeIn:0.1,         // fraction of life spent fading up
+    fadeOut:0.45,       // ...and fading out. It holds full in between, so the cloud is still solid while it opens
+    hot:0xff8a3c,       // colour at birth — still lit by the fireball
+    cool:0x6a6e78,      // colour it settles to
+    coolBy:0.3,         // fraction of life it takes to get there
+
+    /* The dust wave rolling off the floor: one ring, flat on the pitch, racing out then coasting.
+       The cheapest way there is to give a blast a footprint. `fadeHi` thins it the higher the ball
+       was when it went — a detonation up near the lights has no floor under it to lift. */
+    ring:{ on:true, life:0.8, from:3, to:26, alpha:0.32, col:0x6b6259, y:0.25, fadeHi:14 }
    },
 
    marks:{

@@ -226,6 +226,7 @@ SCREENS.options.onHide=()=>{if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}};
 function openOptions(from){
  optFrom=from||'menu';
  optRefLast=0;optRefAcc.length=0;   // fresh refresh sampling each open (drop the stale gap since last close)
+ optSetTab('display');   // always open on the Display tab, whatever tab was showing last time
  syncOptionsUI();tcSwingReset();
  if(optFrom==='pause'){$('pause').classList.add('hidden');$('options').classList.remove('hidden');}
  else{SCREENS.options.back=optFrom;showScreen('options');}

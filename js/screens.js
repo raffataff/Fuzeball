@@ -60,7 +60,7 @@ const SCREENS={
  lgSlots:{back:'home'},
  lgSetup:{back:'lgSlots'},
  league:{back:'home',lay:{wrap:'#league .lgWrap',btn:'lgEditLayout',
-  panels:['lgStandingsPanel','lgHistPanel','lgFixturePanel','lgLastPanel','lgSettingsPanel','lgSquadPanel','lgScout']}},
+  panels:['lgStandingsPanel','lgHistPanel','lgCabinetPanel','lgFixturePanel','lgLastPanel','lgSettingsPanel','lgSquadPanel','lgScout']}},
  // back:null on purpose — leaving the cup bracket is NOT a plain screen change. Arriving here
  // from a finished tie's win screen leaves S.lg still set, and cupReturn() (the Back button)
  // clears it via gotoMenu before re-opening the lobby with fresh content. A bare

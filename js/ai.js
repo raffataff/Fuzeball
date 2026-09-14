@@ -581,6 +581,54 @@ function rodHoldRaise(r){
  }
  return r.raise;
 }
+/* THE AUTO-SWITCH HAND-OVER GATE. Returns true for "do NOT give this seat this rod yet".
+   Nearest-rod-in-x is the whole of the auto switch, and for the keeper that rule fires at the
+   halfway point between DEF and GK — 7.5 units out, which on a struck shot is a handful of frames.
+   You were handed the last line of defence too late to use it, mid-swipe on the rod you had just
+   lost. The AI keeper, meanwhile, was taken OFF the save at the exact moment it was about to make
+   it. Both halves of that are fixed by simply not offering the rod while the save is in progress:
+   the AI keeps the keeper, plays the shot, and the switch lands afterwards with the ball dead at
+   your feet — which is the moment you actually want it.
+   It only ever WITHHOLDS. It cannot take a rod off you, it cannot fire on a rod you already hold,
+   and a manual switch is untouched (that press stamps S.lastSwitch, which stands the auto switch
+   down for CTRL.autoDelay anyway). Skipping the rod rather than freezing the switch is deliberate:
+   the nearest FREE rod then wins, so a ball coming back at you from the attack still walks you up
+   to the defence instead of stranding you on the ATT rod.
+   The five release cases are one boolean, and every one of them is a case you wanted the rod for:
+     • stopped        closing drops below the gate — the save is made, ball loose at the keeper
+     • rebounding     closing goes negative — it is coming back out, and there is nothing to save
+     • out wide       past what the keeper's slide range can ever reach: yours to go and dig out
+     • already past   the ball is behind the keeper line (corner, net, back wall) — same thing
+     • at the feet    inFootRange, so the contact has happened whatever the numbers say
+   Plus maxHold, which is the honest admission that no gate reads every scramble correctly: after
+   it the rod is yours regardless. Off in training with the team's AI disabled — there is no keeper
+   to wait for, so withholding would just lock you out of your own goal. */
+function autoHoldRod(s,r,b){
+ const H=CTRL.handover;
+ if(!H||!H.on||!s||!r||!b)return false;
+ if(H.roles.indexOf(r.role)<0)return false;                 // not a protected rod — nearest-rod exactly as before
+ let hold=false;
+ if(seatRod(s)!==r&&!(S.trn&&(r.trnHidden||!S.trn.ai[r.team]))){
+  const dir=r.team===0?1:-1,bp=b.m.position;
+  const closing=-b.v.x*dir;                                 // >0 = ball running at OUR own goal
+  const rel=(bp.x-r.x)*dir;                                 // ball in front of (+) / behind (−) this rod
+  // The rear limit is -H.behind rather than 0. At 140 u/s one frame is 2.3 units, so a hard shot
+  // steps from in front of the boot to past it between two ticks — at 0 the gate would let go on
+  // the very frame of the save and hand you the rod a beat before the ball had stopped.
+  const wide=Math.abs(bp.z-clamp(bp.z,r.baseZ[0]-r.maxOff,r.baseZ[0]+r.maxOff)); // z distance outside its slide range
+  /* …and ONLY once this rod would actually win the nearest-rod scan. Without that test the clock
+     starts the moment a shot leaves a boot at midfield, and on a slow attack maxHold expires
+     before the ball has even reached the keeper — the gate would time out on exactly the shots it
+     has the most time to help with. Armed here, the clock starts at the frame you would otherwise
+     have been handed the rod, which is what the cap is measured from. */
+  const d0=Math.abs(bp.x-r.x);let nearest=true;
+  for(let i=0;i<s.rods.length&&nearest;i++)if(s.rods[i]!==r&&Math.abs(bp.x-s.rods[i].x)<d0)nearest=false;
+  hold=nearest&&closing>H.closing&&rel>-H.behind&&wide<=H.reach;
+ }
+ if(!hold){if(s.holdRod===r){s.holdRod=null;s.holdT=0;}return false;}  // save over (or never on) — release, and re-arm on the next attack
+ if(s.holdRod!==r){s.holdRod=r;s.holdT=S.time;}             // gate just armed — start the clock
+ return S.time-s.holdT<H.maxHold;                           // …and never withhold past the cap
+}
  function aiUpdate(dt){
   recordBalls();               // snapshot every ball's true state this step so rods can read it delayed
   pickActiveRods(dt);
