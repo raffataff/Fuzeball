@@ -462,6 +462,7 @@ function collideRod(b,r){
     // it back by however much control was lost — after the assist, so a wild shot is not first
     // sprayed and then quietly corrected. One contact spends the shot (shotConsume).
     if(!trapping&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
+    if(!trapping)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
@@ -526,6 +527,7 @@ function collideRod(b,r){
     // the capsule fallback has slipped past the foot box entirely, so it is a graze off the side of
     // the player by definition, and bending it toward a receiver is precisely the phantom pass.
     if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);
+    if(!trapping)wallAssist(b,r,true);                 // …and off the leg too — see the foot-box pass
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}

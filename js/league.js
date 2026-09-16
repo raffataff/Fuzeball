@@ -393,7 +393,7 @@ function trophyDef(tier){
  const d=LGC.divisions[tier];
  return (d&&d.trophy)||null;
 }
-function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.png';}
+function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.jpg';}
 function trophyFig(tier,cls,big){
  const d=trophyDef(tier);if(!d)return '';
  return '<span class="troFig'+(cls?' '+cls:'')+'" style="--tc:'+(d.col||'var(--gold)')+'">'+ico('trophy')+

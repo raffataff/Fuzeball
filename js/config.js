@@ -690,6 +690,21 @@ ai:{
    },
 
    wallReach:2.6, wallSlack:0.7,              // wall-hug rescue: capsule z-reach / slack at the slide limit
+   // Wall play: the outermost man on every outfield rod stops at |z| = (W - rods.margin)/2 = 30, and a
+   // ball against the side wall sits at 32.1 — nobody can ever get OUTSIDE a wall ball, so every strike
+   // on one ran straight down the wall into the row opposite, whose end man was stuck the same way, and
+   // the two rows traded it forever. A forward strike on a wall ball now leaves infield, as if played off
+   // the side of the boot: bent toward what the rod was aiming at (gap lane / receiver / goal centre),
+   // never less than minAng, never more than maxAng. A pure heading rotation like aimAssist — no energy.
+   wallPlay:{
+      on:true,
+      gap:2.5,            // ball-to-wall gap under which a strike counts (pinned = 0; an end man's reach leaves 2.1)
+      minAng:0.28,        // infield heading floor off the wall (rad, ~16°)
+      maxAng:0.52,        // …and ceiling when aiming at the rod's target (rad, ~30°)
+      minW:4,             // the boot must be swinging forward at least this fast (rad/s): a strike, not a block
+      minVX:10,           // …and the ball leaving forward at least this fast (u/s)
+      human:false         // also apply to player-held rods
+   },
    slowSpeed:35,                              // ball speed under this counts as a dead ball
    cdSlow:[1,2.5], cdFast:[0.5,1.5],       // kick cooldown random range, slow / fast ball (× DIFFS.cd)
    errEvery:[1.7,6.],                        // how often a fresh wandering aim-error target is rolled (s)
@@ -1385,13 +1400,14 @@ ai:{
    open:{
       name:'Void', folder:'na', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
       bg:0x05060f, fog:[210,440],
-      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9},
-      dir:{color:0xffffff,int:0.7,pos:[45,100,35]},
+      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9,on:true},
+      dir:{color:0xffffff,int:0.7,pos:[45,100,35],on:false,shadow:false},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
       lights:[
-         {type:'spot', pos:[-55,26,31], look:[-40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32},
-         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:1.35, dist:210, decay:1.1, angle:0.68, penumbra:0.12},
-         {type:'spot', pos:[55,26,31], look:[40.0,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32}],
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.65, dist:150, decay:2, angle:0.6, penumbra:0.32},
+        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.95, dist:65, decay:1, angle:0.68, penumbra:0.24},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.6, dist:150, decay:2, angle:0.6, penumbra:0.32}
+      ],
       props:[],
       led:{idle:'rainbow'}
    },
@@ -1399,27 +1415,29 @@ ai:{
       name:'Flying Saucer', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:true,
       light:{gain:0,reach:0},
       bg:0x05060f, fog:[210,540],
-      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0,on:false},
-      dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:true},
+      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.11,on:true},
+      dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:false},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xc7e4ff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'spot', pos:[-55,26,0], look:[-40,0,0], color:0xc7e4ff, int:2.35, dist:85, decay:2, angle:0.97, penumbra:0.32, shadow:true},
         {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xb3daff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true}
+        {type:'spot', pos:[55,26,0], look:[40,0,0], color:0xb3daff, int:2.35, dist:85, decay:2, angle:0.97, penumbra:0.32, shadow:true}
       ],
       props:[],
       led:{idle:'rainbow'}
    },
-   pub:{
+      pub:{
       name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
       light:{gain:3.6,reach:3.2},
+      lightsOff:['room_light_fire'],
       bg:0x120c07, fog:[190,410],
-      hemi:{sky:0xffd9a3,ground:0x140a04,int:0,on:false},
-      dir:{color:0xffcf95,int:1.31,pos:[40,90,30]},
+      hemi:{sky:0xffd9a3,ground:0x140a04,int:0,on:true},
+      dir:{color:0xffcf95,int:1.31,pos:[40,90,30],on:false,shadow:false},
       env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'spot', pos:[-55,26,0], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
         {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true}
+        {type:'spot', pos:[56,26,0], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'spot', pos:[-0.26,97.08,1.86], look:[-0.26,95.61,1.86], color:0xffd899, int:0.415, dist:310.7, decay:2, angle:0.698, penumbra:0.35}
       ],
       props:[],
       led:{idle:'rainbow',color:0xffb454}
@@ -1429,12 +1447,12 @@ ai:{
       light:{gain:0,reach:0.2},
       bg:0x5c5d60, fog:[170,465],
       hemi:{sky:0x8ea0ff,ground:0x180a24,int:0.52,on:false},
-      dir:{color:0xd6b8ff,int:1.07,pos:[45,100,35],on:true,shadow:true},
+      dir:{color:0xd6b8ff,int:1.07,pos:[45,100,35],on:true,shadow:false},
       env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
       lights:[
-        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0x28aeca, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf2e9ba, int:2.65, dist:70, decay:1, angle:0.74, penumbra:0.24, shadow:true},
-        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0xaf71ba, int:2.35, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true}
+        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0x28aeca, int:2.6, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf2e9ba, int:3, dist:70, decay:1, angle:0.74, penumbra:0.24, shadow:true},
+        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0xaf71ba, int:2.6, dist:55, decay:2, angle:0.76, penumbra:0.32, shadow:true}
       ],
       props:[
         {prop:'fuzeballArcadeStool', at:[

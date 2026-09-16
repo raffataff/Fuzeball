@@ -143,3 +143,30 @@ function aimAssist(b,r,noPass){
  const th=clamp(da,-a,a)*dir,cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
  v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
 }
+/* WALL PLAY — the side-of-the-boot strike (CONFIG.ai.wallPlay). The outermost man on every outfield
+   rod stops two units short of a ball pinned on the side wall, so no rod can get OUTSIDE a wall ball
+   and a strike on one could only run straight back down the wall, into the row opposite, whose end man
+   is stuck exactly the same way. Two rows traded it forever. A forward strike on a wall ball now leaves
+   infield, aimed like aimAssist aims (receiver, gap lane, else goal centre) but clamped into
+   [minAng,maxAng] so it always clears the wall and never becomes a square pass. Same contract as
+   aimAssist: a pure heading rotation, so it adds no energy, and the repeat contacts of one swing
+   converge on `want` instead of compounding. Worked in (forward, infield) coordinates so one expression
+   serves both teams and both walls. */
+function wallAssist(b,r,noPass){
+ const W=AIC.wallPlay;
+ if(!W||!W.on||(!W.human&&isUserRod(r)))return;
+ const p=b.m.position,v=b.v;
+ if(F.W/2-Math.abs(p.z)-BALL_R>W.gap)return;             // not on the wall
+ const dir=r.kickDir;
+ if(r.angVel*dir<W.minW)return;                             // a block, not a strike
+ const u=v.x*dir;if(u<W.minVX)return;                       // only a ball leaving forward
+ const sz=p.z>0?-1:1,w=v.z*sz;                              // +w = heading away from the wall
+ const pass=(!noPass&&r.passTo)||null;
+ const tx=pass?pass.x:dir*F.L/2,tz=pass?pass.z:((r.aimEv&&AIC.gapAim.gap)?r.aimEv.best.tz:0);
+ const want=clamp(Math.atan2((tz-p.z)*sz,(tx-p.x)*dir),W.minAng,W.maxAng);
+ const th=want-Math.atan2(w,u);
+ if(th<=0)return;                                           // already leaving at least that far infield
+ const cs=Math.cos(th),sn=Math.sin(th);
+ v.x=(u*cs-w*sn)*dir;v.z=(u*sn+w*cs)*sz;
+ if(dbgLogRod===r)dbgRod(r,'WALL','off the wall +'+(th*57.3).toFixed(0)+'° → '+(want*57.3).toFixed(0)+'° infield');
+}

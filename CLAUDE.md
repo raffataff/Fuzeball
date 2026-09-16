@@ -489,7 +489,13 @@ written device-agnostic so the keyboard/mouse port is a second caller, not a sec
 
 ## Current state / recent work
 
-**Most recent (2026-08-29): THE GK SECTION HAS ITS SAVE TRIAL** — new `saveRun` objective kind and
+**Most recent (2026-09-15): A BALL ON THE SIDE WALL IS PLAYED OFF IT** — new `CONFIG.ai.wallPlay` +
+`wallAssist` (stats.js, called from both `collideRod` passes). Every outfield rod's reach stops at |z|=30 and
+a wall ball sits at 32.1, so no rod can get OUTSIDE one: facing rows traded it straight down the wall
+forever (7 of 24 live runs stuck the full 25s). A forward strike on a wall ball now leaves 16°–30°
+infield — 0 of 24 stuck. See the 2026-09-15 entry.
+
+Earlier: **THE GK SECTION HAS ITS SAVE TRIAL** — new `saveRun` objective kind and
 THE LAST LINE: ten attacks on your goal, served one at a time, scored on how many you kept out.
 It needed the SECOND SCORING DIRECTION the 2026-08-20 note said a non-stopwatch objective would
 take (`trialDir`; saves, higher is better). Two things worth carrying forward: the ball has to be
@@ -693,6 +699,56 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-09-15
+- **TWO ROWS TRADED A BALL PINNED ON THE SIDE WALL FOREVER — because no rod can get OUTSIDE one**
+  (new `CONFIG.ai.wallPlay`, `js/stats.js` new `wallAssist`, `js/physics.js` both `collideRod` passes, new
+  `tools/wallplay-harness.js`, a `wallAssist` stub in `tools/slidepush-harness.js`). Reported from play with
+  a clip and the kick log: the end men of two facing MID rows kicking the ball back and forth along the wall.
+  - **THE CAUSE IS GEOMETRY, NOT A DECISION.** `buildRods` gives every outfield rod an outer reach of
+    `(W - rods.margin)/2` = **30**, and a ball against the flat side wall sits at **32.1**. The end man is
+    jammed at `maxOff` 2.1 short of it (the log's `dz=2.18` on every swing), the foot box meets the ball on its
+    CORNER, the contact normal points into the wall, and the strike can only run straight down it — into the
+    row opposite, whose end man is stuck exactly the same way. `wallHug` lets a rod swing at such a ball;
+    nothing ever let it ANGLE one. The dribble's `wideZ` entry fires too and can't help: carrying a ball
+    infield needs the boot on its wall side. The dead-ball timer can't see it either, correctly — it is
+    displacement-based and the ball travels 15u per kick.
+  - **MEASURED IN THE LIVE GAME**, stepped by hand in the browser pane: AI vs AI, pro/pro, classic, ball
+    placed pinned in front of a row, 6 seeds x 4 pairings (MID/MID both walls, DEF/ATT, ATT/DEF) x 25s.
+    **OFF: 7/24 runs stuck the full 25s**, worst run **26 consecutive wall kicks**, mean 11.6s on the wall,
+    3 goals. **ON: 0/24**, worst run **2**, mean **2.5s**, mean escape 4.2s -> **1.2s**, 14 goals. An old-code
+    page gave the same seeds identical run lengths to OFF, so `on:false` is a true off switch.
+  - **THE FIX IS THE SIDE-OF-THE-BOOT STRIKE.** `wallAssist(b,r,noPass)` runs right after `aimAssist` in both
+    contact passes. A forward STRIKE on a WALL ball leaves infield, aimed exactly where `aimAssist` aims
+    (receiver on a pass, the gap lane, else goal centre) but clamped into `[minAng,maxAng]` (16°–30°), so it
+    always clears the wall and never becomes a square ball. A pure heading rotation worked in (forward,
+    infield) coordinates: no energy, one expression for both teams and both walls, and the repeat contacts
+    of one swing converge on the target instead of compounding.
+  - **The strike test is `angVel*kickDir >= minW`, NOT `kickT>=0`** — a raise-drop sweep is a strike with
+    `kickT<0`, and a standing boot a ball rolls into is not. Plus the ball must leave forward at `minVX`.
+  - **AI only by default (`human:false`)**: it is the AI that loops, and a player railing it down the wall on
+    purpose keeps that shot.
+  - **`gap` 2.5 is derived, not picked**: the out-of-reach strip is `margin/2 - BALL_R` = 2.1 on every outfield
+    rod. The harness computes it from live rod geometry, so a `rods.margin`/spacing retune that widens the
+    strip fails there rather than quietly bringing the loop back. The keeper is exempt (gkSlide 11 never
+    reaches a wall).
+  - Kick log (`C` then `L`): a bend prints `WALL  off the wall +N° → M° infield`.
+  - **Traced after, and not caused by it:** the few ON runs that still spent ~7s near a wall were the
+    existing dead-ball cases — a slow roll into a corner pocket, a trap, a ball in the lane between two rows
+    facing away — each re-dropped or played on as designed. Re-drops rose 1 -> 5 across the sweep because play
+    reached those places instead of looping.
+  - **`tools/wallplay-harness.js` — 57 assertions, 8/8 mutations.** Both teams x both walls, energy,
+    convergence, every gate, every target, both clamps, the strip coverage — and through the REAL
+    `collideRod`, where walking the ball in reproduces the log's contact exactly (first touch at rel 3.4, ball
+    out at 79.5 u/s): OFF leaves **-19.5°** (into the wall), ON **26.6°** infield, identical speed.
+  - **Any harness that slices `collideRod` now needs a `wallAssist` stub** or it throws on the first contact.
+    `slidepush-harness` got one; its 24/4 is identical on an untouched HEAD copy (the slidePush 0.85 retune
+    crossing its thresholds, as noted 2026-08-26). `ballcap-harness` already loads it and passes 1842/0.
+  - **FOUND, NOT FIXED:** `tools/trials-harness.js` dies with `performance is not defined` in `trialFinish` —
+    its vm context has no `performance`. Pre-existing (js/trials.js untouched); worth checking that the
+    `performance.now()` there is not on the medal path, since a trial's clock must be sim time.
+  - **Wants a real look at:** from an ATT beside the box the 30° cap sends a wall ball to about the post —
+    whether `maxAng` reads as a shot or as a clearance there is feel.
 
 ### 2026-08-31
 - **THE BALL'S SHADOW STROBED ON AND OFF EVERY OTHER FRAME — the ball-reflection cube pass was

@@ -33,7 +33,7 @@ const stubs=[
 "var dbgLogRod=null;",
 "var RNG={jit:function(){return 0.5;}};",
 "var Au={kick:function(){}};",
-"function aimAssist(){} function passFaceOK(){return true;} function shotSpray(){}",
+"function aimAssist(){} function wallAssist(){} function passFaceOK(){return true;} function shotSpray(){}",
 "function shotConsume(r){if(r.shotOn){r.shotOn=false;r.shotPow=1;r.shotCtl=1;}}",
 "function momContact(){} function msContact(){} function dbgHit(){} function isUserRod(){return true;}",
 "function makeBall(){return null;} function syncBall(){} function notice(){}",
