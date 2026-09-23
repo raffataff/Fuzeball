@@ -1068,28 +1068,16 @@ function debugUpdate(){
  if(!dbgOn){
   const show=S.freeRoam;
   const fpsShow=show||cfg.showFps;   // player-facing FPS counter (Display tab) shows outside debug too
-   $('camInfo').style.display=show?'block':'none';
-   $('ballSpeed').style.display=show?'block':'none';
-   $('ballVel').style.display=show?'block':'none';
-   $('fps').style.display=fpsShow?'block':'none';
-   if(fpsShow)updateFps(false);else dbgFpsLast=0;   // hidden: drop the clock so re-entry doesn't read one giant frame
-   dbgDeadShow(false);   // dead-ball clock is debug-only — it doesn't ride along into free roam
-   if(!show)return;
-   updateCamInfo();
-   updateBallSpeed();
-   updateBallVel();
-   return;
-  }
-  flushKickLog();                    // one DOM write per FRAME, not per sim step
-  $('camInfo').style.display='block';
-  $('ballSpeed').style.display='block';
-  $('ballVel').style.display='block';
-  $('fps').style.display='block';
-  updateCamInfo();
-  updateBallSpeed();
-  updateBallVel();
-  updateFps(true);                   // debug: append the once-a-second leak-watch line
-  dbgDeadShow(true);updateDeadBall();
+  if(fpsShow)updateFps(false);else{dbgFpsLast=0;hudDev('fps',null);}   // hidden: drop the clock so re-entry doesn't read one giant frame
+  hudDev('dead',null);               // dead-ball clock is debug-only — it doesn't ride along into free roam
+  if(!show){hudDev('cam',null);hudDev('spd',null);hudDev('vel',null);return;}
+  updateCamInfo();updateBallSpeed();updateBallVel();
+  return;
+ }
+ flushKickLog();                     // one DOM write per FRAME, not per sim step
+ updateCamInfo();updateBallSpeed();updateBallVel();
+ updateFps(true);                    // debug: append the once-a-second leak-watch line
+ updateDeadBall();
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];
@@ -1140,21 +1128,22 @@ function updateFootBoxes(){
    fr.mesh.rotation.set(0,0,r.angle);
  }
 }
+/* Dev readouts go to the HUD canvas as KEYED sections (hudDev, js/hud.js): each updater owns one
+   block and a null removes it, so none can overwrite another and switching one off really clears it.
+   A row is a line of [label, value, hot] triples. */
 function updateCamInfo(){
  const p=camera.position;
  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
  const l=new THREE.Vector3().copy(p).addScaledVector(fwd,50);
- $('camInfo').innerHTML='<span>POS</span>'+p.x.toFixed(1)+'&nbsp;'+p.y.toFixed(1)+'&nbsp;'+p.z.toFixed(1)+'<span>LOOK</span>'+l.x.toFixed(1)+'&nbsp;'+l.y.toFixed(1)+'&nbsp;'+l.z.toFixed(1);
+ hudDev('cam',[[['POS',p.x.toFixed(1)+' '+p.y.toFixed(1)+' '+p.z.toFixed(1)],['LOOK',l.x.toFixed(1)+' '+l.y.toFixed(1)+' '+l.z.toFixed(1)]]]);
 }
 function updateBallSpeed(){
-  if(!S.balls.length){$('ballSpeed').innerHTML='<span>SPEED</span>no ball';return;}
-  const speed=S.balls[0].v.length();
-  $('ballSpeed').innerHTML='<span>SPEED</span><b class="val">'+speed.toFixed(0)+'</b> u/s';
+ hudDev('spd',[[['SPEED',S.balls.length?S.balls[0].v.length().toFixed(0)+' u/s':'no ball']]]);
 }
 function updateBallVel(){
-  if(!S.balls.length){$('ballVel').innerHTML='<span>VEL</span>no ball';return;}
-  const v=S.balls[0].v;
-  $('ballVel').innerHTML='<span>VEL X</span><b class="val">'+v.x.toFixed(1)+'</b><span>Z</span><b class="val">'+v.z.toFixed(1)+'</b>';
+ if(!S.balls.length){hudDev('vel',[[['VEL','no ball']]]);return;}
+ const v=S.balls[0].v;
+ hudDev('vel',[[['VEL X',v.x.toFixed(1)],['Z',v.z.toFixed(1)]]]);
 }
 /* DEAD-BALL CLOCK (js/powerups.js deadBallUpdate). Shows the stall timer the whistle is
    read from, the multiplier being applied to it right now, and how much of the live-zone grace
@@ -1163,13 +1152,11 @@ function updateBallVel(){
    nothing changes. The ball moving changes the multiplier, so treat it as a reading, not a promise.
    Everything here is computed from state the sim already keeps, and only inside debugUpdate's
    dbgOn branch, so a closed overlay costs nothing. */
-function dbgDeadShow(on){const el=$('dbgDead');if(el)el.style.display=on?'block':'none';}
 function updateDeadBall(){
- const el=$('dbgDead');if(!el)return;
- if(typeof deadzoneMult!=='function'){el.innerHTML='<span>DEAD BALL</span>n/a';return;}
- if(S.trn&&!S.trn.deadball){el.innerHTML='<span>DEAD BALL</span>off (sandbox)';return;}
- if(!S.balls.length){el.innerHTML='<span>DEAD BALL</span>no ball';return;}
- const L=DEAD.live,lines=[];
+ if(typeof deadzoneMult!=='function'){hudDev('dead',[[['DEAD BALL','n/a']]]);return;}
+ if(S.trn&&!S.trn.deadball){hudDev('dead',[[['DEAD BALL','off (sandbox)']]]);return;}
+ if(!S.balls.length){hudDev('dead',[[['DEAD BALL','no ball']]]);return;}
+ const L=DEAD.live,rows=[[['DEAD BALL','']]];
  for(let i=0;i<S.balls.length&&i<3;i++){
   const b=S.balls[i],p=b.cur,st=b.stuckT||0,gr=b.graceT||0;
   const zm=deadzoneMult(p);
@@ -1182,22 +1169,21 @@ function updateDeadBall(){
    const gain=graceReal*L.mult;                  // …and the stall time that adds while it lasts
    left=(st+gain>=DEAD.stallT)?(DEAD.stallT-st)/L.mult:graceReal+(DEAD.stallT-st-gain);
   }else left=(DEAD.stallT-st)/Math.max(mult,1e-6);
-  const tag=live?'IN REACH':(zm>1?'DEADZONE':'PLAIN');
-  const cls=(left<1.5)?' hot':'';
-  lines.push((S.balls.length>1?'<span>B'+i+'</span>':'')
-   +'<span>STALL</span><b class="val">'+st.toFixed(2)+'</b>/'+DEAD.stallT.toFixed(1)
-   +'<span>x</span><b class="val">'+mult.toFixed(2)+'</b>'
-   +(L?'<span>GRACE</span><b class="val">'+gr.toFixed(2)+'</b>/'+L.graceMax.toFixed(1):'')
-   +'<span>'+tag+'</span><b class="val'+cls+'">'+(left>99?'99+':left.toFixed(1))+'</b>s');
+  const row=[];
+  if(S.balls.length>1)row.push(['B'+i,'']);
+  row.push(['STALL',st.toFixed(2)+'/'+DEAD.stallT.toFixed(1)],['x',mult.toFixed(2)]);
+  if(L)row.push(['GRACE',gr.toFixed(2)+'/'+L.graceMax.toFixed(1)]);
+  row.push([live?'IN REACH':(zm>1?'DEADZONE':'PLAIN'),(left>99?'99+':left.toFixed(1))+'s',left<1.5]);
+  rows.push(row);
  }
- el.innerHTML='<span>DEAD BALL</span>'+lines.join('<br>');
+ hudDev('dead',rows);
 }
 /* FPS readout: measured from a private performance.now() clock (not the loop's rdt, which is
    capped at .05) so a real stall reads as a true dip. dbgFpsEma is a smoothed frame time in ms
    (heavy smoothing so the number is readable); LOW is the worst frame seen in the last second,
    republished once/sec — the 1%-low that catches hitches the average hides. dbgFpsLast is reset
    to 0 while the readout is hidden so the first frame back doesn't log one giant gap as a stall. */
-let dbgFpsLast=0,dbgFpsEma=0,dbgFpsWorst=0,dbgFpsMinMs=0,dbgFpsWinT=0,dbgFpsDiag='';
+let dbgFpsLast=0,dbgFpsEma=0,dbgFpsWorst=0,dbgFpsMinMs=0,dbgFpsWinT=0,dbgFpsDiag=null;
 function updateFps(detail){
   const now=performance.now();
   if(dbgFpsLast){
@@ -1206,17 +1192,15 @@ function updateFps(detail){
    if(dt>dbgFpsWorst)dbgFpsWorst=dt;                          // worst frame this window
    if(now-dbgFpsWinT>1000){
     dbgFpsMinMs=dbgFpsWorst;dbgFpsWorst=0;dbgFpsWinT=now;     // publish LOW once/sec
-    dbgFpsDiag=detail?fpsDiag():'';                           // refresh the leak-watch line once/sec (dev only)
+    dbgFpsDiag=detail?fpsDiag():null;                         // refresh the leak-watch line once/sec (dev only)
    }
   }else dbgFpsWinT=now;
   dbgFpsLast=now;
   const fps=dbgFpsEma>0?1000/dbgFpsEma:0;
   const low=dbgFpsMinMs>0?1000/dbgFpsMinMs:fps;
-  let html='<span>FPS</span><b class="val">'+fps.toFixed(0)+'</b>'
-   +'<span>MS</span><b class="val">'+dbgFpsEma.toFixed(1)+'</b>'
-   +'<span>LOW</span><b class="val">'+low.toFixed(0)+'</b>';
-  if(detail&&dbgFpsDiag)html+='<br>'+dbgFpsDiag;
-  $('fps').innerHTML=html;
+  const rows=[[['FPS',fps.toFixed(0)],['MS',dbgFpsEma.toFixed(1)],['LOW',low.toFixed(0),low<45]]];
+  if(detail&&dbgFpsDiag)rows.push(dbgFpsDiag);
+  hudDev('fps',rows);
 }
 /* Leak-watch line (debug overlay only). These counts should be FLAT during steady play. If NODES /
    GEO / TEX / DRAW climb over a match, a 59→49-style decline is an accumulation — something spawned
@@ -1228,6 +1212,5 @@ function fpsDiag(){
  const geo=ri?ri.memory.geometries:'?',tex=ri?ri.memory.textures:'?',calls=ri?ri.render.calls:'?';
  const pm=(typeof performance!=='undefined')&&performance.memory;
  const heap=pm?Math.round(pm.usedJSHeapSize/1048576)+'MB':'n/a';
- return '<span>NODES</span><b class="val">'+nodes+'</b><span>GEO</span><b class="val">'+geo+'</b>'
-  +'<span>TEX</span><b class="val">'+tex+'</b><span>DRAW</span><b class="val">'+calls+'</b><span>HEAP</span><b class="val">'+heap+'</b>';
+ return[['NODES',String(nodes)],['GEO',String(geo)],['TEX',String(tex)],['DRAW',String(calls)],['HEAP',heap]];
 }

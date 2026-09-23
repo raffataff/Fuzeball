@@ -19,28 +19,7 @@ all game code is local.
 
 ### File map (`js/`, loaded in this order — see the script tags in `index.html`)
 
-`core.js` (helpers `# CLAUDE.md — Fuzeball
-
-Context for working on this project in a fresh session. Read this first.
-
-## What it is
-
-**Fuzeball** is a 3D foosball (table football) game. No build step, no package manager,
-no local dependencies. It pulls **Three.js r128** and Google Fonts from CDNs at runtime;
-all game code is local.
-
-- **Entry point:** `index.html` — markup + `<link>` to `css/styles.css` + ordered
-  `<script>` tags for the `js/` modules. Open it in any modern browser (WebGL required).
-- **`fuzeball.html`** is the ORIGINAL monolith, kept untouched as a backup/reference.
-  It still runs on its own. Delete it once you're happy with the split.
-- **Config persistence:** in-menu settings save to `localStorage` under the key `fuzeball`.
-- **Ambition:** this may go to **Steam** if it's fun. It must feel performative and
-  hand-crafted — *do not let it look AI-generated*. Keep the existing dense, terse code
-  style; avoid generic boilerplate and over-commenting.
-
-### File map (`js/`, loaded in this order — see the script tags in `index.html`)
-
-,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · **`rng.js`**
+`core.js` (helpers `$`,`clamp`,`lerp`,`rand`) · **`config.js`** (see below) · **`rng.js`**
 (seeded per-consumer random streams — CORE, not optional: physics/ai/balls/powerups hard-depend
 on it. Read its banner before adding a consumer, and note `rand()` in core.js is NOT seeded) ·
 `screens.js`
@@ -53,7 +32,7 @@ table: team + claimed devices + held rod; `seatOf`/`seatRod`/`isUserRod`/`setSea
 trigger axis, the charge, the human pass; CORE, loaded between ai.js and input.js because it reads
 the first and the second runs through it) · `input.js` · `powerups.js` (+ dead-ball) ·
 `flow.js` (match flow) · **`moments.js`** (saves / woodwork / goal classification) ·
-**`matchstats.js`** (the match ledger + the post-match sheet) · `fx.js` (FX + camera) · `hud.js` · `ui.js` · **`roster.js`** (the Kick
+**`matchstats.js`** (the match ledger + the post-match sheet) · `fx.js` (FX + camera) · **`hud.js`** (the in-match chrome — ONE canvas, `hudRender`; banner / notice / toast live here) · `ui.js` · **`roster.js`** (the Kick
 Off lobby — builds `S.roster`, the seat specs a match is started from) · `league.js` · `customize.js` · **`props.js`** (prop library + InstancedMesh scatter — see the banner in that file for what instancing here is and is NOT for) · `models.js` · `fracture.js` · `debug.js` · `training.js` · **`trials.js`** (Skill Trials + the daily — the run itself: pinned setup, sim-time clock, objective; gated on `S.trial`) · **`photo.js`** (F1 promo-still studio — camera rig, framing mask, supersampled PNG capture) · **`roomedit.js`** (F2 room editor — props, AUTHORED LIGHTS and room look, gated on
 `CONFIG.debug.roomEditor`; exports a paste-ready `CONFIG.rooms` block) · `main.js`.
 
@@ -297,8 +276,14 @@ Three levers, all tuned in `CONFIG.ai`:
   `confetti`, driven by `fxUpdate`. Pools are pre-allocated in `buildFxPools`.
 - **Audio (`Au`):** fully synthesized via WebAudio (crowd bed, kicks, wall taps, goal
   sting, whistle, power-up, UI). No audio files.
-- **HUD:** `updateScoreUI`, `updateChips` (rod selector), `hudTick` (clock + active-effect
-  chips). Menus: main menu, pause, win screen (with possession/kicks/top-speed stats).
+- **HUD (`hud.js`, `CONFIG.hud`):** ONE Canvas2D layer (`<canvas id="hud">`, z 20) drawn by `hudRender`
+  after the WebGL pass. **It never takes pointer events** — every mouse control listens on `#game`
+  under it; the rod chips are hit-tested from a window CAPTURE listener. It POLLS `S` for score,
+  clock, effects and seats; callers only push EVENTS: `banner`/`notice`/`toast`, `hudShow(on)` (what
+  `#hud.hidden` used to be), `hudCount(v)`, `hudHint(markup)`, `hudReplay`/`hudReplaySave`,
+  `hudDev(key,rows)`, `updateScoreUI(team)` (animates a goal). Hints are MARKUP: `[Q]` keycap,
+  `[←][→][↑][↓]` arrow caps, `[LMB][RMB][MOUSE]` drawn mouse, `·` group split, `\n` line break.
+  Menus: main menu, pause, win screen (with possession/kicks/top-speed stats).
 - **Photo mode (`F1`, `photo.js`, `CONFIG.photo`):** promo-still studio. In-match only. Freezes the
   sim AND the wall-clock timers, drops the HUD + every dev panel, and hands the camera to an orbit
   rig (target + dist + yaw/pitch/roll/fov, all on sliders with number boxes). `F` swaps orbit for
@@ -489,7 +474,11 @@ written device-agnostic so the keyboard/mouse port is a second caller, not a sec
 
 ## Current state / recent work
 
-**Most recent (2026-09-15): A BALL ON THE SIDE WALL IS PLAYED OFF IT** — new `CONFIG.ai.wallPlay` +
+**Most recent (2026-09-23): THE CANVAS HUD WAS REBUILT** — `js/hud.js` is the whole in-match chrome on one
+canvas (the `hud2.js` + shim + hidden-DOM migration is gone). It had swallowed every mouse input in the
+game. See the 2026-09-23 entry.
+
+Earlier (2026-09-15): **A BALL ON THE SIDE WALL IS PLAYED OFF IT** — new `CONFIG.ai.wallPlay` +
 `wallAssist` (stats.js, called from both `collideRod` passes). Every outfield rod's reach stops at |z|=30 and
 a wall ball sits at 32.1, so no rod can get OUTSIDE one: facing rows traded it straight down the wall
 forever (7 of 24 live runs stuck the full 25s). A forward strike on a wall ball now leaves 16°–30°
@@ -699,6 +688,84 @@ dominated), **RENDER**. Shader/GC are tested first because both ALSO present as 
   non-overlapping if the loop is ever restructured. Panel is built via `document.createElement`
   like `buildAIPanel`, and deliberately carries NO `backdrop-filter` (a blurred layer over the
   canvas would cost frames while we're measuring frames).
+
+### 2026-09-23
+- **THE CANVAS HUD, REBUILT — and the first cut had taken the mouse away from the whole game** (`js/hud.js`
+  rewritten, `js/hud2.js` deleted, new `CONFIG.hud`, `index.html` / `css/styles.css` DOM HUD removed, call sites in
+  `flow.js` `main.js` `replay.js` `debug.js` `training.js` `trials.js` `league.js` `fx.js`). A first pass had moved
+  the HUD onto a canvas; this is the review of it.
+  - **THE OVERLAY ATE EVERY CLICK.** `#hudFx` was a full-screen canvas at z 20 with `pointer-events:auto`, and
+    `input.js` (slide, kick, raise, pointer lock), `photo.js` (camera drag) and the room editor all listen on
+    `#game` UNDER it — so none of them fired. `#hud` is `pointer-events:none` now and the rod chips are
+    hit-tested from a window CAPTURE `mousedown` that only swallows a click landing on a chip, and only when
+    the click was aimed at the table (the pause menu sits over the chip row too).
+  - **Other bugs in it, all fixed:** team colours hardcoded (no custom kit or league side ever reached the
+    scoreboard); the power-up tabs read an undeclared `now` (ReferenceError the moment one showed) and a
+    per-frame array, so their drain never tracked; debug readouts called `setDebugLines` in turn, each
+    overwriting the last, and never cleared when toggled off; the dead-ball clock not drawn at all; the
+    replay's save-clip offer lost; `READY` able to stick on screen (count never cleared on quit);
+    training/trial hints still written to the hidden `#hint`, so the MATCH hint showed in the sandbox;
+    the scoreboard hidden in the sandbox (it's only meant to go in a TRIAL); the banner's entrance scaled to
+    its duration (a 2.2s banner sat invisible for most of a second); `font-weight` 600/700/900 on a
+    one-weight face (synthetic bold); `shadowBlur` on every score and chip; a continuous sine pulse on the
+    count and the clock; italic sub chips drawn in a fallback serif (canvas never loads a webfont itself).
+  - **Found by measuring, not reading: the chrome fade flickered every frame.** `a>b?up:down` sends
+    EQUALITY down, so at a steady 1.0 the chrome alpha alternated 1 / 0.94. Three explicit branches now.
+  - **THE DOM NODES ARE GONE, NOT HIDDEN.** `#sb`, `#matchTime`, the fx rails, `#chips`, `#notice`,
+    `#banner`, `#toast`, `#count`, `#hint`, `#replayUI` and the dev readouts had been kept alive under
+    `display:none!important` "so callsites don't null-pointer" — a second copy of the HUD that code kept
+    writing to and nobody could see. Every call site now talks to the canvas; `$('hud')` IS the canvas;
+    `body.replayOn` and the `repDot` keyframes had no reader left and went too.
+  - **POLLED, NOT PUSHED.** `hud.js` reads score, clock, sudden death, `S.eff`, `S.trial`/`S.trn` and the
+    seat list off `S` every frame. Only EVENTS are pushed in (see *Other systems → HUD*). The first cut
+    mirrored four pieces of state and one of them was wrong.
+  - **THE LOOK — varsity, because the face is.** `--font-ui` is SoccerLeague, a collegiate slab, so:
+    · **the board** is ONE trapezoid (ends cut at 20°): team slabs, then two score windows whose numbers are
+      set like jersey numbers — white face, team-colour twill border, hard drop — in FIXED CELLS (the face
+      is proportional; a clock whose 1s are narrow shuffles every second). A goal ROLLS the digit (old up and
+      out, new up from below) and flashes the window in the scorer's colour.
+    · **the bead rail** under each name: `goalTarget()` beads on a wire, and a goal SLIDES one home against
+      the score — the way a real table keeps score. Skipped past `CONFIG.hud.beadMax`.
+    · **the clock tab** hangs under the windows; a timed match draws time left as a hairline on its foot; the
+      last `MATCH.warnT` seconds each land as a KICK (flash + knock, once per tick); sudden death is a gold plate.
+    · **power-up tabs** lean off the board's own cut edges and stack down them; the fill drains back into the
+      board; a re-collect refills and flashes. Icons are the old FX_ICO paths via Path2D, tinted by
+      `puTypes[].col`.
+    · **rod chips** are ONE segmented control: the seat colour SLIDES between segments, a caret points at the
+      table, and a rod another player holds is HATCHED.
+    · **the hint** is keycaps (the Options `.ctl b` look), speaks to the devices actually seated (keys,
+      pad-only buttons, or just `[V] camera` when spectating), and settles to `hintDim` after `hintHold`.
+    · **banner** wipes in while its lean settles 15° → 8°, the rule and sub chip follow a beat apart, one
+      light sweep crosses it (`CONFIG.hud.glint`, off under Reduced effects); leaves by wiping right.
+    · **countdown** values LAND (1.55x → 1) with the previous one blown outward; a bar closes over each
+      second; it sits under the banner, and READY is held back while a banner is up (so it never plays an
+      exit it never had an entrance for).
+    · **replay** letterbox slides in with a hairline in the SCORER's colour; `[S] SAVE CLIP` offer → blinking
+      record dot once kept (`CONFIG.replay.save.hint` is hint markup now).
+    · **dev readouts** are an instrument, not chrome: system mono, square, unscaled; KEYED sections
+      (`hudDev('fps'|'cam'|'spd'|'vel'|'dead',rows)`), drawn only in a match or free roam and never under
+      the room editor's panel.
+  - **Scale** follows window height (900px = 1, clamped .72–1.6) x `CONFIG.hud.scale`. DPR is re-checked every
+    frame (a monitor change fires no resize). The canvas clears to nothing and stops drawing when there is
+    nothing to show. Measured: **0.28 ms/frame** at 1440x810 @2x with board, three tabs, co-op chips, hint,
+    notice and a toast all up.
+  - **Harnesses:** `tools/chargeverdict-harness.js` recorded notices through the old `#notice` node — it stubs
+    `notice()` now. It was ALREADY dead before this (its THREE stub lacked `convertSRGBToLinear` for the smoke
+    FX, and `marksUpdate` / `smokePuffs` / `rodHoleMeshes` postdate it): **37 passed, 6/6 mutations**.
+    `tools/trials-harness.js` gains a `hudHint` stub and `performance`, which **closes the 2026-09-15 "FOUND,
+    NOT FIXED"**: that `performance.now()` only times WHEN the result card shows (`TRL.showAt`), never the
+    medal clock. **565 passed, 28/28.** moments 109/0, matchstats 144/0, photo 92/0, venueload 66/0 + 9/9,
+    wallplay 57/0 + 8/8 unchanged; the 43-module chain compiles clean. Still failing and NOT from this:
+    slidepush 24/4 (the 0.85 retune, as noted) and roomlights (`pub:{` sits at a 6-space indent in HEAD too).
+  - **Verified in the running game** (`http://localhost:8123`, loop stepped by hand, frames composited from both
+    canvases and saved as PNGs): kickoff banner + count, a real `onGoal` (roll, bead, banner, tabs), the real
+    replay hand-off (letterbox, save offer), warn clock, sudden death, 2-seat chips with a taken rod, keycap
+    hint, notice, toast, dev readouts, a chip click switching the rod WITHOUT kicking, a plain click reaching
+    `#game`, photo mode drawing nothing, and the menu clearing the chrome.
+  - **Wants a real look at, and it is feel:** whether the bead rail reads from the sofa, whether `hintHold` 9s
+    is right, and the glint at real frame rates.
+  - **Not done:** the trial HUD (`#trlHud`, `.trlCard`) and the win screen are still DOM — they're screens
+    with buttons, not chrome over the table, which is where a canvas earns its keep.
 
 ### 2026-09-15
 - **TWO ROWS TRADED A BALL PINNED ON THE SIDE WALL FOREVER — because no rod can get OUTSIDE one**

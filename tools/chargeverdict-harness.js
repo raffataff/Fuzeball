@@ -4,10 +4,10 @@
    stamps it on the rod (tools/shots-harness.js covers that); this covers what the player actually
    sees — the marker's verdict words, their colour, and the gate that keeps them out of a match.
 
-   IT DRIVES THE REAL fxUpdate() and the real notice(), not a copy of their logic. The recorder is
-   a fake #notice element: notice() writes textContent and a --nc colour and then adds .show, so
-   the classList shim treats that .show as the event. Testing the reimplementation instead would
-   have proved nothing about the file that ships.
+   IT DRIVES THE REAL fxUpdate(), not a copy of its logic. notice() lives in js/hud.js with the
+   canvas that draws it, so the recorder is a stub of THAT call: every notice fx.js raises lands in
+   __said with the text and colour it was given. Testing a reimplementation of fxUpdate instead
+   would have proved nothing about the file that ships.
 
    WHY THE ONCE-PER-STAMP TEST EARNS ITS PLACE: the words are fired from the MARKER's own edge
    (r.chgEndT changing) inside a loop that runs every frame for the whole hold. An edge test that
@@ -29,9 +29,7 @@ const eq=(a,b,m)=>ok(a===b,m+' (got '+JSON.stringify(a)+', want '+JSON.stringify
 function build(srcFx){
  const els={},said=[];
  const el=id=>els[id]||(els[id]={id,textContent:'',innerHTML:'',offsetWidth:1,
-  style:{setProperty(k,v){this[k]=v;}},
-  classList:{add(c){if(c==='show')said.push({text:els[id].textContent,col:els[id].style['--nc']});},
-             remove(){},toggle(){}}});
+  style:{setProperty(k,v){this[k]=v;}},classList:{add(){},remove(){},toggle(){}}});
  const ctx={console,Math,Object,Array,String,Number,JSON,setTimeout:()=>0,clearTimeout(){},
   document:{getElementById:el},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
   __said:said};
@@ -40,7 +38,8 @@ function build(srcFx){
  vm.runInContext(read('js/core.js'),ctx,{filename:'core.js'});
  vm.runInContext(read('js/config.js'),ctx,{filename:'config.js'});
  vm.runInContext(`
-  var THREE={Color:function(){this.set=function(){return this;};this.lerp=function(){return this;};}};
+  var THREE={Color:function(){this.set=function(){return this;};this.lerp=function(){return this;};this.convertSRGBToLinear=function(){return this;};}};
+  function notice(text,dur,col){__said.push({text,col});}   // js/hud.js's tier-2 channel, recorded
   var S={time:0,phase:'play',seats:[{}],trn:null,trial:null,eff:[{big:0},{big:0}],
          balls:[],shake:0,pu:{obj:null,spin:1},fb:null};
   var theRod=null;
@@ -61,6 +60,9 @@ function build(srcFx){
   function shotCharge(r){return r.chg;}
   function shotChargeBlock(r){return r.chgBlock||0;}
   function shotChargeBand(r){return -1;}
+  function marksUpdate(){}   // js/marks.js — wall scuffs, nothing to do with the verdict
+  var smokePuffs=[],dustRing={visible:false,material:{color:{copy(){}}},scale:{setScalar(){}},position:{}};   // world.js's smoke pool, empty
+  var rodHoleMeshes=[];   // world.js's stamina gauges, none built
  `,ctx);
  vm.runInContext(srcFx,ctx,{filename:'fx.js'});
  vm.runInContext('globalThis.__c={CHG_COL,fxUpdate};',ctx);

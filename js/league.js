@@ -1,45 +1,16 @@
 'use strict';
 /* ================= league ================= */
-// League state LG persists under per-slot localStorage keys
-// (fuzeball_league_0/1/2). The player is identified by LG.playerId (a stable
-// id into LG.teams), NOT by array position. Promotion/relegation moves the
-// player between divisions, so index-0 assumptions are dead.
-// The live-match bridge is S.lg (set only while a league match runs): flow.js,
-// rods.js and ai.js pull names/colours/goal target/difficulty through the
-// team* helpers below, so a league match re-skins the normal match flow
-// without forking it.
 const LGC=CONFIG.league,LG_ROLES=['GK','DEF','MID','ATT'],LG_KEYS=['spd','str','acc','ctl','rea','sta','iq'];
 let LG=null;
-// Resolve a room id for a division/cup: pass through a valid CONFIG.rooms id, map a legacy theme
-// key (old saved leagues stored `theme`) via themeToRoom, else fall back to 'open'.
+// Maps a legacy theme key or any CONFIG.rooms id → CONFIG.rooms id (falls back to 'open').
 function roomIdOf(v){return (v&&CONFIG.rooms[v])?v:((v&&CONFIG.themeToRoom[v])||'open');}
-/* ---- venue (table + skin + room + pitch) -----------------------------------
-   THE LEAGUE SESSION OWNS THE VENUE, NOT THE MATCH. It used to be swapped in by lgPlayMatch and
-   swapped back out by gotoMenu, which meant the lobby you spend a whole season on sat in the
-   player's own Kick Off venue — so every single round LOADED that room's GLB on the way back to the
-   lobby and FREED it a click later when the fixture forced its own (and the round after loaded it
-   right back). Now it goes on when you walk into the lobby and comes off when you leave league
-   land, so a season is one swap in and one swap out. It also makes the lobby an honest preview of
-   where the next fixture is actually played.
-   LGV parks the player's own venue meanwhile; saveCfg (config.js) writes THAT rather than the live
-   cfg, so a fixture's table can't become the player's permanent setting.
-   The division's SKIN was never wired at all — CONFIG.league.divisions[].skin was read by nothing,
-   so a league match wore whatever livery the player last picked in Kick Off. lgDivVenue reads it. */
+/* ---- venue (table + skin + room + pitch) ----------------------------------- */
 let LGV=null;      // the player's own venue while a league/cup one is on the table (null = not held)
 let lgVenueT=0;    // pending restore timer (see lgVenueExit)
 function lgVenueHeld(){return LGV;}
 function venueSnap(){return{table:cfg.table,room:cfg.room,pitch:cfg.pitch,skins:Object.assign({},cfg.skins)};}
-/* Put a venue on the table. Two shapes come through here and the difference matters: a SPEC (one
-   `skin` id — what a division or the cup declares) touches only ITS table's livery and leaves the
-   player's choices for every other table alone, while a SNAPSHOT (a whole `skins` map — what LGV
-   parks) restores the lot. onReady fires once the table skin AND the room backdrop are both
-   resident; synchronous when they already are, which is the normal case once the lobby has run. */
-/* STAGED, via js/flow.js venueLoad — so the lobby's own venue swap gets the same frame yields and
-   the same renderer.compile() warm as a Kick Off room change, instead of dropping a GLB parse, a
-   PMREM bake and a whole-scene recompile into one synchronous run on the way into the lobby.
-   `opts.silent` runs the identical staging with NO veil, which is what the two play-match paths
-   pass: #lgTape is already on screen there and is the loading screen, so a second one over the top
-   would hide the thing the tape exists to show. */
+// Apply a venue: a SPEC (one `skin`) edits only that table's livery; a SNAPSHOT (a `skins` map)
+// restores the lot. `opts.silent` skips the loading veil — #lgTape is already up for the two play paths.
 function venueApply(v,onReady,opts){
  cfg.table=CONFIG.tables[v.table]?v.table:'classic';
  cfg.room=roomIdOf(v.room);
@@ -60,21 +31,15 @@ function lgVenueEnter(v,onReady,opts){
  if(!LGV)LGV=venueSnap();
  venueApply(v,onReady,opts);
 }
-/* Hand the player their own venue back. DEFERRED one tick ON PURPOSE: every return-to-lobby path is
-   `gotoMenu(); openLeague()` (or openCup) in ONE synchronous run, and gotoMenu's screen change fires
-   this through SCREENS.league.onHide. Restoring immediately would tear the division's table/room
-   down and re-fetch the player's, only for the lobby to swap straight back a line later — exactly
-   the churn this block exists to remove. lgVenueEnter cancels the pending restore. */
+// Restore deferred one tick so a return-to-lobby path's lgVenueEnter cancels it (see SCREENS.league.onHide).
 function lgVenueExit(){
  if(!LGV||lgVenueT)return;
  lgVenueT=setTimeout(()=>{lgVenueT=0;const v=LGV;LGV=null;if(v)venueApply(v,null,{silent:true});},0);
 }
-// Leaving the lobby or the bracket for any other screen (Back, Esc, home) gives it back. Attached
-// here rather than declared in screens.js — a screen owns its own teardown (see that file's header).
+// Hide hook: leaving the lobby or bracket for any other screen hands the venue back.
 if(typeof SCREENS!=='undefined'){SCREENS.league.onHide=lgVenueExit;SCREENS.championsCup.onHide=lgVenueExit;}
-/* The venue a division is played at. The SAVE's copy (LG.divs, frozen when the season was created)
-   wins over the config default, so retuning CONFIG.league.divisions can't move a league mid-season.
-   d.theme is the legacy room key on pre-rooms saves. */
+/* Venue a division plays at. The SAVE's frozen copy (LG.divs) wins over the config default so
+   retuning CONFIG.league.divisions[] can't move a league mid-season. `theme` is the legacy key. */
 function lgDivVenue(t){
  const d=(LG&&LG.divs&&LG.divs[t])||{},c=LGC.divisions[t]||{};
  return{table:d.table||c.table||'classic',
@@ -82,10 +47,7 @@ function lgDivVenue(t){
         room:roomIdOf(d.room||d.theme||c.room||c.theme),
         pitch:d.pitch||c.pitch||'grass1'};
 }
-/* The cup's venue. Its PITCH is drawn at random from CUP.pitches and then REMEMBERED ON THE TIE:
-   the bracket, the versus tape and the match all have to agree on it, and re-opening the bracket
-   must not re-roll the pitch you were just looking at. Falls back to CUP.pitch on a decided cup
-   (no tie left to hang the draw on). */
+// Cup venue: pitch drawn at random once and remembered on the tie so the bracket, tape and match agree.
 function cupVenue(){
  const tie=(typeof cupPlayerTie==='function')?cupPlayerTie():null;
  let p=tie&&tie.pitch;
@@ -97,12 +59,11 @@ function cupVenue(){
 }
 function lgBlk(base){const b=base!=null?base:STC.base;const blk={};for(const k of LG_KEYS)blk[k]=b;return blk;}
 function lgBld(base){return{GK:lgBlk(base),DEF:lgBlk(base),MID:lgBlk(base),ATT:lgBlk(base)};}
-// promotion floor-raise: bump every stat still sitting at the OLD division base up toward the
-// new tier (pos 0=winner +boost1, else +boost2). Already-upgraded stats are left alone.
+// Promotion floor-raise: lift every still-at-old-base stat toward the new tier's base.
 function lgPromoteBoost(team,pos){const amt=pos===0?LGC.promoteBoost1:LGC.promoteBoost2,oldBase=LGC.divisions[team.div].base,g=[];
  for(const role of LG_ROLES){const st=team.bld[role];for(const k of LG_KEYS){if(st[k]<=oldBase){const from=st[k],to=Math.min(STC.max,from+amt);if(to>from){st[k]=to;g.push({role,key:k,from,to});}}}}
  return g;}
-// relegation penalty: knock relegateLose off EVERY stat in every role block (floored).
+// Relegation penalty: knock relegateLose off every stat per role block (floored at relegateFloor).
 function lgRelegatePenalty(team){const l=[];
  for(const role of LG_ROLES){const st=team.bld[role];for(const k of LG_KEYS){const from=st[k],to=Math.max(LGC.relegateFloor,from-LGC.relegateLose);if(to<from){st[k]=to;l.push({role,key:k,from,to});}}}
  return l;}
@@ -143,22 +104,20 @@ function loadLG(slot){
   if(LG.playerId==null)LG.playerId=0;
   if(LG.name==null)LG.name='LEAGUE '+(LG.slot+1);
   if(LG.special==null)LG.special=cfg.special;
-  if(LG.power==null)LG.power=cfg.power;
-  if(LG.goals==null)LG.goals=LGC.goals; // old leagues predate a per-save goal target → the config default they were already playing to
-  if(LG.gameTime==null)LG.gameTime=0; // old leagues predate timed play → unlimited (unchanged)
-  if(LG.control==null)LG.control='';  // old leagues predate saved rod control → all rods
-  // fix invalid pitch values from old saves (e.g. 'royal' was a GLB name, not a pitch ID)
-  if(LG.divs){
-    const validPitches=Object.keys(CONFIG.pitches);
-    for(let d of LG.divs){
-      if(!d.pitch||!validPitches.includes(d.pitch)){
-        d.pitch=(LGC.divisions[d.tier]&&LGC.divisions[d.tier].pitch)||'';// triggers LGC fallback in lgDivVenue
-      }
-      // `skin` postdates these saves. Backfilled from config rather than left null so an existing
-      // league picks up its division's livery — same intent as the table/room already frozen here.
-      if(d.skin==null)d.skin=(LGC.divisions[d.tier]&&LGC.divisions[d.tier].skin)||null;
-    }
-  }
+   if(LG.power==null)LG.power=cfg.power;
+   if(LG.goals==null)LG.goals=LGC.goals; // old saves predate per-save goal target → config default
+   if(LG.gameTime==null)LG.gameTime=0;   // old saves predate timed play → unlimited
+   if(LG.control==null)LG.control='';    // old saves predate saved rod control → all rods
+   // Fix invalid pitch values from old saves (e.g. 'royal' was a GLB name, not a pitch ID).
+   if(LG.divs){
+     const validPitches=Object.keys(CONFIG.pitches);
+     for(let d of LG.divs){
+       if(!d.pitch||!validPitches.includes(d.pitch)){
+         d.pitch=(LGC.divisions[d.tier]&&LGC.divisions[d.tier].pitch)||'';
+       }
+       if(d.skin==null)d.skin=(LGC.divisions[d.tier]&&LGC.divisions[d.tier].skin)||null;
+     }
+   }
   const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
   let migrated=false;
   LG.teams.forEach((t,i)=>{
@@ -167,12 +126,11 @@ function loadLG(slot){
    if(t.div==null)t.div=1;
    if(t.up==null)t.up=0;
    if(t.w==null)t.w=0;if(t.l==null)t.l=0;if(t.gf==null)t.gf=0;if(t.ga==null)t.ga=0;if(t.p==null)t.p=0;
-   // backfill stat keys added after this save was written (e.g. 'iq') → base, so old
-   // builds don't render empty pips or read NaN through the UI/sim/spend.
+   // Backfill stat keys added after this save was written (e.g. 'iq') → base so old builds don't render empty pips or read NaN.
    if(t.bld)for(const role of LG_ROLES){const blk=t.bld[role];if(blk)for(const k of LG_KEYS)if(blk[k]==null){blk[k]=STC.base;migrated=true;}}
   });
   if(!LG.hist)LG.hist=[];
-  if(trophyBackfill())migrated=true;   // honours record postdates this save — build it once, from hist
+  if(trophyBackfill())migrated=true;   // honours record postdates this save
   if(!LG.divs){
    const allIds=LG.teams.map(t=>t.id);
    LG.divs=[{name:LGC.divisions[1].name,tier:1,teamIds:allIds,fixtures:LG.fixtures||[],results:LG.results||[],champ:LG.champ||null}];
@@ -194,54 +152,47 @@ function lgFixtures(ids){ // circle method over stable ids, single round robin
 }
 function lgNewSeason(keep,opts,forceSlot){
  let teams,season=1;
- if(keep&&LG){
-  season=LG.season+1;
-  const oldPd=playerDiv();
-  // 1. Finalise standings per division
-  const orders=[];for(let t=0;t<3;t++)orders[t]=lgOrderDiv(t);
-  // 2. Promotion: award upgrade parts + raise the still-at-base stat floor toward the new tier.
-  //    (player's boost is applied in lgFinalize so the lobby squad already reflects it → skip here)
-  for(let t=0;t<2;t++){
-   orders[t].slice(0,LGC.promoteN).forEach((e,pi)=>{
-    e.t.up+=pi===0?LGC.upPromote1:LGC.upPromote2;
-    if(e.i!==LG.playerId)lgPromoteBoost(e.t,pi);
-   });
-  }
-  if(orders[2][0])orders[2][0].t.up+=LGC.upChampTop;
-  // 3. Relegation penalty: each relegated team loses relegateLose off EVERY stat per role block
-  //    (player's penalty already applied at season-end so the lobby shows it → skip here)
-  for(let t=1;t<3;t++){
-   for(const e of orders[t].slice(-LGC.relegateN)){
-    if(e.i===LG.playerId)continue;
-    lgRelegatePenalty(e.t);
+if(keep&&LG){
+   season=LG.season+1;
+   const oldPd=playerDiv();
+   const orders=[];for(let t=0;t<3;t++)orders[t]=lgOrderDiv(t);
+   // Promotion (player's boost is applied in lgFinalize so the lobby squad already reflects it).
+   for(let t=0;t<2;t++){
+    orders[t].slice(0,LGC.promoteN).forEach((e,pi)=>{
+     e.t.up+=pi===0?LGC.upPromote1:LGC.upPromote2;
+     if(e.i!==LG.playerId)lgPromoteBoost(e.t,pi);
+    });
    }
-  }
-  // 4. Swap divisions
-  const promotedIds=[[],[]];for(let t=0;t<2;t++)promotedIds[t]=orders[t].slice(0,LGC.promoteN).map(e=>e.i);
-  const relegatedIds=[[],[]];for(let t=0;t<2;t++)relegatedIds[t]=orders[t+1].slice(-LGC.relegateN).map(e=>e.i);
-  for(let t=0;t<2;t++){
-   promotedIds[t].forEach(id=>{LG.teams[id].div=t+1;});
-   relegatedIds[t].forEach(id=>{LG.teams[id].div=t;});
-  }
-  const pPromoted=oldPd<2&&promotedIds[oldPd].includes(LG.playerId);
-  const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
-  // 5. Record history (OLD division in the history entry)
-  const porder=orders[oldPd];
-   // `cup` is stamped HERE, not in cupRecord. A season's hist entry is only created at the rollover
-   // OUT of it, and the cup is played in the gap between the two — so cupRecord writing to hist's
-   // newest entry credited the trophy to the season BEFORE the one it was won in. LG.season is still
-   // the closing season at this point, which is exactly what LG.cup.season holds.
+   if(orders[2][0])orders[2][0].t.up+=LGC.upChampTop;
+   // Relegation (player's penalty already applied at season-end so the lobby shows it).
+   for(let t=1;t<3;t++){
+    for(const e of orders[t].slice(-LGC.relegateN)){
+     if(e.i===LG.playerId)continue;
+     lgRelegatePenalty(e.t);
+    }
+   }
+   // Swap divisions
+   const promotedIds=[[],[]];for(let t=0;t<2;t++)promotedIds[t]=orders[t].slice(0,LGC.promoteN).map(e=>e.i);
+   const relegatedIds=[[],[]];for(let t=0;t<2;t++)relegatedIds[t]=orders[t+1].slice(-LGC.relegateN).map(e=>e.i);
+   for(let t=0;t<2;t++){
+    promotedIds[t].forEach(id=>{LG.teams[id].div=t+1;});
+    relegatedIds[t].forEach(id=>{LG.teams[id].div=t;});
+   }
+   const pPromoted=oldPd<2&&promotedIds[oldPd].includes(LG.playerId);
+   const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
+   // History row uses the OLD division; `cup` is stamped here because hist[N] is only pushed at the rollover OUT of N.
+   const porder=orders[oldPd];
    LG.hist.push({season:LG.season,
    divChamps:[orders[0][0]?orders[0][0].t.name:'',orders[1][0]?orders[1][0].t.name:'',orders[2][0]?orders[2][0].t.name:''],
    playerDiv:LGC.divisions[oldPd].name,
    playerPos:porder?porder.findIndex(e=>e.i===LG.playerId)+1:0,
    cup:(LG.cup&&LG.cup.done&&LG.cup.season===LG.season)?cupChampName():null,
    promoted:pPromoted,relegated:pRelegated});
-  // 6. AI spend
-  for(let i=0;i<LG.teams.length;i++){if(i!==LG.playerId)lgAiSpend(LG.teams[i]);}
-  teams=LG.teams;
+   // AI spend
+   for(let i=0;i<LG.teams.length;i++){if(i!==LG.playerId)lgAiSpend(LG.teams[i]);}
+   teams=LG.teams;
   }else{
-   const names=LGC.names.slice();
+const names=LGC.names.slice();
    for(let i=names.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=names[i];names[i]=names[j];names[j]=t;}
    const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
     const startDiv=opts&&opts.startDiv!=null?opts.startDiv:(LG?LG.teams[LG.playerId].div:1);
@@ -251,7 +202,7 @@ function lgNewSeason(keep,opts,forceSlot){
      bld:lgBld(LGC.divisions[startDiv].base),up:LGC.playerStart,
      model:opts&&opts.model?opts.model:(LG&&LG.teams[LG.playerId]?LG.teams[LG.playerId].model:cfg.modelRed),div:startDiv}];
    const pcol=teams[0].col;
-   const need=[LGC.divSize,LGC.divSize,LGC.divSize];need[startDiv]--; // player occupies one slot
+   const need=[LGC.divSize,LGC.divSize,LGC.divSize];need[startDiv]--;
    let nextId=1;for(let t=0;t<3;t++){
     for(let j=0;j<need[t];j++){
      let col=LGC.cols[nextId%LGC.cols.length];
@@ -268,27 +219,23 @@ function lgNewSeason(keep,opts,forceSlot){
    }
    LG={slot,name:opts&&opts.name?opts.name:(LG?LG.name:'LEAGUE '+(slot+1)),
     season:1,round:0,playerId:0,
-    // The four MATCH RULES this save owns (see lgGoalCap/lgMins below). Chosen on the create screen,
-    // editable from the lobby's Match Settings panel, and read by league AND cup ties alike.
     special:opts&&opts.special!=null?opts.special:(LG?LG.special:cfg.special),
     power:opts&&opts.power!=null?opts.power:(LG?LG.power:cfg.power),
-    goals:opts&&opts.goals!=null?opts.goals:(LG?LG.goals:cfg.goals), // goals to win (live AND simmed); new leagues seed from the quick-match pref
-    gameTime:opts&&opts.gameTime!=null?opts.gameTime:(LG?LG.gameTime:(cfg.gameTime||0)), // match time limit (mins; 0=unlimited) — set from the lobby Match Settings panel; new leagues seed from the quick-match pref
-    control:opts&&opts.control!=null?opts.control:(LG?LG.control:''), // default rod control for this save ('' all rods · GK/DEF/MID/ATT lock · watch spectate); lobby overrides persist here too
+    goals:opts&&opts.goals!=null?opts.goals:(LG?LG.goals:cfg.goals),
+    gameTime:opts&&opts.gameTime!=null?opts.gameTime:(LG?LG.gameTime:(cfg.gameTime||0)),
+    control:opts&&opts.control!=null?opts.control:(LG?LG.control:''),
     teams:[],divs:[],hist:[]};
- }
+  }
  for(const t of teams){t.w=0;t.l=0;t.gf=0;t.ga=0;t.p=0;}
  LG.teams=teams;LG.season=season;LG.round=0;
  const divs=[];for(let t=0;t<3;t++){
   const tids=teams.filter(te=>te.div===t).map(te=>te.id);
-   // Venue frozen onto the save at creation (read back by lgDivVenue) — `skin` is the table's
-   // livery and is part of it; a division that omits one gets the table's defSkin.
    divs.push({name:LGC.divisions[t].name,tier:t,teamIds:tids,fixtures:lgFixtures(tids),results:[],champ:null,
     table:LGC.divisions[t].table||'classic',skin:LGC.divisions[t].skin||null,
     room:roomIdOf(LGC.divisions[t].room),pitch:LGC.divisions[t].pitch||'grass1'});
  }
   LG.divs=divs;
-  LG.seasonEnd=null; // season-end summary already shown/applied — don't re-trigger
+  LG.seasonEnd=null;
   S.lgChampDone=false;saveLG();
 }
 /* ---- ratings + statistical sim (same stat weights spirit as live play) ---- */
@@ -310,20 +257,14 @@ function lgTeamForm(ti){
  }
  return out;
 }
-function lgSim(a,b){ // league fixture: timed leagues sim low-scoring, unlimited leagues race to the goal target
-  const A=LG.teams[a].bld,B=LG.teams[b].bld;
-  return lgSimBlds(A,B,lgMins());
+function lgSim(a,b){ // league fixture
+ const A=LG.teams[a].bld,B=LG.teams[b].bld;
+ return lgSimBlds(A,B,lgMins());
 }
-// Two builds directly (cup entrants aren't LG.teams). `mins` = the league's game-time limit (>0 =
-// timed; 0/omitted = unlimited → the classic race-to-goals). CUP TIES PASS IT TOO: a simmed
-// quarter-final in a 10-minute league must be shaped like the one the player just played. Timed:
-// draw a RANDOM total-goal count in [simMinGoals, simMaxGoals] from a centre-weighted (triangular)
-// distribution — so scores range from a tight 1–0 up to a 5–4, most sit mid-range, and lopsided
-// clean sheets are rarer — then split those goals by strength `p`, capped at the save's goal target
-// per team (a team hitting the cap ends regulation early, like the live cap). A level game is settled by
-// a sudden-death golden goal, so the result is ALWAYS decisive (no draws) — the league
-// table/points/promotion code is untouched. `mins` only selects timed-vs-unlimited; the score
-// spread is deliberately length-agnostic so every timed league gets the same lively variety.
+// Sim two builds directly (cup entrants aren't LG.teams). `mins` is the league's game-time limit
+// (0/omitted = unlimited race-to-goals). Timed: pick a total-goal count from a triangular
+// distribution over [simMinGoals, simMaxGoals], split by strength `p` (capped at the save's goal
+// target), then settle a tie with sudden-death. Spread is length-agnostic for variety.
 function lgSimBlds(A,B,mins){
   const p=1/(1+Math.exp(-((lgOff(A)-lgDef(B))-(lgOff(B)-lgDef(A)))*LGC.simK)),cap=lgGoalCap();
   let ga=0,gb=0;
@@ -378,16 +319,10 @@ function modelRenderMask(id){
  const s=RENDER_STEM[id];
  return (s&&MASK_STEMS.has(s))?'assets/renders/render_'+s+'_teammask.png':null;
 }
-/* ---- silverware -------------------------------------------------------------
+/* ---- silverware ----
    Every division has a trophy and so does the cup. The definition lives on the division in
-   CONFIG (beside its table/room/skin) and is looked up by TIER, so a save only ever stores the
-   tier a title was won in and the art can be retuned without touching old leagues. `cup` is
-   passed as the tier for the Champions Cup.
-   ART IS FOUND BY CONVENTION off the trophy id, the same shape modelRender() uses for the
-   figurines: render_trophy_<id>_cycles.png big, render_trophy_<id>_thumb.png small. A render
-   that isn't drawn yet costs nothing — trophyFig lays the image OVER the inline trophy mark and
-   only hides the mark on the image's own load, so a miss leaves the mark and the exact same
-   layout behind (the mugImg rule, applied to an innerHTML string). */
+   CONFIG and is looked up by TIER, so a save only stores the tier a title was won in and the
+   art can be retuned without touching old leagues. Art is found by convention off the trophy id. */
 function trophyDef(tier){
  if(tier==='cup')return (CUP&&CUP.trophy)||null;
  const d=LGC.divisions[tier];
@@ -400,27 +335,19 @@ function trophyFig(tier,cls,big){
   '<img class="troImg" src="'+trophyImg(d.id,big)+'" alt="'+d.name+'" '+
   'onload="this.parentNode.classList.add(\'on\')" onerror="this.remove()"></span>';
 }
-/* THE HONOURS RECORD. LG.trophies is the one source of truth for what the player has won.
-   The count it replaces filtered LG.hist for rows whose champion string matched the team's
-   CURRENT name, so renaming a team quietly erased its own history — and the row for a season is
-   only pushed at the rollover OUT of it, so a title never counted on the screen that awarded it.
-   Entries are {season,tier,id}; tier is 0-2 for a division title, 'cup' for the Champions Cup. */
+/* THE HONOURS RECORD. LG.trophies is the one source of truth for what the player has won. */
 function trophyList(){return (LG&&LG.trophies)||[];}
 function trophyCount(id){let n=0;for(const t of trophyList())if(t.id===id)n++;return n;}
-// Idempotent on (season,tier): lgFinalize is already guarded, but a re-entry must never
-// double-stamp a season, and the backfill below leans on this too.
+// Idempotent on (season,tier): lgFinalize is already guarded, but re-entry must never double-stamp.
 function trophyAward(tier,season){
  const d=trophyDef(tier);if(!d||!LG)return;
  if(!LG.trophies)LG.trophies=[];
  if(LG.trophies.some(t=>t.season===season&&t.tier===tier))return;
  LG.trophies.push({season:season,tier:tier,id:d.id});
 }
-/* Saves written before the record exists get one built from what CAN be known: a hist row whose
-   champion for a tier carries the player's name. That is the old name-match, with the old
-   name-match's one hole (an AI team sharing your name claims your title) — it runs once, on load,
-   and every title won from here is recorded properly. LG.cupTitles was a bare counter with no
-   seasons on it, so any cup hist can't account for lands as season 0: the count is right, the
-   year is lost. Returns true if it wrote, so loadLG knows to save. */
+/* Backfill honours for records written before LG.trophies existed: a hist row whose champion
+   carries the player's name counts. LG.cupTitles was a bare counter (no seasons), so any
+   pre-existing cup title is stamped as season 0 (the count is right, the year is lost). */
 function trophyBackfill(){
  if(!LG||LG.trophies)return false;
  LG.trophies=[];
@@ -451,8 +378,7 @@ function seedRuleCtls(ids){
  $(ids.special).checked=!!(LG&&LG.special);
  $(ids.power).checked=!!(LG&&LG.power);
 }
-// Writers go to LG, never to cfg — cfg is the quick-match preference and must survive a league
-// untouched (lgPlayMatch/cupPlayTie push these onto cfg at kickoff, flow.js restores them after).
+// Writers go to LG, never to cfg — cfg is the quick-match preference and must survive a league.
 function bindRuleCtls(ids){
  $(ids.goals).onchange=e=>{if(LG){LG.goals=+e.target.value;saveLG();}Au.ui();};
  $(ids.time).onchange=e=>{if(LG){LG.gameTime=+e.target.value;saveLG();}Au.ui();};
@@ -460,29 +386,17 @@ function bindRuleCtls(ids){
  $(ids.power).onchange=e=>{if(LG){LG.power=e.target.checked;saveLG();}Au.ui();};
 }
 function goalTarget(){return S.lg?lgGoalCap():cfg.goals;}
-// Match time limit in SECONDS (0 = unlimited). Quick/AI matches read cfg.gameTime; league AND cup
-// matches read the save's own LG.gameTime.
-function gameTimeLimit(){return (S.lg?lgMins():(cfg.gameTime||0))*60;}
-// A SKILL TRIAL PINS ITS OWN DIFFICULTY and is tested FIRST, because a trial whose opponent plays
-// at whatever the player last picked in Kick Off is not a trial — the medal times would not be
-// comparable between two players, or between one player before and after changing the setting.
-// Read straight off the spec rather than parked into cfg like the table is (js/trials.js): nothing
-// persists it, so there is nothing to leak and nothing to restore.
+function gameTimeLimit(){return (S.lg?lgMins():(cfg.gameTime||0))*60;}   // seconds; league/cup read the save's LG.gameTime, quick/AI read cfg.gameTime
+// Skill trials pin their own difficulty and are tested first; medals must be comparable across players.
 function teamDiff(t){
  if(S.trial&&S.trial.def&&S.trial.def.diff)return S.trial.def.diff;
- return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff)); // league: builds are layered on baseDiff (per-division override via S.lg.diff)
+ return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));
 }
-/* Pre-warm the shatter GLBs for the two figurines in the player's NEXT league/cup match while the
-   player is still sitting in the lobby, so the first cannonball kill of the match is a clone()+play()
-   with no disk-load or shader-compile stall. Quick/AI matches are covered because main.js primes the
-   default red/blue at boot AND startMatch primes activeModel(0/1) — but a LEAGUE opponent's figurine
-   is rarely one of those, so its shatter only started loading at startMatch (hence the first-kill lag).
-   This does the same ensureExplosionModel prime earlier: it loads + shader-warms off the game loop and
-   no-ops if already resident, so the later startMatch prime becomes a no-op. No pruning here — startMatch
-   still bounds residency to the two teams actually on the table; this only pulls them in ahead of time.
-   Guarded so a build without fracture fx / with the fn absent is a clean skip. Pass figurine model IDS
-   (t.model / cupEnt().model), NOT team indices — cfg.modelRed/Blue aren't swapped to the league teams
-   until lgPlayMatch, so activeModel() would read the wrong (menu) figurines here. */
+/* Pre-warm shatter GLBs for the two figurines in the next league/cup match while the player is
+   still in the lobby — no disk-load or shader-compile stall on the first cannonball kill. Quick/AI
+   matches are already covered by main.js/startMatch primes; league opponents are not. Pass figurine
+   model IDs (t.model / cupEnt().model), not team indices — cfg.modelRed/Blue aren't swapped to the
+   league teams until lgPlayMatch. */
 function primeMatchExplosions(idA,idB){
  if(typeof ensureExplosionModel!=='function')return;
  for(const id of [idA,idB])if(id)ensureExplosionModel(id);
@@ -511,7 +425,7 @@ function tapeDwell(cb){
 
   const imgs=[].slice.call($('lgTapeBody').querySelectorAll('.lgFigImg'))
               .concat(Object.keys(TAPE_IMG).map(k=>TAPE_IMG[k]));
-  Promise.all(imgs.map(im=>im&&im.decode?im.decode().catch(()=>0):0)).then(arm,arm);
+  Promise.all(imgs.map(im=>im&&im.decode?im.decode().catch(()=>0):0)).then(arm,arm);   // wait for tape portraits to decode before arming the dwell
  }else arm();
  return ()=>{clearTimeout(t1);clearTimeout(t2);armed=true;};
 }
@@ -563,13 +477,13 @@ function lgPlayMatch(){
 
  let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
  const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
- lgVenueEnter(lgDivVenue(playerDiv()),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen here
+lgVenueEnter(lgDivVenue(playerDiv()),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen
  loadPlayerModel(()=>{modelDone=true;check();});
  if(LGC.tape){
   renderLgTape(op);
   $('lgTape').classList.remove('hidden');
   const go=()=>{tapeDone=true;check();};
-  const cancel=tapeDwell(go);           
+  const cancel=tapeDwell(go);
   $('lgTape').onclick=()=>{cancel();go();};
  }
 }
@@ -595,7 +509,7 @@ function lgRecord(w){
  LG.round++;
   if(LG.round>=pdiv.fixtures.length){
    for(let t=0;t<3;t++){const order=lgOrderDiv(t);LG.divs[t].champ=order[0].t.name;}
-   if(!LG.seasonEnd)lgFinalize(); // freeze promotion/relegation + apply player's relegation penalty now
+   if(!LG.seasonEnd)lgFinalize();
   }
  for(let t=0;t<3;t++){
   const newRank=lgOrderDiv(t).map(e=>e.i);
@@ -603,7 +517,7 @@ function lgRecord(w){
  }
  saveLG();
 }
-function lgReturn(){$('lgSeasonEnd').classList.add('hidden');if(LG&&LG.seasonEnd){LG.seasonEnd.shown=true;saveLG();}gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg/S.teamStats; hide the season-end overlay + mark shown so openLeague doesn't re-pop it)
+function lgReturn(){$('lgSeasonEnd').classList.add('hidden');if(LG&&LG.seasonEnd){LG.seasonEnd.shown=true;saveLG();}gotoMenu();openLeague(true);} // win screen → lobby
 
 function lgFinalize(){ // freeze final standings + promotion/relegation + apply player's relegation penalty
   const orders=[lgOrderDiv(0),lgOrderDiv(1),lgOrderDiv(2)];
@@ -632,9 +546,7 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   if(pRelegated)playerLosses=lgRelegatePenalty(LG.teams[LG.playerId]);
   else if(pPromoted)playerGains=lgPromoteBoost(LG.teams[LG.playerId],pPos-1);
    LG.seasonEnd={season:LG.season,playerFate:fate,playerPos:pPos,playerDiv:oldPd,cupQualified:pCup,divs,playerLosses,playerGains,shown:false};
-   // Silverware, stamped HERE rather than at the rollover the way hist is: this is the moment the
-   // season is decided, it is what the summary screen about to open reads, and a player who quits
-   // before starting the next season still keeps the title. pPos===1, not `fate` — see lgSEFate.
+   // Silverware stamped here (not at the rollover the way hist is): this is when the season is decided.
    if(pPos===1)trophyAward(oldPd,LG.season);
   saveLG();
 }
@@ -688,16 +600,12 @@ function lgSEFate(se){
    relegated:['rel','▼ RELEGATED','#ff4d5a'],
    stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
   };
-  // FINISHING TOP lifts the silverware, not `playerFate` — lgFinalize sets 'champion' for the
-  // PREMIER ONLY, so a Sunday or Pro title lands here labelled 'promoted'. Gating the trophy on
-  // the fate would have silently hidden two of the three. The tier decides which one is lifted,
-  // and a lower-division winner gets both halves of what they did in the one label.
+  // FINISHING TOP (not `playerFate`) lifts the silverware — 'champion' is set for PREMIER ONLY,
+  // so a Sunday/Pro title lands here labelled 'promoted'. Tier decides which trophy is shown.
   const won=se.playerPos===1, d=won?trophyDef(se.playerDiv):null;
   const m=map[se.playerFate];
   if(won&&se.playerFate==='promoted')m[1]='▲ CHAMPIONS · PROMOTED';
   const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
-  // The hero shot sits ABOVE the fate plate and is the first thing on the screen. It is the big
-  // render, not the thumb: this is the one place worth the bytes.
   const hero=d?'<div class="troHero" style="--tc:'+(d.col||'var(--gold)')+'">'+
    trophyFig(se.playerDiv,'troBig',true)+
    '<div class="troHeroName">'+d.name+'</div></div>':'';
@@ -731,7 +639,7 @@ function lgSELoss(se){
     let pips='';
     for(let i=0;i<STC.max;i++){
      if(i<after)pips+='<b class="on">▮</b>';
-     else if(i<before)pips+='<b class="lost">▯</b>'; // the removed pip
+     else if(i<before)pips+='<b class="lost">▯</b>'; // removed pip
      else pips+='<b>▯</b>';
     }
     h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
@@ -836,10 +744,8 @@ function renderLgHist(){
  $('lgHist').innerHTML=h;
 }
 /* ---- trophy cabinet ----
-   Reads LG.trophies, never the standings: a title won three seasons ago is still yours after the
-   relegation that followed it, which is exactly what a cabinet is for. Ordered cup-first then top
-   division down, so the biggest thing you own is the thing you look at. Seasons are listed rather
-   than just counted — "S3 · S7" is a career, "×2" is a number. */
+   Reads LG.trophies (never the standings): a title won three seasons ago is still yours after
+   the relegation that followed it. Cup first, then top division down. */
 function renderLgCabinet(){
   const all=trophyList();
   $('lgCabinetPanel').classList.toggle('hidden',!all.length);
@@ -848,10 +754,9 @@ function renderLgCabinet(){
   for(const tier of ['cup',2,1,0]){
    const won=all.filter(t=>t.tier===tier),d=trophyDef(tier);
    if(!won.length||!d)continue;
-   // Backfilled cups carry season 0 (the old counter kept no year) — drop those rather than
-   // printing "S0", and the card falls back to the count on its own.
+   // Backfilled cups carry season 0 (the old counter kept no year) — drop those; ×N carries the total.
    const yrs=won.map(t=>t.season).filter(s=>s>0).sort((a,b)=>a-b);
-   const recent=yrs.slice(-3),ell=yrs.length>recent.length?'… ':'';   // the ×N badge carries the total
+   const recent=yrs.slice(-3),ell=yrs.length>recent.length?'… ':'';
    h+='<div class="troCard" style="--tc:'+(d.col||'var(--gold)')+'">'+
     trophyFig(tier,'troMd')+
     '<span class="troCardTxt"><span class="troCardName">'+d.name+'</span>'+
@@ -863,9 +768,9 @@ function renderLgCabinet(){
 /* ---- lobby UI ---- */
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
-  showScreen('league');   // hides menu/lgSlots + applies the saved panel arrangement (js/screens.js → layApply)
+  showScreen('league');   // hides menu/lgSlots + applies saved panel arrangement
   $('lgWipe').classList.add('hidden');   // overlay, so hideScreens() doesn't reach it
- 
+
   lgVenueEnter(lgDivVenue(playerDiv()));
   if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
   const pd=playerDiv(),dv=LG.divs[pd];
@@ -889,9 +794,7 @@ function renderLeague(reveal){
   else if(LG.season>1)ban='<div class="lgProRelBanner stay">STAYED IN '+LGC.divisions[pd].name.toUpperCase()+'</div>';
  }
  $('lgSeasonTag').innerHTML=(ban||'')+'<span>'+dv.name+' · SEASON '+LG.season+(dv.champ?' · COMPLETE':' · ROUND '+(LG.round+1)+' / '+dv.fixtures.length)+'</span>';
-  // Nothing that goes BACK or resets lives down here any more — that pair is the top-left
-  // corner on every screen. What's left is the two forward moves, and the row itself is hidden
-  // when neither applies, or its 22px top margin leaves a gap hanging under the panels.
+  // Row hidden when neither applies; the 22px top margin leaves a gap hanging under the panels otherwise.
   const canNext=!!dv.champ,hasCup=!!cupCurrent();
   $('lgNext').classList.toggle('hidden',!canNext);
   $('lgCup').classList.toggle('hidden',!hasCup);
@@ -918,7 +821,7 @@ function renderLgTable(){
 function renderLgFix(){
  const pd=playerDiv(),dv=LG.divs[pd],done=!!dv.champ,T=LG.teams,pid=LG.playerId;
  $('lgSettingsPanel').classList.toggle('hidden',done); // no match to configure once a division is complete
- 
+
  seedRuleCtls(LG_RULE_IDS);
  $('lgControl').value=LG.control||''; // seed from the save's default so it survives reloads
  $('lgPlay').classList.toggle('hidden',done);
@@ -1105,13 +1008,13 @@ function openSetup(slot){
  $('lgSetupColor').value=cfg.redColor;
  $('lgSetupHex').textContent=cfg.redColor;
 
- $('lgSetupGoals').value=String(cfg.goals||LGC.goals);
- $('lgSetupGameTime').value=String(cfg.gameTime||0);
- $('lgSetupSpecial').checked=cfg.special;
- $('lgSetupPower').checked=cfg.power;
- $('lgSetupControl').value=(LG&&LG.control)||''; // default rod control baked into this save (still overridable in the lobby)
- $('lgSetupDiv').value='1';
- LSP.load(cfg.modelRed,cfg.redColor); // initial 3D preview
+$('lgSetupGoals').value=String(cfg.goals||LGC.goals);
+  $('lgSetupGameTime').value=String(cfg.gameTime||0);
+  $('lgSetupSpecial').checked=cfg.special;
+  $('lgSetupPower').checked=cfg.power;
+  $('lgSetupControl').value=(LG&&LG.control)||''; // default rod control baked into this save (overridable in the lobby)
+  $('lgSetupDiv').value='1';
+  LSP.load(cfg.modelRed,cfg.redColor); // initial 3D preview
  const pal=$('lgSetupPal');pal.innerHTML='';
  CONFIG.playerModel.swatches.forEach(hex=>{
   const c=document.createElement('div');c.className='czChip';c.style.background=hex;c.dataset.hex=hex.toLowerCase();
@@ -1183,7 +1086,7 @@ function cupMakePool(existing){ // generate the elite pool ONCE; persists on LG 
     const team={id:'cup'+n,name:names[n]||('CUP TEAM '+(n+1)),col,
       model:mids[Math.floor(Math.random()*mids.length)],
       bld:lgBld(CUP.base),up:Math.round(rand(CUP.budget[0],CUP.budget[1]))};
-    lgAiSpend(team); // weighted-random spend → position-flavoured elite builds
+lgAiSpend(team); // weighted-random spend → position-flavoured elite builds
     pool.push(team);
   }
   return pool;
@@ -1201,16 +1104,13 @@ function cupCreate(){ // draw a fresh cup for this season's qualifier
   const ids=pool.map(e=>e.id);
   for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=ids[i];ids[i]=ids[j];ids[j]=t;}
   const drawn=['player'].concat(ids.slice(0,CUP.drawSize)); // player + 7 of 12 (5 spares)
-  // WHO you get is random — the shuffle above. WHERE you meet them is not, and that's what gives a
-  // bracket stakes: rank the field, then place it by cupSeedOrder. Come in as the top seed and the
-  // draw opens up in front of you; scrape in 8th and you meet the best team in the cup first.
+  // WHO you get is random; WHERE (cupSeedOrder over the ranked field) is not, and that's the bracket's stakes.
   if(CUP.seeded===false)for(let i=drawn.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=drawn[i];drawn[i]=drawn[j];drawn[j]=t;}
   else drawn.sort((a,b)=>cupRate(cupEnt(b,pool))-cupRate(cupEnt(a,pool)));
   const seeds={};drawn.forEach((id,i)=>{seeds[id]=i+1;});   // rendered beside each name
   const slots=cupSeedOrder(drawn.length).map(s=>drawn[s]);
   const ties=[];for(let i=0;i<slots.length;i+=2)ties.push({a:slots[i],b:slots[i+1],res:null,played:false});
-  // LG.cup is assigned LAST, whole: a throw anywhere above then leaves the previous state
-  // untouched instead of stranding a bracket-less cup that cupValid() would reject forever.
+  // LG.cup assigned LAST, whole: a throw above leaves the previous state intact instead of stranding a bracket-less cup.
   LG.cup={season:LG.season,round:0,playerOut:false,done:false,champion:null,celeb:false,pool,seeds,roundsTies:[ties]};
   LG.teams[pid].up+=CUP.enterParts; // participation bonus
   if(LG.seasonEnd)LG.seasonEnd.shown=true; // don't re-pop the season summary on return
@@ -1226,9 +1126,8 @@ function cupPlayTie(){
   const oppId=tie.a==='player'?tie.b:tie.a;
   const pa=cupEnt('player'),pb=cupEnt(oppId);
   S.teamStats=[pa.bld,pb.bld];
-  // prevKit is KIT ONLY (the venue is the cup SESSION's — see the venue block at the top of this
-  // file). Still carried through consecutive ties: after tie 1 the live cfg already holds the cup
-  // kit, so re-snapshotting it would lose the player's real one.
+  // prevKit is KIT ONLY (the venue is the cup SESSION's). Carried through consecutive ties: after
+  // tie 1 cfg already holds the cup kit, so re-snapshotting loses the player's real one.
   const pk=(S.lg&&S.lg.prevKit)||{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
             special:cfg.special,power:cfg.power};
   S.lg={cup:true,diff:CUP.diff||LGC.baseDiff,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
@@ -1236,26 +1135,23 @@ function cupPlayTie(){
   const sel=$('cupControl').value;
   $('league').classList.add('hidden');$('championsCup').classList.add('hidden');
   cfg.redColor=pa.col;cfg.modelRed=pa.model;cfg.blueColor=pb.col;cfg.modelBlue=pb.model;
-  // MATCH RULES come from the LEAGUE, not from CUP.* — the cup is this save's post-season, so a tie
-  // plays to the same goal target/clock/special balls/power-ups as the season that qualified you.
-  // (goals + game time arrive via goalTarget()/gameTimeLimit(); these two are read off cfg directly
-  // by balls.js/powerups.js, and prevKit puts the player's own back afterwards.)
+  // MATCH RULES come from the LEAGUE (not CUP.*): the cup is this save's post-season, so a tie
+  // plays to the same goal target/clock/special balls/power-ups as the season that qualified.
   cfg.special=LG.special;cfg.power=LG.power;
   document.documentElement.style.setProperty('--c0',cfg.redColor);
   document.documentElement.style.setProperty('--c1',cfg.blueColor);
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
-  // Same gate as lgPlayMatch, and normally synchronous — openCup already put the venue on. cupVenue
-  // returns the pitch PINNED TO THIS TIE, so the arena you played the bracket screen in is the one
-  // you kick off in (it used to re-roll here, so the lobby and the match disagreed).
+  // Same gate as lgPlayMatch, normally synchronous — openCup already put the venue on. cupVenue
+  // returns the pitch PINNED TO THIS TIE so the bracket and the match agree.
   let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
   const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
-  lgVenueEnter(cupVenue(),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen here
+  lgVenueEnter(cupVenue(),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen
   loadPlayerModel(()=>{modelDone=true;check();});
   if(LGC.tape){
     renderCupTape(oppId);
     $('lgTape').classList.remove('hidden');
     const go=()=>{tapeDone=true;check();};
-    const cancel=tapeDwell(go);          // dwell starts once the portraits can paint (see tapeDwell)
+    const cancel=tapeDwell(go);   // dwell starts once the portraits can paint (see tapeDwell)
     $('lgTape').onclick=()=>{cancel();go();};
   }
 }
@@ -1267,8 +1163,7 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
   const bar=(label,val,cls)=>'<div class="lgRateBar"><span class="'+cls+'">'+label+'</span><div class="lgRate"><div class="'+cls+'" style="width:'+(val/10*100|0)+'%"></div></div><span class="num">'+(val*10|0)/10+'</span></div>';
   const rA=modelRender(me.model),rB=modelRender(them.model);
   const kA=modelRenderMask(me.model),kB=modelRenderMask(them.model);
-  // Card markup is tapeFig(), shared with renderLgTape — this used to be a second copy of the same
-  // string builder, which is how the two tapes were free to drift apart.
+  // Card markup is tapeFig(), shared with renderLgTape.
   const teamCard=(col,name,off,def,figHtml)=>
    '<div class="lgTapeTeam"><h2 style="color:'+col+'">'+name+'</h2>'+figHtml+bar('DEF',def,'def')+bar('OFF',off,'off')+'</div>';
   $('lgTapeBody').innerHTML=
@@ -1278,14 +1173,10 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
   $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
 }
 function cupWinnerOf(t){return t.res[0]>t.res[1]?t.a:t.b;}
-// A tie's res is indexed by a/b. The player is ALWAYS team 0 in the live match (cupPlayTie seats
-// them red) but the draw puts them on either side of the tie, so the scoreline has to be oriented
-// on the way in. Everything downstream reads res positionally — get this wrong and winning knocks
-// you out, which is exactly what the old `[w,1-w]` did.
+// Tie's res is indexed by a/b. The player is ALWAYS team 0 in the live match (cupPlayTie seats them
+// red) but the draw puts them on either side of the tie, so the scoreline must be oriented here.
 function cupTieRes(tie,pGoals,oGoals){return tie.a==='player'?[pGoals,oGoals]:[oGoals,pGoals];}
-// THE tree pairing, used by both live play and the sim-ahead: winner of tie 2j meets winner of
-// tie 2j+1, slots preserved. One definition so the bracket the player walks and the bracket the
-// sim finishes for them can never be drawn differently.
+// Tree pairing shared by live play and the sim-ahead: winner of tie 2j meets winner of 2j+1.
 function cupNextRound(ties){
   const w=ties.map(cupWinnerOf),nt=[];
   for(let i=0;i<w.length;i+=2)nt.push({a:w[i],b:w[i+1],res:null,played:false});
@@ -1304,15 +1195,13 @@ function cupAdvance(ties){ // sim the rest of the bracket from `ties`' winners d
 function awardCupWin(){
   const pid=LG.playerId;
   LG.teams[pid].up+=CUP.winParts;
-  LG.cupTitles=(LG.cupTitles||0)+1;   // kept: old saves are backfilled from it, and it costs a byte
-  // The cup is played in the gap between two seasons, so the season it belongs to is the one on
-  // the cup itself — LG.season has not rolled yet, but reading it here would be luck, not logic.
+  LG.cupTitles=(LG.cupTitles||0)+1;   // kept: old saves are backfilled from it, costs a byte
+  // The cup is played in the gap between seasons, so the season it belongs to is the one on the cup itself.
   trophyAward('cup',(LG.cup&&LG.cup.season)||LG.season);
 }
-// `w` (winning team index) is accepted so flow.js can call cupRecord and lgRecord through one
-// expression, but it is deliberately IGNORED — S.score is the authoritative result and carries the
-// real scoreline, which is what the bracket displays. The forfeit path sets S.score itself.
-function cupRecord(w){ // called by endMatch while S.lg.cup is live (player just finished their tie)
+// `w` is accepted so flow.js can call cupRecord and lgRecord through one expression, but is
+// IGNORED — S.score is the authoritative result. The forfeit path sets S.score itself.
+function cupRecord(w){ // called by endMatch while S.lg.cup is live
   if(!LG||!LG.cup||!S.lg||!S.lg.cup||S.lg.rec)return;S.lg.rec=true;
   const cup=LG.cup,round=cup.round,ties=cup.roundsTies[round],tie=S.lg.res,pid=LG.playerId;
   tie.res=cupTieRes(tie,S.score[0],S.score[1]);tie.played=true;
@@ -1325,23 +1214,19 @@ function cupRecord(w){ // called by endMatch while S.lg.cup is live (player just
     cup.round=cup.roundsTies.length-1;
     cup.done=true;
   }else if(last){                        // won the Final
-    cup.champion='player';cup.done=true;parts=CUP.winParts;awardCupWin();   // awardCupWin does the actual credit
+    cup.champion='player';cup.done=true;parts=CUP.winParts;awardCupWin();   // awardCupWin does the credit
   }else{                                 // through to the next round
     cup.roundsTies.push(cupNextRound(ties));cup.round++;
     parts=CUP.tieParts||0;LG.teams[pid].up+=parts;
   }
-  // Read by endMatch's win screen. Progress used to be its own reward and nothing else — a tie win
-  // paid out only if it happened to be the final, so three of the four rounds ended on a blank.
+  // Read by endMatch's win screen.
   S.lg.parts=parts;S.lg.champ=cup.done&&cup.champion==='player';
-  // NOTE: the trophy is stamped into LG.hist by lgNewSeason, NOT here. The hist entry for season N
-  // is only pushed at the rollover INTO N+1, and the cup is played before that — so writing to
-  // hist's newest entry from here credited the cup to the PREVIOUS season's row.
+  // Trophy is stamped into LG.hist by lgNewSeason, NOT here — hist[N] is only pushed at the
+  // rollover INTO N+1, and the cup is played before that.
   saveLG();
 }
 /* ---- cup lobby UI (mirrors the league lobby panel-for-panel) ---- */
-// Just the tree. It's one panel among several now, so it no longer carries the next-tie line or
-// the shot of the trophy — those have panels of their own (renderCupFix / the cupResult below,
-// which stays here because it belongs under the bracket it's the conclusion of).
+// Just the tree. Next-tie line and trophy shot have panels of their own (renderCupFix / cupResult).
 function renderCupBracket(){
   const cup=LG.cup,sd=cup.seeds||{};
   let h='<div class="cupBracket">';
@@ -1352,7 +1237,7 @@ function renderCupBracket(){
       const ea=cupEnt(t.a),eb=cupEnt(t.b);
       const aWon=t.res&&t.res[0]>t.res[1],bWon=t.res&&t.res[1]>t.res[0];
       const playerHere=(t.a==='player'||t.b==='player');
-      // data-ent drives the scout click below — same affordance as clicking a league standings row.
+      // data-ent drives the scout click — same affordance as clicking a league standings row.
       const row=(ent,goals,won,isPlayer)=>
         '<div class="cupTeam'+(won?' win':'')+(isPlayer?' me':'')+'" data-ent="'+ent.id+'">'+
         '<span class="seed">'+(sd[ent.id]||'')+'</span>'+
@@ -1374,7 +1259,7 @@ function renderCupBracket(){
   $('cupBracket').querySelectorAll('.cupTeam').forEach(n=>{n.onclick=()=>renderCupScout(n.dataset.ent);});
 }
 /* Next Tie + Match Settings, the cup's twin of renderLgFix. Both panels drop out once there's no
-   tie left to play, exactly as the league's do when a division is complete. */
+   tie left to play. */
 function renderCupFix(){
   const sd=(LG.cup.seeds)||{},tie=cupPlayerTie(),me=cupEnt('player');
   $('cupFixturePanel').classList.toggle('hidden',!tie);
@@ -1382,7 +1267,7 @@ function renderCupFix(){
   $('cupPlay').classList.toggle('hidden',!tie);
   seedRuleCtls(CUP_RULE_IDS);
   // Its OWN key, not LG.control: a lock picked for a league round shouldn't follow you into a final.
-  $('cupControl').value=LG.cupControl!=null?LG.cupControl:(LG.control||'');
+  $('cupControl').value=LG.cupControl!=null?LG.cupControl:(LG.control||''); // own key — a league-round lock shouldn't follow into a final
   if(!tie)return;
   const opp=cupEnt(tie.a==='player'?tie.b:tie.a);
   $('cupFixture').innerHTML='<span style="color:'+me.col+'">'+me.name+'</span><span class="lgVs">VS</span>'+
@@ -1393,9 +1278,8 @@ function renderCupFix(){
   primeMatchExplosions(me.model,opp.model); // warm both shatters now, while in the lobby
   primeMatchTape(me.model,opp.model);       // and both tape portraits, so the splash paints whole
 }
-/* Cup scout. Entrants are NOT LG.teams — a KO field has no table, so there's no W/L, no GF/GA and
-   no form to show. The record line is the seed + cup rating instead (the same `cupRate` the draw
-   is ordered by); everything below it is the league scout's own markup off the same helpers. */
+/* Cup scout. Entrants are NOT LG.teams — no table, no W/L, no GF/GA, no form. The record line
+   is the seed + cup rating (the same `cupRate` the draw is ordered by). */
 function renderCupScout(id){
   if(!id)return;
   const e=cupEnt(id),sd=(LG.cup&&LG.cup.seeds)||{};
@@ -1413,11 +1297,9 @@ function renderCupScout(id){
   if(m)mugImg(m,$('cupScoutBody').querySelector('.figMug'),'figMugImg','hasMug');
   $('cupScout').classList.remove('hidden');
 }
-/* Cup honours. THIS season's trophy is read off LG.cup directly and prepended, because a season's
-   LG.hist entry is only pushed at the rollover OUT of it and the cup is played in the gap between
-   — the same asymmetry that makes lgNewSeason (not cupRecord) stamp hist[].cup. The prepend is
-   gated on cupCurrent() so that after a rollover, when the hist row finally exists, the finished
-   bracket sitting on LG doesn't render the same trophy twice. */
+/* Cup honours. THIS season's trophy is read off LG.cup directly and prepended — the hist row
+   for season N is only pushed at the rollover OUT of it and the cup is played in the gap between,
+   so lgNewSeason stamps hist[].cup. Gated on cupCurrent() so a finished bracket doesn't render twice. */
 function renderCupHist(){
   const playerName=LG.teams[LG.playerId].name,rows=[];
   if(cupCurrent()&&LG.cup.done&&LG.cup.champion)rows.push({season:LG.cup.season,champ:cupChampName()});
@@ -1437,41 +1319,30 @@ function renderCup(){
   if(!LG||!LG.cup)return;
   const cup=LG.cup,out=cup.done&&cup.playerOut;
   $('cupTitle').textContent=CUP.name;
-  // Rules ride the subtitle as well as the settings panel: on a DECIDED cup the panel is gone
-  // (nothing left to configure) and this is then the only record of what the ties were played to.
+  // Rules ride the subtitle as well as the settings panel; on a DECIDED cup the panel is gone.
   $('cupSub').textContent='SEASON '+cup.season+' · '+(cup.done?(out?'ELIMINATED':'COMPLETE'):CUP.rounds[cup.round])+' · '+lgRulesLabel();
   renderCupBracket();renderCupFix();renderCupSquad();renderCupHist();
-  // Back moved to the corner, so Continue is the only thing left down here — and the row has to
-  // go with it, or its 22px top margin leaves a gap under the bracket on every unfinished cup.
+  // Row hidden when Continue isn't visible, or its 22px top margin leaves a gap under the bracket.
   $('cupDone').classList.toggle('hidden',!cup.done);
   $('cupBtnRow').classList.toggle('hidden',!cup.done);
-  // Lifting the cup is the biggest thing in the mode and had no moment of its own — the win screen
-  // celebrated the FINAL, then handed over to a bracket that just quietly said CHAMPION. Fires once
-  // ever, latched on the save (not on S) so re-opening a won bracket doesn't re-trigger it.
+  // Lifting the cup is the biggest thing in the mode — fires once, latched on the save.
   if(cup.done&&cup.champion==='player'&&!cup.celeb){cup.celeb=true;saveLG();confetti(0);Au.goal();}
 }
 function openCup(){
-  // overlays + the HUD aren't in the screen registry — arriving from a finished tie's win screen
-  // means they can all still be up, so they're taken down by hand before routing.
+  // overlays + the HUD aren't in the screen registry — taken down by hand before routing.
   $('lgSeasonEnd').classList.add('hidden');$('lgForfeit').classList.add('hidden');$('lgWipe').classList.add('hidden');
-  $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');
-  showScreen('championsCup');   // …and applies this screen's saved panel arrangement (js/layout.js)
-  // The bracket sits in the cup's own venue, same rule as the league lobby — and it cancels the
-  // restore the screen change above just scheduled, so walking league→cup doesn't free and re-fetch
-  // a room in between. Ahead of renderCup because cupVenue may stamp this tie's pitch onto the save.
+  $('pause').classList.add('hidden');$('win').classList.add('hidden');hudShow(false);
+  showScreen('championsCup');   // applies this screen's saved panel arrangement (js/layout.js)
+  // Cup owns its own venue (same rule as the league lobby); the screen change above cancels the
+  // restore, so walking league→cup doesn't free and re-fetch a room in between.
   lgVenueEnter(cupVenue());
   renderCup();
-  // Open on the opponent, like openLeague does — the scout panel starts hidden, and a panel you
-  // have to discover by clicking is a panel most players never see. Falls back to the champion on
-  // a decided cup so the slot isn't just empty.
+  // Open on the opponent so the scout panel isn't a click-to-discover surface most players never find.
   const tie=cupPlayerTie();
   if(tie)renderCupScout(tie.a==='player'?tie.b:tie.a);
   else if(LG.cup.champion)renderCupScout(LG.cup.champion);
 }
-function cupReturn(){gotoMenu();openLeague(true);} // win screen → lobby (gotoMenu clears S.lg)
-/* Deal a new season and repaint the lobby around it. keep=true carries the save forward (a
-   settled table → next season); keep=false throws it away and starts the league again. This was
-   inline on one dual-purpose button — it's a function now because two buttons call it. */
+function cupReturn(){gotoMenu();openLeague(true);}
 function lgRestart(keep){
  lgNewSeason(keep);
  renderLeague();
@@ -1479,34 +1350,26 @@ function lgRestart(keep){
  if(fx)renderLgScout(fx[0]===LG.playerId?fx[1]:fx[0]);
  Au.ui();
 }
-/* Leaving the lobby with the confirm still up would strand it over #home — it's an overlay, so
-   hideScreens() walks straight past it. Covers Esc and the corner arrow in one place. */
-SCREENS.league.onHide=()=>{$('lgWipe').classList.add('hidden');};
+SCREENS.league.onHide=()=>{$('lgWipe').classList.add('hidden');};   // overlay — hideScreens() walks past it; covers Esc and the corner arrow
 /* ---- bind ---- */
 function bindLeague(){
   $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
   $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
-  // Reset and Next Season used to be ONE button that swapped its own label, so at the end of a
-  // season the click that carried you forward sat exactly where the click that wiped the save
-  // had been. Split in two: the corner ↺ always resets, the bottom button always advances. The
-  // corner one is unlabelled and a thumb-width from Back, hence the confirm.
+  // Corner ↺ always resets (confirm is because it's a thumb-width from Back and unlabelled).
   $('lgReset').onclick=()=>{$('lgWipe').classList.remove('hidden');Au.ui();};
   $('btnWipeCancel').onclick=()=>{$('lgWipe').classList.add('hidden');Au.ui();};
   $('btnWipe').onclick=()=>{$('lgWipe').classList.add('hidden');lgRestart(false);};
   $('lgNext').onclick=()=>lgRestart(true);
    $('lgPlay').onclick=lgPlayMatch;
-   // The save's four match rules, on BOTH lobbies against the same LG fields (bindRuleCtls). One
-   // value, two sets of controls — the cup panel isn't a second config, it's the same one.
    bindRuleCtls(LG_RULE_IDS);bindRuleCtls(CUP_RULE_IDS);
-   $('lgControl').onchange=e=>{if(LG){LG.control=e.target.value;saveLG();}Au.ui();};       // persist the lobby rod-control choice so it survives reloads
+   $('lgControl').onchange=e=>{if(LG){LG.control=e.target.value;saveLG();}Au.ui();};   // persist rod-control choice across reloads
    $('lgCup').onclick=openCup;
    $('btnWinContinue').onclick=lgWinContinue;
    $('lgSEContinue').onclick=lgReturn;
    $('cupPlay').onclick=cupPlayTie;
-   $('cupDone').onclick=cupReturn;   // was bound to NOTHING — a visible dead button on the one screen you reach by winning a cup
+   $('cupDone').onclick=cupReturn;   
    $('cupBack').onclick=cupReturn;
-   // Persisted on its own key rather than sharing LG.control: the cup is a different table with
-   // different stakes, and a lock chosen for a league round shouldn't silently follow you into a final.
+   // Own key, not LG.control: the cup is a different table with different stakes.
    $('cupControl').onchange=e=>{if(LG){LG.cupControl=e.target.value;saveLG();}Au.ui();};
    $('lgSlotsBack').onclick=()=>{showScreen('home');Au.ui();};
 }

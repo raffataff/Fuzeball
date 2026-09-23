@@ -33,7 +33,10 @@ function boot(mutate){
   +'trialDir,trialBetter,trialScoreText,trialServe,trialAttemptEnd,trialSpawnFor,trialServeDelay,RODRST};';
  const sb={console:{log(){},warn(){}},Math,Date,JSON,Object,Array,String,Number,Map,Set,isFinite,
   localStorage:{getItem:()=>null,setItem(){}},addEventListener(){},setTimeout(){},
-  navigator:{}};
+  navigator:{},
+  // trialFinish reads performance.now() for WHEN the result card appears (TRL.showAt) — display
+  // timing only; the medal clock is S.time and never touches this.
+  performance:{now:()=>0}};
  sb.globalThis=sb;
  sb.document={getElementById:id=>EL(sb,id),createElement:()=>EL(sb,'_new'),body:{appendChild(){}}};
  vm.runInNewContext(src,sb,{filename:'trials-boot'});
@@ -68,6 +71,7 @@ function resetRodRotation(){RODRST.resets++;}
 function syncBall(){}
 function updateScoreUI(){}
 function updateChips(){}
+function hudHint(){}   // js/hud.js — the controls hint is canvas now, not a #hint node
 function confetti(){}
 function saveCfg(){SAVES++;}
 var Au={init:function(){},ui:function(){},goal:function(){},whistle:function(){}};

@@ -227,8 +227,8 @@ function trainingEnter(){
  $('trnFreeze').classList.remove('on');
  trnSetPlacing(false);trnRefreshSpots();
  $('trnPanel').classList.remove('hidden');
- $('count').style.display='none';
- $('hint').innerHTML='T — panel · P — freeze · O — step · G — click-place<br>SPACE / click — kick · SHIFT / R-click — raise · V — camera · C — debug';
+ hudCount('');
+ hudHint('[T] panel · [P] freeze · [O] step · [G] place ball\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [V] camera · [C] debug');
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
  // A queued Skill Trial (js/trials.js) takes the sandbox over from here — it re-places the ball,

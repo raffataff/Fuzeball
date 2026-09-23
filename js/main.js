@@ -61,8 +61,8 @@ function loop(t){
     S.countT-=rdt;
     const v=Math.ceil(S.countT);
     if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.beep(880,.09,'square',.14);}
-    $('count').textContent=S.countT>3?'READY':(v>=1?String(v):'');
-    if(S.countT<=0){$('count').style.display='none';Au.beep(1400,.2,'square',.18);serve();}
+    hudCount(S.countT>3?'READY':v>=1?v:'');
+    if(S.countT<=0){hudCount('');Au.beep(1400,.2,'square',.18);serve();}
    }
   }
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);
@@ -132,7 +132,6 @@ function loop(t){
  if(S.phase!=='replay')cameraUpdate(rdt);   // the replay's shot camera has the conn during playback
  debugUpdate();
  sweetGuideUpdate();
- if(S.phase!=='menu')hudTick(rdt);
  if(S.trn)trainingTick();               // training panel readout (ball pos/speed)
  // photo mode (F1) — camera rig, key/turntable motion and the scene hides. LAST on purpose: it has
  // to write AFTER fxUpdate and sweetGuideUpdate, which own the markers it hides and would put them
@@ -157,6 +156,9 @@ function loop(t){
   // Safe under the gate: photo mode is one of the states it never skips.
   if(S.photo)phPostRender();
  }
+ // the canvas HUD (js/hud.js) — OUTSIDE the idle-skip gate: a toast or a fade must land on a frame
+ // the table itself skipped, and it clears itself to nothing when there is nothing to show.
+ hudRender(rdt);
  perfAdd('p','rend');
  perfFrameEnd();
 }

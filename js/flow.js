@@ -179,11 +179,11 @@ function startMatchNow(mode,rodLockRole){
   // The camera persists between matches, so a shot that was fine last game (a red-only end cam)
   // may not be offerable now that blue has a player too — step off it rather than start there.
   if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
- // Rod-switch keys only make sense when somebody can actually switch (a locked seat has one rod).
- $('hint').innerHTML=(S.seats.some(s=>s.rods.length>1)
-  ?'◀ ▶ / Q E — switch rod &nbsp;·&nbsp; ▲ ▼ / mouse — slide<br>'
-  :'▲ ▼ / mouse — slide<br>')
-  +'SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; V — camera';
+  // The hint speaks to the devices actually seated — keys for a keyboard, pad buttons when only pads
+  // are, nothing but the camera for a spectated match — and offers switching only if someone can.
+  {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),sw=S.seats.some(s=>s.rods.length>1);
+   hudHint(!S.seats.length?'[V] camera':!kb?(sw?'[LB] [RB] switch rod · ':'')+'[LS] slide\n[A] kick · [X] raise'
+    :(sw?'[Q] [E] switch rod · ':'')+'[↑] [↓] [MOUSE] slide\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [V] camera');}
  // Remember where this match was launched from so quitting returns THERE: a quick match started
  // on Kick Off goes back to Kick Off (rematch is one click), training started on home goes back
  // to home. League/cup have their own return paths (lgReturn/cupReturn re-open the lobby with
@@ -191,10 +191,7 @@ function startMatchNow(mode,rodLockRole){
  S.fromScreen=S.lg?'home':screenId();
  hideScreens();                                                        // every registered screen down (js/screens.js)
  $('pause').classList.add('hidden');$('win').classList.add('hidden');  // overlays aren't registered, so they're torn down by hand
- $('hud').classList.remove('hidden');
- $('sbRN').textContent=teamName(0);$('sbBN').textContent=teamName(1);
-  clearFxRail();   // rail must not carry tabs over from the previous match
-  updateScoreUI();updateChips();
+ hudShow(true);   // canvas HUD up: this match's names, colours and score, no tabs carried over (js/hud.js)
   // Pre-kickoff shader warm (fracture.js): compile every fx a match can fire — each ball type's
   // material + the shatter/swirl templates — at THIS match's exact light count, before the whistle.
   // Runs here (after table/room/colours are applied, before the countdown) so the first fireball /
@@ -208,7 +205,7 @@ function startMatchNow(mode,rodLockRole){
   banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7,'var(--gold)');
  startCount(MATCH.countIn);
 }
-function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;$('count').style.display='block';$('count').textContent='';}
+function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;}   // the loop is the count's only writer (main.js → hudCount)
 function onGoal(team,b){
  if(b.scored)return;
  if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
@@ -331,7 +328,7 @@ function gotoMenu(){
   // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);
  S.lg=null;S.teamStats=null; // drop any league-match bridge (abandoned matches aren't recorded)
- $('pause').classList.add('hidden');$('win').classList.add('hidden');$('hud').classList.add('hidden');  // overlays — not in the screen registry
+ $('pause').classList.add('hidden');$('win').classList.add('hidden');hudShow(false);  // overlays — not in the screen registry
  showScreen(S.fromScreen||'menu');   // back to the launching screen (see startMatchNow); also re-clamps a saved panel arrangement
- indicators.forEach(m=>{m.visible=false;});dropRing.visible=false;$('count').style.display='none';
+ indicators.forEach(m=>{m.visible=false;});dropRing.visible=false;
 }

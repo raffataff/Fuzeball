@@ -212,8 +212,7 @@ function trialArm(){
  TRL.hidWas=TRN.hidden.slice();
  buildTrialHud();
  const p=$('trnPanel');if(p)p.classList.add('hidden');   // sandbox tools are not trial tools
- $('hint').innerHTML='R — retry &nbsp;·&nbsp; ESC — pause / quit<br>'
-  +'SPACE / click — kick &nbsp;·&nbsp; SHIFT / R-click — raise &nbsp;·&nbsp; Q E — switch rod';
+ hudHint('[R] retry · [ESC] pause\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [Q] [E] switch rod');
  trialReset();
  return true;
 }

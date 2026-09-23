@@ -52,7 +52,7 @@ function collectPU(){
  if(t.key==='freeze')S.eff[1-team].frozen=S.time+PWR.freeze;
  if(t.key==='big')S.eff[team].big=S.time+PWR.big;
  // No banner: the rail tab sliding out of this team's score IS the notification (hud.js
- // fxRailSync). Freeze is the exception — its tab appears on the RIVAL's side, so the team that
+ // hudTabs). Freeze is the exception — its tab appears on the RIVAL's side, so the team that
  // actually collected it would otherwise get no feedback at all.
  notice(nm+' · '+t.label,1.2,team===0?'var(--c0)':'var(--c1)');
  Au.power();

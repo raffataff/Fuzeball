@@ -288,11 +288,7 @@ function replaySaveClip(){
  RP.keep=clipKeep(CAPTURE.prefix+'_'+clipSlug(teamName(RP.team))+'_'+clipStamp());
  replaySaveUI(RP.keep?'saving':'off');
 }
-function replaySaveUI(st){
- const el=$('repSave');if(!el)return;
- el.className=st||'';
- el.textContent=st==='saving'?REPLAY.save.saving:st==='off'?'':REPLAY.save.hint;
-}
+function replaySaveUI(st){hudReplaySave(st||'armed');}   // '' = armed (the offer), 'saving', 'off'
 
 function replayStart(){
  RP.queued=false;RP.on=true;S.phase='replay';
@@ -311,9 +307,8 @@ function replayStart(){
  replayCamStash();                            // free-roam only — see replayCamStash
   replayGhosts();
   for(const g of RP.ghosts){g.typ=-1;replayGhostHide(g);g.trailT=0;}
- document.body.classList.add('replayOn');
- $('replayUI').classList.remove('hidden');
- replaySaveArm();
+  hudReplay(true,RP.team);                    // letterbox in, match chrome out (js/hud.js)
+  replaySaveArm();
  flash();Au.ui();
 }
 function replayEnd(){
@@ -326,10 +321,9 @@ function replayEnd(){
   for(const r of rods){r.pivot.position.z=r.offset;r.pivot.rotation.z=r.angle;}   // hand the pivots back to the live sim pose
  clipStop();                                  // writes the file iff it was promoted; async, lands a beat later
  const saved=RP.keep;RP.keep=false;
- document.body.classList.remove('replayOn');
- $('replayUI').classList.add('hidden');
- // Confirmation goes out AFTER the chrome is down, because the HUD (which owns toast) is faded
- // to zero for the whole replay — a toast fired any earlier is a toast nobody sees.
+  hudReplay(false);
+ // Confirmation goes out AFTER the letterbox is down: the bottom bar is where the save state was
+ // shown, and a toast landing on top of it reads as the bar glitching rather than as a result.
  if(saved)toast('CLIP SAVED','goal replay → downloads');
  // A match-winning goal held its win back so this replay could play (flow.js onGoal) — go to the
  // win screen instead of a re-count. endMatch does its own flash/shake, so don't double up.
@@ -347,9 +341,8 @@ function replayAbort(){
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
  replayCamRestore();                          // same handback on a hard bail (menu quit / new match)
   if(RP.ghosts)for(const g of RP.ghosts)replayGhostHide(g);
- clipStop();RP.keep=false;                    // a quit mid-replay still writes a clip that was asked for
- document.body.classList.remove('replayOn');
- $('replayUI').classList.add('hidden');
+clipStop();RP.keep=false;                    // a quit mid-replay still writes a clip that was asked for
+  hudReplay(false);
 }
 
 function replayUpdate(rdt){
