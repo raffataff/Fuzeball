@@ -9,7 +9,8 @@
 const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,mouseLock:true,
  padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
- padChargeBtn:'rt'};
+ padChargeBtn:'rt',
+ sound:true,ambience:true,volMaster:1,volFx:1,volCrowd:1,volUi:1,muteBg:false};
 
 // Standard-layout button map for the live tester (index → label).
 const OPT_BTNS=[[0,'A'],[1,'B'],[2,'X'],[3,'Y'],[4,'LB'],[5,'RB'],[6,'LT'],[7,'RT'],
@@ -64,8 +65,26 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optPhysQ').value=cfg.physQuality||'high';
  $('optShowFps').checked=!!cfg.showFps;
 }
-// Three tabs, one per device (ui-scale: fewer panels per screen). Tab name → the suffix of its ids.
-const OPT_TABS={display:'Display',controls:'Controls',kbm:'Kbm'};
+// Display, Audio, then one tab per input device (ui-scale: fewer panels per screen). Tab name → the suffix of its ids.
+const OPT_TABS={display:'Display',audio:'Audio',controls:'Controls',kbm:'Kbm'};
+
+/* ---- Audio tab -----------------------------------------------------------------------------------
+   Four bus volumes (js/audio.js Au.mix) and three switches. Sound and Crowd are the same cfg keys as
+   the Kick Off lobby's Audio panel, so both sets of boxes are kept in step. */
+const OPT_VOL=[['optVolMaster','volMaster'],['optVolFx','volFx'],['optVolCrowd','volCrowd'],['optVolUi','volUi']];
+const optVolT={};
+function optVolSample(k){                                  // hear the bus you're setting; throttled so a drag doesn't machine-gun
+ const t=performance.now();if(t-(optVolT[k]||0)<140)return;optVolT[k]=t;
+ Au.init();Au.mix();
+ if(k==='volCrowd')Au.react('ooh');else if(k==='volUi')Au.ui();else Au.kick(45);
+}
+function syncAudioUI(){
+ for(const [id,k] of OPT_VOL){const v=clamp(+cfg[k],0,1);$(id).value=v===v?v:1;}
+ $('optSound').checked=!!cfg.sound;$('optAmbience').checked=!!cfg.ambience;$('optMuteBg').checked=!!cfg.muteBg;
+ if($('setSound'))$('setSound').checked=!!cfg.sound;
+ if($('setAmbience'))$('setAmbience').checked=!!cfg.ambience;
+ Au.mix();
+}
 function optSetTab(name){
  if(typeof kbCapEnd==='function')kbCapEnd();       // a tab flip (LB/RB) must not leave a key capture waiting off-screen
  if(!OPT_TABS[name])name='display';
@@ -127,6 +146,7 @@ function buildOptBtns(){
  }
 }
 function updateOptLabels(){
+ for(const [id,k] of OPT_VOL){const v=clamp(+cfg[k],0,1);$(id+'V').textContent=Math.round((v===v?v:1)*100)+'%';}
  $('optSlideSensV').textContent=(+cfg.padSlideSens).toFixed(2)+'×';
  $('optAngleSensV').textContent=(+cfg.padAngleSens).toFixed(2)+'×';
  $('optDeadV').textContent=(+cfg.padDeadzone).toFixed(2);
@@ -140,6 +160,7 @@ function updateOptLabels(){
 function updateTCVis(){                                    // TC sliders + tester swerve preview only make sense in Total Control mode
  const off=cfg.padControlMode!=='total';
  $('optTC').classList.toggle('hidden',off);$('optSwerve').classList.toggle('hidden',off);
+ $('optCtlRefTC').classList.toggle('hidden',off);   // the reference card's Total Control paragraph, likewise
  /* The charge-input row is CLASSIC-only: in Total Control the right stick's pull-back is the
     wind-up and the two triggers held together arm it, so there is nothing to choose. A live control
     that silently does nothing is the thing you debug twice — same call as the room editor's fog
@@ -177,7 +198,7 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
  $('optTCFast').value=cfg.padTCFast;$('optTCSwerve').value=cfg.padTCSwerve;
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
- updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();kbRender();
+ updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();syncAudioUI();kbRender();
 }
 /* ---- key bindings (js/binds.js) ----------------------------------------------------------------
    One row per action: its inputs as keys (click one to remove it) and a + that waits for the NEXT
@@ -209,6 +230,9 @@ function kbRefRender(){
   const l=bindList(b.act);
   out.push(row(l.length?l.map(bindLabel).join(' / '):'—',b.lab.toLowerCase()));
  }
+ // The pin is a chord, not a binding of its own, so it is spelled from the two it is made of.
+ const fl=bindList('finesse'),rl=bindList('raise');
+ if(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length)out.push(row(bindLabel(fl[0])+' + '+bindLabel(rl[0]),'pin the ball — kick shoots from the pin'));
  out.push(row('ESC','pause'));
  el.innerHTML=out.join('');
 }
@@ -336,6 +360,12 @@ function bindOptions(){
  $('optTabBtnControls').onclick=()=>{optSetTab('controls');Au.ui();};
  $('optTabBtnDisplay').onclick=()=>{optSetTab('display');Au.ui();};
  $('optTabBtnKbm').onclick=()=>{optSetTab('kbm');Au.ui();};
+ $('optTabBtnAudio').onclick=()=>{optSetTab('audio');Au.ui();};
+ // --- Audio tab ---
+ for(const [id,k] of OPT_VOL)$(id).oninput=e=>{cfg[k]=+e.target.value;updateOptLabels();Au.mix();optVolSample(k);saveCfg();};
+ $('optSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);syncAudioUI();saveCfg();};
+ $('optAmbience').onchange=e=>{cfg.ambience=e.target.checked;syncAudioUI();saveCfg();};
+ $('optMuteBg').onchange=e=>{cfg.muteBg=e.target.checked;Au.mix();saveCfg();};
  $('optPreset').onchange=e=>{if(e.target.value==='custom'){cfg.gfxPreset='custom';saveCfg();}else applyGfxPreset(e.target.value);};
  $('optRScale').oninput=e=>{cfg.renderScale=+e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
   $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};

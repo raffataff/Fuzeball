@@ -36,11 +36,17 @@
    CONFIG because these are match chrome like goal()/whistle(), not per-ball-type character. */
 const AUREACT={ooh:{f0:620,f1:930,q:1.7,a:.16,d:.52,v:.17,exc:.30},
                groan:{f0:470,f1:235,q:1.4,a:.22,d:.80,v:.16,exc:.12}};
-const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
+const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
+ dst:null, // beep/noise route here instead of mg while set (ui() points it at the menu bus)
+ bg:false, // window is unfocused / hidden — silenced when cfg.muteBg
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
  rl:null, // [floor, wall] roll voices, or null when CONFIG.audioMix.roll.on is false
  ch:null, // the held charge voice (js/shots.js), or null when CONFIG.shots.charge.tone.on is false
 
+ /* BUSES (Options → Audio). mg is the EFFECTS bus — every one-shot and voice already connects to it,
+    so the name stayed. cb = crowd (bed + reactions), ub = menu clicks. All three sum into `sum`
+    (unity; the clip recorder taps it, so a saved clip doesn't inherit your volume or a mute), then
+    `out` (master volume + the Sound switch) → limiter → speakers. */
  init(){if(this.ctx)return;try{
   this.ctx=new (window.AudioContext||window.webkitAudioContext)();
   const c=this.ctx;
@@ -51,8 +57,11 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   if(L&&L.on){this.lim=c.createDynamicsCompressor();
    this.lim.threshold.value=L.threshold;this.lim.knee.value=L.knee;this.lim.ratio.value=L.ratio;
    this.lim.attack.value=L.attack;this.lim.release.value=L.release;this.lim.connect(c.destination);}
-  this.mg=c.createGain();this.mg.gain.value=cfg.sound?AUMIX.master:0;
-  this.mg.connect(this.lim||c.destination);
+  this.out=c.createGain();this.out.connect(this.lim||c.destination);
+  this.sum=c.createGain();this.sum.connect(this.out);
+  this.mg=c.createGain();this.cb=c.createGain();this.ub=c.createGain();
+  this.mg.connect(this.sum);this.cb.connect(this.sum);this.ub.connect(this.sum);
+  this.mix();
   this.nbuf=this.mkNoise(3);
   // crowd bed: slow-drifting bandpassed noise, level driven by this.exc
   const len=2*c.sampleRate,b=c.createBuffer(1,len,c.sampleRate),d=b.getChannelData(0);
@@ -60,10 +69,19 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   const s=c.createBufferSource();s.buffer=b;s.loop=true;
   const f=c.createBiquadFilter();f.type='bandpass';f.frequency.value=560;f.Q.value=.55;
   this.crowd=c.createGain();this.crowd.gain.value=0;
-  s.connect(f);f.connect(this.crowd);this.crowd.connect(this.mg);s.start();
+  s.connect(f);f.connect(this.crowd);this.crowd.connect(this.cb);s.start();
   if(AUMIX.roll&&AUMIX.roll.on)this.rl=[this.mkRoll(),this.mkRoll()];
   if(CONFIG.shots&&CONFIG.shots.charge.tone.on)this.ch=this.mkCharge();
  }catch(e){}},
+
+ /* Push cfg's switches and volumes onto the buses. Volumes are 0..1 sliders heard on a square
+    curve, so the middle of the slider sounds like the middle. Short ramp: a slider drag or a focus
+    change must not click. */
+ mix(){if(!this.out)return;
+  const t=this.ctx.currentTime,v=k=>{const x=clamp(+cfg[k],0,1);return x===x?x*x:1;},
+   set=(n,g)=>n.gain.setTargetAtTime(g,t,.015);
+  set(this.out,cfg.sound&&!(cfg.muteBg&&this.bg)?AUMIX.master*v('volMaster'):0);
+  set(this.mg,v('volFx'));set(this.cb,v('volCrowd'));set(this.ub,v('volUi'));},
 
  /* One shared noise buffer for every one-shot AND both roll voices. White + a brown
     (leaky-integrated) component: pure white has almost no energy left once the roll's
@@ -170,7 +188,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   this.env(g,t,T.markA/R,d,T.markVol*this.vol);
   o.connect(g);g.connect(this.mg);o.start();o.stop(t+d+.1);},
 
- setOn(on){if(this.mg)this.mg.gain.value=on?AUMIX.master:0;if(!on){this.rollStop();this.chargeStop();}},
+ setOn(on){this.mix();if(!on){this.rollStop();this.chargeStop();}},
 
  /* Voice gate for one-shots: retrigger cooldown + concurrent cap, per sound key. This is the
     generic half of the fix — physics decides WHETHER a contact is an event, this decides
@@ -249,7 +267,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   fr*=R*pj;slide*=R*pj;d/=R;v*=this.vol*(j?1+(Math.random()*2-1)*j*.6:1);   // slide is a freq DELTA, so it scales with pitch, not with time
   o.type=type;o.frequency.setValueAtTime(fr,c.currentTime);
   if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,fr+slide),c.currentTime+d);
-  this.env(g,c.currentTime,.006/R,d,v);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+d+.1);},
+  this.env(g,c.currentTime,.006/R,d,v);o.connect(g);g.connect(this.dst||this.mg);o.start();o.stop(c.currentTime+d+.1);},
 
  // Plays a random slice of the shared buffer instead of building one. Same sound, no allocation.
  noise(d=.08,fq=1800,v=.22,j=0,q=.9){if(!this.ctx||!this.nbuf)return;const c=this.ctx,R=this.rate>0?this.rate:1;
@@ -259,7 +277,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   const span=this.nbuf.duration-d-.05,off=span>0?Math.random()*span:0;
   const f=c.createBiquadFilter();f.type='bandpass';f.frequency.value=fq;f.Q.value=q;
   const g=c.createGain();this.env(g,c.currentTime,.004/R,d,v);
-  s.connect(f);f.connect(g);g.connect(this.mg);s.start(c.currentTime,off,d+.05);},
+  s.connect(f);f.connect(g);g.connect(this.dst||this.mg);s.start(c.currentTime,off,d+.05);},
 
  kick(p,aC){const ak=aC||{},J=AUMIX.jitter,
   nd=ak.noiseDur??.06,nf=(ak.noiseFreq??900)+p*(ak.noiseFreqScale??8),
@@ -313,7 +331,7 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   const f=c.createBiquadFilter();f.type='bandpass';f.Q.value=K.q;
   f.frequency.setValueAtTime(K.f0*R,t0);f.frequency.linearRampToValueAtTime(K.f1*R,t0+a+d);
   const g=c.createGain();this.env(g,t0,a,d,K.v*this.vol);
-  s.connect(f);f.connect(g);g.connect(this.mg);s.start(t0);s.stop(t0+a+d+.1);
+  s.connect(f);f.connect(g);g.connect(this.cb);s.start(t0);s.stop(t0+a+d+.1);
   this.exc=Math.min(1,this.exc+K.exc);                  // and it leaves the bed lifted behind it
  },
  goal(){if(!this.ctx)return;const c=this.ctx;
@@ -328,5 +346,10 @@ const Au={ctx:null,mg:null,lim:null,crowd:null,nbuf:null,exc:0,rate:1,vol:1,
   o.frequency.setValueAtTime(170,c.currentTime);o.frequency.exponentialRampToValueAtTime(36,c.currentTime+.55);
   this.env(g,c.currentTime,.005,.6,.6);o.connect(g);g.connect(this.mg);o.start();o.stop(c.currentTime+.8);
    this.noise(.45,300,.5);this.noise(.16,1700,.34);this.exc=1;},                // low rumble body + high crack transient + crowd 'ooh'
-  ui(){this.beep(720,.05,'triangle',.1);},
+  ui(){this.dst=this.ub;this.beep(720,.05,'triangle',.1);this.dst=null;},
    warnBeep(k=0){this.beep(900+600*k,.09,'square',.22);}}; // countdown tick for the cannonball warning (higher pitch as it nears detonation)
+
+// Options → Audio 'Mute in background': a blur is the window losing focus (alt-tab, the Steam overlay's
+// own window), a hidden document is a minimise. Tracked always, applied only when cfg.muteBg is on.
+function auBg(){Au.bg=document.hidden||!document.hasFocus();Au.mix();}
+addEventListener('blur',auBg);addEventListener('focus',auBg);document.addEventListener('visibilitychange',auBg);

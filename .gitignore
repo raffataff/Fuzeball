@@ -48,3 +48,9 @@ tmp/
 # --- logs -------------------------------------------------------------------
 *.log
 npm-debug.log*
+
+# --- regenerable build intermediates ----------------------------------------
+# Sky face masters (2048 PNG, ~23 MB per sky). Deterministic from their script
+# and seed (tools/build_nebula_sky.py), and kept OUT of assets/ so a packaged
+# build never ships them; only the encoded .ktx2 faces are the game.
+tools/build/

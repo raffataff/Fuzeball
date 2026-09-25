@@ -1366,7 +1366,8 @@ function lgSetTab(t){
 /* ---- bind ---- */
 function bindLeague(){
   for(const k of LG_TABS)$('lgTabBtn'+k[0].toUpperCase()+k.slice(1)).onclick=()=>{lgSetTab(k);Au.ui();};
-  $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
+  // A first-ever match through the League is offered the tutorial first, same as Kick Off (js/tutorial.js).
+  $('btnLeague').onclick=()=>{Au.init();Au.ui();if(typeof tutOffer==='function'&&tutOffer(openSlots,'Go to the League'))return;openSlots();};
   $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
   // Corner ↺ always resets (confirm is because it's a thumb-width from Back and unlabelled).
   $('lgReset').onclick=()=>{$('lgWipe').classList.remove('hidden');Au.ui();};

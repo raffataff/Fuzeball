@@ -545,6 +545,68 @@ function disposeRoom(id){
 // external/console caller doesn't hit a missing function.
 function loadRoomModel(){for(const id in CONFIG.rooms)ensureRoom(id);}
 
+/* ---- room skies (CONFIG.rooms.<id>.sky) ----------------------------------
+   A sky is SIX cube faces (<src>_px.ktx2 … _nz) assembled into one CubeTexture and handed to
+   scene.background. One draw call, no geometry, never fogged, and the ball cube camera picks it up
+   for free. Deliberately NOT a panorama: r128 converts an equirect background into a cube render
+   target at runtime (a 4K panorama = ~64MB of image PLUS ~100MB of cube target, uncompressed),
+   while six KTX2 faces stay block-compressed on the GPU (1024² faces ≈ 8MB with mips).
+   r128's setTextureCube already uploads a CubeTexture whose six images are CompressedTextures —
+   that is the DDS cube path — so the faces go straight from the KTX2 worker to the GPU.
+   ext:'jpg'/'png' also works (CubeTextureLoader) for authoring, at uncompressed cost.
+   NO ROTATION: r128's background has no rotation or intensity, so both are baked into the faces.
+   Residency mirrors rooms: LRU by room id, CONFIG.tableAssets.cacheSkies, active always kept. */
+const skyCache={},skyOrder=[],skyLoading={},skyFailed={};
+const SKY_FACES=['px','nx','py','ny','pz','nz'];
+function roomHasSky(id){const R=CONFIG.rooms&&CONFIG.rooms[id];return !!(R&&R.sky&&R.sky.src&&!skyFailed[id]);}
+function touchSky(id){const i=skyOrder.indexOf(id);if(i>=0)skyOrder.splice(i,1);skyOrder.push(id);}
+function ensureSky(id,cb){
+ if(!roomHasSky(id)){if(cb)cb(null);return;}
+ if(skyCache[id]){touchSky(id);if(cb)cb(skyCache[id]);return;}
+ if(skyLoading[id]){if(cb)skyLoading[id].push(cb);touchSky(id);return;}
+ const cbs=skyLoading[id]=cb?[cb]:[];touchSky(id);
+ const S=CONFIG.rooms[id].sky,ext=S.ext||'ktx2',urls=SKY_FACES.map(f=>S.src+'_'+f+'.'+ext);
+ const flush=t=>{delete skyLoading[id];cbs.forEach(f=>f&&f(t));};
+ const fail=e=>{
+  if(skyFailed[id])return;skyFailed[id]=true;                     // latch, same reason as roomFailed
+  const oi=skyOrder.indexOf(id);if(oi>=0)skyOrder.splice(oi,1);
+  console.warn('sky missing for '+id+' ('+S.src+'_*.'+ext+'), using the flat bg colour',e||'');
+  flush(null);
+ };
+ const done=t=>{if(skyFailed[id]){if(t)t.dispose();return;}skyCache[id]=t;console.log('sky "'+id+'" loaded');flush(t);};
+ if(ext!=='ktx2'){
+  new THREE.CubeTextureLoader().load(urls,t=>{t.encoding=THREE.sRGBEncoding;done(t);},undefined,fail);
+  return;
+ }
+ const k=(typeof ktx2Loader==='function')?ktx2Loader():null;
+ if(!k){fail('no KTX2 loader');return;}
+ const faces=[];let n=0;
+ urls.forEach((u,i)=>k.load(u,f=>{
+  faces[i]=f;if(++n<6||skyFailed[id])return;
+  const t=new THREE.CubeTexture(faces);
+  t.format=faces[0].format;t.type=faces[0].type;t.encoding=faces[0].encoding;
+  t.generateMipmaps=false;t.minFilter=faces[0].minFilter;t.magFilter=THREE.LinearFilter;
+  t.needsUpdate=true;done(t);
+ },undefined,fail));
+}
+function disposeSky(id){
+ const t=skyCache[id];if(!t)return;
+ if(typeof scene!=='undefined'&&scene&&scene.background===t)return;   // never free the sky on screen
+ t.dispose();delete skyCache[id];
+ const oi=skyOrder.indexOf(id);if(oi>=0)skyOrder.splice(oi,1);
+ console.log('sky freed: '+id);
+}
+function pruneSkies(keep){
+ const extra=Math.max(0,((CONFIG.tableAssets||{}).cacheSkies||1)-1);
+ let n=0;for(const id of skyOrder)if(id!==keep&&skyCache[id])n++;
+ for(let i=0;i<skyOrder.length&&n>extra;){
+  const id=skyOrder[i];
+  if(id===keep||!skyCache[id]){i++;continue;}
+  disposeSky(id);
+  if(skyOrder[i]===id)i++;else n--;
+ }
+}
+
 /* --- rods (per-table livery, lazy) ----------------------------------------
    Rods used to be one global asset loaded once. Now each TABLE may bring its own rod set
    (CONFIG.tables[id].rods); tables without one share the stock assets/rods/ set. Sets are keyed

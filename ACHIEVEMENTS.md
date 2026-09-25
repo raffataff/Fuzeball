@@ -596,7 +596,7 @@ would actually cost. **Bring your list and we'll triage it into these three colu
 
 | Category | Example | Cost |
 |---|---|---|
-| **Start** (5) | first goal · first win · first clean sheet · first league match · first trial | COUNTER |
+| **Start** (6) | first goal · first win · first clean sheet · first league match · first trial · **finish the tutorial** (`ACH_TUTORIAL`, reads `cfg.tutDone` — see below) | COUNTER |
 | **Craft** (10) | from your own half · screamer over X km/h · top bins · a curler · off both posts in one rally · all four rods score · a hat-trick from one rod · win without conceding · score in the last 5 seconds · win in sudden death | FREE (`momKind` + ledger) |
 | **Keeper** (4) | 10 / 100 / 500 saves · a save with the score level in the final ten seconds | COUNTER + CODE |
 | **Comeback** (3) | win from 2 down · from 3 down · from 3 down in the final minute | CODE |
@@ -606,7 +606,14 @@ would actually cost. **Bring your list and we'll triage it into these three colu
 | **Discovery** (4) | play on every table · every room · every pitch · use every ball type | COUNTER (map) |
 | **Fun / hidden** (4) | score an own goal · lose 10-0 · hit the woodwork five times in one match · take a photo in photo mode | FREE, `hidden:true` |
 
-≈ **49 candidates → cut to 38.** Design rules worth holding to:
+**`ACH_TUTORIAL` — "FIRST WHISTLE", *Finish the tutorial.*** Added 2026-09-25 with the tutorial
+(`js/tutorial.js`). It is granted from STATE, not from an event: `cfg.tutDone` (a PLAYER key, set on the
+finish card and never cleared). That makes it retroactive for free in `achAudit` — anyone who finished the
+tutorial before the engine existed gets it on first boot — and it means skipping the tutorial at the first
+match locks nobody out: Training → Tutorial is always there. The tutorial runs inside the training
+sandbox, which `achVoid` (§7.1) voids; this one is exempt because it never goes through `achEvent`.
+
+≈ **50 candidates → cut to 38.** Design rules worth holding to:
 
 - **No achievement that requires another human.** Fuzeball is local-multiplayer; anything
   needing a second player is unearnable for most owners and drags the global completion

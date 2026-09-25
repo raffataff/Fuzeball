@@ -419,7 +419,7 @@ function reditTabWorld(w){
  w.appendChild(reNum('dir z',dp[2],1,v=>{dp[2]=v;setDir();}));
  w.appendChild(reEl('h4',null,'atmosphere'));
  w.appendChild(reColor('bg',rm.bg===undefined?0x05060f:rm.bg,v=>{rm.bg=v;
-  if(typeof scene!=='undefined'){scene.background=new THREE.Color(v);if(scene.fog)scene.fog.color.set(v);}reditBackup();}));
+  if(typeof scene!=='undefined'){if(!scene.background||scene.background.isColor)scene.background=new THREE.Color(v);if(scene.fog)scene.fog.color.set(v);}reditBackup();}));
  const fg=rm.fog||(rm.fog=[200,430]);
  const setFog=()=>{if(typeof scene!=='undefined'&&scene.fog){scene.fog.near=fg[0];scene.fog.far=fg[1];}reditBackup();};
  w.appendChild(reNum('fog near',fg[0],5,v=>{fg[0]=v;setFog();}));
@@ -939,6 +939,7 @@ function reditBlock(){
  if(rm.lightsOff&&rm.lightsOff.length)L.push(ind+'lightsOff:'+reFmt('lightsOff',rm.lightsOff)+',');
  const atm=reFmtKV(rm,['bg','fog']);
  if(atm.length)L.push(ind+atm.join(', ')+',');
+ if(rm.sky)L.push(ind+'sky:'+reFmt('sky',rm.sky)+',');
  if(rm.hemi)L.push(ind+'hemi:'+reFmt('hemi',rm.hemi)+',');
  if(rm.dir)L.push(ind+'dir:'+reFmt('dir',rm.dir)+',');
  if(rm.env)L.push(ind+'env:'+reFmt('env',rm.env)+',');

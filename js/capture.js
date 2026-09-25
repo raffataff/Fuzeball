@@ -53,14 +53,14 @@ function clipMime(list){
    free to ignore the mimeType we asked for, so this reads the CHUNK's own type first. */
 function clipExt(m){return /mp4/i.test(m||'')?'.mp4':'.webm';}
 function clipContainer(list){return clipExt(clipMime(list)).slice(1).toUpperCase();}
-/* One MediaStreamDestination for the life of the page, fed from Au's master gain. Au keeps
+/* One MediaStreamDestination for the life of the page, fed from Au.sum (every bus, before the master volume). Au keeps
    its normal connection to the speakers — this is a SECOND tap, not a re-route, so nothing
    about live audio changes. Built lazily because Au.ctx doesn't exist until the first user
    gesture. Null when audio capture is off or the context never came up → silent clip. */
 function clipAudioTrack(){
- if(!CAPTURE.audio||!Au.ctx||!Au.mg)return null;
+ if(!CAPTURE.audio||!Au.ctx||!Au.sum)return null;
  if(!CLIP.adest){
-  try{CLIP.adest=Au.ctx.createMediaStreamDestination();Au.mg.connect(CLIP.adest);}
+  try{CLIP.adest=Au.ctx.createMediaStreamDestination();Au.sum.connect(CLIP.adest);}
   catch(e){CLIP.adest=null;return null;}
  }
  return CLIP.adest.stream.getAudioTracks()[0]||null;

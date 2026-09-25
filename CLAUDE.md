@@ -31,7 +31,7 @@ order. It must feel hand-made — **do not let it look AI-generated**.
 - **New tunable numbers go in CONFIG** (`js/config.js`), never inline. The short aliases at the bottom of
   config.js (`F`, `BALL_R`, `KICK`, `AIC`, `SHOT`, `DIFFS`…) are derived; edit CONFIG, not the aliases.
 - **Every optional module hangs off one nullable gate on `S`**, tested by that module plus one-line
-  hooks and nothing else: `S.trn` (training), `S.trial`, `S.photo`, `S.redit`, `S.lg`. A missing optional
+  hooks and nothing else: `S.trn` (training), `S.trial`, `S.tut` (tutorial), `S.photo`, `S.redit`, `S.lg`. A missing optional
   file must never break a match. Core files (`rng.js`, `shots.js`, `binds.js`, `padnav.js`) are NOT
   guarded.
 - Keep replies concise and direct (owner preference).
@@ -50,12 +50,12 @@ Node (v24) is available locally. The browser is only needed for WebGL, rAF or th
    must each break it. `mutate()` refuses a no-op, so a drifted anchor reports itself. **Update a
    mutation's anchor when you change the line it targets.** When harnesses boot files in a `vm`,
    top-level `const`s are lexical, so export them via an explicit `globalThis.__x={…}` line.
-   - `shots` (charge machine), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
+   - `shots` (charge machine), `pin` (catch / carry / every release / the pin shot), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
      `padnav` (menu navigation), `trials`, `rng`, `matchstats`, `moments`, `wallplay`, `slidepush`,
-     `chargeverdict`, `savesplit`, `venueload`, `roomenv`, `roomlights`, `props`, `pitch`, `ktx2`, `offline`…
+     `chargeverdict`, `savesplit`, `venueload`, `roomenv`, `sky`, `roomlights`, `props`, `pitch`, `ktx2`, `offline`…
    - **Failing before 2026-09-24 and still failing (not regressions):** photo-record, rodholes,
-     roomlight, roomlights, slidepush; shots has 2 failing assertions (the working tree's soft-curve
-     retune).
+     roomlight, roomlights, slidepush; shots has 3 failing assertions (the working tree's soft-curve
+     retune, plus `kick.strike` 0.055 → 0.025, which makes "hard anchor is FASTER" fail).
 4. **Live**: `.claude/launch.json` serves the repo on `http://localhost:8123` (preview name `fuzeball`).
    In the browser pane **rAF often doesn't run**, so step `loop(t)` / `navTick(t)` by hand with rising
    timestamps. Replace `navigator.getGamepads` with a synthetic pad to test controller paths. **Set a
@@ -74,11 +74,11 @@ preview renderer) · `balls` · `rods` · `physics` · `ai` · **`shots`** (play
 `marks` · `capture` (clip recorder, zip writer) · `replay` · **`hud`** (the whole in-match chrome, one
 canvas) · `ui` · `roster` (Kick Off lobby) · `options` · `league` (league + Champions Cup) · `layout`
 (panel layout editor) · `customize` · `props` (instanced prop library) · `models` (GLB loading) ·
-`fracture` · `debug` (`C` overlay) · `perf` (`M` profiler) · `sweetspot` · `training` · `trials` · `photo`
+`fracture` · `debug` (`C` overlay) · `perf` (`M` profiler) · `sweetspot` · `training` · `trials` · `tutorial` · `photo`
 (F1) · `roomedit` (F2) · **`vsel`** (◀ value ▶ selectors) · **`padnav`** (controller menus) · `main` (loop).
 
 Tools: `tools/*-harness.js`, `tools/build_props_manifest.js`, `tools/ktx2-encode.mjs` (run from
-`tools/` after `npm i`; `--dry` first), Blender scripts `tools/build_table.py` / `export_table.py` /
+`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, Blender scripts `tools/build_nebula_sky.py`, `build_void_asteroid.py`, `tools/build_table.py` / `export_table.py` /
 `build_pub_room.py`.
 
 ## Coordinates, table, rods
@@ -101,7 +101,8 @@ Tools: `tools/*-harness.js`, `tools/build_props_manifest.js`, `tools/ktx2-encode
 ## Core systems (what matters when changing them)
 
 **Sim.** Fixed timestep `1/CONFIG.sim.hz` (120) with render interpolation (`b.prev`/`b.cur`, rod
-`iPrev`). **Any hard set of a ball's position outside physics must call `syncBall(b)`.** Physics
+`iPrev`). Substeps adapt to travel (`subTravel`) up to `subMax` (16 on High, `PHYS_Q`); measured at
+~0.5 µs per substep per ball (2026-09-25), so physics is not the frame cost. Keep 120 Hz. **Any hard set of a ball's position outside physics must call `syncBall(b)`.** Physics
 substeps adaptively; friction is `exp(k·h)` per substep so the total is substep-invariant. Rods are
 posed per substep too. Spin/Magnus is a pure horizontal rotation (no energy); keep it that way. A slow
 frame runs up to `sim.maxSteps` sim steps, so per-step costs multiply exactly when frames are slow.
@@ -145,6 +146,15 @@ veil with a `renderer.compile` warm (`venueLoad`). Room lights are baked candela
 mid-match** — r128 bakes the light count into every shader, and changing it recompiles the whole scene
 (hence `fxLightPool` / `roomLightPool`). Menus render at a throttled rate (`CONFIG.render.idle`).
 Textures are the real cost: KTX2 is used for rooms, figurines, explosions and tables (not the pitch).
+**Skies** (`rooms.<id>.sky`, models.js `ensureSky`): six UASTC KTX2 cube faces on `scene.background` (one draw
+call, ~8 MB at 1024²), LRU'd by `cacheSkies`; `applyRoom`'s onReady waits for sky AND backdrop, and ignores
+either if it lands after you left (`live()`). r128 can't rotate or dim a background, and Reinhard tone mapping runs
+on it, so both are baked into the faces. Void's nebula: `tools/build_nebula_sky.py` (Blender, `--verify` checks the
+cube convention) → `tools/sky-encode.mjs`. Masters go to `tools/build/` (gitignored, never shipped).
+**Void** is the table bolted to a deck on an asteroid: `tools/build_void_asteroid.py` (Blender, GPU bakes) →
+`tools/ktx2-encode.mjs`. 8 meshes, ~9.5k tris, ~23 MB VRAM, no lights in the GLB; the deck texture carries a
+baked contact shadow because nothing in Void casts one. Room notes live in the comment ABOVE `CONFIG.rooms`:
+a comment inside a room entry is lost when the room editor's export is pasted over it.
 
 **Persistence.** `cfg` is one live object saved as two blobs: `fuzeball_player` (syncs via Steam Cloud)
 and `fuzeball_machine` (display/perf/calibration, never syncs). **A new cfg key must be added to
@@ -163,7 +173,10 @@ mean the PRIMARY seat only. Up to 4 per side.
 device decides which seat it drives. Defaults: arrows/W-S or mouse slide; ←/→, A/D, Q/E or wheel switch
 rod; Space/LMB kick; L-Shift/RMB raise; **R-Shift power**; **R-Ctrl finesse**; 1–4, B guide, V camera,
 R retry trial, S save replay clip. Reserved (not bindable): Esc, F1, F2, and the dev keys C/L/F/M.
-In a match every bound key is `preventDefault`ed. Alt and F10 are also swallowed on keydown AND keyup,
+In a match every bound key is `preventDefault`ed. **Modifiers are reconciled** (`modSync`, input.js): every key
+and mouse event carries the real Shift/Ctrl/Alt state, and a modifier `keys[]` thinks is down while its flag
+is up is released. Windows can drop one Shift's keyup while the other is held, and power (R-Shift) + raise
+(L-Shift) made that a stuck wind-up. A raise PRESS is also latched (`s.rzEdge`) so a sub-frame tap still poses the pin. Alt and F10 are also swallowed on keydown AND keyup,
 because they hand focus to the browser menu, which drops the pointer lock and used to read as a pause.
 Ctrl+W/T/N can't be blocked in a browser (the Electron shell must block them).
 
@@ -179,6 +192,14 @@ Ctrl+W/T/N can't be blocked in a browser (the Electron shell must block them).
   - Letting go without a kick cancels AND disarms, with a `charge.grace` window for a late kick.
   - Power is the ARC (`kickA0` → strikeA over a fixed window). Don't stack restitution multipliers on
     top. The sweet band is a flat maximum and overcooking falls off.
+- **The pin** (`CONFIG.shots.pin`): finesse + raise (R-Ctrl + L-Shift, LT + X) poses the men at the AI
+  trap angle (sweep-capped). A slow ball touching a tilted man is CAUGHT and carried with the slide by
+  `pinUpdate` / `pinBallStep` (physics.js), outside the contact solver. That is deliberate: a boot pressed on a ball
+  squirts it out sideways however many substeps you give it. A kick from the pin is the pin shot
+  (`shotPinFire`: AI `trapShot` curve, `pin.pow`), and it ignores the finesse axis, which is held to keep
+  the pin. Slide then kick = push/pull. A pad also pins off the right stick (finesse + rod inside
+  `pin.band`). The pin gates on finesse being DOWN (`I.fin`), not on its eased grip. Released by letting finesse go, any swing, the rod turning off the pin, a knock from
+  another ball, a hard set, or a side wall. One ball per rod: `r.pinB` <-> `b.pinR`.
 - **One step per seat per frame** (`shotSeatsUpdate`, after `gamepadUpdate`): each device READS into a
   record and the step runs on the merge. A second state machine per device would release the other
   device's charge.
@@ -240,9 +261,10 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
   reads a hex as linear, so a raw `color.set(hex)` renders lighter and greyer (crimson came out rose pink).
   The HUD and CSS take the hex as-is.
 - Kit swatches and a new save's kits come from `CONFIG.playerModel.swatches` / `kitDefault` (club colours).
-- **Options** sits over the scene (open columns on a left gradient, table on the right) with three tabs,
-  one per device: Display, Controller, Keyboard & Mouse. **No Advanced tab** (owner, 2026-09-25): a setting
-  lives with its device's other settings. Every control is found by id, so groups can move freely.
+- **Options** is built like every other menu (centred boxed panels, standard backdrop), with four tabs: Display, Audio, Controller, Keyboard & Mouse. **No Advanced tab** (owner,
+  2026-09-25): a setting lives with its device's other settings. Every control is found by id, so groups can move freely.
+- **Audio buses** (`audio.js`): effects (`Au.mg`), crowd (`Au.cb`) and menus (`Au.ub`) sum into `Au.sum` (the clip
+  recorder's tap), then `Au.out` (master + Sound switch + mute-in-background). `Au.mix()` pushes cfg onto them.
 - Still web-shaped: the Kick Off header bar.
 
 ## Modes
@@ -259,6 +281,11 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
   - Spawns must clear the resting foot box and stay in reach; the harness checks this from live CONFIG.
   - The daily is a pure function of the date.
   - **All medal thresholds are unplayed guesses.**
+- **Tutorial** (`tutorial.js`, `S.tut`): training with a lesson plan (`CONFIG.tutorial.lessons`), armed from
+  `trainingEnter` like a trial. `#tutorial` picks Keyboard & Mouse or Controller (prompts only; every device
+  works). Offered once before the first Kick Off / League start (`tutOffer`, `cfg.tutSeen`); always in
+  Training. Finish card: Continue/Done + Redo (back to the picker). `cfg.tutDone` backs the achievement.
+  Keyboard prompts show the first key AND the first mouse input of each action (`tutKey`).
 - **Replays** (`replay.js`): a ring buffer re-posed from footage, with sound and saveable clips.
   The match winner gets one.
 - **Photo mode** (F1, `photo.js`): stills, clips and offline turntable renders.
@@ -274,16 +301,16 @@ player build.
 
 ## Open threads (as of 2026-09-24)
 
-- **Controls:** signature shots (pin-and-shoot, snake, pull/push) and a first-match tutorial are the
-  next control items on the checklist. Nothing has been tested on a real controller or for keyboard feel
+- **Controls:** the pin + pin shot landed 2026-09-25 (push/pull fall out of it; snake cut for EA).
+  Unplayed: `pin.capV`, `pin.carry`, `pin.pow`. Tutorial built 2026-09-25 (lesson ball speeds unplayed).
+  A charged shot in the sweet band now beats maxV for its whole swing (`cap.charge`/`chargeTop`, `r.swOver`). Nothing has been tested on a real controller or for keyboard feel
   (R-Shift/R-Ctrl comfort). Team-name typing on a pad needs Steamworks. The pad is not rebindable
   (Steam Input).
 - **UI rebuild** per `DIRECTION.md`: first pass done (palette, plates, home menu, value selectors).
   Done since: League tabs, HUD palette, club-colour kits, full-time board, screen wipe, menu camera shots.
   Then: Options over the scene, and the kit colour fix (kitLin). Next: tune the menu
   shots by eye; check both kits under every room (cast-kits).
-- **Balance/feel still unplayed:** trial medal thresholds; `slidePush`; whether a charge should beat
-  the ball's `maxV` (a clean tap already reaches it).
+- **Balance/feel still unplayed:** trial medal thresholds; `slidePush`; how far past maxV a charge should go.
 - **Perf:** the texture budget (figurines at 2K, pitch uncompressed) and the boot freeze.
 - `CONFIG.debug` gates to remove for the player build; Electron wrapper, Steam Cloud, achievements
   (`ACHIEVEMENTS.md`).

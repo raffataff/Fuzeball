@@ -1300,7 +1300,11 @@ function setRoomEnv(id,rm){
 function applyRoom(onReady){
  const id=CONFIG.rooms[cfg.room]?cfg.room:'open';
  const rm=CONFIG.rooms[id];activeRoom=rm;
- scene.background=new THREE.Color(rm.bg);
+ // Sky (rooms.<id>.sky, models.js ensureSky): a resident one goes straight on; otherwise the flat
+ // bg colour holds until the faces land. Set BEFORE pruneSkies runs, so the outgoing sky is no
+ // longer on screen when the LRU decides whether to free it.
+ const wantSky=(typeof roomHasSky==='function')&&roomHasSky(id);
+ scene.background=(wantSky&&skyCache[id])||new THREE.Color(rm.bg);
  applyFog();                                             // honours cfg.fog; reads THIS room's near/far
  if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
  if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
@@ -1316,7 +1320,11 @@ function applyRoom(onReady){
  // ISN'T on screen — no glb, file missing, or still downloading. Recomputed INSIDE show() rather
  // than captured once: the old code read rm.glb up front, so a room whose GLB never arrived hid the
  // shared backdrop too and rendered as an empty void.
+ // Every async path below can land after the player has moved on to another room; a stale room
+ // must not re-show its props, hide the new backdrop or install its own reflections.
+ const live=()=>activeRoom===rm;
  const show=()=>{
+  if(!live())return;
   shadowDirty();   // room/backdrop/props swapped, and the glb + props both land async
   const on=!!(roomGroups[id]&&roomGroups[id].children.length);
   for(const rid in roomGroups){if(roomGroups[rid])roomGroups[rid].visible=(rid===id&&on);}
@@ -1329,15 +1337,28 @@ function applyRoom(onReady){
  show();setRoomEnv(id,rm);
  applyAuthoredLights(rm);                                // rooms.<id>.lights — pooled, so no recompile
  if(typeof buildRoomProps==='function')buildRoomProps(id,rm,show);
+ // onReady fires ONCE, when BOTH the backdrop and the sky are resident (either may be absent or
+ // cached, which counts as resident). The venue veil waits on it, so neither pops in after.
+ let wait=2;const ready=()=>{if(--wait===0&&onReady)onReady();};
+ if(wantSky&&typeof ensureSky==='function'){
+  ensureSky(id,t=>{
+   if(t&&live()){scene.background=t;renderDirty();}          // switched away meanwhile → leave it cached
+   if(typeof pruneSkies==='function')pruneSkies(live()?id:null);
+   ready();
+  });
+ }else{
+  if(typeof pruneSkies==='function')pruneSkies(null);
+  ready();
+ }
  if(wantGlb&&typeof ensureRoom==='function'){
   ensureRoom(id,()=>{                                    // GLB resident: reveal it + upgrade env to the real reflection bake
-   show();setRoomEnv(id,rm);
-   if(typeof pruneRooms==='function')pruneRooms(id);
-   if(onReady)onReady();
+   if(live()){show();setRoomEnv(id,rm);if(typeof pruneRooms==='function')pruneRooms(id);}
+   else if(typeof pruneRooms==='function')pruneRooms(CONFIG.rooms[cfg.room]?cfg.room:'open');   // landed after we left: free it
+   ready();
   });
  }else{
   if(typeof pruneRooms==='function')pruneRooms(null);
-  if(onReady)onReady();
+  ready();
  }
 }
 /* A kit colour for a MATERIAL. Both renderers output sRGB (outputEncoding), and r128 reads a hex into a

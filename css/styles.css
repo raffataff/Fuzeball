@@ -128,7 +128,7 @@ body.padNav .homeMenu .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 .modeRow{display:flex;flex-direction:column;gap:10px;margin:0 auto 22px}
 .modeRow .modeCard{display:flex;flex-direction:column;justify-content:center;width:420px;height:70px;padding:0 34px 0 42px;cursor:pointer;pointer-events:auto;--pc:25px}
 .modeRow .modeCard:hover{transform:translateX(8px)}
-.modeRow .modeCard .big{font-family:var(--font-ui);font-style:italic;font-size:30px;line-height:1;letter-spacing:.06em;text-transform:uppercase}   /* plain Soccer League italic: the College cut is too dense at button size */
+.modeRow .modeCard .big{font-family:var(--font-ui);font-style:italic;font-size:24px;line-height:1;letter-spacing:.06em;text-transform:uppercase}   /* plain Soccer League italic: the College cut is too dense at button size */
 .modeRow .modeCard .sub{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-top:5px}
 body.padNav .modeRow .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 /* Kick Off roster: two team columns either side of a VS, tinted by the live kit colour (--tc). */
@@ -613,21 +613,18 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
  #cupBracketPanel .cupRound{min-width:150px}
 }
 /* Options screen */
-/* OPTIONS OVER THE SCENE (ui-world). The screen darkens only the side the settings sit on, like home;
-   groups are open columns (caption tab + rows), not boxed panels, so the table stays in view and a
-   Display change is seen on the live scene. They are still .panel for padnav's ◀▶ column logic. */
-#options{justify-content:flex-start;align-items:flex-start;overflow-y:auto;padding:24px 16px 32px clamp(140px,10vw,170px);   /* left pad clears the back + reset corner buttons */
- background:linear-gradient(90deg,rgba(7,17,28,.96) 0,rgba(7,17,28,.9) 50%,rgba(7,17,28,.62) 74%,rgba(7,17,28,.15) 100%),
-  linear-gradient(180deg,rgba(7,17,28,.7) 0,transparent 140px)}
-#options .tagline{justify-content:flex-start}
-#options .tagline::before{display:none}
-#options .optTabs{justify-content:flex-start;margin:0 0 6px}
-#options .optTab{width:auto;max-width:min(1180px,80vw)}
-#options .optWrap{justify-content:flex-start;align-items:flex-start;gap:26px;padding:16px 0 0;max-width:none}
-#options .panel{flex:1 1 280px;min-width:260px;max-width:360px;min-height:0;padding:0;background:none;border:none;box-shadow:none}
-#options .panel>h3:first-child{margin:0 0 10px}
-#options .panel>h3{margin:18px 0 10px}
+/* Options is built like every other menu (owner, 2026-09-25): centred, boxed .panel groups, the standard
+   .screen backdrop. The open-columns-over-the-scene pass was undone for consistency. */
+#options{justify-content:flex-start;overflow-y:auto;padding:24px 16px 32px}
+#options .optTabs{margin:0 auto 6px}
+#options .optTab{width:100%;max-width:1180px}
+#options .optWrap{justify-content:center;align-items:stretch;padding:16px 0 0;max-width:none}
+#options .panel{flex:1 1 280px;min-width:260px;max-width:360px;min-height:0}
 #options .optKeysPanel{flex-basis:300px;max-width:380px}
+/* The reference cards read as a list: button, then what it does, left-aligned beside it. Centred in two
+   equal columns every description wrapped, and boxed panels pushed the Controller tab past 800px. */
+#options .ctl{grid-template-columns:auto 1fr;gap:5px 12px}
+#options .ctl span{text-align:left}
 /* Corner buttons are badges: two corners cut on the same diagonal as the plates. */
 .optGear{position:absolute;top:20px;right:24px;z-index:5;width:46px;height:46px;font-size:22px;line-height:1;cursor:pointer;pointer-events:auto;display:flex;align-items:center;justify-content:center;--pk:var(--ice)}
 .optGear::before,.optGear::after{clip-path:polygon(11px 0,100% 0,100% calc(100% - 11px),calc(100% - 11px) 100%,0 100%,0 11px)}
@@ -1095,6 +1092,32 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .trlMed{margin-top:6px;font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-head)}
 .trlMed.gold{color:var(--gold)} .trlMed.silver{color:#cfd8e6} .trlMed.bronze{color:#d08a4d}
 .trlKeys{margin-top:10px;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-dim)}
+/* TUTORIAL (js/tutorial.js). The lesson panel sits where the trial HUD does and reads the same way:
+   a small step count, the lesson name, then the instruction as a sentence (so --font-body), with the
+   keys drawn as keycaps and the pad buttons as padnav's glyphs. The finish card IS a .trlCard. */
+#tutHud{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:24;pointer-events:none;
+ display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;max-width:min(680px,90vw)}
+#tutHud.hidden{display:none}
+.tutStep{font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-head);color:var(--tx-mute)}
+.tutName{font-family:var(--font-display);font-style:italic;font-size:30px;letter-spacing:.04em;color:var(--tx-bright);
+ text-shadow:0 3px 0 rgba(0,0,0,.55)}
+.tutName.ok{color:#6cc98f}
+.tutTxt{font-family:var(--font-body);font-size:19px;line-height:1.55;color:var(--tx-strong);text-shadow:0 2px 6px rgba(0,0,0,.85);
+ padding:8px 18px;background:rgba(7,17,28,.62);border-top:2px solid var(--fed-hi)}
+.tutKey{display:inline-block;font-family:var(--font-ui);font-size:13px;font-weight:400;background:#0f2536;border:1px solid rgba(188,220,237,.24);
+ border-bottom:2px solid rgba(188,220,237,.42);border-radius:2px;padding:2px 7px;margin:0 2px;color:var(--ice);letter-spacing:.06em;
+ white-space:nowrap;vertical-align:1px;text-shadow:none}
+.tutKey.m{color:#d9e8f2;background:#16304a}    /* a mouse input: same keycap, a shade lighter, so key and mouse read as a pair */
+.tutOr{font-style:normal;margin:0 3px;color:var(--tx-dim)}
+.tutPad{display:inline-flex;align-items:center;gap:2px;margin:0 2px;vertical-align:-5px}
+.tutDots{display:flex;gap:5px}
+.tutDots i{width:22px;height:4px;background:rgba(188,220,237,.18)}
+.tutDots i.cur{background:var(--ice)}
+.tutDots i.on{background:#6cc98f}
+.tutStuck{font-family:var(--font-body);font-size:15px;color:var(--tx-mute);text-shadow:0 2px 6px rgba(0,0,0,.85)}
+.tutStuck.hidden{display:none}
+.tutCardSub{margin-top:6px;font-family:var(--font-body);font-size:17px;color:var(--tx-strong)}
+#tutSkip{margin-top:6px}
 
 /* the list on #trials */
 .trlList{display:flex;flex-direction:column;gap:8px;margin-top:4px}

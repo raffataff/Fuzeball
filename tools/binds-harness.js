@@ -322,6 +322,35 @@ function run(srcShots,srcBinds){
   C.SHOT.on=true;
  }
  reset();
+
+ /* ===== 7. THE PIN CHORD (finesse + raise) =====
+    Both were temperamental live (2026-09-25): the pin waited on finesse's EASED grip, so a chord
+    pressed together landed the raise too early; and a raise TAPPED between two frames was never seen
+    by the once-a-frame read of what is held. */
+ {
+  const r=rod(),s=solo(r);
+  keys.ControlRight=true;keys[RS]=true;frames(1);
+  ok(r.pinPose===true,'finesse + raise pressed on the SAME frame pose the pin at once');
+  keys[RS]=false;frames(3);
+  ok(r.pinPose===true,'…and the pose stays latched once the raise comes up');
+  keys.ControlRight=false;frames(1);
+  ok(!r.pinPose,'…until finesse lets go');
+ }
+ reset();
+ {
+  const r=rod(),s=solo(r);
+  keys.ControlRight=true;frames(5);
+  s.rzEdge=true;frames(1);   // input.js bindPress latches a raise PRESS here; the key is already back up
+  ok(r.pinPose===true,'a raise tapped between two frames still poses the pin (the latched press)');
+  ok(s.rzEdge===false,'…and the latch is spent by that one step');
+ }
+ reset();
+ {
+  const r=rod(),s=solo(r);
+  keys.ControlRight=true;frames(8);
+  ok(!r.pinPose,'finesse alone, no raise, no latch: no pose');
+ }
+ reset();
  return {pass,fail,fails:fails.slice()};
 }
 
@@ -334,9 +363,9 @@ base.fails.forEach(f=>console.log('  FAIL  '+f));
 /* ---- mutations ---- */
 const muts=[];
 function mutate(file,find,repl,name){muts.push({file,find,repl,name});}
-mutate('shots','I.key=(pw&&(!SHOTC.charge.needRaise||bindHeld(\'raise\',s)))?1:0;','I.key=0;','the merge drops the keyboard\'s power source');
-mutate('shots','I.key=(pw&&(!SHOTC.charge.needRaise||bindHeld(\'raise\',s)))?1:0;','I.key=pw?1:0;','POWER alone winds up on the keyboard');
-mutate('shots','   else if(gpDown(gp,2))o.rt=rt;','   else o.rt=rt;','RT alone winds up on the pad');
+mutate('shots','I.key=(pw&&(!SHOTC.charge.needRaise||rz))?1:0;','I.key=0;','the merge drops the keyboard\'s power source');
+mutate('shots','I.key=(pw&&(!SHOTC.charge.needRaise||rz))?1:0;','I.key=pw?1:0;','POWER alone winds up on the keyboard');
+mutate('shots','   else if(o.rz)o.rt=rt;','   else o.rt=rt;','RT alone winds up on the pad');
 mutate('shots','  if(was!==\'stick\'&&C.needRaise){','  if(false){','letting go of a wind-up fires it');
 mutate('shots','   r.chgRel=k;r.chgGrace=C.grace;r.chg=-1;\n   shotDisarm(r);','   r.chgRel=k;r.chgGrace=C.grace;r.chg=-1;','a cancelled wind-up stays armed for the next contact');
 mutate('shots',' if(k<0&&r.chgGrace>0&&r.chgRel>0&&r.kickT<0){',' if(false){','a kick a frame late loses the wind-up');
@@ -349,6 +378,8 @@ mutate('binds','for(let i=0;i<l.length;i++)if(keys[l[i]]&&seatForDev(bindDev(l[i
 mutate('binds','  if(l.indexOf(code)>=0){bindSet(b.act,l.filter(c=>c!==code));moved.push(b.act);}','','rebinding leaves the key on the action that had it');
 mutate('binds',' if(bindReserved(code))return {ok:false,why:\'reserved\',moved:[]};','','Escape can be bound');
 mutate('binds','  if(b.act===act||b.grp!==g)continue;','  if(b.act===act)continue;','a clash in one group steals across groups');
+mutate('shots','  I.rz=rz||(pl&&P.rz)||!!s.rzEdge;s.rzEdge=false;','  I.rz=rz||(pl&&P.rz);s.rzEdge=false;','a raise tapped between frames is lost');
+mutate('shots','  I.fin=fn||(pl&&P.fin);','  ','the pin waits on the eased grip, not the key');
 let caught=0;
 console.log('\n--- mutations (each must BREAK the suite) ---');
 for(const m of muts){
@@ -360,5 +391,32 @@ for(const m of muts){
  if(r.fail>0){caught++;console.log('  caught  ('+(r.err?'threw':r.fail+' assertions')+')  '+m.name);}
  else console.log('  MISSED  '+m.name);
 }
+
+/* ---- modSync (js/input.js): a modifier that lost its keyup ----
+   Sliced out of input.js and run on its own: Windows can drop one Shift's keyup while the other is
+   held, and with power on R-Shift and raise on L-Shift a stuck one turned every later raise into a
+   wind-up. The event's own modifier flags are the truth; keys[] is reconciled to them. */
+function modRun(srcInput,quiet){
+ const a=srcInput.indexOf('const MOD_KEYS='),e0=srcInput.indexOf('function modSync(e){'),b=srcInput.indexOf('\n}\n',e0)+3;
+ if(a<0||e0<0||b<3)throw new Error('modSync slice miss');
+ const rel=[],keys={};
+ const f=new Function('keys','bindRelease',srcInput.slice(a,b)+';return modSync;')(keys,c=>rel.push(c));
+ let n=0;const t=(c,m)=>{if(!c){n++;if(!quiet)console.log('  FAIL  '+m);}};
+ keys.ShiftRight=true;f({code:'ShiftLeft',shiftKey:true});
+ t(keys.ShiftRight&&!rel.length,'modSync: a Shift down with the flag down is left alone');
+ f({code:'KeyA',shiftKey:false});
+ t(!keys.ShiftRight&&rel[0]==='ShiftRight','modSync: a Shift the flag says is UP is released (through bindRelease)');
+ keys.ShiftLeft=true;f({code:'ShiftLeft',shiftKey:false});
+ t(keys.ShiftLeft,'modSync: the event\'s own key is never released by it');
+ keys.ControlRight=true;f({code:'Space',shiftKey:true,ctrlKey:false});
+ t(!keys.ControlRight,'modSync: Ctrl is reconciled the same way (finesse on R-Ctrl)');
+ return n;
+}
+const IN_SRC=read('js/input.js');
+const modFail=modRun(IN_SRC);
+console.log('modSync: '+(modFail?modFail+' failed':'all passed'));
+{const mut=IN_SRC.replace('  if(e[m[0]])continue;','  continue;');let f=0;try{f=modRun(mut,true);}catch(e){f=1;}
+ if(mut!==IN_SRC&&f>0){caught++;console.log('  caught  modSync ignores the modifier flags');}else console.log('  MISSED  modSync ignores the modifier flags');
+ muts.push({name:'modSync'});}
 console.log('\nmutations caught: '+caught+'/'+muts.length);
-process.exitCode=(base.fail||caught<muts.length)?1:0;
+process.exitCode=(base.fail||modFail||caught<muts.length)?1:0;

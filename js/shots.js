@@ -108,6 +108,38 @@ function shotHoldUpdate(r,lt){
  h.carryMult=lerp(1,H.carry,t);
 }
 
+/* ---- the PIN (finesse + raise) ------------------------------------------------------------ */
+/* The hold makes the boot sticky, but a boot pressed onto a ball still resolves as a contact and the
+   ball squirts out — see CONFIG.shots.pin. This is the INPUT half: it says whether this rod may pin
+   (finesse held, no wind-up) and whether it is being posed (raise pressed while finesse is held,
+   latched until finesse lets go, so the raise can come up again). The CATCH, the carry and every
+   release are physics.js pinUpdate / pinBallStep. r.pinA is the pose target, capped by the same
+   sweep ladder as a wind-up so easing back over a ball never shoves it goalward; frozen while a
+   ball is pinned, because the guard would read the pinned ball itself as something to refuse. */
+function shotPinInput(r,I){
+ const P=SHOTC.pin;
+ if(!P||!P.on){r.pinOn=false;r.pinPose=false;return;}
+ /* FINESSE HELD, not finesse's GRIP. The keyboard grip eases in over kbm.holdRamp, and gating on it
+    meant finesse + raise pressed together — the natural way to play a chord — landed the raise while
+    the grip was still under hold.from and the pose never latched. I.fin is the input being down. */
+ const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
+ r.pinOn=fin&&r.chg<0&&r.kickT<0;
+ if(!r.pinOn)r.pinPose=false;
+ else if(I.rz)r.pinPose=true;
+ if(r.pinPose&&!r.pinB)r.pinA=shotPullCap(r,r.angle,P.angle*r.kickDir);
+}
+/* A kick from the pin is the PIN SHOT: the AI's trapShot curve (a shallow pull-back off the pin
+   angle, then the strike), a clean power trim and no spray. It ignores the finesse axis on purpose —
+   finesse is being HELD to keep the pin, so reading it would turn every pin shot into a pass. kickRod
+   lets the ball go, keeping carryOut of the slide it was being carried at: slide, then kick, and it
+   leaves at an angle, which is what a push or pull shot is. */
+function shotPinFire(r){
+ const P=SHOTC.pin;
+ r.shotOn=true;r.shotPow=P.pow;r.shotCtl=P.ctl;r.shotExert=1;r.shotOver=0;   // clean, not charged: no overspeed
+ r.pinPose=false;
+ kickRod(r,'trapShot');
+}
+
 /* The swing CURVE for a button kick at axis m. Blends CONFIG.kick toward mod.soft / mod.hard key by
    key, so only the keys those anchors name are touched and everything else (raiseA, grip, spin…)
    still comes from CONFIG.kick. Returns null at m~0 so kickStyleCfg falls back to the shared block
@@ -164,8 +196,13 @@ function shotArm(r,m,k){
  r.shotPow=shotAxisPow(m)*(k>=0?shotChgPow(k):1);
  r.shotCtl=clamp(shotAxisCtl(m)*(k>=0?shotChgCtl(k):1),0,1);
  r.shotExert=shotAxisExert(m);
+ r.shotOver=k>=0?shotChgOver(k):0;
 }
-function shotDisarm(r){r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.shotExert=1;}
+function shotDisarm(r){r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.shotExert=1;r.shotOver=0;}
+/* What a charge is worth against the SPEED CAP (physics.js capSpeed, CONFIG.kick.cap.charge): 0 with no
+   charge, 1 across the sweet band, and back to 0 as it overcooks — read off the same power curve, so
+   the only way past maxV is the timing the band exists to test. */
+function shotChgOver(k){const C=SHOTC.charge;return clamp((shotChgPow(k)-1)/Math.max(1e-6,C.powMax-1),0,1);}
 // Called by collideRod the moment a contact has taken its power. One contact, one shot — a swing
 // that grazes and then strikes cleanly spends its charge on the graze, the same rule r.kickHit and
 // msSw already run on, and the only rule that is well defined for a stick swing with no kickT.
@@ -195,6 +232,8 @@ function shotReset(r){
  r.chgBlock=0;r.chgEndT=null;r.chgEndBand=-1;r.chgEndK=0;   // the blocked reading and the held verdict
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
+ r.pinOn=false;r.pinPose=false;r.pinA=null;
+ if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
 /* ---- the wind-up angle (classic) ---------------------------------------------------------- */
@@ -311,6 +350,7 @@ function shotFire(r,m,k){
  // A PASS takes no blended curve: it swings on CONFIG.ai.passShot, the same block the AI passes
  // with, so a human pass and an AI pass are the same action rather than two things that look alike.
  kickRod(r,pt?'pass':(r.shotOn?'shot':null),pt||null,pt?null:shotBlend(m));
+ r.swOver=r.shotOn?(r.shotOver||0):0;         // a charge beats the speed cap for the WHOLE swing (physics.js capSpeed)
 }
 /* Horizontal-only rotation of the outgoing velocity, so it adds no energy — the same discipline
    the Magnus curve and aimAssist are written under. Seeded on its own stream (rng.js): it changes
@@ -339,12 +379,14 @@ function shotSpray(b,r){
      kick   classic pad, cfg.padChargeBtn 'kick'/'both' — the kick button held
      key    keyboard / mouse: the POWER binding held (js/binds.js). Digital, so always full depth. */
 const SHOT_SRCS=['stick','rt','kick','key'];
-function shotInNew(){return {live:false,m:0,lt:0,TC:false,stick:0,rt:0,kick:false,key:0};}
+function shotInNew(){return {live:false,m:0,lt:0,TC:false,stick:0,rt:0,kick:false,key:0,rz:false,fin:false};}   // rz: raise held (the pin pose) · fin: finesse DOWN (not its eased grip)
 function shotSrcDepth(I,k){return k==='stick'?I.stick:k==='rt'?I.rt:k==='kick'?(I.kick?1:0):k==='key'?I.key:0;}
 // One pad, read into o. stickD: the right-stick value the angle path resolved, -1 fully back .. +1.
 function shotPadRead(o,gp,TC,stickD){
  const lt=shotTrigD(gp,6),rt=shotTrigD(gp,7);
  o.live=true;o.m=shotAxis(lt,rt);o.lt=lt;o.TC=TC;o.stick=0;o.rt=0;o.kick=false;o.key=0;
+ o.rz=gpDown(gp,2);                              // X: raise — with LT held, the pin pose (shotPinInput)
+ o.fin=lt>SHOTC.hold.from;                       // LT squeezed past where its grip starts
  if(TC){const back=Math.max(0,-stickD);if(shotChord(lt,rt)&&back>=SHOTC.charge.stickBack)o.stick=back;}
  else if(SHOTC.charge.needRaise){
   /* RT IS ONLY THE POWER; the pull-back has to be the player's own. X held → the classic authored
@@ -353,7 +395,7 @@ function shotPadRead(o,gp,TC,stickD){
   if(rt>0){
    const back=Math.max(0,-stickD);
    if(back>=SHOTC.charge.stickBack)o.stick=back;
-   else if(gpDown(gp,2))o.rt=rt;
+   else if(o.rz)o.rt=rt;
   }
  }else{
   const cb=cfg.padChargeBtn||'rt';
@@ -383,8 +425,8 @@ function shotSeatsUpdate(dt){
   if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}
   s.shotRod=r;
   const P=s.shotPad;
-  if(!r||!shotsOn()){if(r)shotReset(r);if(P)P.live=false;s.kbmFin=0;continue;}
-  const pw=kOn&&bindHeld('power',s),fn=kOn&&bindHeld('finesse',s);
+  if(!r||!shotsOn()){if(r)shotReset(r);if(P)P.live=false;s.kbmFin=0;s.rzEdge=false;continue;}
+  const pw=kOn&&bindHeld('power',s),fn=kOn&&bindHeld('finesse',s),rz=kOn&&bindHeld('raise',s);
   // A button has no squeeze, so the grip is eased in over holdRamp instead of stepping to full.
   s.kbmFin=fn?Math.min(1,(s.kbmFin||0)+dt/Math.max(1e-3,K.holdRamp)):0;
   const I=SHOT_IN,pl=!!(P&&P.live);
@@ -394,7 +436,12 @@ function shotSeatsUpdate(dt){
   I.TC=pl&&P.TC;
   // POWER winds up only WITH raise held (needRaise) — the same pull-back a pad needs X or the stick for.
   I.stick=pl?P.stick:0;I.rt=pl?P.rt:0;I.kick=pl&&P.kick;
-  I.key=(pw&&(!SHOTC.charge.needRaise||bindHeld('raise',s)))?1:0;
+  I.key=(pw&&(!SHOTC.charge.needRaise||rz))?1:0;
+  /* Raise from any device — with finesse, the pin pose. s.rzEdge is a raise PRESS latched by input.js
+     bindPress: a tap that goes down and up between two frames is invisible to bindHeld, which is read
+     once a frame, so "tap raise" would only work if the tap happened to straddle a frame. */
+  I.rz=rz||(pl&&P.rz)||!!s.rzEdge;s.rzEdge=false;
+  I.fin=fn||(pl&&P.fin);
   shotStep(dt,r,I);
   if(P)P.live=false;                             // a pad that stops reporting (unplugged) stops counting
  }
@@ -407,6 +454,8 @@ function shotSeatsUpdate(dt){
    charge is the exception — its verdict belongs to the CONTACT (shotConsume). */
 function shotKickEdge(r,m){
  const k=shotCharge(r),C=SHOTC.charge;
+ // A ball on the pin: the kick is the PIN SHOT, whatever the axis says (finesse is held to keep it).
+ if(r.pinB&&r.kickT<0){shotPinFire(r);return;}
  if(k>=0&&r.chgSrc&&r.chgSrc!=='stick'&&r.kickT<0){
   shotVerdict(r,k);
   shotFire(r,(r.chgMod!=null?r.chgMod:m),k);
@@ -533,6 +582,7 @@ function shotStep(dt,r,I){
    r.shotPow=shotAxisPow(m)*lerp(1,shotChgPow(r.chgRel),f);
    r.shotCtl=clamp(shotAxisCtl(m)*lerp(1,shotChgCtl(r.chgRel),f),0,1);
    r.shotExert=shotAxisExert(m);
+   r.shotOver=shotChgOver(r.chgRel)*f;             // a fading bank beats the cap by less, down to nothing
   }
  }
 
@@ -560,6 +610,8 @@ function shotStep(dt,r,I){
  // LT also makes the boot STICKY (CONFIG.shots.hold). Last, so it reads THIS frame's charge: a
  // wind-up cancels the hold, and a swing that just fired frees it again on the same frame.
  shotHoldUpdate(r,lt);
+ // …and finesse + raise poses the PIN. After the hold for the same reason: it reads this frame's charge.
+ shotPinInput(r,I);
 
  return fired;
 }

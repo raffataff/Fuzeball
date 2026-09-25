@@ -21,10 +21,26 @@ function bindPress(code){
   // kick: shots.js decides whether this is a plain swing, a pass (finesse held) or the release of a
   // live wind-up (power held). With nothing held it is the old kickRod, byte for byte.
   if(a==='kick'){shotKickEdge(r,shotKbmAxis(s));r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
-  else if(a==='raise'){r.raise=true;rodRaiseRelease(r);}        // your hand on it ends any inherited raise
+  // raise: the PRESS is also latched for shots.js (s.rzEdge), so a tap shorter than a frame still
+  // poses the pin — the per-frame read of what is held never sees one.
+  else if(a==='raise'){r.raise=true;rodRaiseRelease(r);s.rzEdge=true;}   // your hand on it ends any inherited raise
   else if(a==='rodPrev')seatStep(s,-1);
   else if(a==='rodNext')seatStep(s,1);
   else if(/^rod[1-4]$/.test(a))setSeatCtrl(s,+a[3]-1,1);
+ }
+}
+/* A MODIFIER CAN LOSE ITS KEYUP. On Windows, with both Shift keys down, letting go of one does not
+   always send its keyup — and power (R-Shift) and raise (L-Shift) are both Shifts by default, so after
+   a charged shot one could stay "held" in keys[]: every later L-Shift then wound up a charge instead of
+   raising, and a live wind-up refuses the pin. Every key and mouse event carries the real modifier
+   state, so any modifier keys[] thinks is down while its flag says up is released here, through the
+   same bindRelease a real keyup would take. The event's own key is left alone (its keydown IS it). */
+const MOD_KEYS=[['shiftKey','ShiftLeft','ShiftRight'],['ctrlKey','ControlLeft','ControlRight'],
+ ['altKey','AltLeft','AltRight'],['metaKey','MetaLeft','MetaRight']];
+function modSync(e){
+ for(const m of MOD_KEYS){
+  if(e[m[0]])continue;
+  for(let i=1;i<3;i++){const c=m[i];if(keys[c]&&c!==e.code){keys[c]=false;bindRelease(c);}}
  }
 }
 /* A HOLD ends only when the LAST input holding it comes up: Space and LMB both kick, and letting go
@@ -49,6 +65,7 @@ addEventListener('keydown',e=>{
     Ctrl+T / Ctrl+N) cannot — the browser reserves them — which is why a finesse player on W/S is
     better on the arrows, and why the desktop build has to block them in its own shell. */
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)||(inMatch()&&!S.photo&&!S.freeRoam&&(bindActs(e.code,'play').length||menuKey(e.code))))e.preventDefault();
+ modSync(e);
  if(e.repeat)return;keys[e.code]=true;
  // PHOTO MODE (F1) takes the keyboard. Deliberately placed AFTER the keys[] write — photo.js reads
  // that same map for its held WASD/arrow camera moves, so the bookkeeping has to happen either way;
@@ -83,7 +100,7 @@ addEventListener('keydown',e=>{
  mouseLockRequest();                              // any in-match key is a gesture too — so the lock catches within a beat of play starting
  bindPress(e.code);
 });
-addEventListener('keyup',e=>{keys[e.code]=false;
+addEventListener('keyup',e=>{keys[e.code]=false;modSync(e);
  if(menuKey(e.code)&&inMatch()&&!S.photo){e.preventDefault();mlAlt=performance.now();}
  if(S.freeRoam)return;
  bindRelease(e.code);});
@@ -92,6 +109,8 @@ addEventListener('keyup',e=>{keys[e.code]=false;
    would come back still held forward or still raised with no key left to let it go. Nothing here is
    a control: it is only the RELEASE half of every hold, plus the stick re-arm, since a pad left
    deflected while away would otherwise drive the rod on the first poll back. */
+// The mouse carries the modifier flags too: a Shift that lost its keyup is caught on the next move or click.
+for(const ev of ['mousedown','mouseup','mousemove'])addEventListener(ev,modSync,{capture:true,passive:true});
 addEventListener('blur',()=>{
  for(const k in keys)keys[k]=false;
  if(!S.seats)return;
@@ -268,6 +287,7 @@ function gamepadUpdate(dt){
   // VIEW retries a Skill Trial — the pad's R. Any pad, like pause; trials.js owns what a retry is, so
   // a missing trials.js leaves the button doing nothing rather than throwing.
   if(just[8]&&S.trial&&S.phase==='play'&&typeof trialRestart==='function'){trialRestart();continue;}
+  if(just[8]&&S.tut&&S.phase==='play'&&typeof tutSkip==='function'){tutSkip();continue;}   // the tutorial's skip-a-lesson
   if(!seat)continue;
   padSeatUpdate(dt,gp,seat,just);
  }
@@ -410,6 +430,7 @@ function mouseLockWant(){
  if(S.phase!=='play'&&S.phase!=='count')return false;
  if(!devSeat('mouse'))return false;                       // nobody is steering with the mouse
  if(S.trial&&S.trial.done)return false;                   // the result card takes clicks (plain data — safe with no trials.js)
+ if(S.tut&&S.tut.card)return false;                       // …and so does the tutorial's
  const p=$('trnPanel');
  if(p&&!p.classList.contains('hidden'))return false;      // sandbox tools are clicks
  return true;

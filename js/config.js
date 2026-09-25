@@ -251,6 +251,7 @@ matchStats:{
   cacheSkins:2,       // max skin GLBs resident, LRU (active always protected)
   cacheRooms:1,       // max room GLBs resident, LRU (active always protected)
   cacheEnvs:8,        // max baked reflection maps held, LRU
+  cacheSkies:2,       // max room skies (6 KTX2 cube faces, ~8MB at 1024²) resident, LRU
   cachePitches:2      // max pitch GLBs resident, LRU. 2 keeps an A/B warm
  },
 
@@ -265,7 +266,7 @@ physics:{
    footBoxOff:{x:-0.65,y:0.4},        // foot box centre offset from foot-base, rod-local
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.15,                // random velocity nudge after a foot hit (stops perfect oscillations)
-   subMin:3, subMax:7, subTravel:0.2,   // adaptive substep bounds + target travel per step
+   subMin:3, subMax:16, subTravel:0.2,  // adaptive substep bounds + target travel per step (PHYS_Q overrides by cfg.physQuality)
    floorRest:0.42,                        // vertical restitution off the floor
    floorRestCut:6,                        // below this upward speed the bounce dies to 0
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
@@ -290,7 +291,7 @@ physics:{
 kick:{
    // swing-angle curve keyframes: time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.055,  strikeA:0.95,     // strike ramp end / peak forward angle
+   strike:0.025,  strikeA:0.95,     // strike ramp end / peak forward angle
    hold:0.25,                     // hold peak until this time
    drop:0.32,                     // fully returned by this time
    raiseA:-1.6, raiseLerp:18, dropLerp:15, // lift-men angle + settle rates
@@ -300,7 +301,7 @@ kick:{
    boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse), freeze (speed)
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0.01, restPower:0.8,      // passive touch / struck shot
-   powFrom:0.03, powTo:0.2,       // swing-time window in which restPower is used instead of rest
+   powFrom:0.008, powTo:0.25,       // swing-time window in which restPower is used instead of rest
    grip:0.15,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.85,
 /* SPEED CEILING - what a CONTACT may leave the ball at, as a fraction of that ball type's maxV.
@@ -318,7 +319,13 @@ kick:{
                      //   finesse touch LOWERS its ceiling and a well-timed charge raises it
       boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
       min:0.42,      // a contact can never be capped below this...
-      max:1.1       // ...nor above it. OVER 1 ON PURPOSE
+      max:1.1,      // ...nor above it. OVER 1 ON PURPOSE
+      // A CHARGED SHOT BEATS THE SPEED CAP (owner, 2026-09-25). Both scale by what the charge was worth
+      // (r.shotOver: 1 across the sweet band, falling to 0 as it overcooks), so only a well-timed charge
+      // gets past maxV. The ball keeps an allowance over its maxV that only ever ratchets DOWN to its
+      // own speed (stepBall), so it can never regain what friction or a deflection took.
+      charge:0.30,   // ceiling added by a full-worth charge
+      chargeTop:0.30 // ...and how far past `max` that charge may take it
    },
    // Bonus power for a clean strike in the centre of the foot, scaled by the acc stat.
    sweetSpot:{
@@ -371,6 +378,35 @@ kick:{
                       //   Kills a 60 u/s ball to ~5 against a still boot.
    carry:0.45        // rod slide-speed multiplier: a dribble is a shuffle, not a swipe. The ball
                       //   leaves at roughly grip x boot speed, so this is the real over-run knob.
+   },
+
+  /* THE PIN (js/shots.js shotPinInput + js/physics.js pinUpdate). Finesse + raise tilts the men into
+     the pin pose; a slow ball touching a tilted man is then CAUGHT and carried with the rod's slide,
+     outside the contact solver (a boot pressed onto a ball squirts it out sideways however many
+     substeps you give it — the fix is a constraint, not precision). A kick from the pin is the pin
+     shot, on the AI's own trapShot curve; slide first and it leaves at an angle (push / pull). A pad
+     can also pin straight off the right stick: finesse held and the rod tilted inside `band`. */
+  pin:{
+   on:true,
+   angle:-0.5,       // rod-local pin tilt, the same as the AI trap (CONFIG.ai.trap.angle). Capped per
+                     //   frame by the sweep guard so easing into it never shoves a ball goalward.
+   lerp:14,          // ease rate into the pose
+   capA:0.12,        // rod within this of the pose's target (rad) = posed, so a ball can be caught
+   band:[-0.95,-0.2],// rod-local angles a right stick can pin from without the pose
+   back:-5.8,        // catch window behind the rod (dir-relative x) — the AI trap's own window
+   front:1.4,        // …and in front of it
+   zCatch:2.2,       // ball within this of a man's z
+   yTol:0.6,         // …on the floor (centre no higher than BALL_R + this)
+   touch:0.6,        // …and touching the leg: within BALL_R + PRAD + this of the leg capsule
+   capV:14,          // relative speed under which a touching ball is caught (the finesse grip slows it first)
+   zHold:1.2,        // pinned ball's z offset from its man is clamped to this
+   carry:0.7,        // rod slide-speed multiplier while pinned (the hold's 0.45 is for a loose dribble)
+   zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
+   breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
+   releaseA:0.35,    // rod turned this far off the pin angle (a stick flick) lets the ball go
+   carryOut:0.8,     // fraction of the carried slide velocity the ball keeps when let go
+   pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
+   ctl:1             // pin shot control (r.shotCtl): no spray
    },
 
   charge:{
@@ -1205,8 +1241,9 @@ deadball:{
   menuShots:{
    home:   [-12,58,80, -30,4,6],    // three-quarter from the near side, table to the right
    menu:   [0,70,62, 0,10,4],       // Kick Off: square on, both ends in frame
-   options:[-26,46,76, -54,2,6],    // like home but lower and closer: the table on the open right side
+   options:[0,54,74, 0,2,8],        // square on and low: the table centred behind the centred settings
    training:[30,92,34, 8,0,0],      // high over the attacking third
+   tutorial:[0,70,62, 0,10,4],      // square on like Kick Off: the whole table, before you learn it
    trials: [30,92,34, 8,0,0],
    daily:  [30,92,34, 8,0,0],
    lgSlots:[62,70,64, 6,4,0],       // the league: high broadcast angle from the blue corner
@@ -1276,7 +1313,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.15,maxV:150,w:50,trail:'#ffffff',
+      mass:1.35,maxV:130,w:50,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1293,7 +1330,7 @@ deadball:{
    },
    fire:   
       {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+      mass:1,maxV:150,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -1321,7 +1358,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.25,maxV:180,w:10,splits:true,trail:'#c39bff',
+      mass:1.25,maxV:110,w:10,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -1339,7 +1376,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.0,maxV:150,w:12,trail:'#8fffda',light:0x33cfff,
+      mass:1.0,maxV:110,w:12,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -1415,13 +1452,22 @@ deadball:{
    lib:{}     // e.g. stool:{src:'pub_stool.glb', fit:11}
  },
  /* ---- rooms / locations ---------- */
+ /* No comments INSIDE a room entry: the room editor's export (F2) replaces the whole block, and
+    tools/roomlights-harness.js checks for it. Notes on a room go here.
+    sky   six cube faces <src>_px … _nz (.ktx2 unless ext says so), models.js ensureSky. r128 cannot
+          rotate or dim a background, so both are baked into the faces.
+    open  (Void) the table bolted to a rock in open space. Rock/deck/lamps: tools/build_void_asteroid.py
+          then tools/ktx2-encode.mjs; nebula: tools/build_nebula_sky.py then tools/sky-encode.mjs.
+          No lights in its GLB. The dir light is a warm key from the copper side of the nebula with no
+          shadow map (the deck carries a baked contact shadow); env panels are tinted from the nebula. */
   rooms:{
    open:{
-      name:'Void', folder:'na', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
+      name:'Void', folder:'assets/rooms/void/', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
       bg:0x05060f, fog:[210,440],
-      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.9,on:true},
-      dir:{color:0xffffff,int:0.7,pos:[45,100,35],on:false,shadow:false},
-      env:{shell:0x0b1022,panels:[[0x18e0ff,-250,30,-110,260,120],[0xff2bd6,250,30,110,260,120],[0x9b6bff,0,150,-250,340,90],[0xffffff,0,155,0,150,150]]},
+      sky:{src:'assets/rooms/void/sky/nebula'},
+      hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.6,on:true},
+      dir:{color:0xffd2a0,int:1.1,pos:[-140,70,-90],on:true,shadow:false},
+      env:{shell:0x07111c,panels:[[0x3f8fa8,-250,30,-110,260,120],[0xb8621f,250,30,110,260,120],[0x123f5e,0,150,-250,340,90],[0xdcecff,0,155,0,150,150]]},
       lights:[
         {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.65, dist:150, decay:2, angle:0.6, penumbra:0.32},
         {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.95, dist:65, decay:1, angle:0.68, penumbra:0.24},
@@ -1609,6 +1655,53 @@ deadball:{
   speedMax:200,                      // launcher speed/loft clamp (keep ≤ ball maxV)
   clampMargin:2,                     // placed balls are clamped this far inside the walls
   ringColor:0x2bff88                 // click-place ghost ring + panel accent
+ },
+
+ /* ---- the tutorial (js/tutorial.js) ---------------------------------------------------------
+    Training with a lesson plan on top, the same way a Skill Trial is training with a rulebook.
+    The player picks KEYBOARD & MOUSE or CONTROLLER first; that choice decides which prompts are
+    shown, never which devices work (the seat holds every device, as in any solo match).
+    Offered once before the first Kick Off or League match (cfg.tutSeen), always reachable from
+    Training, and finishing it sets cfg.tutDone (the achievement reads that, so it can be granted
+    retroactively — see ACHIEVEMENTS.md).
+    Lesson text: [act] = that action's first KEY BINDING drawn as a keycap (so a rebind shows),
+    [mouse] = the mouse; {A}, {LT+X}, {LB/RB} = pad glyphs in the family of the last pad used.
+    `rods` = your rods on the table for that lesson (the opposition is always hidden), `start` = the
+    one you are handed. `ball` = where it is placed; a ball with vx is ROLLED at you and re-served
+    when it dies. `check` names the test in tutorial.js tutCheck. */
+ tutorial:{
+  on:true,
+  firstMatch:true,   // offer it before the first Kick Off / League match
+  nextDelay:1.1,     // beat between a lesson done and the next one set up (s)
+  stuckT:25,         // after this long on one lesson the skip is offered (s)
+  serveEvery:3.0,    // a rolled ball is re-served once it has been dead this long (s)
+  slideDist:36,      // SLIDE: table units of rod travel to pass
+  lessons:[
+   {id:'slide',name:'SLIDE',rods:['ATT'],ball:null,check:'slide',
+    kbm:'Move the [mouse], or hold [slideUp] and [slideDown], to slide your players across the table.',
+    pad:'Push {LS} up and down to slide your players across the table.'},
+   {id:'kick',name:'KICK',rods:['ATT'],ball:{x:25.4,z:0},check:'goal',
+    kbm:'Press [kick] to kick. Put it in the net.',
+    pad:'Press {A} to kick. Put it in the net.'},
+   {id:'raise',name:'RAISE',rods:['ATT'],ball:{x:6,z:0,vx:34},check:'raise',
+    kbm:'A ball is coming from behind. Hold [raise] to lift your players and let it through.',
+    pad:'A ball is coming from behind. Hold {X} to lift your players and let it through.'},
+   {id:'switch',name:'SWITCH RODS',rods:['DEF','MID','ATT'],start:'ATT',ball:null,check:'switch',
+    kbm:'Press [rodPrev] and [rodNext] to change rods. Take hold of all three.',
+    pad:'Press {LB} and {RB} to change rods. Take hold of all three.'},
+   {id:'pass',name:'PASS',rods:['MID','ATT'],start:'MID',ball:{x:-4.9,z:0},lift:false,check:'pass',
+    kbm:'Hold [finesse] and press [kick] to pass up to your attack.',
+    pad:'Hold {LT} and press {A} to pass up to your attack.'},
+   {id:'power',name:'POWER SHOT',rods:['ATT'],ball:{x:25.4,z:0},check:'charge',
+    kbm:'Hold [power] and [raise] to wind up, then kick with [kick] while the marker glows gold.',
+    pad:'Hold {RT} and {X} to wind up, then kick with {A} while the marker glows gold.'},
+   {id:'pin',name:'PIN',rods:['ATT'],ball:{x:36,z:0,vx:-17},check:'pin',
+    kbm:'A ball is coming. Hold [finesse] and tap [raise] to tilt your players and pin it.',
+    pad:'A ball is coming. Hold {LT} and tap {X} to tilt your players and pin it.'},
+   {id:'pinShot',name:'PIN SHOT',rods:['ATT'],ball:{x:36,z:0,vx:-17},keep:true,check:'pinShot',
+    kbm:'Keep [finesse] held and kick with [kick]. Slide first and it goes in at an angle.',
+    pad:'Keep {LT} held and kick with {A}. Slide first and it goes in at an angle.'}
+  ]
  },
 
  /* ---- skill trials (js/trials.js) --------- */
@@ -1948,6 +2041,10 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
    distinct from the CONFIG tuning knobs above.
    ========================================================================= */
 let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,fog:true,table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
+ // Options → Audio. Bus volumes are 0..1 (Au.mix hears them on a square curve); muteBg silences an unfocused window.
+ volMaster:1,volFx:1,volCrowd:1,volUi:1,muteBg:false,
+ // The tutorial (js/tutorial.js): offered once before the first match, and finished at least once.
+ tutSeen:false,tutDone:false,
  // gameTime: match limit in minutes (0 = unlimited, first to `goals`).
  redName:'Team 1',blueName:'Team 2',redColor:CONFIG.playerModel.kitDefault[0],blueColor:CONFIG.playerModel.kitDefault[1],
  // Per-team AI difficulty (overrides legacy single `diff`).
@@ -2004,7 +2101,8 @@ const CFG_MACHINE=new Set([
  'renderScale','shadows','shadowQuality','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
  'particles','marks','rodHoles','reflections','fog','profiler',
  'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
- 'padDeadzone'     // stick calibration: a drifty pad on ONE machine, not a preference
+ 'padDeadzone',    // stick calibration: a drifty pad on ONE machine, not a preference
+ 'volMaster','volFx','volCrowd','volUi','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
 ]);
 // Follows the person. Identity, choices, progress.
 const CFG_PLAYER=new Set([
@@ -2021,6 +2119,7 @@ const CFG_PLAYER=new Set([
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
  'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock','keyBinds',
 'trials','daily','trnSpots','photoShots','photoPath','photoGroups',  // progress + authored content
+ 'tutSeen','tutDone',                                            // the tutorial: offered once, and finished (an achievement reads tutDone)
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);
 /* Bucket a key. Unlisted -> PLAYER, reported ONCE per key per session. */
@@ -2130,7 +2229,7 @@ function saveCfg(){try{
 
 /* Physics quality presets */
 const PHYS_Q={
- high:{subTravel:0.20,subMax:7},
+ high:{subTravel:0.20,subMax:16},   // 16: ~0.5µs per substep per ball measured live (2026-09-25), so a fast rally costs microseconds
  balanced:{subTravel:0.28,subMax:6},
  performance:{subTravel:0.38,subMax:5}
 };

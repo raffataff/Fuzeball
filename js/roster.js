@@ -216,4 +216,7 @@ function rosterClose(){if(ROS.raf){cancelAnimationFrame(ROS.raf);ROS.raf=0;}}
 SCREENS.menu.onShow=rosterOpen;
 SCREENS.menu.onHide=rosterClose;
 SCREENS.menu.onPad=rosPad;
-(function(){const b=$('btnStart');if(b)b.onclick=()=>startMatch('roster');})();
+// The first match with a human at the table is offered the tutorial first (js/tutorial.js, once ever).
+(function(){const b=$('btnStart');if(b)b.onclick=()=>{
+ if(S.roster.length&&typeof tutOffer==='function'&&tutOffer(()=>startMatch('roster'),'Play match'))return;
+ startMatch('roster');};})();

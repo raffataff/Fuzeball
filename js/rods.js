@@ -102,6 +102,8 @@ function kickRod(r, style, aimAt, curve){
  r.dribMan=-1;r.dribZ=0;r.dribZ0=0;                // …and any dribble carry, for the same reason
  r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.passTo=aimAt||null;                             // pass target for this swing only
+ r.swOver=0;r.swF=0;r.swMx=0;                     // overspeed this swing may carry past maxV — set by shots.js shotFire / physics.js capSpeed for a charge
+ if(r.pinB)pinRelease(r);                          // a swing lets a pinned ball go, and this swing is what strikes it (physics.js)
  r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
  r.msSw=false;                                     // match-stats shot latch: ONE attempt per swing, not one per contact (matchstats.js msContact)
  stExertKick(r);                                   // stamina channel B: the swing costs THIS rod (stats.js)
@@ -194,7 +196,12 @@ function updateRods(dt){
    const trk=shotTrackMult(r);
    if(KICK.padAngleLerp>0||trk!==1){const rate=(KICK.padAngleLerp>0?KICK.padAngleLerp:SHOT.mod.directLerp)*trk;r.angle=lerp(r.angle,r.padAngleTarget,Math.min(1,rate*dt));}
    else r.angle=r.padAngleTarget;
-  }else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
+  }
+  /* THE PIN POSE (js/shots.js shotPinInput): finesse + raise. Below the stick, which already owns the
+     angle when it is being driven (a pad pins off the stick directly), and ABOVE the raise, because
+     the raise button is what asked for the pose and is usually still down. r.pinA is sweep-capped. */
+  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,SHOT.pin.lerp*dt));}
+  else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,KICK.raiseA*r.kickDir,Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
    // Total Control's slide multiplier is per SEAT now (each pad has its own triggers), so it's
    // read off whichever seat holds this rod rather than from one global.
@@ -203,7 +210,8 @@ function updateRods(dt){
    // Carrying a held ball (trap or dribble) is a deliberate shuffle, not a slide: the boot can only
    // drag the ball as fast as the block's holdGrip transfers velocity to it, so a full-speed slide
    // just sheds it. holdCfg returns null mid-swing, so a release always slides at full speed.
-   {const H=holdCfg(r);if(H)ms*=H.carryMult;}
+   // A PINNED ball is carried exactly (physics.js pinBallStep), so its limit is the pin's own carry.
+   {const H=holdCfg(r);if(r.pinB)ms*=SHOT.pin.carry;else if(H)ms*=H.carryMult;}
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(uSeat){                                          // human hand: instant/responsive, speed-capped only

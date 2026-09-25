@@ -229,6 +229,10 @@ function buildRoomProps(id,rm,cb){
  let left=specs.length;
  const done=()=>{
   if(--left>0)return;
+  // Boot applies the room more than once, so two builds of one room can be in flight together.
+  // The second to finish used to overwrite propGroups[id] and ORPHAN the first — still in the
+  // scene and visible: every prop drawn twice, and the stray copy survived leaving the room.
+  disposeRoomProps(id);
   const g=propGroups[id]=new THREE.Group();g.name='props:'+id;
   g.visible=false;scene.add(g);
   let n=0,inst=0;

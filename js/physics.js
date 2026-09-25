@@ -2,6 +2,7 @@
 /* ================= physics (the core — treat carefully) ================= */
 function physics(dt){
  if(dt<=0||!S.balls.length)return;
+ pinUpdate();   // catch / let go of pinned balls BEFORE the substeps, so a release this step is simulated this step
  // adaptive substepping: keep per-step travel under ~subTravel so fast/heavy balls can't tunnel.
  // floor/air friction are applied per-substep as exp(k*h), so total exp(k*dt) is invariant to sub count.
  // The FOOT counts as a fast mover too: updateRods advances r.angle a whole sim step at once, and at
@@ -39,6 +40,74 @@ function physics(dt){
  if(S.stats&&S.lastTouch>=0&&S.phase==='play')S.stats.poss[S.lastTouch]+=dt;
  msTick(dt);   // matchstats.js: territory (ball position by third) + the rally clock
 }
+/* ================= THE PIN (CONFIG.shots.pin) ===========================
+   A ball pressed under a tilted man, carried with the rod. It is a CONSTRAINT, not a contact: while
+   pinned, stepBall hands the ball to pinBallStep and it skips the whole solver — a boot pressed onto
+   a ball resolves along the boot's nearest face, which near the toe is horizontal, so the contact
+   solver squirts it out sideways however fine the substeps. The input half (whether this rod may pin,
+   and the pose) is js/shots.js shotPinInput; this file owns the catch, the carry and every release.
+   One ball per rod (r.pinB <-> b.pinR). Nothing here allocates: it runs per substep. */
+function pinUpdate(){
+ const P=SHOT.pin;if(!P||!P.on)return;
+ for(const r of rods){
+  const pb=r.pinB;
+  if(pb){
+   // Let go when the hand does, when a swing starts (kickRod also does this), when the ball has left
+   // play, or when the rod has turned off the pin — a Total Control flick is a release by the stick.
+   if(!r.pinOn||r.kickT>=0||pb.scored||S.balls.indexOf(pb)<0||Math.abs(r.angle-r.pinAt)>P.releaseA)pinRelease(r);
+   continue;
+  }
+  if(!r.pinOn||r.kickT>=0)continue;
+  const la=r.angle*r.kickDir;
+  const posed=(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);
+  if(!posed)continue;
+  const sa=Math.sin(r.angle),ca=Math.cos(r.angle),dx=sa*ARM,dy=-ca*ARM,reach=BALL_R+PRAD+P.touch;
+  for(const b of S.balls){
+   if(b.scored||b.pinR)continue;
+   const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
+   if(rel<P.back||rel>P.front||p.y>BALL_R+P.yTol)continue;
+   if(Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;             // too quick to hold: the finesse grip slows it first
+   for(let i=0;i<r.baseZ.length;i++){
+    if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
+    const mz=r.baseZ[i]+r.offset;
+    if(Math.abs(p.z-mz)>P.zCatch)continue;
+    // touching the LEG (the capsule pivot -> foot), the same measure shots.js shotLegClips uses
+    const wx=p.x-r.x,wy=p.y-ROD_H,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
+    const nx=p.x-(r.x+dx*t),ny=p.y-(ROD_H+dy*t),nz=p.z-mz;
+    if(nx*nx+ny*ny+nz*nz>reach*reach)continue;
+    r.pinB=b;r.pinAt=(r.pinPose&&r.pinA!=null)?r.pinA:r.angle;
+    b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=clamp(p.z-mz,-P.zHold,P.zHold);
+    b.v.set(0,0,r.vz);b.spin=0;b.pinVx=0;b.pinVz=r.vz;b.pinPx=p.x;b.pinPz=p.z;
+    break;
+   }
+   if(r.pinB)break;
+  }
+ }
+}
+/* One substep of a pinned ball. Returns false when it lets go, and the ball is then stepped normally
+   on the same substep. Two things from OUTSIDE break the pin, both measured against what this function
+   itself last wrote: the velocity (another ball struck it — ballBall runs between substeps) and the
+   position (anything that hard-sets a ball: a dead-ball re-drop, syncBall). */
+function pinBallStep(b,h){
+ const r=b.pinR,P=SHOT.pin,p=b.m.position,v=b.v;
+ if(Math.abs(v.x-b.pinVx)+Math.abs(v.z-b.pinVz)+Math.abs(v.y)>P.breakV){pinRelease(r,true);return false;}
+ if(Math.abs(p.x-b.pinPx)+Math.abs(p.z-b.pinPz)>1){pinRelease(r,true);return false;}
+ const tz=r.baseZ[b.pinMan]+r.offset+b.pinDz,zl=F.W/2-BALL_R,cz=clamp(tz,-zl,zl);
+ if(Math.abs(cz-tz)>P.zSlip){pinRelease(r);return false;}      // squeezed into a side wall: it slips out
+ const tx=r.x+r.kickDir*b.pinDx;
+ v.set((tx-p.x)/h,0,(cz-p.z)/h);p.set(tx,BALL_R,cz);b.spin=0;
+ b.pinVx=v.x;b.pinVz=v.z;b.pinPx=p.x;b.pinPz=p.z;
+ return true;
+}
+/* Let go. ext = something else already moved it (keep that velocity); otherwise it keeps carryOut of
+   the slide it was being carried at, so a ball let go mid-slide keeps travelling with the rod. */
+function pinRelease(r,ext){
+ const b=r.pinB;r.pinB=null;
+ if(!b)return;
+ b.pinR=null;
+ if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}
+}
+
 /* ================= contact AUDIO gating =================================
    An impact is an EVENT, a roll is a STATE — the same split every shipped physics game draws
    (Unity spells it OnCollisionEnter vs OnCollisionStay). Full rationale in js/audio.js.
@@ -122,7 +191,9 @@ function stepBall(b,h){
  const p=b.m.position,v=b.v;
  // safety: if physics ever produces a non-finite state, re-drop this ball instead of poisoning the sim.
  if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.z)||!isFinite(v.x)||!isFinite(v.y)||!isFinite(v.z)){
+  if(b.pinR)pinRelease(b.pinR,true);
   p.set(rngR(RNG.nan,-5,5),PHY.redropY,rngR(RNG.nan,-8,8));v.set(0,0,0);b.spin=0;syncBall(b);return;}
+ if(b.pinR&&pinBallStep(b,h))return;   // pinned: carried by its rod, outside the contact solver (see THE PIN)
  // knuckleball: erratic flutter — periodically re-kick the side-spin to a fresh random value so the
  // flight path weaves unpredictably. Energy-safe: spin only rotates the horizontal velocity below.
  if(b.t.knuckle){
@@ -260,8 +331,13 @@ function stepBall(b,h){
  }
  if(!b.scored)staticClamp(b);   // static geometry gets the last word — must run BEFORE the out-of-bounds test below
  if(!b.scored&&(p.y<-8||Math.abs(p.x)>F.L/2+F.goalDepth+8||Math.abs(p.z)>F.W/2+10)){outOfBounds(b);return;}
+ /* The hard clamp at maxV — except for a ball a CHARGED shot sent past it (capSpeed sets b.over). That
+    allowance only ever ratchets down to the ball's own speed, so friction and deflections take the
+    overspeed away for good, and it lapses the moment the ball is back under maxV. */
  const mv=b.t.maxV,sp2=v.x*v.x+v.y*v.y+v.z*v.z;
- if(sp2>mv*mv){const k=mv/Math.sqrt(sp2);v.multiplyScalar(k);}
+ let lim=mv;
+ if(b.over>mv){const sp=Math.sqrt(sp2);b.over=Math.min(b.over,Math.max(sp,mv));if(b.over>mv)lim=b.over;else b.over=0;}
+ if(sp2>lim*lim){const k=lim/Math.sqrt(sp2);v.multiplyScalar(k);}
 }
 /* STATIC GEOMETRY GETS THE LAST WORD — the second half of the wall-wedge fix.
    collideRod resolves a contact by writing the ball's position DIRECTLY, and it runs AFTER stepBall's
@@ -354,11 +430,22 @@ function capSpeed(b,r,sweet,in2){
  if(!C.on)return;
  const v=b.v,sp2=v.x*v.x+v.y*v.y+v.z*v.z,lo=b.t.maxV*C.min*C.knee;
  if(sp2<=lo*lo)return;              // under the LOWEST knee any contact could have - skips the stat reads on every passive touch and every slide substep
- let f=C.base+C.str*stCapFrac(r);
+ let f=C.base+C.str*stCapFrac(r),mx=C.max;
  if(sweet)f+=C.sweet;
  if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's OWN power trim: a finesse touch lowers its ceiling, a well-timed charge raises it
+ // A CHARGE BEATS THE CAP: it raises the ceiling AND the most any ceiling may be, by what it was worth.
+ const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
+ if(w>0){f+=(C.charge||0)*w;mx+=(C.chargeTop||0)*w;}
  if(S.eff[r.team].boost>S.time)f+=C.boost;
- const cap=b.t.maxV*clamp(f,C.min,C.max),knee=cap*C.knee;
+ /* …AND FOR THE WHOLE SWING. At strike speed the boot is several times faster than the ball and meets
+    it again on later substeps; those contacts come after the shot is spent (shotConsume), so on their
+    own they would ask for a plain ceiling and drag a 149 back under a 130 maxV — measured live,
+    2026-09-25. So the charged contact records the ceiling it earned (r.swF / r.swMx), and every later
+    contact of the SAME swing (kickRod clears them, r.swOver marks a charged one) keeps it. */
+ if(w>0){r.swF=f;r.swMx=mx;}
+ else if(r.kickT>=0&&r.swOver>0&&r.swF>0){if(r.swF>f)f=r.swF;if(r.swMx>mx)mx=r.swMx;}
+ const cap=b.t.maxV*clamp(f,C.min,mx),knee=cap*C.knee;
+ if(cap>b.t.maxV&&(w>0||(r.kickT>=0&&r.swOver>0)))b.over=Math.max(b.over||0,cap);   // stepBall's maxV clamp lets this ball keep it (and ratchets it down)
  if(sp2<=knee*knee)return;
  const sp=Math.sqrt(sp2),span=cap-knee;
  let out=knee+span*(1-Math.exp(-(sp-knee)/span));

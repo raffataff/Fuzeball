@@ -185,7 +185,7 @@ function startMatchNow(mode,rodLockRole){
   // The pad line says what the triggers are for in THIS mode, since the same two do different jobs.
   {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
    const sw=S.seats.some(s=>s.rods.length>1);
-   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch':'';
+   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin':''):'';
    // Every key in the keyboard line comes off the bindings (js/binds.js), so a rebind shows here.
    const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
    hudHint(!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,

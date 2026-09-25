@@ -61,7 +61,7 @@ for(const str of [0,5,10]){
   ok(out<=sp+1e-9,`B str5: sp ${sp} is never SPED UP`);
   prev=out;
  }
- ok(run(1e4,r)<=cap&&run(1e4,r)>cap*0.999,'B: an absurd impulse saturates AT the ceiling, never past it');
+ ok(run(1e4,r)<=cap+1e-9&&run(1e4,r)>cap*0.999,'B: an absurd impulse saturates AT the ceiling, never past it');   // +1e-9: knee+(cap-knee) can round a hair over cap
 }
 
 /* ---- C · the ceiling separates the stats, and the sweet spot / charge / boost move it -------- */
@@ -76,6 +76,31 @@ for(const str of [0,5,10]){
  S.eff[0].boost=1;S.time=0;
  ok(run(184,rod(5))>b,'C: POWER HITS raises the ceiling too, so its 2.5x impulse is visible');
  S.eff[0].boost=-1;
+}
+
+/* ---- C2 · a WELL-TIMED CHARGE beats the cap (r.shotOver, owner 2026-09-25) ------------------ */
+{
+ const ch=(w,o)=>rod(5,Object.assign({shotOn:true,shotPow:1.166,shotOver:w},o||{}));
+ const bv=()=>({v:{x:1e4,y:0,z:0},t:BALL_TYPES.classic});
+ const full=bv();capSpeed(full,ch(1),true,0);
+ ok(Math.abs(full.v.x)>MV,'C2: a full-worth charge leaves a ball PAST maxV (got '+Math.abs(full.v.x).toFixed(1)+' vs '+MV+')');
+ ok(full.over>MV&&Math.abs(full.v.x)<=full.over+1e-9,'C2: ...and hands stepBall an allowance that covers it');
+ ok(Math.abs(full.v.x)<=MV*(C.max+C.chargeTop)+1e-9,'C2: ...but never past max + chargeTop');
+ const none=bv();capSpeed(none,ch(0),true,0);
+ ok(Math.abs(none.v.x)<Math.abs(full.v.x)&&!(none.over>0),'C2: an overcooked charge (worth 0) earns no overspeed and no allowance');
+ const half=bv();capSpeed(half,ch(0.5),true,0);
+ ok(Math.abs(half.v.x)>Math.abs(none.v.x)&&Math.abs(half.v.x)<Math.abs(full.v.x),'C2: a half-worth charge lands between');
+ // the SAME swing, as it really runs: one charged contact, then the shot is spent and the boot meets
+ // the ball again on later substeps (shotOn false, the swing still in flight, r.swOver marking it)
+ const sw=rod(5,{shotOn:true,shotPow:1.166,shotOver:1,kickT:0.02,swOver:1});
+ capSpeed(bv(),sw,true,0);sw.shotOn=false;sw.shotOver=0;
+ const fol=bv();capSpeed(fol,sw,true,0);
+ ok(Math.abs(fol.v.x)>MV,'C2: a later contact of the SAME charged swing (shot already spent) still beats the cap');
+ ok(Math.abs(Math.abs(fol.v.x)-Math.abs(full.v.x))<1e-9,'C2: ...and keeps exactly the ceiling the charged contact earned');
+ sw.kickT=-1;const late=bv();capSpeed(late,sw,true,0);
+ ok(Math.abs(late.v.x)<=MV*C.max+1e-9,'C2: ...but not once that swing is over');
+ const flat=bv();capSpeed(flat,rod(10,{shotOn:true,shotPow:1.166}),true,0);
+ ok(!(flat.over>0),'C2: a strike with no charge at all never gets an allowance');
 }
 
 /* ---- D · only the best strikes may reach maxV, and they DO ----------------------------------- */
@@ -129,10 +154,16 @@ mutate('the arriving-speed floor dropped',CS,/ if\(out<inSp\)out=Math\.min\(sp,i
  rm=>rm(145,rod(0),false,150)<145);
 mutate('a hard clip instead of the knee',CS,/let out=knee\+span\*\(1-Math\.exp\(-\(sp-knee\)\/span\)\);/,'let out=cap;',
  rm=>Math.abs(rm(200,rod(5))-rm(400,rod(5)))<1e-9);
-mutate('the ceiling ignores str',CS,/let f=C\.base\+C\.str\*stCapFrac\(r\);/,'let f=C.base;',
+mutate('the ceiling ignores str',CS,/let f=C\.base\+C\.str\*stCapFrac\(r\),mx=C\.max;/,'let f=C.base,mx=C.max;',
  rm=>Math.abs(rm(184,rod(0))-rm(184,rod(10)))<1e-9);
 mutate('the sweet spot no longer raises the ceiling',CS,/ if\(sweet\)f\+=C\.sweet;/,'',
  rm=>Math.abs(rm(245,rod(10),true)-rm(245,rod(10),false))<1e-9);
+mutate('a follow-up contact in the same charged swing falls back to the plain ceiling',CS,/ else if\(r\.kickT>=0&&r\.swOver>0&&r\.swF>0\)\{if\(r\.swF>f\)f=r\.swF;if\(r\.swMx>mx\)mx=r\.swMx;\}/,'',
+ rm=>{const sw=rod(5,{shotOn:true,shotPow:1.166,shotOver:1,kickT:0.02,swOver:1});rm(1e4,sw,true);sw.shotOn=false;sw.shotOver=0;return rm(1e4,sw,true)<=MV*C.max+1e-9;});
+mutate('a charge no longer raises the most a ceiling may be',CS,/mx\+=\(C\.chargeTop\|\|0\)\*w;/,'',
+ rm=>rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true)<=MV*C.max+1e-9);
+mutate('overspeed paid on any charge, however overcooked',CS,/const w=\(r\.shotOn&&r\.shotOver>0\)\?r\.shotOver:0;/,'const w=r.shotOn?1:0;',
+ rm=>Math.abs(rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:0}),true)-rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true))<1e-9);
 
 /* ---- the table ------------------------------------------------------------------------------ */
 const HEAT=MV*CONFIG.fx.heat.from;

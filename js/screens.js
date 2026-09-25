@@ -51,6 +51,9 @@ const SCREENS={
  // later step adds is the CONTENT. back:'training' is what makes Esc walk back one level.
  training:{back:'home'},
  trials:{back:'training'},
+ // The tutorial's control picker. back is rewritten per open (tutOpen): it is reached from Training
+ // and, once, from Kick Off / the League card before the first match.
+ tutorial:{back:'training'},
  // The daily is its own TOP-LEVEL route rather than a row inside #trials: it is the one thing
  // that changes every day, so burying it two clicks down (home -> training -> trials) is exactly
  // how it goes unnoticed. Registered even when CONFIG.trials.daily.on is false — the CARD is what

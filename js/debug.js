@@ -48,6 +48,7 @@ function memLog(tag){
  // rooms are listed rather than counted: a regression here reads as extra keys, not a bigger number.
  const ev=(typeof envOrder!=='undefined'&&envOrder)?(envOrder.join(',')||'none'):'?';
  const pt=(typeof pitchOrder!=='undefined'&&pitchOrder)?(pitchOrder.join(',')||'none'):'?';
+ const sy=(typeof skyOrder!=='undefined'&&skyOrder)?(skyOrder.join(',')||'none'):'?';
  // The main canvas isn't the only GL context: the studio, the menu thumbnails and the league setup
  // preview all draw through ONE shared offscreen renderer (PRV, world.js), which holds its own
  // upload of whatever figurines they've shown. Reported separately because main-renderer counts
@@ -59,7 +60,7 @@ function memLog(tag){
   'JS heap '+memFmt(pm&&pm.usedJSHeapSize)+' / limit '+memFmt(pm&&pm.jsHeapSizeLimit)
   +' | GPU '+geos+' geoms, '+texs+' textures, '+progs+' shaders'
   +' | scene '+nodes+' nodes | modelCache '+mc+' templates'
-  +' | skins ['+sk+'] rooms ['+rm+'] pitches ['+pt+'] envs ['+ev+']'
+  +' | skins ['+sk+'] rooms ['+rm+'] pitches ['+pt+'] envs ['+ev+'] skies ['+sy+']'
   +' | tex '+memFmt(memTexBytes())
   +(sub.length?' | extra contexts: '+sub.join(', '):''));
 }

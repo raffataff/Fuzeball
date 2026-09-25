@@ -41,7 +41,8 @@ const NAV_LAYERS=[
  {id:'lgSeasonEnd',def:['lgSEContinue']},
  {id:'lgTape',def:['lgTape'],back:'lgTape',backLbl:'Skip'},
  {id:'win',def:['btnWinContinue','btnRematch']},
- {id:'trlCard',def:['trlRetry'],back:'trlQuit',backLbl:'Trials'}
+ {id:'trlCard',def:['trlRetry'],back:'trlQuit',backLbl:'Trials'},
+ {id:'tutCard',def:['tutCardGo'],back:'tutCardRedo',backLbl:'Redo'}
 ];
 // Router screens. B always presses the screen's own visible `.backBtn`, so it runs exactly the
 // teardown the mouse would (cupReturn, closeCustomize…) rather than a bare backScreen().
@@ -49,6 +50,7 @@ const NAV_SCREENS={
  home:{def:['btnKickOff']},
  menu:{def:['btnStart'],start:'btnStart'},
  training:{def:['btnTrnSandbox']},
+ tutorial:{def:['tutKbm']},          // re-pointed per open at the device last touched (js/tutorial.js)
  trials:{def:['[data-trial]']},
  daily:{def:['dailyPlay'],start:'dailyPlay'},
  customize:{def:['.czCard.on','.czCard']},

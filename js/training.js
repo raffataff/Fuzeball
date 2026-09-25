@@ -240,6 +240,7 @@ function trainingEnter(){
  // hides this panel and applies its own rod/AI setup, so the sandbox toast isn't wanted. trialArm
  // returns true only when it actually armed one, which is what keeps this a one-line typeof guard
  // with no reference to trials.js state: a missing trials.js leaves the sandbox exactly as it was.
+ if(typeof tutArm==='function'&&tutArm())return;     // a queued tutorial takes it over the same way (js/tutorial.js)
  if(typeof trialArm==='function'&&trialArm())return;
  toast('TRAINING','place · launch · tune — no scoring',2.2);   // tier 3: sandbox chrome, not a match event
 }
@@ -250,6 +251,7 @@ function trainingGoal(team,b){
  // BEFORE removeBall — the trial reads b.mss (matchstats' last SWING) to credit the rod that
  // struck it, and the mesh plus its records are freed a few lines down.
  if(S.trial&&typeof trialGoal==='function')trialGoal(team,b);
+ if(S.tut&&typeof tutGoal==='function')tutGoal(team);
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
  goalFx(team,b,msScorer(b,team));   // same scorer record the trial credit reads, so the ring agrees with it
  removeBall(b);
@@ -272,6 +274,7 @@ function trainingBallGone(){
 /* Torn down from gotoMenu — restores every hidden rod and clears the cross-module gate. */
 function trainingExit(){
  if(S.trial&&typeof trialExit==='function')trialExit();   // drop the trial gate before the sandbox one
+ if(S.tut&&typeof tutExit==='function')tutExit();         // …and the tutorial's
  trnSetPlacing(false);
  TRN.on=false;S.trn=null;TRN.freeze=false;TRN.stepQ=0;
  rods.forEach(r=>{r.trnHidden=false;r.pivot.visible=true;});
@@ -283,6 +286,7 @@ function trainingTick(){
  // Trial first, and ABOVE the panel guard: the trial owns its own HUD, so it must tick even
  // though the sandbox panel it sits behind is hidden.
  if(S.trial&&typeof trialTick==='function')trialTick();
+ if(S.tut&&typeof tutTick==='function')tutTick();
  if(!trnBuilt)return;
  const b=trnBall(),el=$('trnInfo');
  el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  · FROZEN':'')):'no ball';
