@@ -259,6 +259,7 @@ function layEditStart(k){
    layEditGuard at the top of layApply can't re-enter this. */
 function layEditEnd(){
  const k=layEditing;if(!k)return;
+ if(LAY_PAD.el)layPadDrop(true);                            // a panel still held on the pad lands where it is
  layEditing=null;
  const w=layWrap(k);
  if(w){w.classList.remove('lyEditing');w.removeEventListener('pointerdown',layDown);
@@ -304,6 +305,46 @@ function layGrow(k){
  layPanels(k).forEach(p=>{const el=$(p);if(!el||!el.style.width)return;
   b=Math.max(b,(parseFloat(el.style.top)||0)+parseFloat(el.style.height));});
  w.style.height=(b+LAY_G+LAY_DROP+layBord(w).y)+'px';
+}
+/* ---- the pad (js/padnav.js drives this) ----
+   While editing, what the cursor can land on is the PANELS, as whole units, plus the toolbar — not
+   the buttons inside the panels, which are inert in edit mode anyway (pointer-events off). A grabs a
+   panel; the D-pad then moves it one grid square a press, the same snap the mouse drag uses, and Y
+   swaps moving for resizing from the bottom-right corner. A drops it (saved, like a mouse release),
+   B puts it back where it was grabbed from. Same clamps as layDown, so a pad can't place a panel
+   anywhere a mouse couldn't. */
+const LAY_PAD={el:null,rz:false,was:null};
+function layPadCands(){
+ const k=layEditing;if(!k)return[];
+ const c=layPanels(k).map(p=>$(p)).filter(el=>el&&el.getClientRects().length);
+ if(layBar)c.push(...layBar.querySelectorAll('button'));
+ return c;
+}
+function layPadIs(el){return!!layEditing&&!!el&&layPanels(layEditing).indexOf(el.id)>=0;}
+function layPadGrab(el){
+ if(!layPadIs(el))return false;
+ LAY_PAD.el=el;LAY_PAD.rz=false;
+ LAY_PAD.was={l:el.style.left,t:el.style.top,w:el.style.width,h:el.style.height};
+ el.classList.add('lyDrag');const w=layWrap(layEditing);if(w)w.classList.remove('lyTx');
+ if(typeof Au!=='undefined')Au.ui();
+ return true;
+}
+function layPadNudge(dx,dy){
+ const el=LAY_PAD.el,k=layEditing;if(!el||!k)return;
+ const ww=layWrap(k).clientWidth,x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0,
+       w=parseFloat(el.style.width)||el.offsetWidth,h=parseFloat(el.style.height)||el.offsetHeight;
+ if(LAY_PAD.rz){el.style.width=clamp(laySnap(w+dx*LAY_G),LAY_MINW,Math.max(LAY_MINW,ww-x))+'px';el.style.height=Math.max(LAY_MINH,laySnap(h+dy*LAY_G))+'px';}
+ else{el.style.left=clamp(laySnap(x+dx*LAY_G),0,Math.max(0,ww-w))+'px';el.style.top=Math.max(0,laySnap(y+dy*LAY_G))+'px';}
+ layGrow(k);
+}
+function layPadMode(){const el=LAY_PAD.el;if(!el)return;LAY_PAD.rz=!LAY_PAD.rz;el.classList.toggle('lyRzOn',LAY_PAD.rz);if(typeof Au!=='undefined')Au.ui();}
+// keep = save where it is now (A, or the mouse taking over); otherwise put it back (B).
+function layPadDrop(keep){
+ const el=LAY_PAD.el;if(!el)return;
+ if(!keep&&LAY_PAD.was){const o=LAY_PAD.was;el.style.left=o.l;el.style.top=o.t;el.style.width=o.w;el.style.height=o.h;}
+ el.classList.remove('lyDrag','lyRzOn');LAY_PAD.el=LAY_PAD.was=null;LAY_PAD.rz=false;
+ if(layEditing){if(keep)laySave(layEditing);layGrow(layEditing);}
+ if(typeof Au!=='undefined')Au.ui();
 }
 /* ---- wiring ---- */
 /* Every `lay` block gets its ⊞ button bound here — declare one in SCREENS and it's picked up on

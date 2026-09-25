@@ -17,7 +17,7 @@
    The whole panel re-renders from a SIGNATURE diff (`rosSig`) on a rAF while the screen is
    open, so plugging a pad in, renaming a team in the Kits panel or changing an AI difficulty
    all show up without any of those places knowing the roster exists. */
-const ROS={raf:0,pad:{},kbdHeld:false,lastSig:'',seeded:false};
+const ROS={raf:0,kbdHeld:false,lastSig:'',seeded:false};
 
 /* ---- devices ---------------------------------------------------------------------------- */
 function rosPads(){const p=(navigator.getGamepads?navigator.getGamepads():[])||[],o=[];
@@ -170,33 +170,34 @@ function rosRender(){
 }
 
 /* ---- live polling (only while the Kick Off screen is up) --------------------------------- */
-/* Press-to-join needs raw device state, not DOM events: a pad has no click, and the keyboard's
-   keydown handler is busy being the in-match input. `keys` (input.js) is filled before that
-   handler's phase guards, so reading it here is safe. */
+/* Press-to-join needs raw device state, not DOM events: the keyboard's keydown handler is busy
+   being the in-match input. `keys` (input.js) is filled before that handler's phase guards, so
+   reading it here is safe. PADS ARE NOT POLLED HERE ANY MORE — see rosPad below. */
 function rosTick(){
  // The screen being VISIBLE is the condition, not the router's current screen: startMatchNow
  // calls hideScreens() without navigating, so scrCur stays 'menu' for the whole match. Polling
- // on through that would let a pad's B button call rosLeave mid-rally.
+ // on through that would let a key join a side mid-rally.
  if(screenId()!=='menu'||$('menu').classList.contains('hidden')){ROS.raf=0;return;}
  const kb=!!(keys.Space||keys.Enter);
  if(kb&&!ROS.kbdHeld&&!rosDevOwner('kbd'))rosJoin(rosNextTeam(),'kbd');
  ROS.kbdHeld=kb;
- const pads=(navigator.getGamepads?navigator.getGamepads():[])||[];
- for(let i=0;i<pads.length&&i<CONFIG.seats.maxPads;i++){
-  const gp=pads[i];if(!gp)continue;
-  const pv=ROS.pad[i]||(ROS.pad[i]={});
-  const a=gpDown(gp,0),b=gpDown(gp,1),ja=a&&!pv[0],jb=b&&!pv[1];
-  pv[0]=a;pv[1]=b;
-  const own=rosDevOwner('pad'+i);
-  if(ja&&!own)rosJoin(rosNextTeam(),'pad'+i);      // A joins the emptier side
-  // B leaves — but ONLY if this pad is that seat's only real device, i.e. the seat exists
-  // BECAUSE of this pad. A solo player holding keyboard+mouse+pad must not wipe their own seat
-  // by tapping B; theirs is the seat you leave with the ✕ button. Mirror of the join rule.
-  else if(jb&&own&&own.devs.filter(d=>d!=='pad*').length===1)rosLeave(own);
- }
  rosAbsorb();
  const sg=rosSig();if(sg!==ROS.lastSig)rosRender(); // picks up pad hotplug, renames, difficulty changes
  ROS.raf=requestAnimationFrame(rosTick);
+}
+/* Pad join/leave. js/padnav.js owns pad polling on every menu and offers each A/B press here FIRST;
+   true means the lobby used it. It used to poll the pads itself, and two pollers on one press is a
+   pad that both joins a side and presses whatever the menu cursor is on. Edge state lives in
+   padnav too, and it tracks the pads every frame, so a button still down from the press that
+   opened this screen is not a new press — no priming needed here. */
+function rosPad(i,b){
+ const own=rosDevOwner('pad'+i);
+ if(b===0)return!own&&!!rosJoin(rosNextTeam(),'pad'+i);   // A joins the emptier side
+ // B leaves — but ONLY if this pad is that seat's only real device, i.e. the seat exists
+ // BECAUSE of this pad. A solo player holding keyboard+mouse+pad must not wipe their own seat
+ // by tapping B (B is Back for them); theirs is the seat you leave with the ✕ button.
+ if(b===1&&own&&own.devs.filter(d=>d!=='pad*').length===1){rosLeave(own);return true;}
+ return false;
 }
 function rosterOpen(){
  // First visit THIS SESSION: seed a red seat so a solo player can just hit START. rosAbsorb
@@ -205,16 +206,14 @@ function rosterOpen(){
  // undone the moment you stepped out to home and came back.
  if(!ROS.seeded){ROS.seeded=true;if(!S.roster.length)S.roster.push({team:0,devs:['kbd'],lockRole:null});}
  rosAbsorb();
- // Prime the edge state from what's held RIGHT NOW so a key/button still down from the click
- // that opened this screen can't insta-join.
+ // Prime the key edge from what's held RIGHT NOW so a key still down from the press that
+ // opened this screen can't insta-join.
  ROS.kbdHeld=!!(keys.Space||keys.Enter);
- const pads=(navigator.getGamepads?navigator.getGamepads():[])||[];
- for(let i=0;i<pads.length&&i<CONFIG.seats.maxPads;i++){const gp=pads[i];if(!gp)continue;
-  ROS.pad[i]={0:gpDown(gp,0),1:gpDown(gp,1)};}
  rosRender();
  if(!ROS.raf)ROS.raf=requestAnimationFrame(rosTick);
 }
 function rosterClose(){if(ROS.raf){cancelAnimationFrame(ROS.raf);ROS.raf=0;}}
 SCREENS.menu.onShow=rosterOpen;
 SCREENS.menu.onHide=rosterClose;
+SCREENS.menu.onPad=rosPad;
 (function(){const b=$('btnStart');if(b)b.onclick=()=>startMatch('roster');})();

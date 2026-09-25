@@ -86,6 +86,8 @@ function initCustomize(){
    this screen without ever calling closeCustomize, and a turntable left running would keep
    rendering through the shared preview context behind the menu. */
 SCREENS.customize.onHide=()=>{PV.on=false;refreshKitUI();};
+// Right stick turns the turntable (js/padnav.js) — the pad's version of dragging the canvas, same limits.
+SCREENS.customize.onPadStick=(rx,ry,dt)=>{if(!PV.on)return false;PV.yaw+=rx*2.6*dt;PV.pitch=clamp(PV.pitch+ry*1.4*dt,-.6,.7);return true;};
 function openCustomize(team){
  if(team===0||team===1){PV.team=team;PV.yaw=team===0?cfg.redYaw:cfg.blueYaw;}
  try{Au.ui();}catch(e){}
@@ -154,7 +156,7 @@ function czAfterFinish(){applyFinish();pvApply();saveCfg();czSyncFinish();refres
 function czResetAll(){
  cfg.modelRed=CONFIG.playerModel.default;
  cfg.modelBlue=CONFIG.playerModel.default;
- cfg.redColor='#ff4d5a';cfg.blueColor='#3d8bff';
+ cfg.redColor=CONFIG.playerModel.kitDefault[0];cfg.blueColor=CONFIG.playerModel.kitDefault[1];
  cfg.redYaw=-0.55;cfg.blueYaw=0.55;
   cfg.redMetalness=cfg.blueMetalness=.15;cfg.redRoughness=cfg.blueRoughness=.45;cfg.redGlow=cfg.blueGlow=0;cfg.redScale=cfg.blueScale=1;
   cfg.redFinishDefault=cfg.blueFinishDefault=false;
@@ -278,7 +280,7 @@ function pvLoadModel(){
 
 function pvApply(){
   if(!PV.ready)return;
-  const col=new THREE.Color(PV.team===0?cfg.redColor:cfg.blueColor);
+  const col=kitLin(PV.team===0?cfg.redColor:cfg.blueColor);
   PV.mats.forEach(m=>{m.color.copy(col);applyTeamFinish(m,PV.team,col,false);});
   if(PV.rim)PV.rim.color.copy(col);
   if(PV.ringMesh)PV.ringMesh.material.color.copy(col);
@@ -359,7 +361,7 @@ function thumbRender(team){
  if(!THB.ready||!THB.model[team])return null;
  while(THB.root.children.length)THB.root.remove(THB.root.children[0]);
  THB.root.add(THB.model[team]);
- const col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor);
+ const col=kitLin(team===0?cfg.redColor:cfg.blueColor);
   THB.mats[team].forEach(m=>{m.color.copy(col);applyTeamFinish(m,team,col,false);});
   THB.rim.color.copy(col);
   THB.model[team].scale.setScalar(THB.baseScale[team]*tmScale(team));

@@ -92,6 +92,11 @@ const seat=()=>({team:0,devs:['pad*'],rods:[],ctrl:0,tcMult:1,padRaise:false,sho
 function run(src,label){
  pass=0;fail=0;fails.length=0;
  const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,K=C.KICK;
+ /* This suite drives the charge MACHINE — band, decay, guards, verdicts, Total Control — through the
+    single-trigger rule it was written against (RT alone winds up, letting go fires). The shipped rule
+    (charge.needRaise: power + a pull-back, fired only by a kick) sits on top of the same machine and
+    is asserted in tools/binds-harness.js, through the real merged step. */
+ CH.needRaise=false;
  const rec=ctx.__rec;
 
  /* ===== 1. THE DATA — an unplayable control scheme fails HERE, not in play ===== */
@@ -657,8 +662,8 @@ const MUTS=[
         'Total Control stamps what landed instead of the release timing'),
  mutate(' const a=SHOTC.charge.spray*(1-clamp(r.shotCtl,0,1));',
         ' const a=SHOTC.charge.spray*clamp(r.shotCtl,0,1);','spray scales with control instead of against it'),
- mutate('   if(shotChord(lt,rt)&&back>=C.stickBack){src=\'stick\';depth=back;}',
-        '   if((lt>0||rt>0)&&back>=C.stickBack){src=\'stick\';depth=back;}',
+ mutate('if(shotChord(lt,rt)&&back>=SHOTC.charge.stickBack)o.stick=back;',
+        'if((lt>0||rt>0)&&back>=SHOTC.charge.stickBack)o.stick=back;',
         'one trigger arms the Total Control charge'),
  mutate(' r.shotPow=shotAxisPow(m)*(k>=0?shotChgPow(k):1);',
         ' r.shotPow=shotAxisPow(m);','arming ignores the charge'),
@@ -684,9 +689,9 @@ const MUTS=[
  mutate('   r.shotPow=shotAxisPow(m)*lerp(1,shotChgPow(r.chgRel),f);',
         '   r.shotPow=shotAxisPow(m)*shotChgPow(r.chg);',
         'a let-go overcharge decays back through the band and regains power'),
- mutate(' r.chg=-1;r.chgRel=0;r.chgMod=null;r.chgSrc=null;',
-        ' r.chg=-1;r.chgMod=null;r.chgSrc=null;','shotReset leaves the banked charge behind'),
- mutate(' if(!shotsOn()||TC||!SHOTC.charge.on)return true;',
+ mutate(' r.chg=-1;r.chgRel=0;r.chgGrace=0;r.chgMod=null;r.chgSrc=null;',
+        ' r.chg=-1;r.chgGrace=0;r.chgMod=null;r.chgSrc=null;','shotReset leaves the banked charge behind'),
+ mutate(' if(!shotsOn()||TC||!SHOTC.charge.on||SHOTC.charge.needRaise)return true;',
         ' return true;','the kick button always fires on press, so its charge can never release')
 ];
 

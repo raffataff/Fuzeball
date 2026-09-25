@@ -186,10 +186,10 @@ function initThree(){
  // things that actually move casters. needsUpdate is armed once here so the first frame is lit.
  renderer.shadowMap.autoUpdate=(SH.autoUpdate===true);
  if(!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;
- teamMat[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,roughness:.45,metalness:.15});
- teamMat[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,roughness:.45,metalness:.15});
- teamGlow[0]=new THREE.MeshStandardMaterial({color:cfg.redColor,emissive:cfg.redColor,emissiveIntensity:.55,roughness:.4});
-  teamGlow[1]=new THREE.MeshStandardMaterial({color:cfg.blueColor,emissive:cfg.blueColor,emissiveIntensity:.55,roughness:.4});
+ teamMat[0]=new THREE.MeshStandardMaterial({color:kitLin(cfg.redColor),roughness:.45,metalness:.15});
+ teamMat[1]=new THREE.MeshStandardMaterial({color:kitLin(cfg.blueColor),roughness:.45,metalness:.15});
+ teamGlow[0]=new THREE.MeshStandardMaterial({color:kitLin(cfg.redColor),emissive:kitLin(cfg.redColor),emissiveIntensity:.55,roughness:.4});
+  teamGlow[1]=new THREE.MeshStandardMaterial({color:kitLin(cfg.blueColor),emissive:kitLin(cfg.blueColor),emissiveIntensity:.55,roughness:.4});
   buildTable();buildArenaTable();buildGround();buildFxPools();buildFxLightPool();buildRoomLightPool();buildBallReflect();
   scene.environment=bakeSyntheticEnv(CONFIG.rooms.open.env);   // seed a neutral reflection env so metals aren't black before applyRoom runs
   addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderDirty();});
@@ -687,7 +687,7 @@ function buildTable(){
   bar.rotation.x=Math.PI/2;bar.position.set(0,GH,0);bar.castShadow=true;gf.add(bar);
   // net: team-tinted white diamond mesh; ONE material per goal (recoloured in applyColors). The roof is a
   // SOLID collider in physics (goalFrameCollide) so a shot over the bar lands on top instead of scoring.
-  const netM=new THREE.MeshStandardMaterial({color:i?cfg.blueColor:cfg.redColor,map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
+  const netM=new THREE.MeshStandardMaterial({color:kitLin(i?cfg.blueColor:cfg.redColor),map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
   netMats.push(netM);
   g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
   const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
@@ -780,7 +780,7 @@ function loadPlayerModel(onReady){
      const name=child.material.name.toLowerCase();
      if(!teamParts.has(name))return;
      const mat=child.material.clone();
-     mat.color.set(team===0?cfg.redColor:cfg.blueColor);
+     mat.color.copy(kitLin(team===0?cfg.redColor:cfg.blueColor));
      playerTeamMats[team][name]=mat;
     });
     done();
@@ -1340,17 +1340,20 @@ function applyRoom(onReady){
   if(onReady)onReady();
  }
 }
+/* A kit colour for a MATERIAL. Both renderers output sRGB (outputEncoding), and r128 reads a hex into a
+   Color as LINEAR, so a swatch set straight onto a material rendered lighter and greyer than the menu
+   shows it: crimson #d0142c came out a rose pink (~#eb4f75). Every kit material goes through this.
+   The HUD and CSS take the hex as-is; they are sRGB already. */
+function kitLin(hex){return new THREE.Color(hex).convertSRGBToLinear();}
 function applyColors(){
+ const K=[kitLin(cfg.redColor),kitLin(cfg.blueColor)];
  for(let t=0;t<2;t++){
-  const col=t===0?cfg.redColor:cfg.blueColor;
-  teamMat[t].color.set(col);
-  for(const mat of Object.values(playerTeamMats[t]))mat.color.set(col);
+  teamMat[t].color.copy(K[t]);
+  for(const mat of Object.values(playerTeamMats[t]))mat.color.copy(K[t]);
+  teamGlow[t].color.copy(K[t]);teamGlow[t].emissive.copy(K[t]);
+  netMats[t].color.copy(K[t]);
  }
- teamGlow[0].color.set(cfg.redColor);teamGlow[0].emissive.set(cfg.redColor);
- teamGlow[1].color.set(cfg.blueColor);teamGlow[1].emissive.set(cfg.blueColor);
- for(const c of rodCustomMats){const col=c.team===0?cfg.redColor:cfg.blueColor;
-  c.mat.color.set(col);if(c.isGlow)c.mat.emissive.set(col);c.mat.needsUpdate=true;}
- netMats[0].color.set(cfg.redColor);netMats[1].color.set(cfg.blueColor);
+ for(const c of rodCustomMats){c.mat.color.copy(K[c.team]);if(c.isGlow)c.mat.emissive.copy(K[c.team]);c.mat.needsUpdate=true;}
  document.documentElement.style.setProperty('--c0',cfg.redColor);
  document.documentElement.style.setProperty('--c1',cfg.blueColor);
  applyFinish();drawField();
@@ -1360,13 +1363,13 @@ function applyColors(){
 /* Surface finish (metalness / roughness / emissive glow) from the Customize
    panel, pushed onto every live team material so the game mirrors the preview. */
 function applyFinish(){
+  const K=[kitLin(cfg.redColor),kitLin(cfg.blueColor)];   // linear, like the colour itself (see kitLin)
   for(let t=0;t<2;t++){
-    const col=t===0?cfg.redColor:cfg.blueColor;
-    applyTeamFinish(teamMat[t],t,col,false);
+    applyTeamFinish(teamMat[t],t,K[t],false);
     applyTeamFinish(teamGlow[t],t,null,true);
-    for(const mat of Object.values(playerTeamMats[t]))applyTeamFinish(mat,t,col,false);
+    for(const mat of Object.values(playerTeamMats[t]))applyTeamFinish(mat,t,K[t],false);
   }
-  for(const c of rodCustomMats)applyTeamFinish(c.mat,c.team,c.isGlow?null:(c.team===0?cfg.redColor:cfg.blueColor),c.isGlow);
+  for(const c of rodCustomMats)applyTeamFinish(c.mat,c.team,c.isGlow?null:K[c.team],c.isGlow);
 }
 
 /* Swap the men meshes on already-built rods for the current model (used when

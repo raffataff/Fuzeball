@@ -212,7 +212,9 @@ function trialArm(){
  TRL.hidWas=TRN.hidden.slice();
  buildTrialHud();
  const p=$('trnPanel');if(p)p.classList.add('hidden');   // sandbox tools are not trial tools
- hudHint('[R] retry · [ESC] pause\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [Q] [E] switch rod');
+ const H=bindHintRods(true,true);
+ hudHint([bindJoin([bindHint('retry','retry'),'[ESC] pause']),H.act,bindJoin([H.mod,H.sw])].filter(Boolean).join('\n'),
+  '{VIEW} retry · {START} pause\n{A} kick · {X} raise · {LB} {RB} switch rod');
  trialReset();
  return true;
 }
@@ -747,7 +749,8 @@ addEventListener('keydown',e=>{
 addEventListener('keydown',e=>{
  if(S.photo)return;
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
- if(S.trial){if(e.code==='KeyR'){e.preventDefault();trialRestart();}return;}
+ // The retry key is a binding (js/binds.js) — typeof-guarded so this file still stands alone.
+ if(S.trial){if(typeof bindIs==='function'?bindIs('retry',e.code):e.code==='KeyR'){e.preventDefault();trialRestart();}return;}
  /* Left/Right walk the discipline tabs, and ONLY while #trials is the live screen. Safe against
     input.js, which binds the same two keys to seatStep but gates them on S.phase 'play'/'count' —
     a menu screen is 'menu', so nothing else is listening for them here. */

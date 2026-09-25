@@ -92,7 +92,7 @@ function spawnFracture(r,mi){
   // each shard's original material slot on its exterior faces, so the material
   // names should already match teamParts the same way they do on the live model.
   const teamParts=new Set((activeModel(r.team).teamParts||[]).map(s=>s.toLowerCase()));
-  const col=r.team===0?cfg.redColor:cfg.blueColor;
+  const col=kitLin(r.team===0?cfg.redColor:cfg.blueColor);
   const mats=[];
   inst.traverse(c=>{
    if(!c.isMesh)return;
@@ -214,7 +214,7 @@ function spawnRespawnSwirl(r,mi,reform){
   // (where only teamParts recolour and skin/visor stay as authored) the swirl GLB is
   // ALL effect, so by default every mesh takes the kit colour; respawnSwirlTintParts
   // narrows it to a name list if the bake has something that must stay neutral.
-  const col=new THREE.Color(r.team===0?cfg.redColor:cfg.blueColor);
+  const col=kitLin(r.team===0?cfg.redColor:cfg.blueColor);
   const tint=C.respawnSwirlTint!==false, em=C.respawnSwirlEmissive!=null?C.respawnSwirlEmissive:1;
   const only=C.respawnSwirlTintParts&&C.respawnSwirlTintParts.length?
    new Set(C.respawnSwirlTintParts.map(s=>s.toLowerCase())):null;

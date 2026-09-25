@@ -2,15 +2,53 @@
 /* ================= input ================= */
 const keys={};
 /* Every input site resolves DEVICE → SEAT → ROD (js/seats.js) rather than reading one global
-   held rod. `devRod(tok)` is that whole chain: the rod being driven by whoever claimed this
-   device, or null when nobody has (spectate, an unclaimed second pad, or a match started
-   before boot() built the rods — which is what used to throw on the first mouse move). */
+   held rod: the seat that claimed this device, then its rod, either of which may be null
+   (spectate, an unclaimed second pad, or a match started before boot() built the rods — which
+   is what used to throw on the first mouse move). */
 function devSeat(tok){return seatForDev(tok);}
-function devRod(tok){const s=seatForDev(tok);return s?seatRod(s):null;}
+/* EVERY ROD ACTION IS A BINDING (js/binds.js). A press resolves CODE → actions → the seat that owns
+   the code's device → that seat's rod, so a key and a mouse button bound to the same action drive
+   whoever holds that device. Both halves live here so press and release can never disagree. */
+function bindPress(code){
+ const dev=bindDev(code),s=devSeat(dev),r=s?seatRod(s):null;
+ for(const a of bindActs(code,'play')){
+  if(a==='guide'){if(s)toggleSweetGuide(s);continue;}   // the guide follows whoever asked (controller ○ mirrors this)
+  // A KEY's camera and retry are taken earlier (camera in every phase but the menu; retry by
+  // trials.js, which owns what a retry is). Only a MOUSE button bound to either lands here.
+  if(a==='camera'){if(dev==='mouse')cycleCam(1);continue;}
+  if(a==='retry'){if(dev==='mouse'&&S.trial&&typeof trialRestart==='function')trialRestart();continue;}
+  if(!r)continue;
+  // kick: shots.js decides whether this is a plain swing, a pass (finesse held) or the release of a
+  // live wind-up (power held). With nothing held it is the old kickRod, byte for byte.
+  if(a==='kick'){shotKickEdge(r,shotKbmAxis(s));r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
+  else if(a==='raise'){r.raise=true;rodRaiseRelease(r);}        // your hand on it ends any inherited raise
+  else if(a==='rodPrev')seatStep(s,-1);
+  else if(a==='rodNext')seatStep(s,1);
+  else if(/^rod[1-4]$/.test(a))setSeatCtrl(s,+a[3]-1,1);
+ }
+}
+/* A HOLD ends only when the LAST input holding it comes up: Space and LMB both kick, and letting go
+   of one while the other is down must not drop the boot. */
+function bindRelease(code){
+ const s=devSeat(bindDev(code)),r=s?seatRod(s):null;if(!r)return;
+ if(bindIs('kick',code)&&!bindHeld('kick',s))r.kickHold=false;           // the swing resumes from its held pose and drops
+ if(bindIs('raise',code)&&!bindHeld('raise',s)){r.raise=false;rodRaiseRelease(r);}
+}
+function inMatch(){return S.phase==='play'||S.phase==='count';}
+/* ALT AND F10 PAUSED THE GAME. On Windows a lone Alt (or F10) hands focus to the browser's own menu,
+   the pointer lock drops with it, and a dropped lock is read as Esc (pointerlockchange below) — so a
+   tap of Alt was a pause. The menu activates on the RELEASE, which is why keyup is swallowed too.
+   This also makes Alt usable as a binding; Alt+Space (the Windows window menu) is the one thing it
+   still cannot stop, which is why finesse is not on Alt by default. */
+function menuKey(code){return code==='AltLeft'||code==='AltRight'||code==='F10';}
 addEventListener('keydown',e=>{
  // typing in a form control (training panel, team names…) must never kick/slide/preventDefault
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
- if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+ /* In a match a BOUND key never reaches the browser either. The finesse default is Right Ctrl, so
+    finesse + S would be Save Page and finesse + D a bookmark; both can be stopped here. Ctrl+W (and
+    Ctrl+T / Ctrl+N) cannot — the browser reserves them — which is why a finesse player on W/S is
+    better on the arrows, and why the desktop build has to block them in its own shell. */
+ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)||(inMatch()&&!S.photo&&!S.freeRoam&&(bindActs(e.code,'play').length||menuKey(e.code))))e.preventDefault();
  if(e.repeat)return;keys[e.code]=true;
  // PHOTO MODE (F1) takes the keyboard. Deliberately placed AFTER the keys[] write — photo.js reads
  // that same map for its held WASD/arrow camera moves, so the bookkeeping has to happen either way;
@@ -19,12 +57,13 @@ addEventListener('keydown',e=>{
  if(S.photo)return;
  // The save key is tested FIRST because every OTHER key skips the replay — without this it
  // would be swallowed by the skip and the clip would end where you asked to keep it.
- if(S.phase==='replay'){if(e.code===REPLAY.save.key)replaySaveClip();else replaySkip();return;}
+ if(S.phase==='replay'){if(bindIs('saveClip',e.code))replaySaveClip();else replaySkip();return;}
  if(e.code==='Escape'){
   /* Chrome never delivers this press while the pointer is locked — it releases the lock and eats
      the key, which is why the release itself is read as the pause (pointerlockchange, below).
      Some browsers deliver BOTH, and two pauses in one press is a pause that never happened. */
   if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
+  if(!$('uiConfirm').classList.contains('hidden')){uiConfirmClose();Au.ui();return;}   // Esc answers "no" — never the destructive side
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
   if(!$('lgWipe').classList.contains('hidden')){$('lgWipe').classList.add('hidden');return;}   // same rule as the forfeit: Esc answers the dialog, it doesn't leave the screen behind it
@@ -33,7 +72,7 @@ addEventListener('keydown',e=>{
   if(S.phase==='menu'&&backScreen()){Au.ui();return;}
   togglePause();return;
  }
-  if(e.code==='KeyV'&&S.phase!=='menu'){cycleCam(1);}
+ if(bindIs('camera',e.code)&&S.phase!=='menu'){cycleCam(1);}
  if(e.code==='KeyC'&&S.phase!=='menu'){toggleDebug();return;}
  if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
@@ -42,19 +81,12 @@ addEventListener('keydown',e=>{
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(!S.seats.length)return;                       // nobody playing (AI showdown / spectate)
  mouseLockRequest();                              // any in-match key is a gesture too — so the lock catches within a beat of play starting
- const ks=devSeat('kbd'),ur=ks?seatRod(ks):null;
- if(e.code==='KeyB'){toggleSweetGuide(ks);return;}  // sweet-spot guide follows whoever asked (controller ○ mirrors this)
- if(!ur)return;
- if(e.code==='Space'){kickRod(ur);ur.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
- if(e.code==='ShiftLeft'||e.code==='ShiftRight'){ur.raise=true;rodRaiseRelease(ur);}   // your hand on it ends any inherited raise
- if(e.code==='ArrowLeft'||e.code==='KeyQ')seatStep(ks,-1);
- if(e.code==='ArrowRight'||e.code==='KeyE')seatStep(ks,1);
- if(/^Digit[1-4]$/.test(e.code))setSeatCtrl(ks,+e.code[5]-1,1);
+ bindPress(e.code);
 });
 addEventListener('keyup',e=>{keys[e.code]=false;
+ if(menuKey(e.code)&&inMatch()&&!S.photo){e.preventDefault();mlAlt=performance.now();}
  if(S.freeRoam)return;
- if(e.code==='Space'){const ur=devRod('kbd');if(ur)ur.kickHold=false;}   // the swing resumes from its held pose and drops
- if(e.code==='ShiftLeft'||e.code==='ShiftRight'){const ur=devRod('kbd');if(ur){ur.raise=false;rodRaiseRelease(ur);}}});
+ bindRelease(e.code);});
 /* FOCUS LOST WITH A BUTTON DOWN. Alt-tab, or the pointer lock releasing into a pause, means the
    keyup / mouseup for a held key never arrives — and updateRods does not run while paused, so a rod
    would come back still held forward or still raised with no key left to let it go. Nothing here is
@@ -87,30 +119,39 @@ cvs.addEventListener('mousemove',e=>{
  // already making on the old rod doesn't arrive on the new one (js/seats.js).
  if(dy&&seatSlideOK(ms))r.target=clamp(r.target+(dy/innerHeight)*2*r.maxOff*CTRL.mouseSens*cfg.mouseSens,-r.maxOff,r.maxOff);
 });
+/* Mouse BUTTONS are bindings like any key (Mouse0 left · 1 middle · 2 right · 3 back · 4 forward),
+   held in keys['Mouse<n>'] so bindHeld reads both devices the same way. Written on the canvas's
+   mousedown but CLEARED on the window's mouseup, so a release anywhere still lets go. */
 cvs.addEventListener('mousedown',e=>{
  if(S.photo)return;
- if(S.phase==='replay'){replaySkip();return;}   // click skips the goal replay
- if(S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
- const r=devRod('mouse');if(!r)return;
+ const code='Mouse'+e.button;
+ keys[code]=true;
+ if(e.button===1||e.button>2)e.preventDefault();   // middle = autoscroll, 3/4 = browser Back/Forward
+ if(S.phase==='replay'){if(bindIs('saveClip',code))replaySaveClip();else replaySkip();return;}   // any other click skips the goal replay
+ if(S.freeRoam||!inMatch())return;
+ if(!devSeat('mouse'))return;
  mouseLockRequest();                            // a click is a user gesture, which is what the lock needs
- if(e.button===0){kickRod(r);r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
- if(e.button===2){r.raise=true;rodRaiseRelease(r);}
+ bindPress(code);
 });
 addEventListener('mouseup',e=>{
+ const code='Mouse'+e.button;keys[code]=false;
+ if(e.button>2&&inMatch())e.preventDefault();   // Chrome navigates on the back/forward button's RELEASE
  if(S.photo||S.freeRoam)return;
- const ur=devRod('mouse');if(!ur)return;
- if(e.button===0)ur.kickHold=false;                                  // the swing resumes from its held pose and drops
- if(e.button===2){ur.raise=false;rodRaiseRelease(ur);}
+ bindRelease(code);
 });
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'){const ms=devSeat('mouse');if(ms)seatStep(ms,e.deltaY>0?1:-1);}});
+// The wheel is a press with no release: WheelUp / WheelDown, rod switch by default.
+addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'&&e.deltaY&&devSeat('mouse'))bindPress(e.deltaY>0?'WheelDown':'WheelUp');});
 function userControlUpdate(dt){
  if(S.photo||S.freeRoam)return;
- const ks=devSeat('kbd'),r=ks?seatRod(ks):null;
- if(r&&seatSlideOK(ks)){
+ // Slide off the bindings, per seat: bindHeld only counts inputs on a device THIS seat owns, so in
+ // co-op the keyboard's slide keys move the keyboard player's rod and nobody else's.
+ for(const s of S.seats){
+  const r=seatRod(s);
+  if(!r||!seatSlideOK(s))continue;
   let dz=0;
-  if(keys.ArrowUp||keys.KeyW)dz-=1;
-  if(keys.ArrowDown||keys.KeyS)dz+=1;
+  if(bindHeld('slideUp',s))dz-=1;
+  if(bindHeld('slideDown',s))dz+=1;
   if(dz)r.target=clamp(r.target+dz*CTRL.slideSpeed*cfg.kbdSens*dt,-r.maxOff,r.maxOff);
  }
  // Auto rod-switch runs PER SEAT, and skips rods another seat is holding — otherwise two
@@ -196,11 +237,11 @@ function gamepadUpdate(dt){
  if(S.photo)return;                                    // photo mode: a resting stick must not creep a rod out of shot
  if(!$('options').classList.contains('hidden'))return; // options screen owns the pad (live tester)
  const pads=navigator.getGamepads?navigator.getGamepads():[];
- // reset every frame; a seat with a live pad rewrites both below (shots.js shotHoldUpdate).
- // The hold has to be reset HERE rather than in updateRods: this polls once per rendered frame
- // and updateRods runs up to sim.maxSteps times inside one, so a reset there would drop the grip
- // after the first sim step. Above the no-pads bail, so unplugging a pad releases the boot.
- S.seats.forEach(s=>{s.tcMult=1;const hr=seatRod(s);if(hr&&hr.hold)hr.hold.on=false;});
+ // reset every frame; a seat with a live pad rewrites it below. Above the no-pads bail, so an
+ // unplugged pad stops scaling the slide. (The L2 HOLD is no longer reset here: shots.js
+ // shotSeatsUpdate rewrites every held rod's grip once per frame from pad AND keyboard, so an
+ // unplugged pad's record simply stops counting there.)
+ S.seats.forEach(s=>{s.tcMult=1;});
  let first=-1;for(let i=0;i<pads.length;i++)if(pads[i]){first=i;break;}
  if(first<0)return;
  // Global actions (pause / replay skip) fire from ANY pad but only ONCE per frame — two players
@@ -213,12 +254,20 @@ function gamepadUpdate(dt){
   // would swallow pad 2's press). Unclaimed pads get a scratch slot so Start still works.
   const prev=seat?seat.padPrev:(gpFree[idx]||(gpFree[idx]={}));
   const just={};
-  for(const i of [0,1,3,4,5,7,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
+  for(const i of [0,1,3,4,5,7,8,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
+  // A press a MENU used (Resume, Start Match, Retry…) is still down on the first frame of play,
+  // and a fresh match seat has no edge history to know that — it would arrive here as a kick.
+  padNavFilter(idx,just);
   // Y saves the clip (same reasoning as the keyboard branch — it must beat the skip buttons);
   // A/B/Start still skip. Save is deliberately NOT didSkip-guarded: replaySaveClip is idempotent.
   if(S.phase==='replay'){if(just[REPLAY.save.pad])replaySaveClip();
    else if(!didSkip&&(just[0]||just[1]||just[9])){didSkip=true;replaySkip();}continue;}
   if(just[9]&&!didPause&&(S.phase==='play'||S.phase==='count'||S.phase==='pause')){didPause=true;togglePause();}
+  // an overlay on a live match (a finished trial's result card) has the pad: no rod input under it
+  if(padNavOwns())continue;
+  // VIEW retries a Skill Trial — the pad's R. Any pad, like pause; trials.js owns what a retry is, so
+  // a missing trials.js leaves the button doing nothing rather than throwing.
+  if(just[8]&&S.trial&&S.phase==='play'&&typeof trialRestart==='function'){trialRestart();continue;}
   if(!seat)continue;
   padSeatUpdate(dt,gp,seat,just);
  }
@@ -232,10 +281,8 @@ function gamepadUpdate(dt){
    press this frame is a swing or the release of one. Slide, then angle, then shots, then buttons. */
 function padSeatUpdate(dt,gp,s,just){
  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
- // A rod this seat has let go of (switched away, match over) must not keep a live wind-up: the
- // charge would sit armed on a rod the AI is now driving and turn up on its next contact.
- if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}
- s.shotRod=r;
+ // (The hand-off rule — a dropped rod keeps no wind-up — is shots.js shotSeatsUpdate's now, since
+ // the keyboard can hold a charge too.)
  if(!r){s.padRaise=false;return;}
  const DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
  // TC SPEED: the analog triggers scale how many units the SLIDE STEP covers per frame (slideMult).
@@ -302,9 +349,10 @@ function padSeatUpdate(dt,gp,s,just){
  // through the strike bends the shot. Angle control above is untouched: one stick, both effects.
  if(TC){r.tcSpin=tcSwerveFromAxes(gp);}
  else if(r.tcSpin)r.tcSpin=0;
- /* SHOTS (js/shots.js): the trigger axis, the charge, and the swing a charge release fires. Returns
-    true when it fired one this frame, so the kick edge below cannot fire a second. */
- const fired=shotPadUpdate(dt,gp,s,r,TC,sd);
+ /* SHOTS (js/shots.js): the trigger axis and the charge source, READ into this seat's pad record.
+    The step itself runs once per seat after every pad is polled (shotSeatsUpdate), merged with the
+    keyboard's power/finesse — two state machines on one rod would release each other's charges. */
+ if(shotsOn())shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd);
  // A: kick. RT is the alternate kick ONLY while shots are off — with them on it is the power side of
  // the modifier axis (and, in classic, the input that holds the wind-up), and a trigger that both
  // colours a swing and fires one cannot do either legibly.
@@ -312,7 +360,9 @@ function padSeatUpdate(dt,gp,s,just){
  // held it makes the kick button a SECOND release for it. Two ways to let a classic charge go (the
  // trigger, or this) is the ergonomics you reach for without being told, and without it the press
  // fired an uncharged swing out of the wound-back angle and threw the charge away.
- if((just[0]&&!fired&&shotKickPress(TC))||(!TC&&just[7]&&!shotsOn()))shotFire(r,shotPadAxis(gp),shotCharge(r));
+ // A trigger released on the same frame the kick goes down is fine in either order: whichever fires
+ // first starts the swing, kickRod clears the wind-up, and the other finds nothing to release.
+ if((just[0]&&shotKickPress(TC))||(!TC&&just[7]&&!shotsOn()))shotKickEdge(r,shotPadAxis(gp));
  if(just[1])toggleSweetGuide(s);                     // ○ (B) — sweet-spot guide, on THIS seat's rod
  if(just[3])cycleCam(1);                             // Y
  if(just[4]||just[14])seatStep(s,-1);                // LB / d-pad ← (skips rods another seat holds)
@@ -353,6 +403,7 @@ cvs.addEventListener('click',()=>{if(S.freeRoam&&S.phase!=='menu')cvs.requestPoi
    RELEASE as the pause press instead puts that back to one key, one pause. mlSelf marks the
    releases we asked for ourselves so they don't read as an Esc. */
 let mlSelf=false,mlEsc=0;   // mlEsc: when a lock release stood in for an Escape press (see the keydown grace above)
+let mlAlt=0;                // when Alt / F10 last came up in a match (menuKey): a lock lost right after is the browser menu, not Esc
 function mouseLockWant(){
  if(!cfg.mouseLock)return false;
  if(S.freeRoam||S.photo)return false;                     // both drive the cursor themselves
@@ -375,6 +426,7 @@ document.addEventListener('pointerlockchange',()=>{
  if(document.pointerLockElement)return;
  if(mlSelf){mlSelf=false;return;}                         // we let it go on purpose
  if(S.freeRoam){S.freeRoam=false;return;}
+ if(mlAlt&&performance.now()-mlAlt<400)return;           // the browser menu took it off an Alt: not a pause — the next input re-locks
  if(mouseLockWant()){mlEsc=performance.now();togglePause();}   // Esc, or focus lost — read the release as the pause press
 });
 document.addEventListener('mousemove',e=>{

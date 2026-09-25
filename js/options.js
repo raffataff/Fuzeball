@@ -64,12 +64,12 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optPhysQ').value=cfg.physQuality||'high';
  $('optShowFps').checked=!!cfg.showFps;
 }
+// Three tabs, one per device (ui-scale: fewer panels per screen). Tab name → the suffix of its ids.
+const OPT_TABS={display:'Display',controls:'Controls',kbm:'Kbm'};
 function optSetTab(name){
- const isC=name!=='display';
- $('optTab_controls').classList.toggle('hidden',!isC);
- $('optTab_display').classList.toggle('hidden',isC);
- $('optTabBtnControls').classList.toggle('on',isC);
- $('optTabBtnDisplay').classList.toggle('on',!isC);
+ if(typeof kbCapEnd==='function')kbCapEnd();       // a tab flip (LB/RB) must not leave a key capture waiting off-screen
+ if(!OPT_TABS[name])name='display';
+ for(const k in OPT_TABS){$('optTab_'+k).classList.toggle('hidden',k!==name);$('optTabBtn'+OPT_TABS[k]).classList.toggle('on',k===name);}
 }
 
 /* ---- TC swing analyser -------------------------------------------------
@@ -144,11 +144,13 @@ function updateTCVis(){                                    // TC sliders + teste
     wind-up and the two triggers held together arm it, so there is nothing to choose. A live control
     that silently does nothing is the thing you debug twice — same call as the room editor's fog
     boxes, which now say so rather than sitting there inert. */
- const shots=(typeof shotsOn==='function')&&shotsOn();
- $('optChargeRow').classList.toggle('hidden',!off||!shots);
+ const shots=(typeof shotsOn==='function')&&shotsOn(),nr=shots&&CONFIG.shots.charge.needRaise;
+ // With needRaise the kick button is always the release and never the hold, so there is no choice to offer.
+ $('optChargeRow').classList.toggle('hidden',!off||!shots||nr);
  $('optChargeHint').classList.toggle('hidden',!shots);
  $('optChargeHint').innerHTML=off
-  ?'<b>RT / R2</b> holds the wind-up and the kick button stays instant — nothing about a tapped kick changes. Moving the charge onto the kick button makes a tap fire on RELEASE, which costs you the length of your own tap before the ball is struck.'
+  ?(nr?'Hold <b>RT / R2</b> with <b>X</b> — or with the right stick pulled back — to wind up, then <b>A</b> or a forward flick of the stick shoots. RT alone only hardens the swing; letting go without kicking cancels the charge. A tapped kick is unchanged.'
+   :'<b>RT / R2</b> holds the wind-up and the kick button stays instant — nothing about a tapped kick changes. Moving the charge onto the kick button makes a tap fire on RELEASE, which costs you the length of your own tap before the ball is struck.')
   :'In <b>Total Control</b> the wind-up is the right stick: pull back and hold <b>both triggers</b> to charge, flick forward to strike.';
 }
 function updateAxisLines(){                                   // highlight the bound axis on each well
@@ -175,8 +177,77 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
  $('optTCFast').value=cfg.padTCFast;$('optTCSwerve').value=cfg.padTCSwerve;
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
- updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();
+ updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();kbRender();
 }
+/* ---- key bindings (js/binds.js) ----------------------------------------------------------------
+   One row per action: its inputs as keys (click one to remove it) and a + that waits for the NEXT
+   key, mouse button or wheel turn. The wait is owned by capture-phase window listeners that swallow
+   the press, so the Esc that cancels it never reaches input.js (which would close Options) and the
+   click that binds the left button never lands on whatever it was over. Everything the list shows
+   comes off bindList, and the reference card and the in-match hints read the same thing. */
+const KB={cap:null,swallow:0};
+function kbShots(){return (typeof shotsOn==='function')&&shotsOn();}
+function kbMsg(t){const m=$('kbMsg');if(m)m.textContent=t||'';}
+function kbRender(){
+ const box=$('kbList');if(!box)return;
+ const sh=kbShots();
+ box.innerHTML=CONFIG.binds.list.filter(b=>sh||!b.shots).map(b=>{
+  const l=bindList(b.act),cap=KB.cap===b.act;
+  return '<div class="kbRow'+(l.length?'':' kbNone')+'"><span class="kbLab">'+b.lab+'</span><span class="kbKeys">'
+   +l.map(c=>'<button class="kbKey" data-act="'+b.act+'" data-code="'+c+'" title="Remove">'+bindLabel(c)+'</button>').join('')
+   +'<button class="kbAdd'+(cap?' on':'')+'" data-act="'+b.act+'" title="Add an input">'+(cap?'PRESS…':'+')+'</button></span></div>';
+ }).join('');
+ kbRefRender();
+}
+// The Controls reference card's keyboard block, generated, so it can never describe keys you moved.
+function kbRefRender(){
+ const el=$('optCtlRefKbm');if(!el)return;
+ const sh=kbShots(),row=(k,t)=>'<b>'+k+'</b><span>'+t+'</span>';
+ const out=[row('MOUSE ↕','slide players')];
+ for(const b of CONFIG.binds.list){
+  if(b.shots&&!sh)continue;
+  const l=bindList(b.act);
+  out.push(row(l.length?l.map(bindLabel).join(' / '):'—',b.lab.toLowerCase()));
+ }
+ out.push(row('ESC','pause'));
+ el.innerHTML=out.join('');
+}
+function kbCapStart(act){KB.cap=act;kbMsg('Press a key, mouse button or wheel for '+bindActLabel(act)+' — ESC cancels');kbRender();}
+function kbCapEnd(){if(!KB.cap)return;KB.cap=null;kbMsg('');kbRender();}
+function kbCapTake(code){
+ const act=KB.cap;KB.cap=null;
+ const r=bindAdd(act,code);
+ if(!r.ok)kbMsg(bindLabel(code)+' is reserved and can’t be bound');
+ else{saveCfg();kbMsg(r.moved.length?bindLabel(code)+' moved from '+r.moved.map(bindActLabel).join(', ')+' to '+bindActLabel(act)
+  :bindLabel(code)+' now does '+bindActLabel(act));}
+ kbRender();Au.ui();
+}
+addEventListener('keydown',e=>{
+ if(!KB.cap)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(e.repeat)return;
+ if(e.code==='Escape'){kbCapEnd();return;}
+ kbCapTake(e.code);
+},true);
+addEventListener('mousedown',e=>{
+ if(!KB.cap)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ KB.swallow=2;KB.swallowT=performance.now();        // …and the click / context menu this press would become
+ kbCapTake('Mouse'+e.button);
+},true);
+// Time-boxed as well as counted: a press whose mouseup never arrives (focus lost mid-click) must not
+// leave the next real click on the screen silently eaten.
+for(const ev of ['click','contextmenu','auxclick'])addEventListener(ev,e=>{
+ if(KB.swallow<=0||performance.now()-KB.swallowT>700){KB.swallow=0;return;}
+ e.preventDefault();e.stopImmediatePropagation();
+ if(ev!=='auxclick')KB.swallow--;
+},true);
+addEventListener('mouseup',()=>{if(KB.swallow>0)setTimeout(()=>{KB.swallow=0;},0);},true);
+addEventListener('wheel',e=>{
+ if(!KB.cap)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(e.deltaY)kbCapTake(e.deltaY>0?'WheelDown':'WheelUp');
+},{capture:true,passive:false});
 function optDot(id,x,y){const R=34;                           // move a well dot to the live stick position
  $(id).style.transform='translate(calc(-50% + '+(clamp(x,-1,1)*R)+'px), calc(-50% + '+(clamp(y,-1,1)*R)+'px))';}
 function optionsTick(){                                       // self-driven while the screen is open
@@ -234,6 +305,7 @@ function openOptions(from){
  if(!optRAF)optRAF=requestAnimationFrame(optionsTick);
 }
 function closeOptions(){
+ kbCapEnd();                                        // a pad's B can close Options with a key capture still waiting
  if(optFrom==='pause'){$('options').classList.add('hidden');if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}$('pause').classList.remove('hidden');}
  else showScreen(SCREENS.options.back||'menu');   // onHide above kills the rAF
  Au.ui();
@@ -263,6 +335,7 @@ function bindOptions(){
  // --- Display tab ---
  $('optTabBtnControls').onclick=()=>{optSetTab('controls');Au.ui();};
  $('optTabBtnDisplay').onclick=()=>{optSetTab('display');Au.ui();};
+ $('optTabBtnKbm').onclick=()=>{optSetTab('kbm');Au.ui();};
  $('optPreset').onchange=e=>{if(e.target.value==='custom'){cfg.gfxPreset='custom';saveCfg();}else applyGfxPreset(e.target.value);};
  $('optRScale').oninput=e=>{cfg.renderScale=+e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
   $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};
@@ -285,7 +358,14 @@ function bindOptions(){
  $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
  $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset
  $('optShowFps').onchange=e=>{cfg.showFps=e.target.checked;saveCfg();};
- $('optReset').onclick=()=>{Object.assign(cfg,OPT_DEFAULTS);saveCfg();syncOptionsUI();Au.ui();};
+ $('optReset').onclick=()=>{Object.assign(cfg,OPT_DEFAULTS);bindReset();kbCapEnd();saveCfg();syncOptionsUI();Au.ui();};
+ // Key bindings: one delegated handler for the whole list, since kbRender rebuilds it on every change.
+ $('kbList').onclick=e=>{
+  const k=e.target.closest('.kbKey'),a=e.target.closest('.kbAdd');
+  if(k){bindRemove(k.dataset.act,k.dataset.code);saveCfg();kbMsg(bindLabel(k.dataset.code)+' removed from '+bindActLabel(k.dataset.act));kbRender();Au.ui();}
+  else if(a){if(KB.cap===a.dataset.act)kbCapEnd();else kbCapStart(a.dataset.act);Au.ui();}
+ };
+ $('kbResetAll').onclick=()=>{bindReset();kbCapEnd();saveCfg();kbMsg('Every key is back to its default');kbRender();Au.ui();};
  applyReducedFx();   // apply saved reduced-effects mode at boot (physics/render quality already applied in config/world)
  syncOptionsUI();
 }

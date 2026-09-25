@@ -7,6 +7,7 @@
    logo until boot() fires. Pure canvas/CSS, no assets beyond the logo PNG.
    All knobs in CONFIG.intro. Any key/click skips. */
 let introReady=false;                 // flipped by main.js boot() via introGameReady()
+let introSkipHook=null;               // the skip, for js/padnav.js — a pad button skips like a key does
 function introGameReady(){introReady=true;}
 (function(){
  const IN=CONFIG.intro,ov=$('intro');if(!ov)return;
@@ -68,7 +69,7 @@ function introGameReady(){introReady=true;}
   shone=tagged=true;shine.classList.add('sweep');tag.classList.add('in');
   reveal();
  }
- if(IN.skip){addEventListener('keydown',skip);ov.addEventListener('pointerdown',skip);setTimeout(()=>{if(!revealing)skipEl.classList.add('on');},1200);}
+ if(IN.skip){introSkipHook=skip;addEventListener('keydown',skip);ov.addEventListener('pointerdown',skip);setTimeout(()=>{if(!revealing)skipEl.classList.add('on');},1200);}
  function step(e,dt){
   if(!detonated){
    if(e>=dT)detonate();

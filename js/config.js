@@ -293,7 +293,7 @@ kick:{
    strike:0.055,  strikeA:0.95,     // strike ramp end / peak forward angle
    hold:0.25,                     // hold peak until this time
    drop:0.32,                     // fully returned by this time
-   raiseA:-1.6, raiseLerp:18, dropLerp:6, // lift-men angle + settle rates
+   raiseA:-1.6, raiseLerp:18, dropLerp:15, // lift-men angle + settle rates
    padAngleLerp:40,                // right-stick angle smoothing (0 = direct 1:1, no easing)
    userSpeed:80,                  // slide speed of the player-driven rod (u/s)
    aiOwnMult:1.,                // slide-speed multiplier for AI rods on the user's team
@@ -386,7 +386,14 @@ kick:{
    overCtl:0.35,                   // …and at full overcharge
    spray:0.16,                     // rad of random heading error at zero control
    minFire:0.10,                   // release under this charge fires the ORDINARY swing
-   stickBack:0.18,                 // Total Control: right-stick pull-back depth that counts as a wind-up
+   stickBack:0.18,                 // right-stick pull-back depth that counts as a wind-up
+   /* POWER + PULL-BACK, FIRED BY KICK (every device, classic pad included). Power alone winds up
+      nothing: the rod has to be going back by the player's own hand — raise (X / L-Shift / RMB) or
+      the right stick pulled back — and only a KICK press (or the stick's forward flick) fires it.
+      Letting go without kicking cancels. A one-key charge that fired on release was an advantage
+      the keyboard had over a pad. false = the old rule: power alone winds up, letting go fires. */
+   needRaise:true,
+   grace:0.09,                     // s after letting the wind-up go that a kick still fires it (keys lift a frame apart)
    pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
 
    pullLerp:24,                    // ease rate toward it
@@ -419,7 +426,67 @@ kick:{
     airVol:0.13,  airF0:2100, airF1:420, airD:0.34, airA:0.014,   // the discharge
     snapVol:0.13, snapF:3400, snapD:0.045, snapQ:3.0     // the clean-strike reward, sweet band only
    }
+  },
+
+  /* Keyboard & mouse. The modifiers are BUTTONS, not triggers, so each one is a full-depth axis
+     the moment it goes down — POWER is RT at full squeeze, FINESSE is LT at full squeeze. Which
+     keys they are lives in CONFIG.binds. */
+  kbm:{
+   on:true,
+   holdRamp:0.12     // seconds for FINESSE's grip to ease in (a button has no squeeze to ease it for you)
   }
+ },
+
+ /* ---- key & mouse bindings (js/binds.js) ------------------------------------------------------
+    Every rebindable keyboard/mouse ACTION and its default inputs. The player's changes go in
+    cfg.keyBinds (whole list per action, only for actions they touched), so a default changed here
+    reaches everyone who has not rebound that action.
+    Codes are KeyboardEvent.code ('KeyA', 'ArrowLeft', 'ShiftRight'…), plus Mouse0..Mouse4 for the
+    buttons (0 left · 1 middle · 2 right · 3 back · 4 forward) and WheelUp / WheelDown.
+    ORDER MATTERS: the FIRST input of an action is the one the in-match hints show.
+    Mouse MOVEMENT is not here — it is the slide, and an axis is not a button. */
+ binds:{
+  def:{
+   slideUp:  ['ArrowUp','KeyW'],
+   slideDown:['ArrowDown','KeyS'],
+   rodPrev:  ['ArrowLeft','KeyA','KeyQ','WheelUp'],
+   rodNext:  ['ArrowRight','KeyD','KeyE','WheelDown'],
+   kick:     ['Space','Mouse0'],
+   raise:    ['ShiftLeft','Mouse2'],
+   power:    ['ShiftRight'],     // hold WITH raise: wind up · kick fires (CONFIG.shots.charge.needRaise)
+   finesse:  ['ControlRight'],   // hold: sticky boot · with kick: a pass. NOT Right Alt: Alt+Space is the
+                                 //   Windows window menu (finesse+Space is the pass), and on most non-US
+                                 //   layouts Right Alt is AltGr, which Windows reports as Ctrl+Alt
+   rod1:['Digit1'], rod2:['Digit2'], rod3:['Digit3'], rod4:['Digit4'],
+   guide:    ['KeyB'],
+   camera:   ['KeyV'],
+   retry:    ['KeyR'],           // Skill Trials only
+   saveClip: ['KeyS']            // goal replay only — every other input skips it
+  },
+  // Options list order and wording. `grp` is where a clash counts: one input can't do two things
+  // in the same group, but S can be both slide-down in play and save-clip in a replay.
+  list:[
+   {act:'slideUp',  lab:'Slide up',          grp:'play'},
+   {act:'slideDown',lab:'Slide down',        grp:'play'},
+   {act:'rodPrev',  lab:'Previous rod',      grp:'play'},
+   {act:'rodNext',  lab:'Next rod',          grp:'play'},
+   {act:'kick',     lab:'Kick',              grp:'play'},
+   {act:'raise',    lab:'Raise players',     grp:'play'},
+   {act:'power',    lab:'Power (+ raise)',   grp:'play', shots:1},
+   {act:'finesse',  lab:'Finesse (hold)',    grp:'play', shots:1},
+   {act:'rod1',     lab:'Goalkeeper',        grp:'play'},
+   {act:'rod2',     lab:'Defence',           grp:'play'},
+   {act:'rod3',     lab:'Midfield',          grp:'play'},
+   {act:'rod4',     lab:'Attack',            grp:'play'},
+   {act:'guide',    lab:'Sweet-spot guide',  grp:'play'},
+   {act:'camera',   lab:'Camera view',       grp:'play'},
+   {act:'retry',    lab:'Retry trial',       grp:'play'},
+   {act:'saveClip', lab:'Save replay clip',  grp:'replay'}
+  ],
+  max:4,              // inputs per action
+  // Never bindable: Esc is pause and answers every dialog, F1/F2 open photo mode / the room editor,
+  // and C L F M are the dev keys (debug overlay, kick log, free roam, profiler) while they ship.
+  reserved:['Escape','F1','F2','KeyC','KeyL','KeyF','KeyM','MetaLeft','MetaRight','ContextMenu','Tab']
  },
 
  /* ---- AI behaviour --------------------------------------------------- */
@@ -752,7 +819,7 @@ ai:{
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
       src:'assets/fuzeball_womanMaria.glb',scale:0.8,
       mug:'assets/renders/render_maria_mugshot.png',   
-      teamParts:['kit_maria2'],hairParts:['kit_maria2_hair'],
+      teamParts:['kit_maria'],hairParts:['kit_maria_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
    },
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
@@ -839,8 +906,12 @@ ai:{
    chrome:  {metalness:1.0,roughness:.06,glow:.0},
    neon:    {metalness:.25,roughness:.35,glow:0.10}
   },
-  // Quick-pick kit colour swatches for the panel.
-  swatches:['#ff0011','#ff8c3a','#fff94d','#00fa19','#2af5ff','#3d8bff','#5900ff','#ff2bd6','#f2ede2','#757983'],
+  // Quick-pick kit colour swatches (Kick Off, Customize, New League). Club-kit colours, not screen
+  // primaries: the old pure #00fa19 / #2af5ff / #ff2bd6 glowed under room lights and read as neon.
+  // Crimson, tangerine, sun yellow, pitch green, teal, royal, navy, violet, bone, charcoal.
+  // A new save's kits (and what Customize → reset all returns to): crimson v royal.
+  kitDefault:['#d0142c','#1e5bd8'],
+  swatches:['#d0142c','#f0661a','#f2c200','#138a3e','#00a19a','#1e5bd8','#17264f','#6a2c91','#ece6d6','#3a3d44'],
   // Natural hair colours for random tinting.
   hairSwatches:[  '#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#583b00','#985d29',
                   '#242222','#1b0f06','#271d15','#382922','#634d32','#242320','#8b5526', 
@@ -1127,6 +1198,23 @@ deadball:{
   // …of those, the ones with no mirror partner, so they drop out of the cycle
   // when no single team owns the camera (humans on both sides, or spectating).
   soloOnly:[1,8],
+  // MENU SHOTS (ui-world): in the menus the camera eases to the current screen's shot, so moving
+  // between screens moves around the table instead of cutting. Keyed by screen id (js/screens.js);
+  // a screen not listed uses home. Same [x,y,z, lookX,lookY,lookZ] as the modes. Home looks LEFT of
+  // the table's centre so the table sits on the right, clear of the menu column.
+  menuShots:{
+   home:   [-12,58,80, -30,4,6],    // three-quarter from the near side, table to the right
+   menu:   [0,70,62, 0,10,4],       // Kick Off: square on, both ends in frame
+   options:[-26,46,76, -54,2,6],    // like home but lower and closer: the table on the open right side
+   training:[30,92,34, 8,0,0],      // high over the attacking third
+   trials: [30,92,34, 8,0,0],
+   daily:  [30,92,34, 8,0,0],
+   lgSlots:[62,70,64, 6,4,0],       // the league: high broadcast angle from the blue corner
+   lgSetup:[62,70,64, 6,4,0],
+   league: [62,70,64, 6,4,0],
+   championsCup:[62,70,64, 6,4,0]
+  },
+  menuLerp:1.4,   // ease rate toward a menu shot (a move, not a cut; a match uses lerp)
   follow:0.0014, lookFollow:0.01, lerp:3,   // ball-follow weights + position lerp
    shakeDecay:0.6, shakeX:0.004, shakeY:0.002, // screen-shake decay + amplitudes
    freeRoamSpeed:80, freeRoamSprint:2.0, freeRoamSens:0.22 // free-roam: base speed, sprint mult, mouse sens
@@ -1660,9 +1748,10 @@ deadball:{
   // and still write the whole replay out. Costs one encode per goal.
   save:{
    on:true,
-   key:'KeyS',     // keyboard code (every other key still skips the replay)
+   // the KEY is a binding now (CONFIG.binds.def.saveClip, rebindable) — every other key still skips
    pad:3,          // gamepad button (A/B/Start still skip)
-   hint:'[S] save clip',   // hud.js markup: [KEY] draws a keycap
+   hint:'[S] save clip',   // fallback only; the live hint is built from the saveClip binding
+   hintPad:'{Y} save clip',// ...and {BTN} a pad button, by its Xbox slot. Keep in step with `pad` (3 = Y)
    saving:'SAVING CLIP'
   },
   // Camera shot placement, world units. `gx` is the beaten goal's end (±60), so values marked ×gx mirror.
@@ -1858,9 +1947,9 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
    Persisted player settings (localStorage). These are the in-menu options,
    distinct from the CONFIG tuning knobs above.
    ========================================================================= */
-let cfg={diff:'pro',goals:5,gameTime:0,room:'open',reflections:true,fog:true,table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
+let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,fog:true,table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
  // gameTime: match limit in minutes (0 = unlimited, first to `goals`).
- redName:'Team 1',blueName:'Team 2',redColor:'#ff4d5a',blueColor:'#3d8bff',
+ redName:'Team 1',blueName:'Team 2',redColor:CONFIG.playerModel.kitDefault[0],blueColor:CONFIG.playerModel.kitDefault[1],
  // Per-team AI difficulty (overrides legacy single `diff`).
  diffRed:null,diffBlue:null,
  // Customize panel: figurine, material finish and size per team.
@@ -1881,6 +1970,8 @@ padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve
 // 'kick' (the kick button holds it, and a tap fires on release) or 'both'.
 padChargeBtn:'rt',
 mouseSens:1,kbdSens:1,
+// Rebound keyboard/mouse actions: action -> [codes], only for actions the player changed (js/binds.js).
+keyBinds:{},
 // Cursor lock: hides the pointer and lets the mouse go past the screen edge (no taskbar, no lost travel).
 // ESC releases it AND pauses — see the pointer-lock block in js/input.js.
 mouseLock:true,
@@ -1928,7 +2019,7 @@ const CFG_PLAYER=new Set([
 // only padDeadzone above does not, because that one is calibrated to a physical stick.
  'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
- 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock',
+ 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock','keyBinds',
 'trials','daily','trnSpots','photoShots','photoPath','photoGroups',  // progress + authored content
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);

@@ -59,8 +59,11 @@ const SCREENS={
  customize:{back:'menu'},             // only reachable from the Kick Off kit panel
  lgSlots:{back:'home'},
  lgSetup:{back:'lgSlots'},
- league:{back:'home',lay:{wrap:'#league .lgWrap',btn:'lgEditLayout',
-  panels:['lgStandingsPanel','lgHistPanel','lgCabinetPanel','lgFixturePanel','lgLastPanel','lgSettingsPanel','lgSquadPanel','lgScout']}},
+ // Three tabs (Season / Squad / Club). The 'league' KEY stays on Season so saves made before the tabs
+ // still apply there; Squad is one panel and has nothing to arrange.
+ league:{back:'home',lay:[
+  {key:'league',wrap:'#lgTab_season .lgWrap',btn:'lgEditLayout',panels:['lgStandingsPanel','lgFixturePanel','lgLastPanel','lgScout']},
+  {key:'leagueClub',wrap:'#lgTab_club .lgWrap',btn:'lgClubEditLayout',panels:['lgSettingsPanel','lgHistPanel','lgCabinetPanel']}]},
  // back:null on purpose — leaving the cup bracket is NOT a plain screen change. Arriving here
  // from a finished tie's win screen leaves S.lg still set, and cupReturn() (the Back button)
  // clears it via gotoMenu before re-opening the lobby with fresh content. A bare
@@ -83,6 +86,11 @@ function showScreen(id){
  hideScreens();
  el.classList.remove('hidden');
  scrCur=id;
+ // ui-motion: a screen CHANGE arrives behind one diagonal wipe (.scrIn, css). Re-showing the screen
+ // you are on (a re-render calling showScreen) doesn't wipe. The class comes off when the wipe ends,
+ // so a finished screen carries no clip-path to cut the pad cursor's ring.
+ if(prev!==id){el.classList.remove('scrIn');void el.offsetWidth;el.classList.add('scrIn');
+  el.addEventListener('animationend',function e(ev){if(ev.target!==el)return;el.classList.remove('scrIn');el.removeEventListener('animationend',e);});}
  // Re-clamp every saved panel arrangement on this screen to the live window. Called for EVERY
  // screen, not just ones with a `lay` block: it is also where layout.js notices that an open
  // layout editor has just been navigated away from and shuts it down (layEditGuard). Gate it on

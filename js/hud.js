@@ -25,6 +25,10 @@
    synthetic bold exactly as it did in CSS. Numbers are set in FIXED CELLS — the face is
    proportional, and a clock whose 1s are narrower than its 0s shuffles sideways every second.
 
+   Palette (2026-09-25): the menus' Federation tokens (css/styles.css :root, DIRECTION.md §3), written as
+   literals here because canvas can't read var() per draw. Steel-blue greys, gold #f0b24a for focus and
+   trophies, warnings #ef6a4a. Change a colour there and here together.
+
    Draw order, back to front: board (score + beads + clock) · power-up tabs · rod chips · controls
    hint · dev readouts · replay letterbox · notice · banner · countdown · toasts. */
 const HUD={
@@ -35,8 +39,8 @@ const HUD={
  ntc:null,bnr:null,tst:[],cnt:null,cntOut:null,
  tabs:null,ord:null,
  chips:[],chipSig:NaN,chipU:0,chipY:0,chipK:0,hov:-1,hl:new Map(),cur:false,hp:null,
- hint:null,hintT:-9,
- rep:{on:false,t:-99,team:0,save:'off',tok:null},
+ hint:null,hintP:null,hintUse:null,hintT:-9,skipP:null,
+ rep:{on:false,t:-99,team:0,save:'off',tok:null,tokP:null},
  dev:Object.create(null)
 };
 /* The icons are the old FX_ICO marks verbatim — same 24-unit viewBox — just parsed by Path2D. */
@@ -47,7 +51,7 @@ const HUD_FX=[
 ];
 const HUD_DEVK=['fps','cam','spd','vel','dead'];     // dev readout stacking order, top down
 const CHIP_FULL_MAX=2;   // past this many seats each player collapses to ONE chip (4-a-side would be 40)
-const INK='#0a0d16';
+const INK='#07111c';
 const hC=v=>v<0?0:v>1?1:v, hO3=t=>1-(1-t)*(1-t)*(1-t), hBk=t=>{const q=t-1;return 1+2.2*q*q*q+1.2*q*q;};
 
 /* ===== setup ===== */
@@ -159,9 +163,9 @@ function hudDot(x,y,r){const X=HUD.x;X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fi
 function hudHeavy(s,x,y,fs,tr){
  const X=HUD.x;X.lineWidth=fs*.1;
  X.fillStyle=X.strokeStyle='rgba(0,0,0,.45)';hudT(s,x,y+fs*.07,0,tr,1);hudT(s,x,y+fs*.07,0,tr);
- X.strokeStyle='#05070c';hudT(s,x,y,0,tr,1);
+ X.strokeStyle='#02070c';hudT(s,x,y,0,tr,1);
  const g=X.createLinearGradient(0,y-fs*.42,0,y+fs*.42);
- g.addColorStop(0,'#ffffff');g.addColorStop(.52,'#f1f4fa');g.addColorStop(1,'#aebbd4');
+ g.addColorStop(0,'#ffffff');g.addColorStop(.52,'#f1f5f7');g.addColorStop(1,'#aec8d4');
  X.fillStyle=g;hudT(s,x,y,0,tr);
 }
 function hudHatch(){
@@ -176,19 +180,21 @@ function hudHatch(){
    Hints are written as markup, not prose: [Q] is a keycap, [←] [→] [↑] [↓] are arrow caps (the face
    has no arrow glyphs — a fallback font drew them), [LMB] [RMB] [MOUSE] are a drawn mouse, · splits
    groups, \n breaks lines. The caps are the Options reference card's .ctl b keycap, so a key looks
-   the same on the HUD as it does where you look it up. */
+   the same on the HUD as it does where you look it up.
+   {A} is a PAD button, named by its Xbox slot whatever pad is in use — see hudPad. */
 function hudTok(src){
- return String(src).split('\n').map(l=>l.split(/(\[[^\]]+\]|·)/).map(s=>s.trim()).filter(Boolean)
-  .map(s=>s==='·'?{sep:1}:s[0]==='['?{cap:s.slice(1,-1).toUpperCase()}:{t:s.toUpperCase()}));
+ return String(src).split('\n').map(l=>l.split(/(\[[^\]]+\]|\{[^}]+\}|·)/).map(s=>s.trim()).filter(Boolean)
+  .map(s=>s==='·'?{sep:1}:s[0]==='['?{cap:s.slice(1,-1).toUpperCase()}:s[0]==='{'?{pad:s.slice(1,-1).toUpperCase()}
+   :{t:s.toUpperCase()}));
 }
 const HUD_GLYPH={'←':1,'→':1,'↑':1,'↓':1,LMB:2,RMB:2,MOUSE:2};
 function hudCapW(cap,u){HUD.x.font=hudF(Math.max(9,10*u));return HUD_GLYPH[cap]?16*u:Math.max(16*u,hudW(cap,.6*u)+10*u);}
 function hudCap(cap,x,cy,u){
  const X=HUD.x,w=hudCapW(cap,u),h=16*u,y=cy-h/2,g=HUD_GLYPH[cap];
  X.fillStyle='rgba(0,0,0,.55)';X.beginPath();X.roundRect(x,y+2*u,w,h,3*u);X.fill();
- X.fillStyle='#182238';X.beginPath();X.roundRect(x,y,w,h,3*u);X.fill();
+ X.fillStyle='#0f2536';X.beginPath();X.roundRect(x,y,w,h,3*u);X.fill();
  X.strokeStyle='rgba(255,255,255,.13)';X.lineWidth=1;X.stroke();
- X.fillStyle=X.strokeStyle='#c6d2ea';
+ X.fillStyle=X.strokeStyle='#d2e2ea';
  if(g===1){const cx=x+w/2,a=3.6*u;X.beginPath();
   if(cap==='←'){X.moveTo(cx-a,cy);X.lineTo(cx+a*.7,cy-a);X.lineTo(cx+a*.7,cy+a);}
   else if(cap==='→'){X.moveTo(cx+a,cy);X.lineTo(cx-a*.7,cy-a);X.lineTo(cx-a*.7,cy+a);}
@@ -196,27 +202,50 @@ function hudCap(cap,x,cy,u){
   else{X.moveTo(cx,cy+a);X.lineTo(cx-a,cy-a*.7);X.lineTo(cx+a,cy-a*.7);}
   X.closePath();X.fill();}
  else if(g===2){const mw=7.5*u,mh=11*u,mx=x+(w-mw)/2,my=cy-mh/2;X.lineWidth=Math.max(1,1.1*u);
-  if(cap!=='MOUSE'){X.fillStyle='#ffcf4d';X.beginPath();
+  if(cap!=='MOUSE'){X.fillStyle='#f0b24a';X.beginPath();
    if(cap==='LMB')X.roundRect(mx,my,mw/2,mh*.45,[mw/2,0,0,0]);else X.roundRect(mx+mw/2,my,mw/2,mh*.45,[0,mw/2,0,0]);X.fill();}
   X.beginPath();X.roundRect(mx,my,mw,mh,mw/2);X.stroke();
   X.beginPath();X.moveTo(mx+mw/2,my);X.lineTo(mx+mw/2,my+mh*.45);X.moveTo(mx,my+mh*.45);X.lineTo(mx+mw,my+mh*.45);X.stroke();}
  else{X.font=hudF(Math.max(9,10*u));hudT(cap,x+w/2,cy+.5*u,0,.6*u);}
  return w;
 }
+/* A pad button, drawn in the family of whichever pad last did anything (js/padnav.js padGlyph): a
+   DISC for a face button or a stick, a PILL for a shoulder or a trigger — never the square keycap,
+   so which device a prompt means reads before its label does. A face button's rim and glyph are the
+   hardware's own colour; PlayStation's shapes are the same SVG path the menu strip draws, parsed by
+   Path2D. Guarded, so a missing padnav.js draws Xbox names rather than throwing. */
+const hudP2D={};
+function hudPadG(k){return typeof padGlyph==='function'?padGlyph(k):{t:k,s:'',c:'',stick:false,round:/^[ABXY]$/.test(k)};}
+function hudPadNow(){return typeof inputKind==='function'&&inputKind()==='pad';}
+function hudPadW(k,u){const g=hudPadG(k);if(g.round)return 16*u;HUD.x.font=hudF(Math.max(9,10*u));return Math.max(22*u,hudW(g.t,.6*u)+12*u);}
+function hudPad(k,x,cy,u){
+ const X=HUD.x,g=hudPadG(k),w=hudPadW(k,u),h=16*u,y=cy-h/2,fg=g.c||'#d2e2ea';
+ X.fillStyle='rgba(0,0,0,.55)';X.beginPath();X.roundRect(x,y+2*u,w,h,h/2);X.fill();
+ X.fillStyle=g.round&&!g.stick?'#0a1c2b':'#0f2536';X.beginPath();X.roundRect(x,y,w,h,h/2);X.fill();
+ X.strokeStyle=g.c?hudA(g.c,.8):'rgba(255,255,255,.16)';X.lineWidth=1;X.stroke();
+ if(g.stick){X.strokeStyle='rgba(188,220,237,.45)';X.beginPath();X.arc(x+w/2,cy,h*.34,0,Math.PI*2);X.stroke();}
+ if(g.s&&typeof PAD_PATH!=='undefined'){
+  const p=hudP2D[g.s]||(hudP2D[g.s]=new Path2D(PAD_PATH[g.s])),k2=h/16*.9;
+  X.save();X.translate(x+w/2-8*k2,cy-8*k2);X.scale(k2,k2);X.strokeStyle=fg;X.lineWidth=1.9;X.lineCap='round';X.stroke(p);X.restore();}
+ else{X.font=hudF(Math.max(8,(g.stick?8:10)*u));X.fillStyle=fg;hudT(g.t,x+w/2,cy+.5*u,0,.6*u);}
+ return w;
+}
 // one tokenised line: width, then draw. `col` tints the words; caps keep their own face.
 function hudLineW(line,u){
  let w=0,prev=null;for(const k of line){
-  w+=prev?(k.sep||prev.sep?10*u:k.cap&&prev.cap?3*u:6*u):0;
-  if(k.sep)w+=3*u;else if(k.cap)w+=hudCapW(k.cap,u);else{HUD.x.font=hudF(Math.max(10.5,11.5*u));w+=hudW(k.t,.8*u);}
+  w+=prev?(k.sep||prev.sep?10*u:(k.cap||k.pad)&&(prev.cap||prev.pad)?3*u:6*u):0;
+  if(k.sep)w+=3*u;else if(k.cap)w+=hudCapW(k.cap,u);else if(k.pad)w+=hudPadW(k.pad,u);
+  else{HUD.x.font=hudF(Math.max(10.5,11.5*u));w+=hudW(k.t,.8*u);}
   prev=k;}
  return w;
 }
 function hudLine(line,x,cy,u,col){
  const X=HUD.x;let prev=null;
  for(const k of line){
-  x+=prev?(k.sep||prev.sep?10*u:k.cap&&prev.cap?3*u:6*u):0;
-  if(k.sep){X.fillStyle='#3d4a66';hudDot(x+1.5*u,cy,1.5*u);x+=3*u;}
+  x+=prev?(k.sep||prev.sep?10*u:(k.cap||k.pad)&&(prev.cap||prev.pad)?3*u:6*u):0;
+  if(k.sep){X.fillStyle='#3c5566';hudDot(x+1.5*u,cy,1.5*u);x+=3*u;}
   else if(k.cap)x+=hudCap(k.cap,x,cy,u);
+  else if(k.pad)x+=hudPad(k.pad,x,cy,u);
   else{X.font=hudF(Math.max(10.5,11.5*u));X.fillStyle=col;hudT(k.t,x,cy+.5*u,-1,.8*u);x+=hudW(k.t,.8*u);}
   prev=k;}
 }
@@ -235,9 +264,9 @@ function hudBoard(a){
  const xi0=cx-gp-ww-sm,xo0=xi0-sw,xi1=cx+gp+ww+sm,xo1=xi1+sw;
  X.globalAlpha=a;
  X.fillStyle='rgba(0,0,0,.3)';hudTrap(xo0-kl,y0-kl+4*u,xo1+kl,hW+kl*2,tn);X.fill();   // hard drop
- X.fillStyle='#070a11';hudTrap(xo0-kl,y0-kl,xo1+kl,hW+kl*2,tn);X.fill();
+ X.fillStyle='#06101a';hudTrap(xo0-kl,y0-kl,xo1+kl,hW+kl*2,tn);X.fill();
  const bot=S.trn?y0+hW:hudClock(cx,y0+hW,2*(ww+gp)+10*u);   // training has no clock: checkMatchClock ignores it
- const wg=X.createLinearGradient(0,y0,0,y0+hW);wg.addColorStop(0,'#1b2334');wg.addColorStop(1,'#0a0e18');
+ const wg=X.createLinearGradient(0,y0,0,y0+hW);wg.addColorStop(0,'#133149');wg.addColorStop(1,'#081623');
  const ry=y0+hN+(hW-hN)/2;
  for(let t=0;t<2;t++){
   const tc=L[t],s=t?1:-1,xi=t?xi1:xi0,xo=t?xo1:xo0,nm=t?n1:n0;
@@ -277,14 +306,14 @@ function hudBeads(t,xa,len,y,s,tc){
  const H=CONFIG.hud,tg=goalTarget(),u=HUD.u,sp=10.4*u,r=3.4*u,X=HUD.x;
  if(!H.beads||!(tg>=1)||tg>H.beadMax||tg*sp>len)return;
  const xb=xa+s*len,sc=Math.min(HUD.sc[t],tg),fr=Math.min(HUD.scFrom[t],sc),T=HUD.t-HUD.scT[t];
- X.strokeStyle='#34405f';X.lineWidth=1.2*u;X.beginPath();X.moveTo(xa,y);X.lineTo(xb,y);X.stroke();
+ X.strokeStyle='#32505f';X.lineWidth=1.2*u;X.beginPath();X.moveTo(xa,y);X.lineTo(xb,y);X.stroke();
  for(let i=0;i<tg;i++){
   const home=xb-s*(tg-i-1+.5)*sp,won=xa+s*(i+.5)*sp;   // parked out at the far end · slid home against the score
   let bx=home,lit=i<sc;
   if(i<fr)bx=won;
   else if(lit){const p=hC((T-.12-(i-fr)*.09)/.5);bx=home+(won-home)*hO3(p);}
   if(lit){X.fillStyle=tc.c;hudDot(bx,y,r);X.fillStyle='rgba(255,255,255,.6)';hudDot(bx-r*.35,y-r*.38,r*.33);}
-  else{X.fillStyle='#1d2539';hudDot(bx,y,r);X.strokeStyle='rgba(255,255,255,.17)';X.lineWidth=1;X.stroke();}
+  else{X.fillStyle='#102a3d';hudDot(bx,y,r);X.strokeStyle='rgba(255,255,255,.17)';X.lineWidth=1;X.stroke();}
  }
 }
 /* The clock hangs off the centre of the board. Level time counts up; a timed match counts DOWN, and
@@ -295,8 +324,8 @@ function hudClock(cx,y,w){
  const X=HUD.x,u=HUD.u,T=HUD.t,h=22*u,lim=gameTimeLimit();
  if(S.suddenDeath){
   const f=hudF(12*u),tr=2.6*u;X.font=f;w=Math.max(w,hudW('SUDDEN DEATH',tr)+30*u);
-  const g=X.createLinearGradient(0,y,0,y+h);g.addColorStop(0,'#ffe08a');g.addColorStop(1,'#e8ae1c');
-  X.fillStyle='#070a11';hudTrap(cx-w/2-2*u,y-u,cx+w/2+2*u,h+3*u,7/22);X.fill();
+  const g=X.createLinearGradient(0,y,0,y+h);g.addColorStop(0,'#f7c668');g.addColorStop(1,'#d99532');
+  X.fillStyle='#06101a';hudTrap(cx-w/2-2*u,y-u,cx+w/2+2*u,h+3*u,7/22);X.fill();
   X.fillStyle=g;hudTrap(cx-w/2,y,cx+w/2,h,7/22);X.fill();
   X.fillStyle=INK;hudT('SUDDEN DEATH',cx,y+h/2+u,0,tr);
   return y+h+2*u;
@@ -304,13 +333,13 @@ function hudClock(cx,y,w){
  const v=lim>0?Math.max(0,Math.ceil(lim-S.matchTime)):Math.floor(S.matchTime||0);
  if(v!==HUD.clk){HUD.clk=v;HUD.clkT=T;}
  const warn=lim>0&&v<=MATCH.warnT,k=warn?hC(1-(T-HUD.clkT)/.38):0;
- X.fillStyle=warn?'rgb('+(7+68*k|0)+','+(10+4*k|0)+','+(17+4*k|0)+')':'#070a11';
+ X.fillStyle=warn?'rgb('+(7+68*k|0)+','+(10+4*k|0)+','+(17+4*k|0)+')':'#06101a';
  hudTrap(cx-w/2-2*u,y-u,cx+w/2+2*u,h+3*u,7/22);X.fill();
  const f=hudF(14*u),str=String(v/60|0).padStart(2,'0')+':'+String(v%60).padStart(2,'0');
  X.save();X.translate(cx,y+h/2+u);const sc=1+.16*k*k;X.scale(sc,sc);X.font=f;
- X.fillStyle=warn?'#ff5b5b':lim>0?'#b8c5de':'#8391b0';hudMono(str,0,0,hudCell(f));X.restore();
+ X.fillStyle=warn?'#ef6a4a':lim>0?'#bcd0da':'#7d9cad';hudMono(str,0,0,hudCell(f));X.restore();
  if(lim>0){const fr=hC((lim-S.matchTime)/lim),bw=(w-24*u)*fr;
-  X.fillStyle=warn?'#ff5b5b':'rgba(184,197,222,.32)';X.fillRect(cx-bw/2,y+h-1.5*u,bw,1.5*u);}
+  X.fillStyle=warn?'#ef6a4a':'rgba(188,220,237,.32)';X.fillRect(cx-bw/2,y+h-1.5*u,bw,1.5*u);}
  return y+h+2*u;
 }
 
@@ -348,7 +377,7 @@ function hudTab(t,tb,y,h,a,sx){
  X.save();X.globalAlpha=a;
  X.translate(ex(ym),ym);X.scale(sx,1);X.translate(-ex(ym),-ym);   // grows out from the board, collapses back into it
  X.beginPath();X.moveTo(e0,y);X.lineTo(o0,y);X.lineTo(o1,y+h);X.lineTo(e1,y+h);X.closePath();
- X.fillStyle='rgba(8,11,19,.94)';X.fill();
+ X.fillStyle='rgba(6,16,26,.94)';X.fill();
  X.save();X.clip();
  const fr=hC((tb.end-S.time)/tb.dur),bw=w*fr;
  X.fillStyle=hudA(tc.c,.24);X.beginPath();X.moveTo(e0,y);X.lineTo(e0+s*bw,y);X.lineTo(e1+s*bw,y+h);X.lineTo(e1,y+h);X.closePath();X.fill();
@@ -400,7 +429,7 @@ function hudChips(a,rdt){
  for(let n=0;n<C.length;n++){const c=C[n];if(c.k===0)continue;
   c.tk=c.k===1&&rodTaken(c.s.rods[c.i],c.s);
   X.fillStyle='rgba(0,0,0,.35)';hudPar(c.x,y+3*u,c.w,h,k);X.fill();
-  hudPar(c.x,y,c.w,h,k);X.fillStyle=c.tk?'rgba(7,9,15,.78)':n===HUD.hov?'rgba(30,39,60,.95)':'rgba(10,13,22,.9)';X.fill();
+  hudPar(c.x,y,c.w,h,k);X.fillStyle=c.tk?'rgba(6,16,26,.78)':n===HUD.hov?'rgba(20,52,76,.95)':'rgba(8,22,34,.9)';X.fill();
   if(c.tk){X.save();X.clip();X.fillStyle=hudHatch();X.fillRect(c.x,y,c.w+k,h);X.restore();}
   X.fillStyle='rgba(255,255,255,.07)';X.fillRect(c.x+k,y,c.w,u);
  }
@@ -421,8 +450,8 @@ function hudChips(a,rdt){
   X.font=fR;
   if(c.k===2){X.fillStyle=ink;hudT(c.lab,cx0+c.w/2,my,0,trR);continue;}
   const lx=cx0+12*u;
-  X.font=fN;X.fillStyle=on?hudA(ink,.6):c.tk?'#3a465f':'#56688c';hudT(c.num,lx,my-3*u,-1,0);
-  X.font=fR;X.fillStyle=on?ink:c.tk?'#4b5874':'#a5b5d2';hudT(c.lab,lx+c.nw+5*u,my,-1,trR);
+  X.font=fN;X.fillStyle=on?hudA(ink,.6):c.tk?'#38505f':'#527488';hudT(c.num,lx,my-3*u,-1,0);
+  X.font=fR;X.fillStyle=on?ink:c.tk?'#4a6272':'#a4c1cf';hudT(c.lab,lx+c.nw+5*u,my,-1,trR);
  }
  X.globalAlpha=1;
 }
@@ -456,11 +485,17 @@ addEventListener('mousemove',e=>{
    Bottom right, as keycaps. It is only worth full strength while you're still learning where things
    are: after CONFIG.hud.hintHold of play it settles back to hintDim instead of sitting at full
    brightness over the corner of the table all match. */
+// the keyboard lines or the pad lines: the pad's when a pad was the last thing touched, else whichever exists
+function hudHintPick(){return hudPadNow()&&HUD.hintP||HUD.hint||HUD.hintP;}
 function hudHintDraw(a){
- const X=HUD.x,u=HUD.u,H=CONFIG.hud,L=HUD.hint,age=HUD.t-HUD.hintT;
+ const X=HUD.x,u=HUD.u,H=CONFIG.hud,L=hudHintPick();
+ // A solo player picking up the other device gets the hint back at full strength. Not with two seats
+ // on different devices: it would flip back to bright every time either of them touched anything.
+ if(L!==HUD.hintUse){if(HUD.hintUse&&S.seats.length<2)HUD.hintT=HUD.t;HUD.hintUse=L;}
+ const age=HUD.t-HUD.hintT;
  X.globalAlpha=a*(age<H.hintHold?1:1-(1-H.hintDim)*hO3(hC((age-H.hintHold)/1.2)));
  let y=HUD.H-24*u;
- for(let i=L.length-1;i>=0;i--){hudLine(L[i],HUD.W-18*u-hudLineW(L[i],u),y,u,'#7486aa');y-=22*u;}
+ for(let i=L.length-1;i>=0;i--){hudLine(L[i],HUD.W-18*u-hudLineW(L[i],u),y,u,'#7196a8');y-=22*u;}
  X.globalAlpha=1;
 }
 
@@ -477,7 +512,7 @@ function hudNotice(){
  X.save();X.globalAlpha=1-eo;X.beginPath();X.rect(x0-2,y-2,(tot+k+4)*ei,h+4);X.clip();
  X.fillStyle='rgba(0,0,0,.35)';hudPar(x0,y+3*u,tot,h,k);X.fill();
  hudPar(x0,y,ab,h,k);X.fillStyle=n.c;X.fill();
- hudPar(x0+ab+gp,y,w,h,k);X.fillStyle='rgba(8,11,19,.94)';X.fill();
+ hudPar(x0+ab+gp,y,w,h,k);X.fillStyle='rgba(6,16,26,.94)';X.fill();
  X.fillStyle='rgba(255,255,255,.07)';X.fillRect(x0+ab+gp+k,y,w,u);
  X.fillStyle='#ffffff';hudT(n.s,x0+ab+gp+k/2+w/2,y+h/2+u,0,tr);
  X.restore();
@@ -541,14 +576,16 @@ function hudReplayDraw(){
  const R=HUD.rep,X=HUD.x,u=HUD.u,W=HUD.W,H=HUD.H,age=HUD.t-R.t;
  const q=1-hC(age/.3),e=R.on?1-Math.pow(1-hC(age/.45),4):q*q*(3-2*q);if(e<=0)return;
  const bh=Math.max(46*u,H*.09),ty=-bh*(1-e),by=H-bh*e,tc=hudTeam(R.team);
- X.fillStyle='#04050a';X.fillRect(0,ty,W,bh);X.fillRect(0,by,W,bh);
+ X.fillStyle='#02070c';X.fillRect(0,ty,W,bh);X.fillRect(0,by,W,bh);
  const rw=W*(R.on?hO3(hC((age-.15)/.55)):1);X.fillStyle=tc.c;X.fillRect((W-rw)/2,ty+bh-2*u,rw,2*u);X.fillRect((W-rw)/2,by,rw,2*u);
  const blink=(age%1.1)<.55?1:.18,ly=ty+bh-18*u,ly2=by+20*u;
  X.fillStyle=hudA('#ff3b3b',blink);hudDot(31*u,ly,4.5*u);
  X.font=hudF(15*u);X.fillStyle=hudCol('var(--gold)');hudT('REPLAY',45*u,ly+u,-1,5*u);
  if(R.save==='saving'){X.fillStyle=hudA('#ff3b3b',blink);hudDot(31*u,ly2,4*u);X.font=hudF(12*u);X.fillStyle=hudCol('var(--gold)');hudT(REPLAY.save.saving,44*u,ly2+u,-1,2.6*u);}
- else if(R.save==='armed'&&R.tok)hudLine(R.tok[0],26*u,ly2,u,'#7f93ba');
- X.font=hudF(12*u);X.fillStyle='#62759b';hudT('ANY KEY — SKIP',W-28*u,ly2+u,1,2.6*u);
+ const pd=hudPadNow(),tk=pd&&R.tokP||R.tok;
+ if(R.save==='armed'&&tk)hudLine(tk[0],26*u,ly2,u,'#6f9aae');
+ if(pd){const L=HUD.skipP||(HUD.skipP=hudTok('{A} skip')[0]);hudLine(L,W-28*u-hudLineW(L,u),ly2,u,'#587f93');}
+ else{X.font=hudF(12*u);X.fillStyle='#587f93';hudT('ANY KEY — SKIP',W-28*u,ly2+u,1,2.6*u);}
 }
 
 /* ===== toast · tier 3 =====
@@ -562,9 +599,9 @@ function hudToasts(){
   X.font=fM;const mw=hudW(q.m,trM);X.font=fS;const sw=q.s?hudW(q.s,trS):0;
   const w=Math.max(mw,sw)+26*u,h=q.s?38*u:24*u;y-=h;
   X.save();X.globalAlpha=ei*(1-eo);X.translate(-(1-ei)*10*u,0);
-  X.fillStyle='rgba(8,11,19,.9)';X.fillRect(16*u,y,w,h);X.fillStyle='#4a5c80';X.fillRect(16*u,y,2*u,h);
-  X.font=fM;X.fillStyle='#c6d2ea';hudT(q.m,29*u,y+(q.s?13*u:h/2+u),-1,trM);
-  if(q.s){X.font=fS;X.fillStyle='#6d80a4';hudT(q.s,29*u,y+27*u,-1,trS);}
+  X.fillStyle='rgba(6,16,26,.9)';X.fillRect(16*u,y,w,h);X.fillStyle='#486a80';X.fillRect(16*u,y,2*u,h);
+  X.font=fM;X.fillStyle='#d2e2ea';hudT(q.m,29*u,y+(q.s?13*u:h/2+u),-1,trM);
+  if(q.s){X.font=fS;X.fillStyle='#6a8ea2';hudT(q.s,29*u,y+27*u,-1,trS);}
   X.restore();y-=6*u;
  }
 }
@@ -585,7 +622,7 @@ function hudDevDraw(){
   X.strokeStyle='rgba(42,245,255,.28)';X.lineWidth=1;X.strokeRect(16.5,y+.5,w+19,h-1);
   let ly=y+5+7.5;
   for(const r of rows){let x=26;
-   for(const p of r){X.fillStyle='#7f93ba';X.fillText(p[0],x,ly);x+=X.measureText(p[0]).width+5;
+   for(const p of r){X.fillStyle='#6f9aae';X.fillText(p[0],x,ly);x+=X.measureText(p[0]).width+5;
     X.fillStyle=p[2]?'#ff8c3a':'#ffffff';X.fillText(p[1],x,ly);x+=X.measureText(p[1]).width+12;}
    ly+=15;}
   y+=h+6;
@@ -618,7 +655,7 @@ function hudRender(rdt){
   const a=HUD.chromeA;
   if(!S.trial){hudBoard(a);hudTabs(a,rdt);}
   hudChips(a,rdt);
-  if(HUD.hint)hudHintDraw(a);
+  if(HUD.hint||HUD.hintP)hudHintDraw(a);
  }
  if(dev)hudDevDraw();
  if(rep)hudReplayDraw();
@@ -637,8 +674,8 @@ function hudRender(rdt){
      banner(main,sub,dur,col)  tier 1 · stop-the-world: kickoff, goal, sudden death, full time.
      notice(main,dur,col)      tier 2 · a live event the player already SAW. One line, no subtitle.
      toast(main,sub,dur)       tier 3 · system/dev chatter. Small, bottom-left, out of the way. */
-function banner(main,sub,dur,col){HUD.bnr={m:String(main).toUpperCase(),s:sub?String(sub).toUpperCase():'',c:hudCol(col||'#dbe6ff'),t:HUD.t,d:dur||1.6};}
-function notice(main,dur,col){HUD.ntc={s:String(main).toUpperCase(),c:hudCol(col||'#9db2d8'),t:HUD.t,d:dur||1.3};}
+function banner(main,sub,dur,col){HUD.bnr={m:String(main).toUpperCase(),s:sub?String(sub).toUpperCase():'',c:hudCol(col||'#d6e8f2'),t:HUD.t,d:dur||1.6};}
+function notice(main,dur,col){HUD.ntc={s:String(main).toUpperCase(),c:hudCol(col||'#9dc0d4'),t:HUD.t,d:dur||1.3};}
 function toast(main,sub,dur){
  const m=String(main).toUpperCase();for(let i=HUD.tst.length;i--;)if(HUD.tst[i].m===m)HUD.tst.splice(i,1);
  HUD.tst.push({m,s:sub?String(sub):'',t:HUD.t,d:dur||1.6});if(HUD.tst.length>3)HUD.tst.shift();
@@ -651,13 +688,19 @@ function hudShow(on){
   HUD.sc[0]=HUD.scFrom[0]=S.score[0];HUD.sc[1]=HUD.scFrom[1]=S.score[1];HUD.scT[0]=HUD.scT[1]=-9;HUD.clk=-1;}
  else{HUD.chromeA=0;HUD.ntc=HUD.bnr=null;}
 }
-function hudHint(src){HUD.hint=src?hudTok(src):null;HUD.hintT=HUD.t;}
+/* `pad` is the same hint for a controller. With both given, the one drawn follows whichever device
+   last did something (js/padnav.js inputKind): a solo seat holds keyboard, mouse AND pad, and a Steam
+   Deck player shown [SPACE] [LMB] is being told how to play a game they aren't holding. */
+function hudHint(src,pad){HUD.hint=src?hudTok(src):null;HUD.hintP=pad?hudTok(pad):null;HUD.hintUse=null;HUD.hintT=HUD.t;}
 function hudCount(v){
  v=v?String(v):'';const c=HUD.cnt;if((c?c.v:'')===v)return;
  if(c&&!c.hid)HUD.cntOut={v:c.v,t:HUD.t};HUD.cnt=v?{v,t:HUD.t,hid:false}:null;   // a READY the banner held back never shows, so it never leaves either
 }
 function hudReplay(on,team){const R=HUD.rep;if(R.on===!!on)return;R.on=!!on;R.t=HUD.t;if(team!=null)R.team=team;}
-function hudReplaySave(st){const R=HUD.rep;R.save=st;if(st==='armed'&&!R.tok)R.tok=hudTok(REPLAY.save.hint);}
+function hudReplaySave(st){const R=HUD.rep;R.save=st;
+ // Re-read on every arm, not cached for the session: the save key is a binding and can move between replays.
+ if(st==='armed'){const kb=typeof bindHint==='function'?bindHint('saveClip','save clip'):'';
+  R.tok=hudTok(kb||REPLAY.save.hint);R.tokP=REPLAY.save.hintPad?hudTok(REPLAY.save.hintPad):null;}}
 function hudDev(k,rows){if(rows)HUD.dev[k]=rows;else delete HUD.dev[k];}
 // a goal: the scoring side's number ROLLS and its bead slides home. Called with no team, it just snaps.
 function updateScoreUI(team){

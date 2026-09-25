@@ -179,11 +179,17 @@ function startMatchNow(mode,rodLockRole){
   // The camera persists between matches, so a shot that was fine last game (a red-only end cam)
   // may not be offerable now that blue has a player too — step off it rather than start there.
   if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
-  // The hint speaks to the devices actually seated — keys for a keyboard, pad buttons when only pads
-  // are, nothing but the camera for a spectated match — and offers switching only if someone can.
-  {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),sw=S.seats.some(s=>s.rods.length>1);
-   hudHint(!S.seats.length?'[V] camera':!kb?(sw?'[LB] [RB] switch rod · ':'')+'[LS] slide\n[A] kick · [X] raise'
-    :(sw?'[Q] [E] switch rod · ':'')+'[↑] [↓] [MOUSE] slide\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [V] camera');}
+  // The hint speaks to the devices actually seated — keys for a keyboard, pad buttons for a pad, just
+  // the camera for a spectated match — and offers switching only if someone can. A seat holding both
+  // gets both, and hud.js draws whichever was touched last (a solo seat holds keyboard, mouse AND pad).
+  // The pad line says what the triggers are for in THIS mode, since the same two do different jobs.
+  {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
+   const sw=S.seats.some(s=>s.rods.length>1);
+   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch':'';
+   // Every key in the keyboard line comes off the bindings (js/binds.js), so a rebind shows here.
+   const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
+   hudHint(!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
+    !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} kick · {X} raise'+trg:null);}
  // Remember where this match was launched from so quitting returns THERE: a quick match started
  // on Kick Off goes back to Kick Off (rematch is one click), training started on home goes back
  // to home. League/cup have their own return paths (lgReturn/cupReturn re-open the lobby with
@@ -283,9 +289,11 @@ function endMatch(w){
  clearBalls();clearPU();replayAbort();clearFxRail();
   const wasLg=!!S.lg;
   if(wasLg){(S.lg.cup?cupRecord:lgRecord)(w);} // record + sim the rest while the bridge is live
- $('winTitle').textContent=teamName(w)+' WINS!';
+ $('winTitle').textContent=teamName(w)+' WINS';
  $('winTitle').style.color=teamCol(w);
- $('winScore').textContent=S.score[0]+' — '+S.score[1];
+ // the full-time board: each plate in its team's colour, ink picked for contrast, the winner's lit
+ for(const t of [0,1]){const n=$('winName'+t);n.textContent=teamName(t);n.style.setProperty('--tc',teamCol(t));n.style.color=typeof hudInk==='function'?hudInk(teamCol(t),.62):'#fff';
+  n.classList.toggle('lost',t!==w);$('winS'+t).textContent=S.score[t];}
  msRallyEnd();      // a clock-out / forfeit ends the last rally without a goal or an out
  msWinRender();     // matchstats.js owns both stat tabs — see the sheet block at the foot of that file
  // The league/cup REWARDS strip stays here: it's the one part of the win screen that knows about

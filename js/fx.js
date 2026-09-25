@@ -477,6 +477,10 @@ function cycleCam(d){
  const n=CAM.modes.length;
  for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui();return;}}
 }
+// The menus' look target, eased on all three axes (a match eases only lookX; its look height and depth
+// are fixed per mode, which would SNAP between menu shots).
+// Built on first use, not at load: harnesses boot this file against a THREE stub with no Vector3.
+let camMenuLook=null,camMenuOn=false;
 function cameraUpdate(rdt){
  if(S.photo)return;   // photo mode owns the camera outright (js/photo.js phApply) — no lerp, no shake
  if(S.freeRoam){
@@ -496,6 +500,20 @@ function cameraUpdate(rdt){
   if(keys.KeyE)camera.position.y-=spd;
   return;
  }
+ // MENUS (ui-world): ease to the current screen's shot. No shake, no ball follow, and no idle drift —
+ // a camera at rest is what lets the menu render throttle (CONFIG.render.idle) drop to its idle rate.
+ if(S.phase==='menu'&&CAM.menuShots&&typeof screenId==='function'){
+  const m=CAM.menuShots[screenId()]||CAM.menuShots.home,k=clamp(rdt*CAM.menuLerp,0,1);   // clamped: a negative rdt would extrapolate
+  if(!camMenuOn){camMenuOn=true;if(!camMenuLook)camMenuLook=new THREE.Vector3();const pm=CAM.modes[S.camMode]||m;camMenuLook.set(S.camLookX,pm[4],pm[5]);}   // from wherever the match camera was looking
+  camera.position.x=lerp(camera.position.x,m[0],k);
+  camera.position.y=lerp(camera.position.y,m[1],k);
+  camera.position.z=lerp(camera.position.z,m[2],k);
+  camMenuLook.x=lerp(camMenuLook.x,m[3],k);camMenuLook.y=lerp(camMenuLook.y,m[4],k);camMenuLook.z=lerp(camMenuLook.z,m[5],k);
+  S.camLookX=camMenuLook.x;
+  camera.lookAt(camMenuLook);
+  return;
+ }
+ camMenuOn=false;
  let bx=0;
  if(S.balls.length){for(const b of S.balls)bx+=b.m.position.x;bx/=S.balls.length;}
  const m=CAM.modes[S.camMode];
@@ -504,7 +522,7 @@ function cameraUpdate(rdt){
  // offset is a WORLD offset and is deliberately not mirrored.
  const mir=(camTeamSide()===1&&CAM.sideModes.indexOf(S.camMode)>=0)?-1:1;
  const fx=(S.camMode===1||S.camMode===3||S.camMode===4)?0:bx*CAM.follow;
- const k=Math.min(1,rdt*CAM.lerp);
+ const k=clamp(rdt*CAM.lerp,0,1);
  camera.position.x=lerp(camera.position.x,m[0]*mir+fx,k);
  camera.position.y=lerp(camera.position.y,m[1],k);
  camera.position.z=lerp(camera.position.z,m[2],k);

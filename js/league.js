@@ -769,6 +769,7 @@ function renderLgCabinet(){
 function openLeague(reveal){
  if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
   showScreen('league');   // hides menu/lgSlots + applies saved panel arrangement
+  lgSetTab('season');     // always open on the next match, whatever tab was showing last time
   $('lgWipe').classList.add('hidden');   // overlay, so hideScreens() doesn't reach it
 
   lgVenueEnter(lgDivVenue(playerDiv()));
@@ -889,12 +890,13 @@ function renderSlots(){
  for(let s=0;s<LGC.slots;s++){
   let data=null;
   try{data=JSON.parse(localStorage.getItem('fuzeball_league_'+s)||'null');}catch(e){}
+  const no='<div class="slotNo">Slot '+(s+1)+'</div>';
   if(data){
    const pd=(data.teams[data.playerId||0]||{}).div;
    if(pd==null)continue;
    const pdv=data.divs?data.divs[pd]:null;
    const porder=pdv?lgOrderFrom(data,pd).findIndex(e=>e.i===data.playerId):-1;
-   h+='<div class="lgSlotCard" data-slot="'+s+'">'+
+   h+='<div class="lgSlotCard" data-slot="'+s+'">'+no+
     '<div class="slotName">'+data.name+'</div>'+
     '<div class="slotDiv">'+(LGC.divisions[pd]?LGC.divisions[pd].name:'Pro League')+' · Season '+data.season+'</div>'+
     '<div class="slotInfo">'+((data.teams[data.playerId||0]||{}).name||'?')+'</div>'+
@@ -904,9 +906,9 @@ function renderSlots(){
     '<button class="miniBtn del">Delete</button>'+
     '</div></div>';
   }else{
-   h+='<div class="lgSlotCard" data-slot="'+s+'">'+
-    '<div class="slotEmpty">＋</div>'+
+   h+='<div class="lgSlotCard empty" data-slot="'+s+'">'+no+
     '<div class="slotEmptyLab">New League</div>'+
+    '<div class="slotEmptySub">Empty</div>'+
     '</div>';
   }
  }
@@ -917,10 +919,10 @@ function renderSlots(){
    const btn=e.target.closest('.miniBtn');
    if(btn&&btn.classList.contains('del')){
     e.stopPropagation();e.preventDefault();
-    if(confirm('Delete this league?')){
+    uiConfirm('DELETE LEAGUE?','Every season, trophy and upgrade on this save is lost','Delete',()=>{
      localStorage.removeItem('fuzeball_league_'+slot);
      renderSlots();
-    }
+    });
     return;
    }
    if(btn&&btn.classList.contains('ctn')){
@@ -992,7 +994,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
   }else{this.paint(col);}
  },
  paint(col){
-  const c=new THREE.Color(col);
+  const c=kitLin(col);   // linear for the sRGB preview renderer (world.js kitLin)
   this.mats.forEach(m=>{m.color.copy(c);applyTeamFinish(m,0,c,false);});
   if(this.rim)this.rim.color.copy(c);
   if(this.ringM)this.ringM.material.color.copy(c);
@@ -1351,8 +1353,19 @@ function lgRestart(keep){
  Au.ui();
 }
 SCREENS.league.onHide=()=>{$('lgWipe').classList.add('hidden');};   // overlay — hideScreens() walks past it; covers Esc and the corner arrow
+/* Lobby tabs. The ⊞ button belongs to the tab it arranges (Squad has none: one panel), and layApply
+   re-runs on reveal because a wrap inside a display:none tab measures 0 wide. */
+const LG_TABS=['season','squad','club'];
+function lgSetTab(t){
+ if(LG_TABS.indexOf(t)<0)t='season';
+ for(const k of LG_TABS){$('lgTab_'+k).classList.toggle('hidden',k!==t);$('lgTabBtn'+k[0].toUpperCase()+k.slice(1)).classList.toggle('on',k===t);}
+ $('lgEditLayout').classList.toggle('hidden',t!=='season');
+ $('lgClubEditLayout').classList.toggle('hidden',t!=='club');
+ if(typeof layApply==='function'){if(t==='season')layApply('league');else if(t==='club')layApply('leagueClub');}
+}
 /* ---- bind ---- */
 function bindLeague(){
+  for(const k of LG_TABS)$('lgTabBtn'+k[0].toUpperCase()+k.slice(1)).onclick=()=>{lgSetTab(k);Au.ui();};
   $('btnLeague').onclick=()=>{Au.init();Au.ui();openSlots();};
   $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
   // Corner ↺ always resets (confirm is because it's a thumb-width from Back and unlabelled).

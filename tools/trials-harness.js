@@ -26,7 +26,7 @@ function boot(mutate){
  // state.js's freshStats reads MSTAT for terr's length — that alias comes from config.js, NOT from
  // matchstats.js, so this chain needs neither that module nor a stub for it.
  const src=rd('js/core.js')+'\n'+rd('js/config.js')+'\n'+rd('js/rng.js')
-  +'\n'+rd('js/state.js')+'\n'+STUBS+'\n'+trials
+  +'\n'+rd('js/state.js')+'\n'+STUBS+'\n'+rd('js/binds.js')+'\n'+trials   // binds.js: the trial hint and the retry key read the bindings
   +'\n;globalThis.__api={CONFIG,F,PHY,TRL,TRLC,S,cfg,rods,TRN,SCREENS,'
   +'trialById,trialBest,trialMedal,trialStart,trialArm,trialReset,trialGoal,trialTick,trialFinish,'
   +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC,'

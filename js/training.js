@@ -184,6 +184,9 @@ function buildTrnPanel(){
    '</svg></div>'+
   '</div>';
  document.body.appendChild(p);
+ // Ball type is a ◀ VALUE ▶ selector like every menu's. vsel.js loads AFTER this file, but the panel is
+ // built at the first training start, long after boot.
+ if(typeof vselWrap==='function')vselWrap($('trnType'));
  trnAngT=$('trnAngT');trnNeedle=$('trnNeedle');
  // blur any clicked button so SPACE (kick) can't re-fire it
  p.addEventListener('click',e=>{const b=e.target.closest('button');if(b)b.blur();});
@@ -228,7 +231,9 @@ function trainingEnter(){
  trnSetPlacing(false);trnRefreshSpots();
  $('trnPanel').classList.remove('hidden');
  hudCount('');
- hudHint('[T] panel · [P] freeze · [O] step · [G] place ball\n[SPACE] [LMB] kick · [SHIFT] [RMB] raise · [V] camera · [C] debug');
+ const H=bindHintRods(false,true);
+ hudHint(['[T] panel · [P] freeze · [O] step · [G] place ball',H.act,bindJoin([H.mod,bindHint('camera','camera'),'[C] debug'])].filter(Boolean).join('\n'),
+  '{START} pause · {Y} camera\n{A} kick · {X} raise · {LB} {RB} switch rod');
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
  // A queued Skill Trial (js/trials.js) takes the sandbox over from here — it re-places the ball,

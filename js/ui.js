@@ -135,3 +135,15 @@ function menuSetTab(t){
  $('menuRulesEditLayout').classList.toggle('hidden',team);
  if(typeof layApply==='function')layApply(team?'menu':'menuRules');
 }
+/* In-game yes/no, in place of the browser's confirm(). That dialog can't be answered with a
+   controller, it blocks the page (the game loop included), and it looks like a web page. Cancel
+   is the default focus and what B / Esc press, so the destructive answer always takes a
+   deliberate move. */
+let uiConfirmFn=null;
+function uiConfirm(title,msg,ok,fn){
+ $('uiConfirmTitle').textContent=title;$('uiConfirmMsg').textContent=msg;$('uiConfirmOk').textContent=ok||'OK';
+ uiConfirmFn=fn;$('uiConfirm').classList.remove('hidden');Au.ui();
+}
+function uiConfirmClose(){$('uiConfirm').classList.add('hidden');uiConfirmFn=null;}
+$('uiConfirmOk').onclick=()=>{const f=uiConfirmFn;uiConfirmClose();Au.ui();if(f)f();};
+$('uiConfirmCancel').onclick=()=>{uiConfirmClose();Au.ui();};
