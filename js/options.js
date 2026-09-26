@@ -25,17 +25,17 @@ let optRefLast=0, optRefAcc=[], optRefShown=0;
    individual control flips the preset to 'custom'. Applied live via applyDisplay() (render scale +
    shadows, world.js) and applyRoom()/refreshBallReflect() (reflections) — no reload. */
 const GFX_PRESETS={
- low:{renderScale:0.5,shadows:false,shadowQuality:'low',reflections:false,fpsCap:30,reducedFx:true},
- medium:{renderScale:0.75,shadows:true,shadowQuality:'low',reflections:false,fpsCap:60,reducedFx:true},
- high:{renderScale:1,shadows:true,shadowQuality:'high',reflections:true,fpsCap:0,reducedFx:false}
+ low:{renderScale:0.5,shadows:false,shadowQuality:'low',grass:'off',reflections:false,fpsCap:30,reducedFx:true},
+ medium:{renderScale:0.75,shadows:true,shadowQuality:'low',grass:'low',reflections:false,fpsCap:60,reducedFx:true},
+ high:{renderScale:1,shadows:true,shadowQuality:'high',grass:'high',reflections:true,fpsCap:0,reducedFx:false}
 };
 function applyReducedFx(){document.body.classList.toggle('lowFx',!!cfg.reducedFx);}   // cheap-CSS mode (see .lowFx in styles.css)
 function applyGfxPreset(name){
  const p=GFX_PRESETS[name];if(!p)return;
- cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.shadowQuality=p.shadowQuality;
+ cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.shadowQuality=p.shadowQuality;cfg.grass=p.grass;
  cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
  cfg.gfxPreset=name;
- applyDisplay();applyReducedFx();
+ applyDisplay();applyReducedFx();if(typeof grassApply==='function')grassApply();
  // A preset moves `reflections`, which re-decides the room's env map and pays a PMREM bake — so
  // it goes through the staged gate (js/flow.js) like every other venue-touching control.
  venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'APPLYING PRESET'});
@@ -54,6 +54,7 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';
  $('optShadows').checked=cfg.shadows!==false;
  syncShadowQ();
+ $('optGrass').value=cfg.grass;
  $('optReflect2').checked=!!cfg.reflections;
  $('optReducedFx').checked=!!cfg.reducedFx;
  $('optTrails').checked=cfg.trails!==false;
@@ -374,6 +375,8 @@ function bindOptions(){
  // Map size + filter + bias, from CONFIG.render.shadow.quality — applyDisplay swaps them live.
  $('optShadowQ').onchange=e=>{cfg.shadowQuality=e.target.value==='high'?'high':'low';
   cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
+ $('optGrass').onchange=e=>{cfg.grass=e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
+  if(typeof grassApply==='function')grassApply();saveCfg();};
  $('optReflect2').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
   venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'REFLECTIONS'});
   if($('setReflect'))$('setReflect').checked=e.target.checked;saveCfg();};

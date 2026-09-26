@@ -12,13 +12,16 @@
      - applyRoom's onReady fires ONCE, after BOTH the backdrop and the sky, in either order
      - a sky or backdrop landing after the player left must not touch the screen
      - two overlapping props builds of one room (boot does this) leave one group, not an orphan
+     - the Moon's sun in the sky (build_moon_sky.py SUN_DIR) points where its shadows come from
+       (CONFIG.rooms.moon.dir.pos): a sun that disagrees with the shadows is the mistake everyone sees
 
    Run: node tools/sky-harness.js                                                               */
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
 const rd=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
-const WORLD=rd('js/world.js'), MODELS=rd('js/models.js'), PROPS=rd('js/props.js');
+const WORLD=rd('js/world.js'), MODELS=rd('js/models.js'), PROPS=rd('js/props.js'),
+      CONFIGSRC=rd('js/config.js'), MOONSKY=rd('tools/build_moon_sky.py');
 
 function fnAt(src,name){
  const start=src.indexOf('function '+name+'(');
@@ -224,8 +227,25 @@ function propsSuite(src){
  t(kids.includes(api.propGroups.arcade),'the group in the scene is the registered one');
  return r;
 }
-const base=skySuite(MODELS),rbase=roomSuite(WORLD),pbase=propsSuite(PROPS);
-pass=base.pass+rbase.pass+pbase.pass;fail=base.fail+rbase.fail+pbase.fail;fails.push(...base.fails,...rbase.fails,...pbase.fails);
+/* ---- the Moon's sun: sky script vs config ------------------------------- */
+function sunSuite(cfgSrc,skySrc){
+ const r={pass:0,fail:0,fails:[]};
+ const t=(c,m,x)=>{if(c)r.pass++;else{r.fail++;r.fails.push(m+(x===undefined?'':'  ['+x+']'));}};
+ const sm=skySrc.match(/^SUN_DIR\s*=\s*K\.unit\(\(([^)]+)\)\)/m);
+ const moon=cfgSrc.slice(cfgSrc.indexOf('   moon:{'));
+ const cm=moon.match(/dir:\{[^}]*pos:\[([^\]]+)\][^}]*\}/);
+ t(!!sm&&!!cm,'found SUN_DIR in build_moon_sky.py and rooms.moon.dir.pos in config.js');
+ if(sm&&cm){
+  const a=sm[1].split(',').map(Number),b=cm[1].split(',').map(Number);
+  const n=v=>Math.hypot(...v),dot=(a[0]*b[0]+a[1]*b[1]+a[2]*b[2])/(n(a)*n(b));
+  const deg=Math.acos(Math.min(1,dot))*180/Math.PI;
+  t(deg<0.5,'moon: the sun in the sky and the shadow-casting light agree (within 0.5 deg)',deg.toFixed(2)+' deg apart');
+  t(/on:true/.test(cm[0])&&/shadow:true/.test(cm[0]),'moon: the sun is on and casts shadows');
+ }
+ return r;
+}
+const base=skySuite(MODELS),rbase=roomSuite(WORLD),pbase=propsSuite(PROPS),sbase=sunSuite(CONFIGSRC,MOONSKY);
+pass=base.pass+rbase.pass+pbase.pass+sbase.pass;fail=base.fail+rbase.fail+pbase.fail+sbase.fail;fails.push(...base.fails,...rbase.fails,...pbase.fails,...sbase.fails);
 
 /* ---- mutations: each must break the suite -------------------------------- */
 function mutate(src,from,to){if(!src.includes(from))throw new Error('MUTATION ANCHOR LOST: '+from);
@@ -241,13 +261,14 @@ const MUT=[
  ['stale sky goes on screen','world',"if(t&&live()){scene.background=t;renderDirty();}","if(t){scene.background=t;renderDirty();}"],
  ['stale backdrop installs its env','world',"if(live()){show();setRoomEnv(id,rm);","if(true){show();setRoomEnv(id,rm);"],
  ['stale show() runs','world',"  if(!live())return;\n",""],
+ ['sky sun moved without the light','moonsky',"SUN_DIR    = K.unit((-0.8, 0.72, 0.35))","SUN_DIR    = K.unit((-0.8, 0.45, 0.35))"],
  ['props build orphans the earlier group','props',"  disposeRoomProps(id);\n  const g=propGroups[id]=new THREE.Group();","  const g=propGroups[id]=new THREE.Group();"]
 ];
 let caught=0,missed=[];
 for(const [name,which,from,to] of MUT){
  let broke=false;
  try{
-  const r=which==='models'?skySuite(mutate(MODELS,from,to)):which==='props'?propsSuite(mutate(PROPS,from,to)):roomSuite(mutate(WORLD,from,to));
+  const r=which==='models'?skySuite(mutate(MODELS,from,to)):which==='props'?propsSuite(mutate(PROPS,from,to)):which==='moonsky'?sunSuite(CONFIGSRC,mutate(MOONSKY,from,to)):roomSuite(mutate(WORLD,from,to));
   broke=r.fail>0;
  }catch(e){if(/ANCHOR LOST|no-op/.test(e.message))throw e;broke=true;}
  if(broke)caught++;else missed.push(name);

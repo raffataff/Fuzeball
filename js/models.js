@@ -505,7 +505,13 @@ function ensureRoom(id,cb){
  newGLTF().load(url,gltf=>{
   try{
    const room=gltf.scene;
-   room.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=true;}});   // backdrop, not a shadow caster
+   // backdrop, not a shadow caster. Room GLASS (any transparent material, e.g. the moon dome) is the
+   // farthest transparent thing on screen, so it draws FIRST among them (renderOrder -1) rather than
+   // being depth-sorted by its centre, which sits under the table and would put it over smoke and
+   // trails; and it never receives shadows, or the table's shadow lands on the panes.
+   room.traverse(c=>{if(!c.isMesh)return;c.castShadow=false;
+    const ms=Array.isArray(c.material)?c.material:[c.material];
+    const glass=ms.some(m=>m&&m.transparent);c.receiveShadow=!glass;if(glass)c.renderOrder=-1;});
    applyEmissiveStrength(room);                    // r128 does not support KHR_materials_emissive_strength
    const rl=applyRoomLights(room,R);               // candela -> screen; see the block above
    if(rl.length)console.log('room "'+id+'" lights: '+rl.map(l=>(l.name||l.type)+' '+l.intensity.toFixed(3)+(l.distance?'@'+l.distance.toFixed(0):'')).join(', '));
@@ -942,6 +948,7 @@ function ensurePitch(id,cb){
       }
     });
     g.visible=false;                        // drawField parents + reveals it
+    if(typeof grassAttach==='function')grassAttach(id,g);   // shell grass (js/grass.js), grass pitches only
     pitchGroups[id]=g;
     console.log('pitch "'+id+'" loaded ('+P.glb+')');
    }catch(e){console.warn('pitch GLB hookup failed for '+id,e);}

@@ -940,6 +940,7 @@ function reditBlock(){
  const atm=reFmtKV(rm,['bg','fog']);
  if(atm.length)L.push(ind+atm.join(', ')+',');
  if(rm.sky)L.push(ind+'sky:'+reFmt('sky',rm.sky)+',');
+ if(rm.shots)L.push(ind+'shots:'+reFmt('shots',rm.shots)+',');
  if(rm.hemi)L.push(ind+'hemi:'+reFmt('hemi',rm.hemi)+',');
  if(rm.dir)L.push(ind+'dir:'+reFmt('dir',rm.dir)+',');
  if(rm.env)L.push(ind+'env:'+reFmt('env',rm.env)+',');

@@ -213,7 +213,7 @@ const ok=(c,m,x)=>{if(c)pass++;else{fail++;fails.push(m+(x===undefined?'':'  ['+
    w.api.setRoomEnv(id,rm);          // applyRoom, GLB in flight  -> syn:id
    w.land(id);w.api.setRoomEnv(id,rm);// ensureRoom cb            -> glb:id
    w.evict(id);};                     // disposeRoom
-  const ROOMS3=['a','b','c'];
+  const ROOMS3=Object.keys(CONFIG.rooms).map((_,i)=>'r'+i);   // every room: a per-room cap is only wrong once they are all visited
   const w=build(WORLD,{tableAssets:{cacheEnvs:nRooms}});   // sized per ROOM — the wrong way
   ROOMS3.forEach(id=>visit(w,id));
   const first=w.st.glb;

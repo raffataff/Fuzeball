@@ -250,7 +250,7 @@ matchStats:{
   preloadAll:false,   // true = fetch every table skin + every room at boot
   cacheSkins:2,       // max skin GLBs resident, LRU (active always protected)
   cacheRooms:1,       // max room GLBs resident, LRU (active always protected)
-  cacheEnvs:8,        // max baked reflection maps held, LRU
+  cacheEnvs:10,       // max baked reflection maps held, LRU. rooms x 2 (glb + synthetic), see roomenv-harness
   cacheSkies:2,       // max room skies (6 KTX2 cube faces, ~8MB at 1024²) resident, LRU
   cachePitches:2      // max pitch GLBs resident, LRU. 2 keeps an A/B warm
  },
@@ -1459,7 +1459,10 @@ deadball:{
     open  (Void) the table bolted to a rock in open space. Rock/deck/lamps: tools/build_void_asteroid.py
           then tools/ktx2-encode.mjs; nebula: tools/build_nebula_sky.py then tools/sky-encode.mjs.
           No lights in its GLB. The dir light is a warm key from the copper side of the nebula with no
-          shadow map (the deck carries a baked contact shadow); env panels are tinted from the nebula. */
+          shadow map (the deck carries a baked contact shadow); env panels are tinted from the nebula.
+    moon  a hab dome in a small crater. tools/build_moon_base.py + ktx2-encode; sky tools/build_moon_sky.py.
+          dir.pos MUST point along the sky's SUN_DIR (the sun disc in the sky casts the table's shadow);
+          tools/sky-harness.js checks it. `shots.home` sits low so Earth clears the rim. No lights in its GLB. */
   rooms:{
    open:{
       name:'Void', folder:'assets/rooms/void/', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
@@ -1532,6 +1535,22 @@ deadball:{
       ],
       led:{idle:'rainbow'}
    },
+   moon:{
+      name:'Moon Base', folder:'assets/rooms/moon/', glb:'fuzeball_room_moon.glb', reflect:true,
+      bg:0x000000, fog:[900,1000],
+      sky:{src:'assets/rooms/moon/sky/moon'},
+      shots:{home:[-12,32,116,-24,20,-30]},
+      hemi:{sky:0x1c2533,ground:0x4d4a45,int:0.45,on:true},
+      dir:{color:0xfff3e2,int:2.3,pos:[-91.9,82.7,40.2],on:true,shadow:true},
+      env:{shell:0x030304,panels:[[0xfff3e2,-250,140,110,120,120],[0x5a5752,0,-200,0,500,500],[0x6fa8ff,60,60,-250,60,60]]},
+      lights:[
+        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xeef3ff, int:1.9, dist:150, decay:2, angle:0.6, penumbra:0.32},
+        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xeef3ff, int:2.1, dist:65, decay:1, angle:0.68, penumbra:0.24},
+        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xeef3ff, int:1.9, dist:150, decay:2, angle:0.6, penumbra:0.32}
+      ],
+      props:[],
+      led:{idle:'rainbow'}
+   },
   },
   // Legacy theme-key → room-id map, for old saves.
   themeToRoom:{classic:'open',royal:'pub',verdant:'open',neon:'arcade',cyatron:'arcade'},
@@ -1540,13 +1559,38 @@ deadball:{
   pitches:{
    pub_classic:      {folder:'assets/pitches/', glb:'pitch_pub_classic.glb',      tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
    cork:             {folder:'assets/pitches/', glb:'pitch_cork.glb',             tex:'pitches/cork.jpeg',            name:'Cork'},
-   royal:            {folder:'assets/pitches/', glb:'pitch_royal.glb',            tex:'pitches/royal.jpeg',           name:'Royal Grass'},
+   royal:            {folder:'assets/pitches/', glb:'pitch_royal.glb',            tex:'pitches/royal.jpeg',           name:'Royal Grass', grass:true},
    cyatron:          {folder:'assets/pitches/', glb:'pitch_cyatron.glb',          tex:'pitches/cyatron.jpeg',         name:'Cyatron Grid'},
    neon:             {folder:'assets/pitches/', glb:'pitch_neon.glb',             tex:'pitches/neon_nights.jpg',      name:'Neon Nights'},
    verdantia:        {folder:'assets/pitches/', glb:'pitch_verdant.glb',          tex:'pitches/verdantia.jpeg',       name:'Verdantia'},
-   champions_green:  {folder:'assets/pitches/', glb:'pitch_champions_green.glb',  tex:'pitches/champions_green.png',  name:'Champions Green'},
-   champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple'},
+   champions_green:  {folder:'assets/pitches/', glb:'pitch_champions_green.glb',  tex:'pitches/champions_green.png',  name:'Champions Green', grass:true},
+   champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple', grass:true},
+   moon:             {folder:'assets/pitches/', glb:'pitch_moon.glb',             tex:'pitches/moon.jpeg',            name:'Moon Dust'},   // tools/build_moon_pitch.mjs
+   deck:             {folder:'assets/pitches/', glb:'pitch_deck.glb',             tex:'pitches/deck.jpeg',            name:'Deck Plate'},  // tools/build_deck_pitch.mjs
    },
+
+  /* ---- blade grass (js/grass.js) ----------------------------------------
+     A pitch opts in with `grass:true` (these defaults) or `grass:{...}` (override any blade key).
+     Real blades, one instanced draw. Visual only: the ball still rolls on a flat floor.
+     Units are game units (1 = 1 cm). */
+  grass:{
+   on:true,
+   amount:{ low:0.5, high:1 },  // share of the blades drawn per cfg.grass quality ('off' = none)
+   blade:{
+    height:0.45,    // tallest blade tip above the pitch
+    density:3.6,    // blades per unit along each axis (~106k over a 120x68 pitch)
+    width:0.1,      // blade breadth at the root (it narrows by a third to the tip)
+    slant:0.4,      // the tip: the low top corner stands this fraction of the height below the high one
+    lean:0.25,      // random curl across the blade's face at the tip, fraction of its height
+    minH:0.45,      // shortest blade, as a fraction of height
+    ao:0.55,        // colour at the root (dark) ...
+    tip:1.12,       // ... to the tip (a touch brighter)
+    sway:0.05,      // idle sway at the tip, fraction of its height
+    press:0.85,     // how flat a ball on the floor presses the grass (0..1)
+    pressR:2.6,     // radius of that press, units
+    seed:7          // lawn layout; the same seed always grows the same lawn
+   }
+  },
 
   /* ---- LED strip fx --------------------------------------------------- */
  leds:{
@@ -2078,7 +2122,8 @@ layouts:{},
 // gfxPreset is the last-picked preset ('low'|'medium'|'high'|'custom').
 // shadowQuality picks a tier from CONFIG.render.shadow.quality ('low'|'high') and only matters
 // while `shadows` is on. Defaults to 'low' — the tuning every build shipped with.
-renderScale:1,shadows:true,shadowQuality:'low',fpsCap:0,showFps:false,gfxPreset:'high'};
+// grass = shell-grass quality on grass pitches ('off'|'low'|'high', CONFIG.grass.layers).
+renderScale:1,shadows:true,shadowQuality:'low',grass:'high',fpsCap:0,showFps:false,gfxPreset:'high'};
 /* =========================================================================
    WHERE A SETTING LIVES — PLAYER vs MACHINE.
 
@@ -2098,7 +2143,7 @@ const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeb
 
 // Never leaves this computer. Display, performance, hardware calibration, window geometry.
 const CFG_MACHINE=new Set([
- 'renderScale','shadows','shadowQuality','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
+ 'renderScale','shadows','shadowQuality','grass','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
  'particles','marks','rodHoles','reflections','fog','profiler',
  'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
  'padDeadzone',    // stick calibration: a drifty pad on ONE machine, not a preference
@@ -2184,6 +2229,7 @@ if(typeof cfg.shadows!=='boolean')cfg.shadows=true;
 // Anything that isn't a known tier reads as Low, so an old save lands on the tuning it was
 // already running rather than on a setting its machine may not want.
 if(cfg.shadowQuality!=='high')cfg.shadowQuality='low';
+if(!['off','low','high'].includes(cfg.grass))cfg.grass='high';
 if(cfg.fpsCap!=='match'&&typeof cfg.fpsCap!=='number')cfg.fpsCap=0;   // number, or 'match' (track detected refresh)
 if(typeof cfg.showFps!=='boolean')cfg.showFps=false;
 if(typeof cfg.profiler!=='boolean')cfg.profiler=false;   // frame profiler overlay (M)

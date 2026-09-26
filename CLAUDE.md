@@ -73,12 +73,12 @@ preview renderer) · `balls` · `rods` · `physics` · `ai` · **`shots`** (play
 (rebindable keys) · `input` · `powerups` (+ dead-ball) · `flow` (match flow) · `fx` (FX + camera) ·
 `marks` · `capture` (clip recorder, zip writer) · `replay` · **`hud`** (the whole in-match chrome, one
 canvas) · `ui` · `roster` (Kick Off lobby) · `options` · `league` (league + Champions Cup) · `layout`
-(panel layout editor) · `customize` · `props` (instanced prop library) · `models` (GLB loading) ·
+(panel layout editor) · `customize` · `props` (instanced prop library) · `models` (GLB loading) · `grass` (blade grass on pitches) ·
 `fracture` · `debug` (`C` overlay) · `perf` (`M` profiler) · `sweetspot` · `training` · `trials` · `tutorial` · `photo`
 (F1) · `roomedit` (F2) · **`vsel`** (◀ value ▶ selectors) · **`padnav`** (controller menus) · `main` (loop).
 
 Tools: `tools/*-harness.js`, `tools/build_props_manifest.js`, `tools/ktx2-encode.mjs` (run from
-`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, Blender scripts `tools/build_nebula_sky.py`, `build_void_asteroid.py`, `tools/build_table.py` / `export_table.py` /
+`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, Blender scripts `tools/build_nebula_sky.py`, `build_moon_sky.py` (both on `skylib.py`), `build_void_asteroid.py`, `build_moon_base.py`, `tools/build_moon_pitch.mjs` / `build_deck_pitch.mjs` (Node, on `pitchlib.mjs`: generated pitches, then ktx2-encode), `tools/build_table.py` / `export_table.py` /
 `build_pub_room.py`.
 
 ## Coordinates, table, rods
@@ -155,6 +155,16 @@ cube convention) → `tools/sky-encode.mjs`. Masters go to `tools/build/` (gitig
 `tools/ktx2-encode.mjs`. 8 meshes, ~9.5k tris, ~23 MB VRAM, no lights in the GLB; the deck texture carries a
 baked contact shadow because nothing in Void casts one. Room notes live in the comment ABOVE `CONFIG.rooms`:
 a comment inside a room entry is lost when the room editor's export is pasted over it.
+**Moon Base** is a 3.5 m hab dome in a small crater (1 unit = 1 cm): `tools/build_moon_base.py` + `build_moon_sky.py`.
+Its sun is the real `dir` light WITH shadows, and `dir.pos` must point along the sky script's `SUN_DIR`
+(sky-harness checks). Every stock menu shot looks 35°+ down, so a sky above the horizon is never on screen; a room
+can override single shots (`rooms.<id>.shots`, fx.js `menuShot`) and the Moon's home shot sits low for Earth.
+**Blade grass** (`grass.js`): a pitch opts in with `grass:true`/`grass:{…}` in `CONFIG.pitches` (defaults in
+`CONFIG.grass.blade`). One instanced draw of real blades (~106k) rooted on the pitch's top face, coloured from the
+pitch texture at the root; visual only (physics stays flat). `cfg.grass` off/low/high is a machine setting (Options →
+Display). Shells were tried first and dropped: a flat blade seen side-on splits into its layers. grass-harness.
+Room glass (any transparent room material) draws first among transparent things and never receives shadows
+(models.js `ensureRoom`). Shared sky machinery: `tools/skylib.py`. `cacheEnvs` must be ≥ rooms × 2 (roomenv-harness).
 
 **Persistence.** `cfg` is one live object saved as two blobs: `fuzeball_player` (syncs via Steam Cloud)
 and `fuzeball_machine` (display/perf/calibration, never syncs). **A new cfg key must be added to

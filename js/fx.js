@@ -481,6 +481,13 @@ function cycleCam(d){
 // are fixed per mode, which would SNAP between menu shots).
 // Built on first use, not at load: harnesses boot this file against a THREE stub with no Vector3.
 let camMenuLook=null,camMenuOn=false;
+/* A room may override single menu shots (rooms.<id>.shots, keyed like CONFIG.camera.menuShots).
+   The Moon uses it: every stock shot looks 35+ degrees down, so its sky (Earth over the crater rim)
+   would never be on screen; its home shot sits lower. A room without one changes nothing. */
+function menuShot(id){
+ const R=(typeof activeRoom!=='undefined'&&activeRoom&&activeRoom.shots)||{};
+ return R[id]||CAM.menuShots[id]||R.home||CAM.menuShots.home;
+}
 function cameraUpdate(rdt){
  if(S.photo)return;   // photo mode owns the camera outright (js/photo.js phApply) — no lerp, no shake
  if(S.freeRoam){
@@ -503,7 +510,7 @@ function cameraUpdate(rdt){
  // MENUS (ui-world): ease to the current screen's shot. No shake, no ball follow, and no idle drift —
  // a camera at rest is what lets the menu render throttle (CONFIG.render.idle) drop to its idle rate.
  if(S.phase==='menu'&&CAM.menuShots&&typeof screenId==='function'){
-  const m=CAM.menuShots[screenId()]||CAM.menuShots.home,k=clamp(rdt*CAM.menuLerp,0,1);   // clamped: a negative rdt would extrapolate
+  const m=menuShot(screenId()),k=clamp(rdt*CAM.menuLerp,0,1);   // clamped: a negative rdt would extrapolate
   if(!camMenuOn){camMenuOn=true;if(!camMenuLook)camMenuLook=new THREE.Vector3();const pm=CAM.modes[S.camMode]||m;camMenuLook.set(S.camLookX,pm[4],pm[5]);}   // from wherever the match camera was looking
   camera.position.x=lerp(camera.position.x,m[0],k);
   camera.position.y=lerp(camera.position.y,m[1],k);
