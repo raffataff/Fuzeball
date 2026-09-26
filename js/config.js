@@ -1664,7 +1664,7 @@ deadball:{
     
     fillMin:0.06, fillSoft:0.07,
     /* the COLOUR of the lit part. idle = costing nothing, hot = fully slowed. */
-    idle:0x36e07a, warm:0xffb648, hot:0xff3b3b,
+    idle:0x4CAF50, warm:0xffb648, hot:0xff3b3b,
     mid:0.55,              // where `warm` sits on the 0..1 cost axis
     gamma:0.75,            // <1 opens up the shallow end, where a default-stamina rod lives
     glow:1.6,              // emissive ADDED to the lit part (the authored material is left alone)
