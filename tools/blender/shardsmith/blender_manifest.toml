@@ -1,0 +1,17 @@
+schema_version = "1.0.0"
+
+id = "shardsmith"
+version = "1.1.0"
+name = "Shardsmith"
+tagline = "Robust shatter and rigid-body explosions for broken meshes"
+maintainer = "Fuzeball"
+type = "add-on"
+
+tags = ["Object", "Animation", "Physics", "Game Engine"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read and write GLB files; runs the project's Node KTX2 tools"

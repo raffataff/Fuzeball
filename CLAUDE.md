@@ -13,6 +13,7 @@ order. It must feel hand-made — **do not let it look AI-generated**.
 - `DIRECTION.md` — Early Access scope, the theme (an intergalactic table-football Federation) and the
   palette (blue + Federation gold `#F0B24A`). **Read it before any UI, room or naming work.**
 - **Launch checklist:** https://claude.ai/artifact/De8K1742Yr3c1acQ5oy19p (tick items as they land).
+- **Sound list:** https://claude.ai/artifact/TMbwSC58rjuKnVveDB21NF (every sound id, its trigger and source plan; mark Draft/Final as files land).
 - `fuzeball.html` is the original monolith, kept as a reference only.
 - Fully offline: three.js, loaders, fonts and the Basis transcoder are vendored in `vendor/`. There is
   deliberately no CDN fallback (it would be remote code execution in the Electron wrapper).
@@ -50,8 +51,8 @@ Node (v24) is available locally. The browser is only needed for WebGL, rAF or th
    must each break it. `mutate()` refuses a no-op, so a drifted anchor reports itself. **Update a
    mutation's anchor when you change the line it targets.** When harnesses boot files in a `vm`,
    top-level `const`s are lexical, so export them via an explicit `globalThis.__x={…}` line.
-   - `shots` (charge machine), `pin` (catch / carry / every release / the pin shot), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
-     `padnav` (menu navigation), `trials`, `rng`, `matchstats`, `moments`, `wallplay`, `slidepush`,
+   - `audio` (sample player, routing, room reverb, crowd, stand-in DSP), `shots` (charge machine), `pin` (catch / carry / every release / the pin shot), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
+     `padnav` (menu navigation), `layout` (stored form), `trials`, `rng`, `matchstats`, `moments`, `wallplay`, `slidepush`,
      `chargeverdict`, `savesplit`, `venueload`, `roomenv`, `sky`, `roomlights`, `props`, `pitch`, `ktx2`, `offline`…
    - **Failing before 2026-09-24 and still failing (not regressions):** photo-record, rodholes,
      roomlight, roomlights, slidepush; shots has 3 failing assertions (the working tree's soft-curve
@@ -66,7 +67,7 @@ Node (v24) is available locally. The browser is only needed for WebGL, rAF or th
 ## File map (boot order)
 
 `core` · `config` (all tuning) · `rng` (seeded per-consumer streams) · `screens` (screen router) ·
-`intro` · `arena` (bowl-table SDF physics) · `audio` (`Au`, all synthesized) · `state` (`S`) · `stats`
+`intro` · `arena` (bowl-table SDF physics) · `audio` (`Au`: recorded takes, else synthesized stand-ins) · `state` (`S`) · `stats`
 (rod stats) · `moments` (saves / woodwork / goal classification) · `matchstats` (the match ledger +
 post-match sheet) · `seats` (every human at the table) · `world` (three.js scene, lights, `PRV` shared
 preview renderer) · `balls` · `rods` · `physics` · `ai` · **`shots`** (player kick verbs) · **`binds`**
@@ -77,9 +78,9 @@ canvas) · `ui` · `roster` (Kick Off lobby) · `options` · `league` (league + 
 `fracture` · `debug` (`C` overlay) · `perf` (`M` profiler) · `sweetspot` · `training` · `trials` · `tutorial` · `photo`
 (F1) · `roomedit` (F2) · **`vsel`** (◀ value ▶ selectors) · **`padnav`** (controller menus) · `main` (loop).
 
-Tools: `tools/*-harness.js`, `tools/build_props_manifest.js`, `tools/ktx2-encode.mjs` (run from
-`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, Blender scripts `tools/build_nebula_sky.py`, `build_moon_sky.py` (both on `skylib.py`), `build_void_asteroid.py`, `build_moon_base.py`, `tools/build_moon_pitch.mjs` / `build_deck_pitch.mjs` (Node, on `pitchlib.mjs`: generated pitches, then ktx2-encode), `tools/build_table.py` / `export_table.py` /
-`build_pub_room.py`.
+Tools: `tools/*-harness.js`, `tools/menu-shots.js` (every menu screen at 1280×800, flags overflow), `tools/build_props_manifest.js`, `tools/build_audio_manifest.js` (index assets/audio/, prints every sound's state), `tools/audio-preview.js` (renders the synthesized crowd to WAV in tools/build/), `tools/ktx2-encode.mjs` (run from
+`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, `tools/trophy-alpha.mjs`, `tools/ktx2-decode.mjs` (the inverse of ktx2-encode: a KTX2 GLB to a PNG GLB that Blender can open; the Shardsmith importer runs it), Blender scripts `tools/build_nebula_sky.py`, `build_moon_sky.py` (both on `skylib.py`), `build_void_asteroid.py`, `build_moon_base.py`, `tools/build_moon_pitch.mjs` / `build_deck_pitch.mjs` (Node, on `pitchlib.mjs`: generated pitches, then ktx2-encode), `tools/build_table.py` / `export_table.py` /
+`build_pub_room.py`. **`tools/blender/shardsmith/`** is the Blender add-on that makes the player/ball explosion GLBs (robust fracture, rigid-body blast, bake, glTF export); its README covers install, the game workflow and how it works; test with `blender -b --factory-startup --python tools/blender/shardsmith_test.py`. It replaces `tools/fracture_script.py`. Its **Export GLB** bakes if needed and then runs `tools/ktx2-encode.mjs` itself, so an export is game-ready; an explosion GLB whose clip is short or missing (unbaked or never set up) freezes the debris in mid-air, because `spawnFracture` plays LoopOnce and clamps on the last frame.
 
 ## Coordinates, table, rods
 
@@ -166,6 +167,21 @@ Display). Shells were tried first and dropped: a flat blade seen side-on splits 
 Room glass (any transparent room material) draws first among transparent things and never receives shadows
 (models.js `ensureRoom`). Shared sky machinery: `tools/skylib.py`. `cacheEnvs` must be ≥ rooms × 2 (roomenv-harness).
 
+**Audio (`audio.js`, `CONFIG.audioMix`).** Every sound is an id in `CONFIG.audioMix.sounds`. `Au.play(id)` plays a recorded
+take from `assets/audio/` (named `<id>_01.ogg`…, indexed by `tools/build_audio_manifest.js` into `manifest.json`) and
+returns false when there is none, so every caller falls through to its synthesized version: an empty folder is a
+complete game. Variants: `<id>_<ballType>`, `<id>_hard`; `ir_<room>` replaces a room's generated impulse. `syn:false` =
+recorded-only (silent without a file). Takes round-robin with no repeats; a take and its synth share one `vgate` key.
+`route()` pans every table sound by the ball's SCREEN position (`auPanOf`, so pass the ball as the 3rd arg of
+`kick`/`wall`/`post`; `wall`'s 4th arg is 0 wall / 1 floor / 2 ball) and sends it into the room: one convolver per bus
+(fx, crowd), impulse generated per room by `auIR` from `audioMix.reverb.rooms` (kept out of `CONFIG.rooms` because the
+room editor's export drops unknown keys); room changes are polled off `activeRoom`. The crowd bed is up to three
+looping tiers (calm/busy/wild) equal-power crossfaded by excitement = base + `Au.exc` + tension (a ball in either
+attacking third). With no recorded beds, `auVox` renders a room of formant-synthesized voices (and the reactions,
+`AUREACT`; applause is `auClaps`) in idle slices after `Au.init`. `Au.ui(kind)` (move/value/tab/click/back/open/
+error/start/rod) shares one gate, so the specific sound fired first wins over a handler's generic click.
+`Au.goal(kind)`: goal/win/trophy/medal, and the crowd's answer. The replay's sound log stores position + kind too.
+
 **Persistence.** `cfg` is one live object saved as two blobs: `fuzeball_player` (syncs via Steam Cloud)
 and `fuzeball_machine` (display/perf/calibration, never syncs). **A new cfg key must be added to
 `CFG_PLAYER` or `CFG_MACHINE`.** League saves: `fuzeball_league_*`. A league/trial venue is PARKED
@@ -244,7 +260,9 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
   state tears it down in its own `onHide`. `#menu` IS the Kick Off screen; `#home` is the landing page.
   A match returns to the screen it was launched from (`S.fromScreen`).
 - **Layout editor (`layout.js`).** A screen gets draggable panels by adding a `lay` block (or an array
-  of blocks) to its `SCREENS` entry. Saved in `cfg.layouts` as pixels (checklist: move to anchors).
+  of blocks) to its `SCREENS` entry. Saved in `cfg.layouts` as v:2: x/w are fractions of the canvas width, y/h px (`layStore`/`layPx`); a v1 px save converts on first apply (`layMigrate`). layout-harness. An edit session is undoable (`layPut` keeps each replaced save; Undo / Ctrl+Z / pad Y), Cancel restores the save it opened on, ↺ or pad X resets one panel to the stock flow (`layDefaults`), and a save still flagged `d:1` (stock) is deleted on Save so the screen keeps its CSS. **Presets**: the bar's ◀ preset ▶ lists Default (= reset all), built-ins (`CONFIG.layoutEditor.presets`,
+  authored with `layExport(key)` in the console) and the player's own (`cfg.layoutPresets`, PLAYER, synced; Save as
+  preset, rename, Delete; `presetsMax` per screen). It shows what the live layout IS (`layCur`), Unsaved once moved.
 - **HUD (`hud.js`).** One canvas with `pointer-events:none`. It polls `S`; callers push only events:
   `banner` (tier 1), `notice` (tier 2), `toast` (tier 3), `hudHint(kbm,pad)`, `hudCount`, replay state.
   Hint markup: `[KEY]` keycap, `[LMB]`/`[MOUSE]`, `{A}` pad button, `·` separator, `\n` line break.
@@ -257,7 +275,11 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
 - **Type.** `--font-display` (Soccer League College italic) for titles and the home menu, `--font-ui`
   (Soccer League) for labels, `--font-body` (Rajdhani 600) for anything read as a sentence.
   Sized for 1280×800 (Steam Deck) and a sofa: nothing in a menu under 11px, the `--fs-*` tokens start at
-  11.5px. Check a screen at 1280×800 after adding to it; only Options → Keyboard & Mouse scrolls there.
+  11.5px. Check a screen at 1280×800 after adding to it (`node tools/menu-shots.js [names]`: headless Chrome, a PNG per
+  screen + a contact sheet in tools/build/menu-shots/, exit 1 if anything scrolls); since 2026-09-28 no menu screen
+  scrolls there, so keep it that way.
+  Scrollbars are styled once, globally (`scrollbar-color`, top of styles.css). A `.lgSide` column's panels need
+  `flex:0 0 auto`: the generic `.lgSide>.panel` basis of 380px is a HEIGHT in a column.
 - **Style rules.** No emoji in UI copy. SoccerLeague/Russo One ship ONE weight: never ask for bold.
   Gold marks focus, selection and trophies only. A CSS class that isn't in the markup fails silently, so
   check new selectors against what the code emits. A flex/grid parent changes its children's margin
@@ -267,10 +289,21 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
   drift, so the render throttle still settles. The HUD (`hud.js`) writes the same palette as literals.
 - **League lobby** is three tabs (Season / Squad / Club, `lgSetTab`); layout keys `league` (Season) and
   `leagueClub`. The win screen is a full-time board (`#winBoard`, filled in `endMatch`).
+  Season: Standings + Last Round on the left, Next Match (head-to-head, `lgMatchHTML`) in the middle, the
+  **Opponent** panel on the right (`lgScoutFill`, shared with the cup: titled Opponent / Scout / Your club).
+  There is no Scout button: clicking a club in the table scouts it, clicking the opponent's side of the
+  head-to-head goes back. The **Champions Cup** is tabbed the same way (Cup / Squad / Club, `cupSetTab`; layout keys
+  `championsCup` and `cupClub`). The **season-end** screen (`renderLgSeasonEnd`) is one screen: result | your
+  division | rewards + per-position stat changes, then "Around the league" for the other two. menu-shots plays six
+  scripted seasons (champion, runner-up, relegated, lower-division title, stayed) to check it.
+- **Trophy art** loads as `.webp` with alpha (`trophyImg`), made from the black-backed `.jpg` renders by
+  `tools/trophy-alpha.mjs` (run from tools/ after `npm i`). Re-run it when a trophy render changes.
 - **A kit colour on a MATERIAL goes through `kitLin(hex)`** (world.js): the renderers output sRGB and r128
   reads a hex as linear, so a raw `color.set(hex)` renders lighter and greyer (crimson came out rose pink).
   The HUD and CSS take the hex as-is.
 - Kit swatches and a new save's kits come from `CONFIG.playerModel.swatches` / `kitDefault` (club colours).
+- **Customize**: preview top-left, the figurine strip under it (`czStripFit`: fewest rows in
+  `CONFIG.playerModel.strip` that fit every face, then it scrolls sideways), kit colour + finish on the right.
 - **Options** is built like every other menu (centred boxed panels, standard backdrop), with four tabs: Display, Audio, Controller, Keyboard & Mouse. **No Advanced tab** (owner,
   2026-09-25): a setting lives with its device's other settings. Every control is found by id, so groups can move freely.
 - **Audio buses** (`audio.js`): effects (`Au.mg`), crowd (`Au.cb`) and menus (`Au.ub`) sum into `Au.sum` (the clip

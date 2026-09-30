@@ -679,10 +679,10 @@ ai:{
       angle:-0.8,        // lift angle the rod eases to (rod-local; full raiseA is -1.6)
       lerp:4,             // ease rate toward the angle
       back:-5.8,          // x band behind the rod where a loitering ball triggers it…
-      front:0.95,        // …up to this line
+      front:1.1,        // …up to this line
       gkFront:5.3,         // GK only: push that front line this much further in front of the keeper
-      maxVX:85,            // ball |v.x| must be under this
-      maxSpeed:85,        // total ball speed cap
+      maxVX:105,            // ball |v.x| must be under this
+      maxSpeed:105,        // total ball speed cap
       abortT:6.5          // give up after this long (s, keep under deadball.stallT)
    },
    // Evade: slide the men away from a slow ball stuck behind them so play can restart.
@@ -774,7 +774,7 @@ ai:{
    errEvery:[1.7,6.],                        // how often a fresh wandering aim-error target is rolled (s)
 
    // --- active rods + anti-jitter ---------------------------------------
-   hands:3,                                   // rods per team the AI moves at once (not a cap on human seats)
+   hands:4,                                   // rods per team the AI moves at once (not a cap on human seats)
    pairCommit:0.3,                            // min seconds a rod stays active before it can be swapped
    manHyst:2.1,                               // z-units a different man must beat the current one by to steal aim
    retargetDead:0.1,                          // z the desired slide must differ by before re-aiming
@@ -948,6 +948,10 @@ ai:{
   // A new save's kits (and what Customize → reset all returns to): crimson v royal.
   kitDefault:['#d0142c','#1e5bd8'],
   swatches:['#d0142c','#f0661a','#f2c200','#138a3e','#00a19a','#1e5bd8','#17264f','#6a2c91','#ece6d6','#3a3d44'],
+  // Customize's figurine strip (under the preview). Cards are square, between min and max px wide.
+  // It uses the fewest rows (from minRows up to maxRows) that fit every card at min size or larger;
+  // past maxRows the strip scrolls sideways. 19 figurines at 1280x800 = 2 rows of 10 at ~78px.
+  strip:{ min:72, max:104, minRows:2, maxRows:3 },
   // Natural hair colours for random tinting.
   hairSwatches:[  '#1a1a1a','#2d1b0e','#3d2b1f','#5c4033','#8b6b47','#583b00','#985d29',
                   '#242222','#1b0f06','#271d15','#382922','#634d32','#242320','#8b5526', 
@@ -1046,8 +1050,9 @@ ai:{
     graceT:10,             // seconds after match start where quitting does not forfeit
     simK:.5,              // how steeply a stat edge shifts per-goal probability (logistic)
     // Silverware, one per tier. `trophy.id` doubles as the art key: the renders are
-    // assets/renders/render_trophy_<id>_cycles.png (big) and _thumb.png (list size). Until the
-    // art is drawn, the inline trophy mark shows through in its place.
+    // assets/renders/render_trophy_<id>_cycles.webp (big) and _thumb.webp (list size), made with alpha
+    // from the .jpg renders by tools/trophy-alpha.mjs. Until the art is drawn (Pro League has none
+    // yet), the inline trophy mark shows through in its place.
     divisions:[            // tier order: 0 bottom .. 2 top
       {name:'Sunday League', base:2, diff:'pro',   aiBudget:[5,10], room:'open',  skin:'sundayLeague',  table:'classic',  pitch:'pub_classic', trophy:{id:'sunday',  name:'Sunday League Shield',   col:'#b9c6da'}},
       {name:'Pro League',    base:4, diff:'pro',      aiBudget:[5,10], room:'pub',   skin:'proLeague',  table:'classic',  pitch:'cork', trophy:{id:'pro',     name:'Pro League Cup',        col:'#d9a55e'}},
@@ -1293,7 +1298,8 @@ deadball:{
   audioMix:{
    master:0.55,
    limiter:{on:true,threshold:-7,knee:8,ratio:10,attack:0.004,release:0.15},
-   voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3},react:{gap:0.25,max:2}},
+   voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3},react:{gap:0.25,max:2},
+           ui:{gap:0.045,max:3},sting:{gap:0.3,max:2}},
    jitter:{pitch:0.16},
    roll:{
     on:false,
@@ -1304,6 +1310,112 @@ deadball:{
     rateBase:0.55, rateScale:0.85, // noise grain playback rate: base + norm×scale
     def:{floor:{vol:0.0,freq:450,freqScale:2.0,q:0.7},
          wall: {vol:0.12,freq:620,freqScale:11.0,q:1.5}}
+   },
+
+   // ---- recorded sounds ---------------------------------------------------------------------
+   // Drop files anywhere under assets/audio/ named <id>_01.ogg, <id>_02.ogg... (or just <id>.ogg),
+   // then run   node tools/build_audio_manifest.js   to index them. Every id in `sounds` below plays
+   // its files when it has some and its synthesized version when it has none, so an empty folder is
+   // still a complete game. Several takes of one id play round-robin, never the same one twice running.
+   // Two kinds of variant override the plain id when they exist:
+   //   <id>_<ballType>   ball_kick_fire_01.ogg is the fireball's kick
+   //   <id>_hard         ball_kick_hard_01.ogg replaces ball_kick above that sound's hardFrom
+   // A recorded room impulse, ir_<roomId>.wav, replaces that room's generated reverb.
+   samples:{on:true, folder:'assets/audio/', manifest:'manifest.json'},
+
+   // Stereo placement of table sounds, from where the ball is ON SCREEN, so it follows every camera.
+   // width 1 = hard left/right at the screen edges. Keep it well under 1: the table is narrow, and a
+   // full-width ping-pong on headphones gets tiring over a match.
+   pan:{on:true, width:0.5},
+
+   // ---- room reverb -------------------------------------------------------------------------
+   // Table sounds send a little into the room, the crowd sends more (it's further away). fx/crowd are
+   // the send levels; a room scales them with its own fx/crowd. The impulse is generated from the
+   // room's numbers unless a recorded ir_<roomId> exists:
+   //   decay   seconds for the tail to fall 60 dB
+   //   damp    how bright the tail starts (Hz); darken = how fast it loses its top end
+   //   early   strength of the first reflections (walls close to the table)
+   //   pre     gap before the tail (s)
+   //   crowdHp / crowdLp   band-limit the crowd in that room (Void's crowd is a comms feed)
+   // Kept here rather than in CONFIG.rooms: the room editor's export would drop these keys.
+   reverb:{on:true, fx:0.14, crowd:0.28,
+    def:{decay:0.8, damp:5000, darken:2.0, early:0.5, pre:0.008, fx:1, crowd:1, crowdHp:60, crowdLp:16000},
+    rooms:{
+     open:  {decay:0.28, damp:2600, darken:4.0, early:0.15, pre:0.004, fx:0.6, crowdHp:380, crowdLp:3200},  // a deck in vacuum
+     saucer:{decay:1.35, damp:7500, darken:1.4, early:0.5,  pre:0.010},   // metal hull: bright, ringing
+     pub:   {decay:0.65, damp:3800, darken:3.0, early:0.7,  pre:0.006},   // small, soft furnishings, warm
+     arcade:{decay:0.9,  damp:5500, darken:2.0, early:0.55, pre:0.008},
+     moon:  {decay:1.5,  damp:6000, darken:1.2, early:0.8,  pre:0.012}    // a hard dome
+    }},
+
+   // ---- the crowd -----------------------------------------------------------------------------
+   // The bed is up to three looping layers (crowd_bed_calm / _busy / _wild) crossfaded by how
+   // excited the room is: base + the last big moment (Au.exc, decaying at excDecay a second) + tension
+   // (a ball in either attacking third, from tensionFrom of the half-length out). With no recorded
+   // beds, a synthesized crowd of voices stands in: `voices` people, a `secs` loop rendered at `sr`,
+   // its top end opening from synthLp[0] to synthLp[1] Hz as it gets louder.
+   crowd:{
+    base:0.12, tension:0.25, tensionFrom:0.55, excDecay:0.3,
+    volLo:0.10, volHi:0.32,        // bed level at excitement 0 and 1 (about -35 and -26 dB RMS with the stand-in)
+    voices:36, secs:8, sr:24000, synthLp:[2200,6000]
+   },
+
+   // ---- per-sound playback --------------------------------------------------------------------
+   //   bus      fx (table + match), crowd, ui
+   //   vol      level of the file(s)
+   //   pitch    random pitch spread per play (+/- fraction); volJ the same for level
+   //   send     reverb send (x the room's)
+   //   gate     shares a voice cap from `voices` above with its synthesized version
+   //   pRef     impact speed that plays at full level; below it the level falls toward pFloor
+   //            on a pCurve; pPitch = pitch rise from a soft to a hard hit
+   //   exc      how much a crowd reaction lifts the room
+   //   syn:false  recorded only: silent until a file exists
+   // What each sound is and where it comes from lives in the Fuzeball Sound List artifact.
+   sounds:{
+    // the table
+    ball_kick:   {bus:'fx', vol:0.9, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7},
+    ball_wall:   {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1},
+    ball_floor:  {bus:'fx', vol:0.7, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1},
+    ball_hit:    {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.1,  pCurve:1},    // ball on ball
+    ball_post:   {bus:'fx', vol:0.9, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8},
+    ball_goal:   {bus:'fx', vol:0.9, pitch:0.04, volJ:0.08, send:1, syn:false},   // into the goal and down the return
+    ball_drop:   {bus:'fx', vol:0.8, pitch:0.04, volJ:0.08, send:1, syn:false},   // the serve: fed in, rattling onto the pitch
+    // match
+    whistle:     {bus:'fx', vol:0.8, pitch:0.02, send:0.8},
+    whistle_end: {bus:'fx', vol:0.8, send:0.8, syn:false},   // full time as one take; without it, three singles
+    count_tick:  {bus:'fx', vol:0.7},
+    count_go:    {bus:'fx', vol:0.8},
+    clock_tick:  {bus:'fx', vol:0.6},
+    power_pickup:{bus:'fx', vol:0.8, pitch:0.03, send:0.5},
+    cannon_warn: {bus:'fx', vol:0.7, send:0.5},
+    cannon_boom: {bus:'fx', vol:1.0, pitch:0.04, send:1.2},
+    // stingers: the Federation's brass and gold
+    sting_goal:  {bus:'fx', vol:0.8, gate:'sting'},
+    sting_win:   {bus:'fx', vol:0.8, gate:'sting'},
+    sting_trophy:{bus:'fx', vol:0.8, gate:'sting'},
+    sting_medal: {bus:'fx', vol:0.8, gate:'sting'},
+    // the crowd
+    crowd_bed_calm:{bus:'crowd'},
+    crowd_bed_busy:{bus:'crowd'},   // no stand-in of its own: the synthesized bed crossfades calm into wild
+    crowd_bed_wild:{bus:'crowd'},
+    crowd_ooh:     {bus:'crowd', vol:0.55, pitch:0.04, volJ:0.1,  send:1,   gate:'react', exc:0.30},
+    crowd_gasp:    {bus:'crowd', vol:0.45, pitch:0.04, volJ:0.1,  send:1,   gate:'react', exc:0.20},
+    crowd_groan:   {bus:'crowd', vol:0.55, pitch:0.04, volJ:0.1,  send:1,   gate:'react', exc:0.12},
+    crowd_cheer:   {bus:'crowd', vol:0.6,  pitch:0.03, volJ:0.1,  send:1,   gate:'react', exc:0.6},
+    crowd_roar:    {bus:'crowd', vol:0.65, pitch:0.03, volJ:0.08, send:1,   gate:'react', exc:1},
+    crowd_applause:{bus:'crowd', vol:0.8,  pitch:0.03, volJ:0.1,  send:1.2},   // claps are spiky: a low RMS for their peak
+    crowd_jeer:    {bus:'crowd', vol:0.5,  pitch:0.04, volJ:0.1,  send:1,   gate:'react', exc:0.1, syn:false},
+    // menus
+    ui_move:  {bus:'ui', vol:0.7, pitch:0.02},
+    ui_value: {bus:'ui', vol:0.7, pitch:0.02},
+    ui_tab:   {bus:'ui', vol:0.8},
+    ui_click: {bus:'ui', vol:0.8},
+    ui_back:  {bus:'ui', vol:0.8},
+    ui_open:  {bus:'ui', vol:0.8},
+    ui_error: {bus:'ui', vol:0.8},
+    ui_start: {bus:'ui', vol:0.9},
+    ui_rod:   {bus:'ui', vol:0.6, pitch:0.03},
+    ui_wipe:  {bus:'ui', vol:0.6, syn:false}
    }
   },
 
@@ -1313,7 +1425,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.35,maxV:130,w:50,trail:'#ffffff',
+      mass:2.5,maxV:130,w:50,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -1330,7 +1442,7 @@ deadball:{
    },
    fire:   
       {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1,maxV:150,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+      mass:1.5,maxV:150,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -1344,7 +1456,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:7,maxV:100,w:20,trail:'#000000',
+      mass:10,maxV:100,w:120,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -1358,7 +1470,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.25,maxV:110,w:10,splits:true,trail:'#c39bff',
+      mass:1.75,maxV:110,w:10,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -1376,7 +1488,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.0,maxV:110,w:12,trail:'#8fffda',light:0x33cfff,
+      mass:1.75,maxV:110,w:12,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -1391,10 +1503,10 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:3,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:9,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.055,noiseFreq:1500,noiseFreqScale:3,noiseVol:.04,noiseVolScale:.0025,noiseVolMax:.38,
-               beepFreq:500,beepDur:.85,beepType:'triangle',beepVol:.009,beepVolScale:.0035,beepVolMax:.028,beepSlide:-10},
+               beepFreq:500,beepDur:.85,beepType:'triangle',beepVol:.009,beepVolScale:.0035,beepVolMax:.028,beepSlide:-2},
          wall:{noiseDur:.05,noiseFreq:2000,noiseFreqScale:3.5,noiseVol:.013,noiseVolScale:.0034,noiseVolMax:.28,q:2.2,
                bodyFrom:45,bodyFreq:190,bodyDur:.09,bodyVolScale:.0020,bodyVolMax:.20,bodySlide:-25},
          roll:{floor:{vol:.30,freq:200,freqScale:4,q:1.4},         // dense and ringy
@@ -1438,6 +1550,17 @@ deadball:{
               high:{ mapSize:1024, type:'vsm', radius:6, bias:0,       normalBias:0.15, casterFrac:0   }
             } },
    idle:{ on:true, hz:4, settle:0.4, phases:['menu'], camEps:0.01, camRotEps:1e-4 }
+ },
+
+ /* ---- layout editor presets (js/layout.js) -------- */
+ // The editor bar's ◀ preset ▶ picker lists Default (the screen's own CSS), then the presets below
+ // for that screen, then the player's own (cfg.layoutPresets). A preset is a v:2 save, so it fits any
+ // window width. To author one: arrange a screen in the editor, run layExport('<key>') in the
+ // console, paste the line it prints into that key's list. Keys: menu, menuRules, league,
+ // leagueClub, championsCup.
+ layoutEditor:{
+   presetsMax:8,             // own presets kept per screen
+   presets:{}
  },
 
 
@@ -2071,7 +2194,7 @@ const BALL_R=CONFIG.physics.ballR, ROD_H=CONFIG.physics.rodH, PLAYER_H=CONFIG.ph
        PRAD=CONFIG.physics.prad, GRAV=CONFIG.physics.grav,
        FOOT_T=CONFIG.physics.footT, FOOT_BOX=CONFIG.physics.footBox, FOOT_BOX_OFF=CONFIG.physics.footBoxOff,
        FOOT_BOX_REACH=CONFIG.physics.footBoxReach, FOOT_JITTER=CONFIG.physics.footJitter;
-const AUMIX=CONFIG.audioMix;
+const AUMIX=CONFIG.audioMix, AUSND=CONFIG.audioMix.sounds, AUC=CONFIG.audioMix.crowd;
 const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
       PWR=CONFIG.powerups, DEAD=CONFIG.deadball, CAM=CONFIG.camera, MATCH=CONFIG.match, SRV=CONFIG.serve, SIM=CONFIG.sim, REPLAY=CONFIG.replay,
       CAPTURE=CONFIG.capture, PHOTO=CONFIG.photo, MOM=CONFIG.moments, MSTAT=CONFIG.matchStats, SHOT=CONFIG.shots;
@@ -2116,8 +2239,11 @@ keyBinds:{},
 // Cursor lock: hides the pointer and lets the mouse go past the screen edge (no taskbar, no lost travel).
 // ESC releases it AND pauses — see the pointer-lock block in js/input.js.
 mouseLock:true,
-// Per-screen panel arrangements from the Layout editor: screen-id -> {p:{elId:{x,y,w,h}},h}.
+// Per-screen panel arrangements from the Layout editor: screen-id -> {v:2,p:{elId:{x,y,w,h}},h}.
 layouts:{},
+// The player's own layout presets: screen-id -> [{n:name, L:<a layouts entry>}]. Synced (authored
+// content, like photoShots); a v:2 layout is width-relative, so it is safe on another machine.
+layoutPresets:{},
 // Display settings. renderScale multiplies device pixel ratio; fpsCap 0 = uncapped;
 // gfxPreset is the last-picked preset ('low'|'medium'|'high'|'custom').
 // shadowQuality picks a tier from CONFIG.render.shadow.quality ('low'|'high') and only matters
@@ -2145,7 +2271,7 @@ const CFG_KEY={player:'fuzeball_player',machine:'fuzeball_machine',legacy:'fuzeb
 const CFG_MACHINE=new Set([
  'renderScale','shadows','shadowQuality','grass','fpsCap','showFps','gfxPreset','physQuality','reducedFx','trails',
  'particles','marks','rodHoles','reflections','fog','profiler',
- 'layouts',        // per-screen panel arrangements — clamped to the live window, so per-display
+ 'layouts',        // per-screen panel arrangements (width-relative since v:2, so they'd survive syncing; kept local for now)
  'padDeadzone',    // stick calibration: a drifty pad on ONE machine, not a preference
  'volMaster','volFx','volCrowd','volUi','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
 ]);
@@ -2163,7 +2289,7 @@ const CFG_PLAYER=new Set([
  'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
  'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock','keyBinds',
-'trials','daily','trnSpots','photoShots','photoPath','photoGroups',  // progress + authored content
+'trials','daily','trnSpots','photoShots','photoPath','photoGroups','layoutPresets',  // progress + authored content
  'tutSeen','tutDone',                                            // the tutorial: offered once, and finished (an achievement reads tutDone)
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);
@@ -2244,6 +2370,7 @@ if(typeof cfg.rodHoles!=='boolean')cfg.rodHoles=true;   // rod-hole stamina ring
 // Per-table chosen skin: table-id -> skin-id; missing = the table's defSkin.
 if(!cfg.skins||typeof cfg.skins!=='object')cfg.skins={};
 if(!cfg.layouts||typeof cfg.layouts!=='object')cfg.layouts={};
+if(!cfg.layoutPresets||typeof cfg.layoutPresets!=='object')cfg.layoutPresets={};
 // Migrate old saves: derive pitch from theme if missing (theme→pitch map).
 if(!cfg.pitch){
   const tm={pub_classic:'pub_classic',classic:'classic',neon:'cyatron',royal:'royal',verdant:'verdantia'};

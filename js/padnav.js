@@ -144,12 +144,15 @@ function navFind(root,list){
   if(el&&(el===root||root.contains(el))&&navVis(el))return el;}
  return null;
 }
+// Both axes: Customize's figurine strip scrolls sideways once the cast outgrows its rows.
 function navScrollTo(el){
  for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement){
-  if(p.scrollHeight<=p.clientHeight+1)continue;
-  const oy=getComputedStyle(p).overflowY;if(oy!=='auto'&&oy!=='scroll')continue;
-  const r=el.getBoundingClientRect(),q=p.getBoundingClientRect(),m=28;
-  if(r.top<q.top+m)p.scrollTop-=q.top+m-r.top;else if(r.bottom>q.bottom-m)p.scrollTop+=r.bottom-q.bottom+m;
+  const cs=getComputedStyle(p),sc=v=>v==='auto'||v==='scroll',m=28;
+  const r=el.getBoundingClientRect(),q=p.getBoundingClientRect();
+  if(p.scrollHeight>p.clientHeight+1&&sc(cs.overflowY)){
+   if(r.top<q.top+m)p.scrollTop-=q.top+m-r.top;else if(r.bottom>q.bottom-m)p.scrollTop+=r.bottom-q.bottom+m;}
+  if(p.scrollWidth>p.clientWidth+1&&sc(cs.overflowX)){
+   if(r.left<q.left+m)p.scrollLeft-=q.left+m-r.left;else if(r.right>q.right-m)p.scrollLeft+=r.right-q.right+m;}
  }
 }
 function navSet(el){
@@ -210,7 +213,7 @@ function navMove(dx,dy){
   if(dx&&gap>0&&cc){const ec=navCol(el);if(!ec||ec===cc)continue;}
   if(s<bs){bs=s;b=el;}
  }
- if(b)navSet(b);
+ if(b){navSet(b);Au.ui('move');}
 }
 // A select wrapped as a ◀ VALUE ▶ selector (js/vsel.js). It adjusts in place like a slider; a bare
 // dropdown (dev panels) still opens as a list.
@@ -221,18 +224,18 @@ function navFire(el){el.dispatchEvent(new Event('input',{bubbles:true}));el.disp
 function navNudge(el,d){
  if(el.tagName==='SELECT'){const o=el.options||[],n=o.length;if(!n)return;let i=el.selectedIndex;
   for(let k=0;k<n;k++){i=(i+d+n)%n;if(!o[i].disabled&&!o[i].hidden)break;}
-  if(i!==el.selectedIndex&&!o[i].disabled&&!o[i].hidden){el.selectedIndex=i;navFire(el);}return;}
+  if(i!==el.selectedIndex&&!o[i].disabled&&!o[i].hidden){el.selectedIndex=i;Au.ui('value');navFire(el);}return;}
  const mn=el.min===''?0:+el.min,mx=el.max===''?100:+el.max,st=+el.step||1,
   k=Math.max(st,Math.round((mx-mn)/20/st)*st),dp=(String(el.step).split('.')[1]||'').length;
  let v=clamp(+el.value+d*k,mn,mx);v=+clamp(mn+Math.round((v-mn)/st)*st,mn,mx).toFixed(dp);
- if(v===+el.value)return;el.value=v;navFire(el);
+ if(v===+el.value)return;el.value=v;Au.ui('value');navFire(el);
 }
 /* EDITING A VALUE. ◀▶ used to change a dropdown or slider the moment the cursor was on it, so the
    only way sideways out of a column of them was round them — ◀▶ could never mean "the next panel".
    Now ◀▶ always MOVES, and A opens the value: ◀▶ change it, A keeps it, B puts back what it was when A
    was pressed, and ▲▼ keep it and move on. The same rule as a text field, which A also has to open. */
 function navAdjStart(el){
- NAV.adj=el;NAV.adjWas=el.tagName==='SELECT'?el.selectedIndex:el.value;
+ Au.ui('open');NAV.adj=el;NAV.adjWas=el.tagName==='SELECT'?el.selectedIndex:el.value;
  el.classList.add('navAdj');NAV.hintT=0;
 }
 function navAdjEnd(keep){
@@ -272,7 +275,7 @@ function navDropMark(){const D=NAV.drop;if(!D)return;
  const d=D.items[D.i];if(d){const t=d.offsetTop,b=t+d.offsetHeight;if(t<D.L.scrollTop)D.L.scrollTop=t;else if(b>D.L.scrollTop+D.L.clientHeight)D.L.scrollTop=b-D.L.clientHeight;}}
 function navDropStep(d){const D=NAV.drop;if(!D)return;
  let i=D.i;for(let k=0;k<D.items.length;k++){i+=d;if(i<0||i>=D.items.length)return;if(!D.items[i].classList.contains('off'))break;}
- D.i=i;navDropMark();}
+ D.i=i;navDropMark();Au.ui('move');}
 // pick=true takes the highlighted option (firing input/change only if it moved); false leaves it.
 function navDropEnd(pick){
  const D=NAV.drop;if(!D)return false;NAV.drop=null;NAV.hintT=0;
@@ -291,6 +294,7 @@ function navActivate(el){
 function navBlur(){if(NAV.edit){NAV.edit.blur();NAV.edit=null;return true;}return false;}
 function navBack(){
  const R=NAV.root;if(!R||!R.back)return;
+ Au.ui('back');   // first: the gate then drops the generic click the back button's own handler asks for
  if(typeof R.back==='function'){R.back();return;}
  const b=navFind(R.el,[R.back]);if(b)b.click();
 }
@@ -300,7 +304,7 @@ function navTab(d){
  const R=NAV.root;if(!R)return;const s=navStrip(R.el);if(!s)return;
  const bs=[...s.children].filter(x=>navable(x)&&navVis(x));if(bs.length<2)return;
  let i=bs.findIndex(x=>x.classList.contains('on'));if(i<0)i=0;
- bs[(i+d+bs.length)%bs.length].click();
+ Au.ui('tab');bs[(i+d+bs.length)%bs.length].click();
  if(NAV.show){const on=s.querySelector('.on');navSet(on&&navVis(on)?on:null);if(!NAV.el)navRefocus();}
 }
 function navScrollBy(v){
@@ -312,7 +316,7 @@ function navScrollBy(v){
 }
 function navRoot(){
  if(typeof layEditing!=='undefined'&&layEditing&&typeof layBar!=='undefined'&&navShown(layBar))
-  return{key:'lay',el:layScreen(layEditing),lay:true,cands:layPadCands,def:layPanels(layEditing),back:()=>layEditEnd(),backLbl:'Done'};
+  return{key:'lay',el:layScreen(layEditing),lay:true,cands:layPadCands,def:layPanels(layEditing),back:()=>layEditEnd(),backLbl:'Save'};
  for(const L of NAV_LAYERS){const el=$(L.id);if(el&&navShown(el))return{key:L.id,el:el,def:L.def,back:L.back,backLbl:L.backLbl};}
  if(S.phase!=='menu')return null;             // a live match with nothing over it: the pad is gameplay's
  const id=screenId(),el=$(id);if(!el||!navShown(el))return null;
@@ -360,6 +364,7 @@ function navHints(R){
   else if(t==='TEXTAREA'||(t==='INPUT'&&/^(text|number|search|email)$/.test(ty)))p.push(['A','Type']);
   else if(t==='INPUT'&&ty==='checkbox')p.push(['A','Toggle']);
   else if(el)p.push(['A',R.lay&&layPadIs(el)?'Grab':'Select']);
+  if(R.lay){if(layPadIs(el))p.push(['X','Reset panel']);p.push(['Y','Undo']);}
   if(!NAV.drop&&!(el&&NAV.adj===el)&&R.back&&(typeof R.back==='function'||navFind(R.el,[R.back])))p.push(['B',R.backLbl||'Back']);
   if(navStrip(R.el))p.push(['LB RB','Tabs']);
   const st=R.start&&navFind(R.el,[R.start]);
@@ -425,6 +430,8 @@ function navTick(t){
   if((b===0||b===1)&&!NAV.adj&&!NAV.drop&&R.scr&&R.scr.onPad&&R.scr.onPad(i,b)){ea[b]=true;continue;}
   // a held panel owns A (drop), B (put it back) and Y (move ⇄ resize); nothing else fires under it
   if(navGrab()){ea[b]=true;if(b===0)layPadDrop(true);else if(b===1)layPadDrop(false);else if(b===3)layPadMode();NAV.hintT=0;continue;}
+  // not holding one: X puts the panel under the cursor back where the stock layout has it, Y undoes a step
+  if(R.lay&&!NAV.adj&&!NAV.edit&&(b===2||b===3)){ea[b]=true;if(!navReveal())continue;if(b===2){if(layPadIs(NAV.el))layResetPanel(NAV.el);}else layUndo();NAV.hintT=0;continue;}
   if(b===0){if(cap)continue;ea[0]=true;if(!navReveal())continue;if(navBlur()||navDropEnd(true)||navAdjEnd(true))continue;
    if(NAV.el){if(!(R.lay&&layPadGrab(NAV.el)))navActivate(NAV.el);NAV.hintT=0;}}
   else if(b===1){ea[1]=true;navReveal();if(navBlur()||navDropEnd(false)||navAdjEnd(false))continue;navBack();}

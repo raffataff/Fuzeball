@@ -475,7 +475,7 @@ function camModeOK(i){return camTeamSide()>=0||CAM.soloOnly.indexOf(i)<0;}
    leaving the player to press again. */
 function cycleCam(d){
  const n=CAM.modes.length;
- for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui();return;}}
+ for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui('value');return;}}
 }
 // The menus' look target, eased on all three axes (a match eases only lookX; its look height and depth
 // are fixed per mode, which would SNAP between menu shots).

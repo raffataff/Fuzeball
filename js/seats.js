@@ -180,7 +180,7 @@ function setSeatCtrl(s,i,dir){
  clearRodAI(s.rods[s.ctrl]);                 // handoff: wipe AI state from the newly claimed rod
  rodInputRelease(s.rods[was]);               // …and every held input off the one we just dropped
  s.padAngleArm=false;                        // a stick already held must re-centre before it drives the new rod
- S.lastSwitch=S.time;updateChips();Au.ui();
+ S.lastSwitch=S.time;updateChips();Au.ui('rod');
  return true;
 }
 function seatStep(s,d){return setSeatCtrl(s,s.ctrl+d,d);}

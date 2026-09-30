@@ -24,7 +24,7 @@ function bindUI(){
  $('setTable').value=cfg.table||'classic';
  refreshSkinSelect();
  $('setSpecial').checked=cfg.special;$('setPower').checked=cfg.power;$('setReplay').checked=cfg.replay;
- $('setAuto').checked=cfg.auto;$('setSound').checked=cfg.sound;$('setAmbience').checked=cfg.ambience;
+ $('setAuto').checked=cfg.auto;
  $('nameRed').value=cfg.redName;$('nameBlue').value=cfg.blueName;
  $('nameRed').maxLength=$('nameBlue').maxLength=CONFIG.control.nameMaxLength;
  $('setDiffRed').onchange=e=>{cfg.diffRed=e.target.value;cfg.diff=cfg.diffRed;saveCfg();};
@@ -63,8 +63,6 @@ function bindUI(){
  $('setPower').onchange=e=>{cfg.power=e.target.checked;saveCfg();};
  $('setReplay').onchange=e=>{cfg.replay=e.target.checked;saveCfg();};
  $('setAuto').onchange=e=>{cfg.auto=e.target.checked;saveCfg();};
- $('setSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);saveCfg();};
- $('setAmbience').onchange=e=>{cfg.ambience=e.target.checked;saveCfg();};
  // the roster header picks the name up on its own next tick (rosSig diff) — no call needed here
  $('nameRed').oninput=e=>{cfg.redName=(e.target.value||'RED').toUpperCase();refreshKitUI();saveCfg();};
  $('nameBlue').oninput=e=>{cfg.blueName=(e.target.value||'BLUE').toUpperCase();refreshKitUI();saveCfg();};
@@ -74,9 +72,9 @@ function bindUI(){
  // don't already call it (league.js's btnLeague does).
  $('btnKickOff').onclick=()=>{Au.init();Au.ui();showScreen('menu');};
  $('btnHomeOptions').onclick=()=>{Au.init();openOptions('home');};
- $('menuBack').onclick=()=>{showScreen('home');Au.ui();};
- $('menuTabBtnTeam').onclick=()=>{menuSetTab('team');Au.ui();};
- $('menuTabBtnRules').onclick=()=>{menuSetTab('rules');Au.ui();};
+ $('menuBack').onclick=()=>{showScreen('home');Au.ui('back');};
+ $('menuTabBtnTeam').onclick=()=>{menuSetTab('team');Au.ui('tab');};
+ $('menuTabBtnRules').onclick=()=>{menuSetTab('rules');Au.ui('tab');};
  menuSetTab('team');
  // The three mode cards (PLAY RED / PLAY BLUE / AI SHOWDOWN) and their rod rows are gone —
  // the roster replaces all of them: side, rod and who's AI are now per-seat (js/roster.js).
@@ -114,8 +112,8 @@ function bindUI(){
     else{S.score=[0,fl];lgRecord(1);gotoMenu();openLeague();}
   };
  $('btnForfeitCancel').onclick=()=>{$('lgForfeit').classList.add('hidden');togglePause();};
- $('winTabMatch').onclick=()=>{msWinTab('match');Au.ui();};   // post-match sheet tabs (js/matchstats.js)
- $('winTabRods').onclick=()=>{msWinTab('rods');Au.ui();};
+ $('winTabMatch').onclick=()=>{msWinTab('match');Au.ui('tab');};   // post-match sheet tabs (js/matchstats.js)
+ $('winTabRods').onclick=()=>{msWinTab('rods');Au.ui('tab');};
  $('btnRematch').onclick=()=>startMatch(S.mode,S.rodLockRole);
  $('btnWinMenu').onclick=()=>gotoMenu();
  refreshKitUI();
@@ -142,8 +140,8 @@ function menuSetTab(t){
 let uiConfirmFn=null;
 function uiConfirm(title,msg,ok,fn){
  $('uiConfirmTitle').textContent=title;$('uiConfirmMsg').textContent=msg;$('uiConfirmOk').textContent=ok||'OK';
- uiConfirmFn=fn;$('uiConfirm').classList.remove('hidden');Au.ui();
+ uiConfirmFn=fn;$('uiConfirm').classList.remove('hidden');Au.ui('open');
 }
 function uiConfirmClose(){$('uiConfirm').classList.add('hidden');uiConfirmFn=null;}
 $('uiConfirmOk').onclick=()=>{const f=uiConfirmFn;uiConfirmClose();Au.ui();if(f)f();};
-$('uiConfirmCancel').onclick=()=>{uiConfirmClose();Au.ui();};
+$('uiConfirmCancel').onclick=()=>{uiConfirmClose();Au.ui('back');};

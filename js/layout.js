@@ -1,8 +1,9 @@
 'use strict';
 /* ===== layout — player-arrangeable panel grid ===== */
 /* A registered screen's panels can be dragged/resized on a 16px grid via its ⊞ Layout
-   button. Positions persist per screen in cfg.layouts[id] as {p:{elId:{x,y,w,h}},h,w}
-   (px within the wrap). No save = the normal CSS flow, untouched. Panels hidden at
+   button. Positions persist per screen in cfg.layouts[id] as {v:2,p:{elId:{x,y,w,h}},h}: x and w
+   are FRACTIONS of the canvas width, y and h are px (see THE STORED FORM below). No save = the
+   normal CSS flow, untouched. Panels hidden at
    runtime (scout/history/last-round) still get their coords applied, so they appear
    in-place the moment league.js un-hides them; in edit mode they show as ghosts so
    they can be placed.
@@ -41,7 +42,18 @@
    Absolutely-positioned children resolve `left`/`top` against the wrap's PADDING BOX, so every
    measurement below is padding-box (`clientWidth`), and only the border is added back when the
    result is written to `style.width` (box-sizing is border-box globally). Don't mix in
-   `getComputedStyle` padding here; padding does not move an absolute child. */
+   `getComputedStyle` padding here; padding does not move an absolute child.
+
+   ---- THE STORED FORM (v:2) ----
+   Everything above works in px; only what goes into cfg.layouts is relative. Across the width a
+   layout is FRACTIONS of the canvas, so three columns made on a 1920 monitor are still three columns
+   filling the same share of a Deck's 1280, and grow back on the way up. Down the page it stays px:
+   type is px, so a panel's content is the same height at any width, and the screen scrolls.
+   The unit is a panel's CELL (its box plus the gutter after it) over the canvas content plus one
+   gutter (A − LAY_G). Two panels a gutter apart share a cell edge, and both edges round the same
+   way, so the gutter between them survives any scaling at exactly LAY_G. Saved and re-read at the
+   same width the round trip is exact (4 decimals is ≤0.1px on a 2000px canvas; the snap eats it).
+   A v1 save (px) is converted the first time it is applied, against the window it is opened in. */
 const LAY_G=16;                    // the grid — and the margin the wrap keeps around its panels
 const LAY_MINW=224, LAY_MINH=128;  // smallest a panel may be resized to
 const LAY_BP=1040;                 // ≤ this is the stacked mobile flow (keep in sync with the @media in styles.css)
@@ -130,6 +142,29 @@ function layNormalise(o){
  for(const p in o){o[p].x-=mnx;o[p].y-=mny;mxr=Math.max(mxr,o[p].x+o[p].w);mxb=Math.max(mxb,o[p].y+o[p].h);}
  return {p:o,w:mxr,h:mxb};
 }
+/* ---- the stored form (see THE STORED FORM in the header) ----
+   layStore: a normalised px arrangement + the canvas padding width it was made on → the v:2 save.
+   layPx:    one saved box → its px left and width on a canvas of padding width A. */
+const LAY_V=2;
+function layR4(v){return Math.round(v*1e4)/1e4;}
+function layStore(n,A){
+ const S=Math.max(LAY_G,A-LAY_G),o={};
+ for(const p in n.p){const b=n.p[p];o[p]={x:layR4(b.x/S),w:layR4((b.w+LAY_G)/S),y:b.y,h:b.h};}
+ return {v:LAY_V,p:o,h:n.h};
+}
+function layPx(b,A){
+ const S=Math.max(LAY_G,A-LAY_G),l=laySnap(b.x*S);
+ return {x:l,w:Math.max(LAY_MINW,laySnap((b.x+b.w)*S)-LAY_G-l)};
+}
+/* A v1 save (px, from before v:2) → v:2, against the canvas it is first opened on. An arrangement
+   wider than that canvas is taken as filling it, which is the squeeze v1 applied on every show. */
+function layMigrate(k,A){
+ const L=cfg.layouts[k];if(!L||L.v===LAY_V)return L;
+ const o={};for(const p in L.p){const b=L.p[p];if(b)o[p]={x:+b.x||0,y:+b.y||0,w:+b.w||LAY_NEWW,h:+b.h||LAY_NEWH};}
+ const n=layNormalise(o);
+ cfg.layouts[k]=layStore(n,Math.max(A,n.w+LAY_G*2));saveCfg();
+ return cfg.layouts[k];
+}
 /* Resolve every panel in a block to a live box, clamped to what the wrap can hold.
    `ghost` = hidden at runtime (scout / history / last round). A ghost still gets its coords
    applied so it lands in place the instant league.js un-hides it, but OUTSIDE edit mode it is NOT
@@ -142,8 +177,9 @@ function layBoxes(k,L,availPad){
   // No saved spot = a panel added to the screen SINCE the player last arranged it. Park those in
   // a fresh grid below the saved arrangement — the old version offset each by 40px in y alone,
   // so two new panels landed almost exactly on top of each other and read as one.
-  let st=L.p[p];
-  if(!st){const c=nu++;st={x:LAY_G+(c%3)*(LAY_NEWW+LAY_G),y:(L.h||400)+LAY_G+Math.floor(c/3)*(LAY_NEWH+LAY_G),w:LAY_NEWW,h:LAY_NEWH};}
+  const s=L.p[p];let st;
+  if(s){const q=layPx(s,availPad);st={x:q.x,y:s.y,w:q.w,h:s.h};}
+  else{const c=nu++;st={x:LAY_G+(c%3)*(LAY_NEWW+LAY_G),y:(L.h||400)+LAY_G+Math.floor(c/3)*(LAY_NEWH+LAY_G),w:LAY_NEWW,h:LAY_NEWH};}
   out.push({el,x:st.x,y:st.y,w:clamp(st.w,LAY_MINW,maxW),h:Math.max(LAY_MINH,st.h),
             ghost:el.classList.contains('hidden')});});
  return out;
@@ -179,19 +215,20 @@ function layApply(k){
  // A wrap inside a hidden TAB measures 0 wide, which would squash every panel to the minimum.
  // Skip it; the tab button re-applies on reveal.
  if(!layLive(w))return;
- const L=cfg.layouts&&cfg.layouts[k];
+ let L=cfg.layouts&&cfg.layouts[k];
  if(!L||!L.p||innerWidth<=LAY_BP){layFlow(k);return;}  // ≤LAY_BP = the stacked mobile flow, leave it alone
  const ed=(layEditing===k);
  w.classList.add('lyCustom');layScreen(k).classList.add('lyScroll'); // custom heights need a top-anchored scrollable screen
  layWatch(k);
  const bd=layBord(w);
  const availPad=Math.max(LAY_MINW+LAY_G*2,layAvail(w));     // padding box — the box absolute panels position against
+ L=layMigrate(k,availPad);
  const bx=layBoxes(k,L,availPad);
  const vb=layBBox(bx,false)||layBBox(bx,true);              // what shrink-wrapping hugs: ghosts are out of it unless we're editing
  if(!vb){w.style.width=w.style.height='';return;}
- // An arrangement built on a 1920 monitor can be wider than the window it's next opened in. Squeeze
- // it HORIZONTALLY as one piece rather than clamping each panel against the right edge on its own,
- // which is what used to slide them into a heap in the corner with the arrangement destroyed.
+ // Saved widths are fractions, so an arrangement already fits the canvas it's scaled to. This squeeze
+ // only catches what LAY_MINW inflated on a narrow window (or unsaved panels parked in a row): the
+ // arrangement is narrowed as ONE piece rather than each panel being clamped against the right edge.
  const fit=Math.min(1,(availPad-LAY_G*2)/Math.max(1,vb.w));
  // Both EDGES are squeezed and floored to the grid, and the width is then the distance between
  // them — squeezing the width separately would let a panel's right edge cross its neighbour's
@@ -237,45 +274,185 @@ function layWatch(k){
  LAY_OBS[k]=rec;
 }
 function layUnwatch(k){const r=LAY_OBS[k];if(!r)return;clearTimeout(r.t);r.o.disconnect();delete LAY_OBS[k];}
-/* ---- edit mode ---- */
+/* ---- edit mode ----
+   A session is a sequence of saved arrangements. Every change goes through layPut, which keeps the
+   one it replaces on LAY_UNDO.stack, so Undo (the bar, Ctrl+Z, Y on a pad) walks back one change at a
+   time. Changes are written to cfg as they happen, as before; Save just closes the editor, Cancel
+   puts back what was saved when it opened (LAY_UNDO.start, null = the screen had no arrangement).
+   A layout flagged d:1 is the stock one (the CSS flow, captured): opening the editor on a screen with
+   no save, or picking the Default preset, gives you one, and closing on one deletes the save rather than keeping a
+   frozen copy of the flow, so the screen goes back to being the designed, responsive layout. */
+const LAY_UNDOS=60;                // most changes one session remembers
+const LAY_UNDO={start:null,stack:[]};
+function layClone(L){return L?JSON.parse(JSON.stringify(L)):null;}
+/* Same numbers = no step (a click that moved nothing). The stock flag doesn't count as a difference:
+   only an explicit reset ever sets it, and one landing on identical numbers just marks them stock. */
+function layNums(L){return JSON.stringify(L?Object.assign({},L,{d:undefined}):null);}
+function layPut(k,L){
+ const o=cfg.layouts[k];
+ if(layNums(o)===layNums(L)){if(o&&L.d&&!o.d){o.d=1;saveCfg();laySelSync();}return false;}
+ LAY_UNDO.stack.push(layClone(o));if(LAY_UNDO.stack.length>LAY_UNDOS)LAY_UNDO.stack.shift();
+ cfg.layouts[k]=L;saveCfg();laySelSync();return true;
+}
+/* Re-apply mid-session without the screen jumping: layFlow (inside layDefaults) takes the screen's
+   scroll mode off for a moment, which resets its scrollTop. */
+function layRe(k){const sc=layScreen(k),y=sc?sc.scrollTop:0;layAnim(k);layApply(k);if(sc)sc.scrollTop=y;}
+function layHandles(k,on){
+ const w=layWrap(k);if(!w)return;
+ w.querySelectorAll('.lyRz,.lyRs').forEach(h=>h.remove());
+ if(on)layPanels(k).forEach(p=>{const el=$(p);if(!el)return;
+  const z=document.createElement('span');z.className='lyRz';
+  const r=document.createElement('span');r.className='lyRs';r.title='Put this panel back';r.textContent='↺';
+  el.append(z,r);});
+}
+/* The stock arrangement at this width: the screen's own CSS flow, measured. The edit styling comes off
+   for the measurement because it shows hidden panels (they'd be captured as if on screen) and adds the
+   handles. The caller re-applies (layRe), which puts the custom layout back before anything paints. */
+function layDefaults(k){
+ const w=layWrap(k),ed=w.classList.contains('lyEditing');
+ if(ed){w.classList.remove('lyEditing');layHandles(k,false);}
+ layFlow(k);
+ const d=layStore(layCapture(k),layAvail(w));d.d=1;
+ if(ed){w.classList.add('lyEditing');layHandles(k,true);}
+ return d;
+}
+/* The bar: EDIT LAYOUT · ◀ preset ▶ · [name] · Save as preset · Delete | Undo · Cancel · Save, and the
+   how-to line under it. The picker is a plain <select> so vsel.js gives it the menus' ◀ VALUE ▶. */
 function layEditStart(k){
  if(layEditing)return;
  const w=layWrap(k);if(!w||!layLive(w)||innerWidth<=LAY_BP)return;
- if(!(cfg.layouts&&cfg.layouts[k]&&cfg.layouts[k].p)){
-  if(!cfg.layouts)cfg.layouts={};
-  const c=layCapture(k);cfg.layouts[k]={p:c.p,h:c.h,w:c.w};
- }
+ if(!cfg.layouts)cfg.layouts={};
+ LAY_UNDO.start=layClone(cfg.layouts[k]&&cfg.layouts[k].p?cfg.layouts[k]:null);LAY_UNDO.stack=[];
+ if(!LAY_UNDO.start){cfg.layouts[k]=layStore(layCapture(k),layAvail(w));cfg.layouts[k].d=1;}
  layEditing=k;layAnim(k);layApply(k);
- w.classList.add('lyEditing');
- layPanels(k).forEach(p=>{const el=$(p);if(!el)return;const h=document.createElement('span');h.className='lyRz';el.appendChild(h);});
+ w.classList.add('lyEditing');layHandles(k,true);
  w.addEventListener('pointerdown',layDown);
  layBar=document.createElement('div');layBar.id='lyBar';
- layBar.innerHTML='<span class="lyBarTxt">⊞ EDIT LAYOUT — drag a panel to move · drag its corner to resize</span>';
- const bd=document.createElement('button');bd.className='btn';bd.textContent='✓ Done';bd.onclick=layEditEnd;
- const br=document.createElement('button');br.className='btn ghost';br.textContent='Reset layout';br.onclick=layReset;
- layBar.append(bd,br);layScreen(k).appendChild(layBar);
+ layBar.innerHTML='<span class="lyBarTxt">⊞ EDIT LAYOUT</span><span class="lyPre"><select id="lySel" title="Layout preset"></select></span>'
+  +'<input type="text" id="lyName" class="hidden" maxlength="20" spellcheck="false" title="Rename this preset">';
+ const mk=(t,c,f,id)=>{const b=document.createElement('button');b.className=c;b.textContent=t;b.onclick=()=>f();if(id)b.id=id;return b;};
+ const sep=document.createElement('i');sep.className='lySep';
+ const hint=document.createElement('span');hint.className='lyHint';hint.textContent='drag a panel to move it · its corner to resize · ↺ puts it back';
+ layBar.append(mk('Save as preset','btn ghost',laySavePreset,'lyAdd'),mk('Delete','btn ghost hidden',layDelPreset,'lyDel'),sep,
+  mk('Undo','btn ghost',layUndo),mk('Cancel','btn ghost',layCancel),mk('Save','btn',layEditEnd),hint);
+ layScreen(k).appendChild(layBar);
+ const sel=$('lySel'),nm=$('lyName');
+ if(typeof vselWrap==='function'){vselWrap(sel);sel.parentElement.classList.remove('wide');}
+ sel.onchange=()=>layLoadPreset(sel.value);
+ nm.oninput=()=>layRenamePreset(nm.value);
+ laySelSync();
 }
-/* layEditing is cleared FIRST so the layApply below runs as a display-mode apply — and so the
+/* Save. layEditing is cleared FIRST so the layApply below runs as a display-mode apply — and so the
    layEditGuard at the top of layApply can't re-enter this. */
 function layEditEnd(){
  const k=layEditing;if(!k)return;
  if(LAY_PAD.el)layPadDrop(true);                            // a panel still held on the pad lands where it is
- layEditing=null;
+ layEditing=null;LAY_UNDO.start=null;LAY_UNDO.stack=[];
+ if(cfg.layouts[k]&&cfg.layouts[k].d){delete cfg.layouts[k];saveCfg();}   // still the stock layout: hand the screen back to its CSS
  const w=layWrap(k);
- if(w){w.classList.remove('lyEditing');w.removeEventListener('pointerdown',layDown);
-  w.querySelectorAll('.lyRz').forEach(h=>h.remove());}
+ if(w){w.classList.remove('lyEditing');w.removeEventListener('pointerdown',layDown);layHandles(k,false);}
  if(layBar){layBar.remove();layBar=null;}
  layAnim(k);layApply(k);                                    // the canvas collapses back around the panels
  if(typeof Au!=='undefined')Au.ui();
 }
-function layReset(){
+function layCancel(){
  const k=layEditing;if(!k)return;
- delete cfg.layouts[k];saveCfg();layEditEnd(); // layApply inside sees no save → back to CSS flow
+ if(LAY_PAD.el)layPadDrop(false);
+ const s=LAY_UNDO.start;if(s)cfg.layouts[k]=s;else delete cfg.layouts[k];saveCfg();
+ layEditEnd();
+}
+function layUndo(){
+ const k=layEditing;if(!k)return false;
+ if(LAY_PAD.el)layPadDrop(false);
+ if(!LAY_UNDO.stack.length){if(typeof Au!=='undefined')Au.ui('error');return false;}
+ cfg.layouts[k]=LAY_UNDO.stack.pop();saveCfg();layRe(k);laySelSync();
+ if(typeof Au!=='undefined')Au.ui('back');
+ return true;
+}
+/* ---- presets ----
+   The picker lists Default (the screen's own CSS, i.e. the old Reset all), the built-ins for this screen
+   (CONFIG.layoutEditor.presets), then the player's own (cfg.layoutPresets, synced). Picking one is one
+   undoable step. It always shows what the live layout IS: a preset's name while it matches one, and
+   Unsaved once a panel moves. Save as preset keeps the live layout as "Custom N"; the box beside the
+   picker renames an own preset, Delete removes it. Presets are v:2 saves, so they fit any width. */
+function layOwn(k){
+ if(!cfg.layoutPresets||typeof cfg.layoutPresets!=='object')cfg.layoutPresets={};
+ const a=cfg.layoutPresets[k];return Array.isArray(a)?a:(cfg.layoutPresets[k]=[]);
+}
+function layBuiltins(k){const P=CONFIG.layoutEditor&&CONFIG.layoutEditor.presets;return(P&&P[k])||[];}
+function layPresetList(k){
+ return [{v:'def',n:'Default'}]
+  .concat(layBuiltins(k).map((p,i)=>({v:'b'+i,n:p.n,L:p.L})))
+  .concat(layOwn(k).map((p,i)=>({v:'c'+i,n:p.n,L:p.L})));
+}
+function layCur(k){
+ const L=cfg.layouts[k];if(!L||L.d)return 'def';
+ const s=layNums(L),p=layPresetList(k).find(q=>q.L&&layNums(q.L)===s);
+ return p?p.v:'';
+}
+function laySelSync(){
+ const k=layEditing,sel=layBar&&$('lySel');if(!k||!sel)return;
+ const cur=layCur(k),own=cur[0]==='c',nm=$('lyName');
+ sel.innerHTML='';
+ layPresetList(k).forEach(p=>{const o=document.createElement('option');o.value=p.v;o.textContent=p.n;sel.appendChild(o);});
+ if(!cur){const o=document.createElement('option');o.value='';o.textContent='Unsaved';o.disabled=true;sel.appendChild(o);}
+ sel.value=cur;
+ nm.classList.toggle('hidden',!own);$('lyDel').classList.toggle('hidden',!own);
+ if(own&&document.activeElement!==nm)nm.value=layOwn(k)[+cur.slice(1)].n;
+ $('lyAdd').disabled=layOwn(k).length>=CONFIG.layoutEditor.presetsMax;
+}
+function layLoadPreset(v){
+ const k=layEditing;if(!k)return;
+ if(LAY_PAD.el)layPadDrop(false);
+ if(v==='def')layPut(k,layDefaults(k));        // layDefaults flows the screen to measure it, so always re-apply
+ else{const p=layPresetList(k).find(q=>q.v===v);if(p&&p.L)layPut(k,layClone(p.L));}
+ layRe(k);laySelSync();
+}
+/* Refused when the layout already IS a preset (a second copy would just shadow the first in the picker),
+   or when the screen already has presetsMax of the player's own. Default can be kept as a frozen copy. */
+function laySavePreset(){
+ const k=layEditing;if(!k)return;
+ const own=layOwn(k),cur=layCur(k);
+ if(own.length>=CONFIG.layoutEditor.presetsMax||(cur&&cur!=='def')){if(typeof Au!=='undefined')Au.ui('error');return;}
+ let i=own.length+1;while(own.some(p=>p.n==='Custom '+i))i++;
+ const L=layClone(cfg.layouts[k]);delete L.d;
+ own.push({n:'Custom '+i,L});
+ delete cfg.layouts[k].d;saveCfg();   // it's a preset now: closing keeps it rather than handing the screen back to its CSS
+ laySelSync();if(typeof Au!=='undefined')Au.ui('value');
+}
+function layDelPreset(){
+ const k=layEditing,cur=k&&layCur(k);if(!cur||cur[0]!=='c')return;
+ layOwn(k).splice(+cur.slice(1),1);saveCfg();laySelSync();
+ if(typeof Au!=='undefined')Au.ui('back');
+}
+function layRenamePreset(t){
+ const k=layEditing,cur=k&&layCur(k);if(!cur||cur[0]!=='c')return;
+ const p=layOwn(k)[+cur.slice(1)];p.n=String(t).trim().slice(0,20)||p.n;saveCfg();
+ const sel=$('lySel'),o=sel&&sel.selectedOptions[0];if(o)o.textContent=p.n;
+}
+/* Dev: a screen's live layout as a paste-ready line for CONFIG.layoutEditor.presets[key]. */
+function layExport(k){
+ const L=cfg.layouts&&cfg.layouts[k];if(!L||!L.p){console.log('No layout saved for '+k);return null;}
+ const s=JSON.stringify({n:'Name me',L:Object.assign({},L,{d:undefined})})+',';console.log(s);return s;
+}
+/* One panel back to where the stock layout has it, the rest left alone. It can land on top of a panel
+   that has since been moved there; that's for the player to sort out, and Undo takes it back. */
+function layResetPanel(el){
+ const k=layEditing;if(!k||!layPadIs(el))return false;
+ if(LAY_PAD.el)layPadDrop(false);
+ const d=layDefaults(k),L=layClone(cfg.layouts[k]);
+ if(d.p[el.id]){L.p[el.id]=d.p[el.id];delete L.d;
+  L.h=0;for(const p in L.p)L.h=Math.max(L.h,L.p[p].y+L.p[p].h);
+  layPut(k,L);}
+ layRe(k);
+ if(typeof Au!=='undefined')Au.ui('value');
+ return true;
 }
 function layDown(e){
  const k=layEditing;if(!k)return;
  const el=e.target.closest('.panel');if(!el)return;
  e.preventDefault();e.stopPropagation();
+ if(e.target.classList.contains('lyRs')){layResetPanel(el);return;}
  const w=layWrap(k),rz=e.target.classList.contains('lyRz'),ww=w.clientWidth;  // padding box — the same space panel coords live in
  const sx=e.clientX,sy=e.clientY,ox=parseFloat(el.style.left)||0,oy=parseFloat(el.style.top)||0,
        ow=parseFloat(el.style.width)||el.offsetWidth,oh=parseFloat(el.style.height)||el.offsetHeight;
@@ -287,13 +464,22 @@ function layDown(e){
   el.classList.remove('lyDrag');laySave(k);layGrow(k);};
  addEventListener('pointermove',mv);addEventListener('pointerup',up);addEventListener('pointercancel',up);
 }
+/* The canvas width it's stored against is the one the edit session opened out to (layAvail), the
+   same width layApply scales it back onto, so a save re-applied in the same window is exact. A release
+   that moved nothing is compared in PX against the live save: a preset made at another width re-stores
+   as slightly different fractions here, and a mere click must not turn it into Unsaved. */
 function laySave(k){
- const o={};
+ const o={},w=layWrap(k);if(!w)return;
  layPanels(k).forEach(p=>{const el=$(p);if(!el||!el.style.width)return;
   o[p]={x:parseFloat(el.style.left)||0,y:parseFloat(el.style.top)||0,w:parseFloat(el.style.width),h:parseFloat(el.style.height)};});
- const n=layNormalise(o);
- cfg.layouts[k]={p:n.p,h:n.h,w:n.w};
- saveCfg();
+ const n=layNormalise(o),A=layAvail(w);
+ if(layPxSame(cfg.layouts[k],n,A))return;
+ layPut(k,layStore(n,A));
+}
+function layPxSame(L,n,A){
+ if(!L||!L.p)return false;const o={};
+ for(const p in n.p){const s=L.p[p];if(!s)return false;const q=layPx(s,A);o[p]={x:q.x,y:s.y,w:q.w,h:Math.max(LAY_MINH,s.h)};}
+ return JSON.stringify(layNormalise(o).p)===JSON.stringify(n.p);
 }
 /* Re-size the EDIT canvas after a drag — a panel dragged past the bottom needs the box to follow,
    and the drop zone underneath has to be re-established. Deliberately reads the live DOM instead
@@ -317,7 +503,7 @@ const LAY_PAD={el:null,rz:false,was:null};
 function layPadCands(){
  const k=layEditing;if(!k)return[];
  const c=layPanels(k).map(p=>$(p)).filter(el=>el&&el.getClientRects().length);
- if(layBar)c.push(...layBar.querySelectorAll('button'));
+ if(layBar)c.push(...layBar.querySelectorAll('button,select,input'));
  return c;
 }
 function layPadIs(el){return!!layEditing&&!!el&&layPanels(layEditing).indexOf(el.id)>=0;}
@@ -351,6 +537,10 @@ function layPadDrop(keep){
    the next load with no edit to this file. */
 for(const k in LAY_BLOCKS){const b=$(LAY_BLOCKS[k].btn);
  if(b)b.onclick=()=>{layEditing===k?layEditEnd():(typeof Au!=='undefined'&&Au.ui(),layEditStart(k));};}
+/* Ctrl+Z steps back while the editor is open. Capture phase on window, so a screen's own key
+   handler never sees it as a Z. Not while typing a preset's name: there it undoes the typing. */
+addEventListener('keydown',e=>{
+ if(layEditing&&(e.ctrlKey||e.metaKey)&&!e.altKey&&e.code==='KeyZ'&&!/^(INPUT|TEXTAREA)$/.test(e.target.tagName)){e.preventDefault();e.stopPropagation();layUndo();}},true);
 /* Below LAY_BP the arranger is inert (layApply hands the screen back to the CSS flow), so the ⊞
    would be a button that visibly does nothing. Its own screen code owns .hidden — hence a
    separate class rather than two bits of code fighting over one. */

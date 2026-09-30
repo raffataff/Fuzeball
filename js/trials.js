@@ -419,7 +419,7 @@ function trialFinish(ok){
      instead of on completion — confetti and the goal horn over 0 of 10 reads as the game not
      having noticed. Every other kind completes only by doing the thing, so completion IS the
      moment and this is byte-identical for them. */
-  if(!sr||TRL.medal){Au.goal();if(typeof confetti==='function')confetti();}
+  if(!sr||TRL.medal){Au.goal('medal');if(typeof confetti==='function')confetti();}
   else Au.whistle();
  }else{TRL.medal=null;Au.whistle();}
  // Start the beat. The world is ALREADY frozen (TRN.freeze above); this delays only the panel.
@@ -588,7 +588,7 @@ function trialCatDefault(){
  for(const c of cs)if(trialsIn(c.id).length)return c.id;
  return cs.length?cs[0].id:null;
 }
-function trialCatSet(id){if(id===TRL.cat)return;TRL.cat=id;Au.ui();renderTrials();}
+function trialCatSet(id){if(id===TRL.cat)return;TRL.cat=id;Au.ui('tab');renderTrials();}
 /* One row. Pulled out of renderTrials so the flat fallback below and the sectioned list render
    byte-identical rows rather than two copies of the same markup drifting apart. */
 function trialRowHtml(d){
@@ -721,7 +721,7 @@ if(typeof SCREENS!=='undefined'&&SCREENS.daily){
   else card.onclick=()=>{Au.init();Au.ui();showScreen('daily');};
  }
  const back=$('dailyBack');
- if(back)back.onclick=()=>{showScreen('home');Au.ui();};
+ if(back)back.onclick=()=>{showScreen('home');Au.ui('back');};
 })();
 /* Leave the run for the list. The panel's TRIALS button and Escape both land here; gotoMenu does
    the rest — trainingExit calls trialExit (gate dropped, sandbox hide list and scoreboard given

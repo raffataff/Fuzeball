@@ -40,7 +40,7 @@ const SCREENS={
   {key:'menu',wrap:'#menuTab_team .panelWrap',btn:'menuEditLayout',
    panels:['menuKitPanel0','menuTeamPanel','menuKitPanel1']},
   {key:'menuRules',wrap:'#menuTab_rules .panelWrap',btn:'menuRulesEditLayout',
-   panels:['menuSetupPanel','menuTablePanel','menuAudioPanel']}]},
+   panels:['menuSetupPanel','menuTablePanel']}]},
  // Dev tool. Registered like any other screen so Esc and the router work on it for free; the
  // CARD that reaches it is what's gated on CONFIG.debug.roomEditor, not the route itself.
  roomEdit:{back:'home'},
@@ -72,8 +72,11 @@ const SCREENS={
  // clears it via gotoMenu before re-opening the lobby with fresh content. A bare
  // showScreen('league') would strand the bridge and render a stale lobby, so Esc falls through
  // here exactly as it did before. Give this a `back` only once that teardown is an onHide.
- championsCup:{back:null,lay:{wrap:'#championsCup .lgWrap',btn:'cupEditLayout',
-  panels:['cupBracketPanel','cupFixturePanel','cupSettingsPanel','cupHistPanel','cupSquadPanel','cupScout']}},
+ // Tabbed like the league (Cup / Squad / Club). The 'championsCup' KEY stays on the Cup tab so older saves
+ // still apply there (their Squad / rules / honours entries are simply ignored); Squad is one panel.
+ championsCup:{back:null,lay:[
+  {key:'championsCup',wrap:'#cupTab_cup .lgWrap',btn:'cupEditLayout',panels:['cupBracketPanel','cupFixturePanel','cupScout']},
+  {key:'cupClub',wrap:'#cupTab_club .lgWrap',btn:'cupClubEditLayout',panels:['cupSettingsPanel','cupHistPanel']}]},
  options:{back:'menu'}   // rewritten per-open by openOptions — Options is reachable from several screens
 };
 let scrCur='home';                                   // #home is the screen live at boot (the intro reveals it)

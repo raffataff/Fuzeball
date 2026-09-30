@@ -82,8 +82,6 @@ function optVolSample(k){                                  // hear the bus you'r
 function syncAudioUI(){
  for(const [id,k] of OPT_VOL){const v=clamp(+cfg[k],0,1);$(id).value=v===v?v:1;}
  $('optSound').checked=!!cfg.sound;$('optAmbience').checked=!!cfg.ambience;$('optMuteBg').checked=!!cfg.muteBg;
- if($('setSound'))$('setSound').checked=!!cfg.sound;
- if($('setAmbience'))$('setAmbience').checked=!!cfg.ambience;
  Au.mix();
 }
 function optSetTab(name){
@@ -206,36 +204,25 @@ function syncOptionsUI(){                                     // push cfg → co
    key, mouse button or wheel turn. The wait is owned by capture-phase window listeners that swallow
    the press, so the Esc that cancels it never reaches input.js (which would close Options) and the
    click that binds the left button never lands on whatever it was over. Everything the list shows
-   comes off bindList, and the reference card and the in-match hints read the same thing. */
+   comes off bindList, and the in-match hints read the same thing. */
 const KB={cap:null,swallow:0};
 function kbShots(){return (typeof shotsOn==='function')&&shotsOn();}
 function kbMsg(t){const m=$('kbMsg');if(m)m.textContent=t||'';}
 function kbRender(){
  const box=$('kbList');if(!box)return;
  const sh=kbShots();
- box.innerHTML=CONFIG.binds.list.filter(b=>sh||!b.shots).map(b=>{
+ // Read-only rows for what isn't a binding of its own: the mouse slide, the pin (a chord spelled from the
+ // two bindings it is made of) and Esc. This list IS the keyboard reference now; there is no second card.
+ const fixed=(lab,cap)=>'<div class="kbRow kbFixed"><span class="kbLab">'+lab+'</span><span class="kbKeys"><span class="kbCap">'+cap+'</span></span></div>';
+ const fl=bindList('finesse'),rl=bindList('raise');
+ box.innerHTML=fixed('Slide','MOUSE ↕')+CONFIG.binds.list.filter(b=>sh||!b.shots).map(b=>{
   const l=bindList(b.act),cap=KB.cap===b.act;
   return '<div class="kbRow'+(l.length?'':' kbNone')+'"><span class="kbLab">'+b.lab+'</span><span class="kbKeys">'
    +l.map(c=>'<button class="kbKey" data-act="'+b.act+'" data-code="'+c+'" title="Remove">'+bindLabel(c)+'</button>').join('')
    +'<button class="kbAdd'+(cap?' on':'')+'" data-act="'+b.act+'" title="Add an input">'+(cap?'PRESS…':'+')+'</button></span></div>';
- }).join('');
- kbRefRender();
-}
-// The Controls reference card's keyboard block, generated, so it can never describe keys you moved.
-function kbRefRender(){
- const el=$('optCtlRefKbm');if(!el)return;
- const sh=kbShots(),row=(k,t)=>'<b>'+k+'</b><span>'+t+'</span>';
- const out=[row('MOUSE ↕','slide players')];
- for(const b of CONFIG.binds.list){
-  if(b.shots&&!sh)continue;
-  const l=bindList(b.act);
-  out.push(row(l.length?l.map(bindLabel).join(' / '):'—',b.lab.toLowerCase()));
- }
- // The pin is a chord, not a binding of its own, so it is spelled from the two it is made of.
- const fl=bindList('finesse'),rl=bindList('raise');
- if(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length)out.push(row(bindLabel(fl[0])+' + '+bindLabel(rl[0]),'pin the ball — kick shoots from the pin'));
- out.push(row('ESC','pause'));
- el.innerHTML=out.join('');
+ }).join('')
+  +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
+  +fixed('Pause','ESC');
 }
 function kbCapStart(act){KB.cap=act;kbMsg('Press a key, mouse button or wheel for '+bindActLabel(act)+' — ESC cancels');kbRender();}
 function kbCapEnd(){if(!KB.cap)return;KB.cap=null;kbMsg('');kbRender();}
@@ -358,10 +345,10 @@ function bindOptions(){
  $('optTCSwerve').oninput=e=>{cfg.padTCSwerve=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCSpinInv').onchange=e=>{cfg.padTCSpinInvert=e.target.checked;saveCfg();};
  // --- Display tab ---
- $('optTabBtnControls').onclick=()=>{optSetTab('controls');Au.ui();};
- $('optTabBtnDisplay').onclick=()=>{optSetTab('display');Au.ui();};
- $('optTabBtnKbm').onclick=()=>{optSetTab('kbm');Au.ui();};
- $('optTabBtnAudio').onclick=()=>{optSetTab('audio');Au.ui();};
+ $('optTabBtnControls').onclick=()=>{optSetTab('controls');Au.ui('tab');};
+ $('optTabBtnDisplay').onclick=()=>{optSetTab('display');Au.ui('tab');};
+ $('optTabBtnKbm').onclick=()=>{optSetTab('kbm');Au.ui('tab');};
+ $('optTabBtnAudio').onclick=()=>{optSetTab('audio');Au.ui('tab');};
  // --- Audio tab ---
  for(const [id,k] of OPT_VOL)$(id).oninput=e=>{cfg[k]=+e.target.value;updateOptLabels();Au.mix();optVolSample(k);saveCfg();};
  $('optSound').onchange=e=>{cfg.sound=e.target.checked;Au.setOn(cfg.sound);syncAudioUI();saveCfg();};

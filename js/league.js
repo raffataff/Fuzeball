@@ -328,7 +328,8 @@ function trophyDef(tier){
  const d=LGC.divisions[tier];
  return (d&&d.trophy)||null;
 }
-function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.jpg';}
+// .webp with alpha, made from the .jpg renders by tools/trophy-alpha.mjs (the .jpg are on black: a black square on a panel).
+function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.webp';}
 function trophyFig(tier,cls,big){
  const d=trophyDef(tier);if(!d)return '';
  return '<span class="troFig'+(cls?' '+cls:'')+'" style="--tc:'+(d.col||'var(--gold)')+'">'+ico('trophy')+
@@ -572,6 +573,13 @@ function lgSeasonEarn(){
   return {w,l,gf,ga,cs,earned,promoteBonus,champBonus,avail:LG.teams[pid2].up,
    titles:trophyCount((trophyDef(2)||{}).id)};
 }
+/* ---- the season-end screen ----
+   One screen at 1280x800, no scrolling: the league's name over "Season N · complete", then three columns:
+   the result (trophy when you won the division, and the fate plate), YOUR division's final table, and the
+   rewards with what promotion or relegation did to the squad. Under them, "Around the league": the other
+   two divisions as one line each for the champion, who went up and who went down. Before this it was one
+   long page (all three tables, then every stat of every rod) that ran to ~1900px. */
+function lgSEName(e){return '<span class="lgSENm'+(e.i===LG.playerId?' me':'')+'"><i class="dot" style="background:'+e.col+'"></i>'+e.name+'</span>';}
 function lgSEDivCard(d){
   let rows='';
   d.order.forEach((e,pi)=>{
@@ -593,6 +601,15 @@ function lgSEDivCard(d){
    '<div class="lgSEHead"><span></span><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GF</span><span>GA</span><span>PTS</span></div>'+
    rows+'</div>';
 }
+// Another division, in a line each: its champion, who went up, who went down.
+function lgSEDivMini(d){
+  const up=d.order.filter(e=>e.promoted),dn=d.order.filter(e=>e.relegated);
+  return '<div class="lgSEMini"><div class="lgSEMiniHead">'+d.name+'</div>'+
+   '<div class="lgSEMiniRow"><span class="k">'+trophyFig(d.tier,'troSm')+'</span>'+lgSEName(d.order[0])+'</div>'+
+   (up.length?'<div class="lgSEMiniRow"><span class="k lgSEUp">▲</span>'+up.map(lgSEName).join('')+'</div>':'')+
+   (dn.length?'<div class="lgSEMiniRow"><span class="k lgSEDn">▼</span>'+dn.map(lgSEName).join('')+'</div>':'')+
+   '</div>';
+}
 function lgSEFate(se){
   const map={
    champion:['champ',ico('trophy','icoInline')+'CHAMPIONS','#ffcf4d'],   // .lgSEFateLab's gap is the separator
@@ -603,92 +620,59 @@ function lgSEFate(se){
   // FINISHING TOP (not `playerFate`) lifts the silverware — 'champion' is set for PREMIER ONLY,
   // so a Sunday/Pro title lands here labelled 'promoted'. Tier decides which trophy is shown.
   const won=se.playerPos===1, d=won?trophyDef(se.playerDiv):null;
-  const m=map[se.playerFate];
-  if(won&&se.playerFate==='promoted')m[1]='▲ CHAMPIONS · PROMOTED';
-  const posTxt=se.playerFate==='champion'?'FINISHED #1':'FINISHED #'+se.playerPos;
+  const m=map[se.playerFate].slice();
+  // Won a lower division: champions AND promoted, on two lines rather than one that wraps at the dot.
+  const sub=won&&se.playerFate==='promoted'?'<span class="lgSEFateLab lgSEFate2">▲ PROMOTED</span>':'';
+  if(sub)m[1]=ico('trophy','icoInline')+'CHAMPIONS';
   const hero=d?'<div class="troHero" style="--tc:'+(d.col||'var(--gold)')+'">'+
    trophyFig(se.playerDiv,'troBig',true)+
    '<div class="troHeroName">'+d.name+'</div></div>':'';
-
-  return hero+'<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+
-   '<span class="lgSEPos">'+posTxt+'</span></div>';
+  return hero+'<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+sub+
+   '<span class="lgSEPos">FINISHED '+lgOrd(se.playerPos)+'</span></div>';
 }
 function lgSERewards(r,se){
-  let h='<div class="lgSEPanelHead">SEASON REWARDS</div>'+
+  let h='<div class="lgSEPanelHead">Season rewards</div>'+
    '<div class="lgSERewGrid">'+
     '<div class="lgSERew"><span class="k">RECORD</span><span class="v">'+r.w+'–'+r.l+'</span><span class="sub">'+r.gf+' GF · '+r.ga+' GA</span></div>'+
-    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v gold">+'+r.earned+' '+ico('cog','icoInline')+'</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
+    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v">+'+r.earned+' '+ico('cog','icoInline')+'</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
     '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' '+ico('cog','icoInline')+'</span><span class="sub">spend in squad</span></div>'+
     '<div class="lgSERew"><span class="k">TITLES</span><span class="v">'+r.titles+'×</span><span class="sub">Premier wins</span></div>'+
    '</div>';
    if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified)
-    h+='<div class="lgSECup">'+ico('trophy','icoInline')+' QUALIFIED FOR THE CHAMPIONS CUP</div>'+
-       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">ENTER CHAMPIONS CUP</button>';
+    h+='<div class="lgSECup">'+ico('trophy','icoInline')+' Qualified for the Champions Cup</div>'+
+       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">Enter Champions Cup</button>';
   return '<div class="lgSEPanel">'+h+'</div>';
 }
-function lgSELoss(se){
-  if(se.playerFate!=='relegated'||!se.playerLosses.length)return '';
-  const bld=LG.teams[LG.playerId].bld;
-  let h='<div class="lgSEPanel"><div class="lgSEPanelHead rel">▼ RELEGATION — STATS LOST</div>';
+/* What promotion or relegation did to the squad, one line per position: the change and which stats it hit
+   ("All stats" when it hit every one). Promotion raises only the stats still at the old division's floor;
+   relegation takes a point off every stat above the floor. */
+function lgSEChanges(se){
+  const rel=se.playerFate==='relegated',list=rel?se.playerLosses:se.playerFate==='promoted'?se.playerGains:null;
+  if(!list||!list.length)return '';
+  let rows='';
   for(const role of LG_ROLES){
-   h+='<div class="lgSERole"><span class="lgSERoleH">'+role+'</span>';
-   for(const k of LG_KEYS){
-    const v=bld[role][k];
-    const lost=se.playerLosses.find(x=>x.role===role&&x.key===k);
-    const before=lost?lost.from:v,after=v;
-    let pips='';
-    for(let i=0;i<STC.max;i++){
-     if(i<after)pips+='<b class="on">▮</b>';
-     else if(i<before)pips+='<b class="lost">▯</b>'; // removed pip
-     else pips+='<b>▯</b>';
-    }
-    h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
-     (lost?'<span class="lgSEMinus">–1</span>':'')+'</div>';
-   }
-   h+='</div>';
+   const ch=list.filter(x=>x.role===role);if(!ch.length)continue;
+   const d=x=>x.to-x.from,same=ch.every(x=>d(x)===d(ch[0])),sg=v=>(v>0?'+':'–')+Math.abs(v);
+   const keys=same&&ch.length===LG_KEYS.length?'All stats':ch.map(x=>x.key.toUpperCase()+(same?'':' '+sg(d(x)))).join(' · ');
+   rows+='<div class="lgSEChgRow"><span class="r">'+role+'</span><span class="d">'+(same?sg(d(ch[0])):'')+'</span><span class="ks">'+keys+'</span></div>';
   }
-  h+='</div>';
-  return h;
-}
-function lgSEGain(se){
-  if(se.playerFate!=='promoted'||!se.playerGains||!se.playerGains.length)return '';
-  const bld=LG.teams[LG.playerId].bld;
-  let h='<div class="lgSEPanel"><div class="lgSEPanelHead pro">▲ PROMOTION — STAT FLOOR RAISED</div>';
-  for(const role of LG_ROLES){
-   h+='<div class="lgSERole"><span class="lgSERoleH">'+role+'</span>';
-   for(const k of LG_KEYS){
-    const v=bld[role][k];
-    const gain=se.playerGains.find(x=>x.role===role&&x.key===k);
-    const before=gain?gain.from:v,after=v;
-    let pips='';
-    for(let i=0;i<STC.max;i++){
-     if(i<before)pips+='<b class="on">▮</b>';
-     else if(i<after)pips+='<b class="gain">▮</b>'; 
-     else pips+='<b>▯</b>';
-    }
-    h+='<div class="lgSEStat"><span class="sN">'+k.toUpperCase()+'</span><span class="pips">'+pips+'</span>'+
-     (gain?'<span class="lgSEPlus">+'+(gain.to-gain.from)+'</span>':'')+'</div>';
-   }
-   h+='</div>';
-  }
-  h+='</div>';
-  return h;
+  return '<div class="lgSEPanel lgSEChg '+(rel?'rel':'pro')+'"><div class="lgSEPanelHead">'+(rel?'▼ Relegation · stats lost':'▲ Promotion · stat floor raised')+'</div>'+rows+'</div>';
 }
 function renderLgSeasonEnd(){
   const se=LG.seasonEnd;if(!se)return;
-  const r=lgSeasonEarn();
-  let divs='';for(const d of se.divs)divs+=lgSEDivCard(d);
+  const r=lgSeasonEarn(),mine=se.divs.find(d=>d.tier===se.playerDiv);
+  const others=se.divs.filter(d=>d!==mine).sort((a,b)=>b.tier-a.tier);
   $('lgSEBody').innerHTML=
-   '<div class="lgSETitle">'+LG.name+'</div>'+
-   '<div class="lgSESub">SEASON '+se.season+' · COMPLETE</div>'+
-   lgSEFate(se)+
-   '<div class="lgSEDivs">'+divs+'</div>'+
-   lgSERewards(r,se)+
-   lgSELoss(se)+
-   lgSEGain(se);
-  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){ 
+   '<h2 class="lgTitle">'+LG.name+'</h2>'+
+   '<div class="lgSub">Season '+se.season+' · complete</div>'+
+   '<div class="lgSEGrid">'+
+    '<div class="lgSEHero">'+lgSEFate(se)+'</div>'+
+    lgSEDivCard(mine)+
+    '<div class="lgSESide">'+lgSERewards(r,se)+lgSEChanges(se)+'</div>'+
+   '</div>'+
+   '<div class="lgSEAround"><div class="lgSEPanelHead">Around the league</div><div class="lgSEMinis">'+others.map(lgSEDivMini).join('')+'</div></div>';
+  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){
     const b=$('lgSEEnterCup');
-   
     if(b)b.onclick=()=>{if(!cupLive())cupCreate();openCup();};
   }
 }
@@ -707,25 +691,31 @@ function lgWinContinue(){
     showSeasonEnd();
   }else lgReturn();
 }
-/* ---- scout panel ---- */
+/* ---- the Opponent panel (league lobby + cup) ----
+   Head: the club's name and its record down the left, its figurine's portrait with the figurine's name
+   under it in the top right; then the DEF/OFF bars and the rod stats. It opens on your next opponent
+   ("Opponent"); a club clicked in the table or bracket shows as "Scout", your own as "Your club".
+   pre = 'lg' | 'cup' picks the panel. */
+function lgOrd(n){return n+({1:'st',2:'nd',3:'rd'}[n>10&&n<14?0:n%10]||'th');}
+function lgScoutFill(pre,t,rec,title){
+ $(pre+'ScoutTitle').textContent=title;
+ const nm=$(pre+'ScoutName');nm.textContent=t.name;nm.style.color=t.col;
+ $(pre+'ScoutRec').innerHTML=rec;
+ const m=CONFIG.playerModel.models.find(x=>x.id===t.model),fig=$(pre+'ScoutFig');
+ fig.innerHTML=m?'<span class="figMug">'+ico('figure','icoInline')+'</span><span class="figCap">'+m.name+'</span>':'';
+ if(m)mugImg(m,fig.querySelector('.figMug'),'figMugImg','hasMug');   // AFTER the innerHTML build, or the portrait is thrown away with it
+ const bar=(k,v)=>'<div class="lgRateBar"><span class="'+k+'">'+k.toUpperCase()+'</span><div class="lgRate"><div class="'+k+'" style="width:'+(v/10*100|0)+'%"></div></div><span class="num">'+(v*10|0)/10+'</span></div>';
+ $(pre+'ScoutBody').innerHTML=bar('def',lgDef(t.bld))+bar('off',lgOff(t.bld))+lgBuildHTML(t.bld,false);
+ $(pre+'Scout').classList.remove('hidden');
+}
+function lgNextOpp(){const fx=lgPlayerFixture();return fx?(fx[0]===LG.playerId?fx[1]:fx[0]):-1;}
 function renderLgScout(ti){
- const t=LG.teams[ti];
- $('lgScoutName').textContent=t.name;$('lgScoutName').style.color=t.col;
- const form=lgTeamForm(ti);
- let fh='';for(const c of form)fh+='<span class="'+(c==='W'?'lgW':'lgL')+'">'+c+'</span>';
- const off=lgOff(t.bld),def=lgDef(t.bld);
- $('lgScoutRec').innerHTML='<span style="color:'+t.col+';font-weight:700">'+t.w+'-'+t.l+'</span>'+
-  ' · GF '+t.gf+' · GA '+t.ga+' · <span style="color:var(--gold);font-weight:700">'+t.p+'pts</span>'+
-  '<span style="margin-left:12px">'+fh+'</span>';
- const m=CONFIG.playerModel.models.find(x=>x.id===t.model);
- $('lgScoutBody').innerHTML=
-  (m?'<div class="figName"><span class="figMug">'+ico('figure','icoInline')+'</span>'+m.name+'</div><div style="height:4px"></div>':'')+
-  '<div class="lgRateBar"><span class="def">DEF</span><div class="lgRate"><div class="def" style="width:'+(def/10*100|0)+'%"></div></div><span class="num">'+(def*10|0)/10+'</span></div>'+
-   '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
-  lgBuildHTML(t.bld,false);
-
- if(m)mugImg(m,$('lgScoutBody').querySelector('.figMug'),'figMugImg','hasMug');
- $('lgScout').classList.remove('hidden');
+ const t=LG.teams[ti],pos=lgOrderDiv(t.div).findIndex(e=>e.i===ti)+1;
+ let fh='';for(const c of lgTeamForm(ti))fh+='<span class="'+(c==='W'?'lgW':'lgL')+'">'+c+'</span>';
+ lgScoutFill('lg',t,
+  '<span class="lgScoutLine"><b>'+lgOrd(pos)+'</b> · '+t.w+'-'+t.l+' · <b>'+t.p+'</b> pts</span>'+
+  '<span class="lgScoutLine">GF '+t.gf+' · GA '+t.ga+'</span>'+(fh?'<span class="lgScoutForm">'+fh+'</span>':''),
+  ti===LG.playerId?'Your club':ti===lgNextOpp()?'Opponent':'Scout');
 }
 function renderLgHist(){
  if(!LG.hist||!LG.hist.length){$('lgHistPanel').classList.add('hidden');return;}
@@ -775,7 +765,7 @@ function openLeague(reveal){
   lgVenueEnter(lgDivVenue(playerDiv()));
   if(LG.seasonEnd&&!LG.seasonEnd.shown){showSeasonEnd();return;} // a season just finished — show the summary first
   const pd=playerDiv(),dv=LG.divs[pd];
- if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal();S.lgChampDone=true;}
+ if(dv.champ&&!S.lgChampDone){confetti(0);Au.goal('trophy');S.lgChampDone=true;}
  renderLeague(reveal);
  const fx=lgPlayerFixture();
  if(fx){const op=fx[0]===LG.playerId?fx[1]:fx[0];
@@ -819,6 +809,12 @@ function renderLgTable(){
  $('lgTable').innerHTML=h;
  $('lgTable').querySelectorAll('.nm').forEach(n=>{n.onclick=()=>{renderLgScout(+n.dataset.i);};});
 }
+/* The head-to-head, one side each: name in club colour, table standing under it. The opponent's side
+   is clickable (and a pad stop) and puts them back in the Opponent panel after you've scouted others. */
+function lgMatchHTML(a,b){
+ const side=(x,c)=>'<div class="lgMs '+c+'"><span class="lgMsName" style="color:'+x.col+'">'+x.name+'</span><span class="lgMsMeta">'+x.meta+'</span></div>';
+ return '<div class="lgMatch">'+side(a,'me')+'<span class="lgVs">VS</span>'+side(b,'op')+'</div>';
+}
 function renderLgFix(){
  const pd=playerDiv(),dv=LG.divs[pd],done=!!dv.champ,T=LG.teams,pid=LG.playerId;
  $('lgSettingsPanel').classList.toggle('hidden',done); // no match to configure once a division is complete
@@ -833,16 +829,16 @@ function renderLgFix(){
   $('lgRound').innerHTML='<div class="lgFixSm"><span></span><span class="lgVs">CHAMPIONS</span><span></span></div>';
   return;
  }
- const fx=lgPlayerFixture(),op=fx[0]===pid?fx[1]:fx[0];
- $('lgFixture').innerHTML='<span style="color:'+T[pid].col+'">'+T[pid].name+'</span><span class="lgVs">VS</span><span style="color:'+T[op].col+'">'+T[op].name+'</span>'+
-  '<div style="width:100%"><button class="miniBtn scoutMini">SCOUT OPPONENT</button></div>';
- $('lgFixture').querySelector('.scoutMini').onclick=()=>renderLgScout(op);
+ const op=lgNextOpp(),order=lgOrderDiv(pd);
+ const side=ti=>({name:T[ti].name,col:T[ti].col,meta:lgOrd(order.findIndex(e=>e.i===ti)+1)+' · '+T[ti].p+' pts'});
+ $('lgFixture').innerHTML=lgMatchHTML(side(pid),side(op));
+ const os=$('lgFixture').querySelector('.lgMs.op');os.title='Show in the Opponent panel';os.onclick=()=>{renderLgScout(op);Au.ui();};
  let h='';
  for(const f of dv.fixtures[LG.round]){
-  if(f===fx)continue;
+  if(f[0]===pid||f[1]===pid)continue;
   h+='<div class="lgFixSm"><span>'+T[f[0]].name+'</span><span class="lgVs">v</span><span>'+T[f[1]].name+'</span></div>';
  }
- $('lgRound').innerHTML=h;
+ $('lgRound').innerHTML=h?'<div class="lgRoundHead">Also this round</div>'+h:'';
 }
 function renderLgLast(reveal){
  const pd=playerDiv(),dv=LG.divs[pd],r=LG.round-1,res=r>=0?dv.results[r]:null;
@@ -1267,16 +1263,15 @@ function renderCupFix(){
   $('cupFixturePanel').classList.toggle('hidden',!tie);
   $('cupSettingsPanel').classList.toggle('hidden',!tie);
   $('cupPlay').classList.toggle('hidden',!tie);
+  $('cupControlRow').classList.toggle('hidden',!tie);
   seedRuleCtls(CUP_RULE_IDS);
   // Its OWN key, not LG.control: a lock picked for a league round shouldn't follow you into a final.
   $('cupControl').value=LG.cupControl!=null?LG.cupControl:(LG.control||''); // own key — a league-round lock shouldn't follow into a final
   if(!tie)return;
   const opp=cupEnt(tie.a==='player'?tie.b:tie.a);
-  $('cupFixture').innerHTML='<span style="color:'+me.col+'">'+me.name+'</span><span class="lgVs">VS</span>'+
-    '<span style="color:'+opp.col+'">'+opp.name+'</span>'+
-    (sd[opp.id]?'<span class="cupSeedTag">SEED '+sd[opp.id]+'</span>':'')+
-    '<div style="width:100%"><button class="miniBtn scoutMini">SCOUT OPPONENT</button></div>';
-  $('cupFixture').querySelector('.scoutMini').onclick=()=>renderCupScout(opp.id);
+  const side=e=>({name:e.name,col:e.col,meta:sd[e.id]?'Seed '+sd[e.id]:'Rating '+((cupRate(e)*10|0)/10)});
+  $('cupFixture').innerHTML=lgMatchHTML(side(me),side(opp));
+  const os=$('cupFixture').querySelector('.lgMs.op');os.title='Show in the Opponent panel';os.onclick=()=>{renderCupScout(opp.id);Au.ui();};
   primeMatchExplosions(me.model,opp.model); // warm both shatters now, while in the lobby
   primeMatchTape(me.model,opp.model);       // and both tape portraits, so the splash paints whole
 }
@@ -1284,20 +1279,11 @@ function renderCupFix(){
    is the seed + cup rating (the same `cupRate` the draw is ordered by). */
 function renderCupScout(id){
   if(!id)return;
-  const e=cupEnt(id),sd=(LG.cup&&LG.cup.seeds)||{};
-  $('cupScoutName').textContent=e.name;$('cupScoutName').style.color=e.col;
-  const off=lgOff(e.bld),def=lgDef(e.bld);
-  $('cupScoutRec').innerHTML=(sd[e.id]?'<span style="color:var(--gold);font-weight:700">SEED '+sd[e.id]+'</span> · ':'')+
-    'RATING <span style="color:'+e.col+';font-weight:700">'+((cupRate(e)*10|0)/10)+'</span>';
-  const m=CONFIG.playerModel.models.find(x=>x.id===e.model);
-  $('cupScoutBody').innerHTML=
-    (m?'<div class="figName"><span class="figMug">'+ico('figure','icoInline')+'</span>'+m.name+'</div><div style="height:4px"></div>':'')+
-    '<div class="lgRateBar"><span class="def">DEF</span><div class="lgRate"><div class="def" style="width:'+(def/10*100|0)+'%"></div></div><span class="num">'+(def*10|0)/10+'</span></div>'+
-    '<div class="lgRateBar"><span class="off">OFF</span><div class="lgRate"><div class="off" style="width:'+(off/10*100|0)+'%"></div></div><span class="num">'+(off*10|0)/10+'</span></div>'+
-    lgBuildHTML(e.bld,false);
-  // portrait attaches AFTER the innerHTML build — same ordering rule as renderLgScout.
-  if(m)mugImg(m,$('cupScoutBody').querySelector('.figMug'),'figMugImg','hasMug');
-  $('cupScout').classList.remove('hidden');
+  const e=cupEnt(id),sd=(LG.cup&&LG.cup.seeds)||{},tie=cupPlayerTie(),opp=tie&&(tie.a==='player'?tie.b:tie.a);
+  lgScoutFill('cup',e,
+    (sd[e.id]?'<span class="lgScoutLine"><b>Seed '+sd[e.id]+'</b></span>':'')+
+    '<span class="lgScoutLine">Rating <b>'+((cupRate(e)*10|0)/10)+'</b></span>',
+    id==='player'?'Your club':id===opp?'Opponent':'Scout');
 }
 /* Cup honours. THIS season's trophy is read off LG.cup directly and prepended — the hist row
    for season N is only pushed at the rollover OUT of it and the cup is played in the gap between,
@@ -1328,13 +1314,14 @@ function renderCup(){
   $('cupDone').classList.toggle('hidden',!cup.done);
   $('cupBtnRow').classList.toggle('hidden',!cup.done);
   // Lifting the cup is the biggest thing in the mode — fires once, latched on the save.
-  if(cup.done&&cup.champion==='player'&&!cup.celeb){cup.celeb=true;saveLG();confetti(0);Au.goal();}
+  if(cup.done&&cup.champion==='player'&&!cup.celeb){cup.celeb=true;saveLG();confetti(0);Au.goal('trophy');}
 }
 function openCup(){
   // overlays + the HUD aren't in the screen registry — taken down by hand before routing.
   $('lgSeasonEnd').classList.add('hidden');$('lgForfeit').classList.add('hidden');$('lgWipe').classList.add('hidden');
   $('pause').classList.add('hidden');$('win').classList.add('hidden');hudShow(false);
   showScreen('championsCup');   // applies this screen's saved panel arrangement (js/layout.js)
+  cupSetTab('cup');             // always open on the tie, whatever tab was showing last time
   // Cup owns its own venue (same rule as the league lobby); the screen change above cancels the
   // restore, so walking league→cup doesn't free and re-fetch a room in between.
   lgVenueEnter(cupVenue());
@@ -1363,15 +1350,26 @@ function lgSetTab(t){
  $('lgClubEditLayout').classList.toggle('hidden',t!=='club');
  if(typeof layApply==='function'){if(t==='season')layApply('league');else if(t==='club')layApply('leagueClub');}
 }
+/* The cup's tabs, the same shape: Cup (bracket, the tie, the opponent), Squad, Club (rules + honours).
+   Before the tabs all six panels shared one page and it ran ~700px past the bottom of a 1280x800 window. */
+const CUP_TABS=['cup','squad','club'];
+function cupSetTab(t){
+ if(CUP_TABS.indexOf(t)<0)t='cup';
+ for(const k of CUP_TABS){$('cupTab_'+k).classList.toggle('hidden',k!==t);$('cupTabBtn'+k[0].toUpperCase()+k.slice(1)).classList.toggle('on',k===t);}
+ $('cupEditLayout').classList.toggle('hidden',t!=='cup');
+ $('cupClubEditLayout').classList.toggle('hidden',t!=='club');
+ if(typeof layApply==='function'){if(t==='cup')layApply('championsCup');else if(t==='club')layApply('cupClub');}
+}
 /* ---- bind ---- */
 function bindLeague(){
-  for(const k of LG_TABS)$('lgTabBtn'+k[0].toUpperCase()+k.slice(1)).onclick=()=>{lgSetTab(k);Au.ui();};
+  for(const k of LG_TABS)$('lgTabBtn'+k[0].toUpperCase()+k.slice(1)).onclick=()=>{lgSetTab(k);Au.ui('tab');};
+  for(const k of CUP_TABS)$('cupTabBtn'+k[0].toUpperCase()+k.slice(1)).onclick=()=>{cupSetTab(k);Au.ui('tab');};
   // A first-ever match through the League is offered the tutorial first, same as Kick Off (js/tutorial.js).
   $('btnLeague').onclick=()=>{Au.init();Au.ui();if(typeof tutOffer==='function'&&tutOffer(openSlots,'Go to the League'))return;openSlots();};
-  $('lgBack').onclick=()=>{showScreen('home');Au.ui();};
+  $('lgBack').onclick=()=>{showScreen('home');Au.ui('back');};
   // Corner ↺ always resets (confirm is because it's a thumb-width from Back and unlabelled).
-  $('lgReset').onclick=()=>{$('lgWipe').classList.remove('hidden');Au.ui();};
-  $('btnWipeCancel').onclick=()=>{$('lgWipe').classList.add('hidden');Au.ui();};
+  $('lgReset').onclick=()=>{$('lgWipe').classList.remove('hidden');Au.ui('open');};
+  $('btnWipeCancel').onclick=()=>{$('lgWipe').classList.add('hidden');Au.ui('back');};
   $('btnWipe').onclick=()=>{$('lgWipe').classList.add('hidden');lgRestart(false);};
   $('lgNext').onclick=()=>lgRestart(true);
    $('lgPlay').onclick=lgPlayMatch;
@@ -1385,6 +1383,6 @@ function bindLeague(){
    $('cupBack').onclick=cupReturn;
    // Own key, not LG.control: the cup is a different table with different stakes.
    $('cupControl').onchange=e=>{if(LG){LG.cupControl=e.target.value;saveLG();}Au.ui();};
-   $('lgSlotsBack').onclick=()=>{showScreen('home');Au.ui();};
+   $('lgSlotsBack').onclick=()=>{showScreen('home');Au.ui('back');};
 }
 bindLeague();

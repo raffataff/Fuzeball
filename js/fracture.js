@@ -88,16 +88,18 @@ function spawnFracture(r,mi){
   scene.add(inst);
   // Tint the same kit parts the intact figure tints (CONFIG.playerModel.models[].
   // teamParts) so the debris still reads as red/blue instead of reverting to
-  // whatever base colour the shard was authored/exported with. Cell Fracture keeps
+  // whatever base colour the shard was authored/exported with. Shardsmith keeps
   // each shard's original material slot on its exterior faces, so the material
   // names should already match teamParts the same way they do on the live model.
+  // Only Blender's numeric re-import suffix (.001) is stripped: a name like
+  // kit_grimlot.skin is a DIFFERENT material from kit_grimlot and must not be tinted.
   const teamParts=new Set((activeModel(r.team).teamParts||[]).map(s=>s.toLowerCase()));
   const col=kitLin(r.team===0?cfg.redColor:cfg.blueColor);
   const mats=[];
   inst.traverse(c=>{
    if(!c.isMesh)return;
    c.material.transparent=true;c.material.opacity=1;
-   const name=(c.material.name||'').toLowerCase().split('.')[0]; // strip Blender's .001 re-import suffix
+   const name=(c.material.name||'').toLowerCase().replace(/\.\d+$/,'');
    if(teamParts.has(name))c.material.color.set(col);
    mats.push(c.material);
   });

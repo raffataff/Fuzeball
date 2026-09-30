@@ -14,7 +14,7 @@ function vselStep(sel,d){
  const o=sel.options,n=o.length;if(!n)return false;let i=sel.selectedIndex;
  for(let k=0;k<n;k++){i=(i+d+n)%n;if(!o[i].disabled&&!o[i].hidden)break;}
  if(i===sel.selectedIndex||o[i].disabled||o[i].hidden)return false;
- sel.selectedIndex=i;sel.dispatchEvent(new Event('input',{bubbles:true}));sel.dispatchEvent(new Event('change',{bubbles:true}));
+ sel.selectedIndex=i;Au.ui('value');sel.dispatchEvent(new Event('input',{bubbles:true}));sel.dispatchEvent(new Event('change',{bubbles:true}));
  return true;
 }
 // Arrows dim when there is nothing to step to (one live option, or a disabled select).

@@ -57,33 +57,36 @@ function rbAbs(j){return RB.tot-RB.n+j;}
    UI clicks are match chrome, not footage, and the horn is re-fired deliberately at the
    freeze-frame instead (REPLAY.audio.goalSting).
 
-   Each entry stores the ABS step it fired on plus the two arguments those methods take: a
-   magnitude, and the ball type's audio config OBJECT. The object is stored by reference in a
-   preallocated slot array — a few live references, never a growing allocation, and it keeps a
-   replayed fireball sounding like a fireball rather than like a generic hit. */
-const RS={cap:CONFIG.replay.audio.events,n:0,head:0,step:null,kind:null,p:null,arg:null,
- keys:['kick','wall','post','power','boom']};
+   Each entry stores the ABS step it fired on plus the arguments those methods take: a
+   magnitude, the ball type's audio config OBJECT, WHERE it happened (the ball's position and type,
+   copied, so the replayed hit pans where the ball was and a fireball take stays a fireball's), and
+   the surface kind. The config object is stored by reference in a preallocated slot array — a few
+   live references, never a growing allocation. */
+const RS={cap:CONFIG.replay.audio.events,n:0,head:0,step:null,kind:null,p:null,arg:null,pos:null,key:null,e:null,
+ src:{x:0,y:0,z:0,key:null},keys:['kick','wall','post','power','boom']};
 function replaySndAlloc(){
  RS.step=new Int32Array(RS.cap);RS.kind=new Int8Array(RS.cap);
  RS.p=new Float32Array(RS.cap);RS.arg=new Array(RS.cap);
+ RS.pos=new Float32Array(RS.cap*3);RS.key=new Array(RS.cap);RS.e=new Int8Array(RS.cap);
 }
 function rsIdx(j){return(RS.head-RS.n+j+RS.cap)%RS.cap;}
 // The tap. Gated exactly like recordReplay, plus a !RP.on guard so the sounds playback
 // re-fires can't log themselves back into the buffer.
-function replaySndLog(k,p,a){
+function replaySndLog(k,p,a,s,e){
  if(!REPLAY.on||!REPLAY.audio.on||!cfg.replay||RP.on||S.phase!=='play')return;
  if(!RS.step)replaySndAlloc();
- const i=RS.head;
+ const i=RS.head,q=s&&(s.m?s.m.position:s);
  RS.step[i]=RB.tot;   // sounds fire inside physics(), which runs BEFORE recordReplay in the same
                       // step — so RB.tot is still the index of the step about to be written
  RS.kind[i]=k;RS.p[i]=p||0;RS.arg[i]=a||null;
+ RS.pos[i*3]=q?q.x:NaN;RS.pos[i*3+1]=q?q.y:NaN;RS.pos[i*3+2]=q?q.z:NaN;RS.key[i]=(s&&s.key)||null;RS.e[i]=e|0;
  RS.head=(RS.head+1)%RS.cap;if(RS.n<RS.cap)RS.n++;
 }
 (function tapAu(){   // replay.js loads after audio.js, so Au exists and nothing has called it yet
  for(let k=0;k<RS.keys.length;k++){
   const nm=RS.keys[k],fn=Au[nm];
   if(typeof fn!=='function')continue;
-  Au[nm]=function(p,a){replaySndLog(k,p,a);return fn.call(this,p,a);};
+  Au[nm]=function(p,a,s,e){replaySndLog(k,p,a,s,e);return fn.call(this,p,a,s,e);};
  }
 })();
 /* Fire everything the footage has passed since the last frame. Playback is strictly forward,
@@ -101,7 +104,9 @@ function replaySndUpdate(absNow,zk){
   const i=rsIdx(RP.sndI);
   if(RS.step[i]>absNow)break;
   RP.sndI++;
-  const fn=Au[RS.keys[RS.kind[i]]];if(fn)fn.call(Au,RS.p[i],RS.arg[i]);
+  const fn=Au[RS.keys[RS.kind[i]]],o=RS.src;
+  o.x=RS.pos[i*3];o.y=RS.pos[i*3+1];o.z=RS.pos[i*3+2];o.key=RS.key[i];   // one reused object: Au reads it synchronously
+  if(fn)fn.call(Au,RS.p[i],RS.arg[i],o,RS.e[i]);
  }
  Au.rate=1;Au.vol=1;
 }

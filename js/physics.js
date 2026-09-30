@@ -216,7 +216,7 @@ function stepBall(b,h){
   wallLatch(b);              // decide, once, whether this ball is still inside the cabinet
   if(p.y<BALL_R&&!b.outWall){
    p.y=BALL_R;
-   if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+   if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall,b,1);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
@@ -229,7 +229,7 @@ function stepBall(b,h){
    const sz=p.z>0?1:-1;
    // gated on FRESH contact + PHY.wallHitSnd: a ball riding the wall re-enters this branch every
    // substep, and firing a tap each time is what made the buzzsaw. The ride is a roll (rollProbe).
-   if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,0,0,-sz,im);}}   // the tap AND the scuff ride the same fresh-contact gate
+   if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall,b,0);spawnMark(b,0,0,-sz,im);}}   // the tap AND the scuff ride the same fresh-contact gate
    p.z=sz*zl;
   }
   if(!b.scored){
@@ -244,14 +244,14 @@ function stepBall(b,h){
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
      else if(b.overBar!==1&&b.noGoal!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}   // goal ONLY under the bar, whole ball over the line, in through the mouth
-    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,-1,0,0,im);}}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
+    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x>0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall,b,0);spawnMark(b,-1,0,0,im);}}p.x=xl;}   // clamp always, bounce on arrival — same reason as the side walls above
    }else if(p.x<-xl){
     const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
     if(p.x<-F.L/2&&notMouth(p,gh))b.noGoal=-1;
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x<-F.L/2&&p.y>=F.goalH)b.overBar=-1;
      else if(b.overBar!==-1&&b.noGoal!==-1&&p.y<F.goalH&&p.x<-F.L/2-BALL_R){onGoal(1,b);return;}}
-    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall);spawnMark(b,1,0,0,im);}}p.x=-xl;}
+    else if(p.y<ew+BALL_R&&!b.outWall){if(v.x<0){const im=Math.abs(v.x);v.x=-v.x*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall,b,0);spawnMark(b,1,0,0,im);}}p.x=-xl;}
    }
    if(b.overBar===1&&p.x<F.L/2)b.overBar=0; else if(b.overBar===-1&&p.x>-F.L/2)b.overBar=0;      // rolled back in FRONT of the line → live again
    if(b.noGoal===1&&p.x<F.L/2)b.noGoal=0; else if(b.noGoal===-1&&p.x>-F.L/2)b.noGoal=0;         // same for the mouth latch
@@ -305,7 +305,7 @@ function stepBall(b,h){
      arenaContact(b,pen,nx,ny,nz);contacted=true;
     }
     if(p.y<BALL_R&&!b.outWall){
-     p.y=BALL_R;if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
+     p.y=BALL_R;if(v.y<0){if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.5,b.t.audio?.wall,b,1);v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;}
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
@@ -383,13 +383,13 @@ function goalFrameCollide(b,h){
   if(p.y<GH+pr)for(let sz=-1;sz<=1;sz+=2){
    const dx=p.x-gx,dz=p.z-sz*gh,dd=Math.hypot(dx,dz);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,nz=dz/dd;p.x+=nx*(pr-dd);p.z+=nz*(pr-dd);
-    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn,b.t.audio?.post);momWood(b,-vn,0);}}
+    const vn=v.x*nx+v.z*nz;if(vn<0){v.x-=e*vn*nx;v.z-=e*vn*nz;Au.post(-vn,b.t.audio?.post,b);momWood(b,-vn,0);}}
   }
   // crossbar: horizontal cylinder along z at (gx, goalH), z∈[-gh,gh]
   if(Math.abs(p.z)<gh+pr){
    const dx=p.x-gx,dy=p.y-GH,dd=Math.hypot(dx,dy);
    if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
-    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post);momWood(b,-vn,1);}}
+    const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post,b);momWood(b,-vn,1);}}
   }
   // net roof: solid top over the goal box (behind the line). A ball flagged as an over-the-bar lob
   // (b.overBar for this end) is caught at ANY depth below the roofline so a fast drop can't tunnel
@@ -397,7 +397,7 @@ function goalFrameCollide(b,h){
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
   const roofSolid=sx>0?(b.overBar===1||b.noGoal===1):(b.overBar===-1||b.noGoal===-1);
    if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
-   p.y=GH+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall);
+   p.y=GH+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall,b,1);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }
@@ -552,7 +552,7 @@ function collideRod(b,r){
     if(!trapping)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
-    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
+    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js: per-ball contact record (reads the PREVIOUS one, so it goes first) · matchstats.js keeps its OWN record, so the order of the two is free
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
@@ -616,7 +616,7 @@ function collideRod(b,r){
     if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);
     if(!trapping)wallAssist(b,r,true);                 // …and off the leg too — see the foot-box pass
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
-   if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick);
+   if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
@@ -653,5 +653,5 @@ function ballBall(a,b){
  // pile resolve every substep, and the old ungated call turned that into the same machine-gun
  // the walls had. The heavier ball owns the timbre, as before.
  const cl=van-vbn,fa=hitFresh(a,2,cl,PHY.ballHitSnd),fb=hitFresh(b,2,cl,PHY.ballHitSnd);
- if(fa&&fb)Au.wall(cl*2,(ma>=mb?a:b).t.audio?.wall);
+ if(fa&&fb)Au.wall(cl*2,(ma>=mb?a:b).t.audio?.wall,ma>=mb?a:b,2);
 }

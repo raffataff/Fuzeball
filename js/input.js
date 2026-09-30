@@ -80,13 +80,13 @@ addEventListener('keydown',e=>{
      the key, which is why the release itself is read as the pause (pointerlockchange, below).
      Some browsers deliver BOTH, and two pauses in one press is a pause that never happened. */
   if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
-  if(!$('uiConfirm').classList.contains('hidden')){uiConfirmClose();Au.ui();return;}   // Esc answers "no" — never the destructive side
+  if(!$('uiConfirm').classList.contains('hidden')){uiConfirmClose();Au.ui('back');return;}   // Esc answers "no" — never the destructive side
   if(!$('options').classList.contains('hidden')){closeOptions();return;}
   if(!$('lgForfeit').classList.contains('hidden')){$('lgForfeit').classList.add('hidden');return;}
   if(!$('lgWipe').classList.contains('hidden')){$('lgWipe').classList.add('hidden');return;}   // same rule as the forfeit: Esc answers the dialog, it doesn't leave the screen behind it
   // out of a match, Esc walks one step back up the screen tree (js/screens.js). backScreen()
   // returns false at a top-level screen, so Esc on the menu still falls through to togglePause.
-  if(S.phase==='menu'&&backScreen()){Au.ui();return;}
+  if(S.phase==='menu'&&backScreen()){Au.ui('back');return;}
   togglePause();return;
  }
  if(bindIs('camera',e.code)&&S.phase!=='menu'){cycleCam(1);}

@@ -326,6 +326,6 @@ function trnAngTick(){
  nav('btnTraining','training');
  nav('btnTrnTrials','trials');
  const sb=$('btnTrnSandbox');if(sb)sb.onclick=()=>startMatch('training');
- const bk=$('trainingBack');if(bk)bk.onclick=()=>{showScreen('home');Au.ui();};
- const bt=$('trialsBack');if(bt)bt.onclick=()=>{showScreen('training');Au.ui();};
+ const bk=$('trainingBack');if(bk)bk.onclick=()=>{showScreen('home');Au.ui('back');};
+ const bt=$('trialsBack');if(bt)bt.onclick=()=>{showScreen('training');Au.ui('back');};
 })();

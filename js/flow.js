@@ -129,7 +129,7 @@ function startMatchNow(mode,rodLockRole){
   if(typeof boot==='function')boot();
   if(!rods.length)return;   // main.js not parsed yet — swallow the click rather than start a rodless match
  }
- Au.init();Au.ui();
+ Au.init();Au.ui('start');
  // 'roster' = the Kick Off lobby's line-up (S.roster, js/roster.js). userTeam is the PRIMARY
  // seat's team — it drives the camera/HUD tint and the handle-side flip, not per-player state —
  // so with an empty roster it falls to -1 and the match is an AI-vs-AI spectate, same as 'ai'.
@@ -214,6 +214,7 @@ function startMatchNow(mode,rodLockRole){
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;}   // the loop is the count's only writer (main.js → hudCount)
 function onGoal(team,b){
  if(b.scored)return;
+ Au.goalIn(b);   // the ball dropping into the goal (recorded only)
  if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
  b.scored=true;
  const val=b.t.value||1;
@@ -265,7 +266,7 @@ function checkMatchClock(){
  const lim=gameTimeLimit();               // seconds; 0 = unlimited
  if(lim<=0||S.suddenDeath)return;
  const rem=lim-S.matchTime;
- if(rem<=MATCH.warnT){const s=Math.ceil(rem);if(s>=1&&s!==S.clockBeep){S.clockBeep=s;Au.beep(1200,.08,'square',.16);}}
+ if(rem<=MATCH.warnT){const s=Math.ceil(rem);if(s>=1&&s!==S.clockBeep){S.clockBeep=s;Au.count(-1);}}
  if(rem>0)return;
  if(S.score[0]!==S.score[1]){Au.whistle(2);endMatch(S.score[0]>S.score[1]?0:1);}
  else{S.suddenDeath=true;Au.whistle();banner('SUDDEN DEATH','NEXT GOAL WINS',2.2,'var(--gold)');}
@@ -284,7 +285,7 @@ function outOfBounds(b){
 }
 function endMatch(w){
  S.phase='win';S.pendingWin=null;   // cleared here too: a clock-out/forfeit can land while a goal replay is queued
- Au.goal();Au.whistle(3);
+ Au.goal('win');Au.whistle(3);
  flash();S.shake=1;
  clearBalls();clearPU();replayAbort();clearFxRail();
   const wasLg=!!S.lg;
@@ -314,8 +315,8 @@ function endMatch(w){
  confetti(w);
 }
 function togglePause(){
- if(S.phase==='play'||S.phase==='count'){S.prePause=S.phase;S.phase='pause';$('pause').classList.remove('hidden');Au.ui();}
- else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');mouseLockRequest();Au.ui();}   // the Resume click is the gesture the lock needs
+ if(S.phase==='play'||S.phase==='count'){S.prePause=S.phase;S.phase='pause';$('pause').classList.remove('hidden');Au.ui('open');}
+ else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');mouseLockRequest();Au.ui('back');}   // the Resume click is the gesture the lock needs
 }
 function gotoMenu(){
   if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods + drop the training gate

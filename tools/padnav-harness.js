@@ -72,6 +72,7 @@ function boot(src){
   requestAnimationFrame:()=>0,addEventListener:()=>{},
   Event:function(t){this.type=t;},MouseEvent:function(t){this.type=t;},
   S:{phase:'menu',seats:[]},SCREENS:{},CONFIG:{hud:{hintHold:9,hintDim:.4}},
+  Au:{ui(){}},   // menu sounds (js/audio.js): padnav asks for move/value/tab/back ones
   gpDown:(gp,i)=>{const b=gp.buttons[i];return!!b&&(b.pressed||b.value>.5);}};
  ctx.screenId=()=>ctx.__scr;
  vm.createContext(ctx);
@@ -110,8 +111,7 @@ function suite(src,lsrc){
    rep:R('setReplay','input',[401,127,18,18],'checkbox'),auto:R('setAuto','input',[401,156,18,18],'checkbox'),
    table:R('setTable','select',[663,-95,92,33]),skin:R('setSkin','select',[618,-54,137,33]),
    pitch:R('setPitch','select',[603,-13,152,33]),room:R('setRoom','select',[633,28,122,33]),
-   refl:R('setReflect','input',[737,71,18,18],'checkbox'),snd:R('setSound','input',[1073,-95,18,18],'checkbox'),
-   amb:R('setAmbience','input',[1073,-66,18,18],'checkbox')};
+   refl:R('setReflect','input',[737,71,18,18],'checkbox')};
   root.add(...Object.values(els));
   c.N.NAV.root={key:'menu',el:root};
   const walk=(from,dx,dy,n)=>{c.N.navSet(from);const o=[];for(let i=0;i<n;i++){c.N.navMove(dx,dy);o.push(nm(c.N.NAV.el));}return o;};
@@ -123,7 +123,7 @@ function suite(src,lsrc){
   c.N.navSet(els.auto);c.N.navMove(1,0);const rx=c.N.NAV.el.getBoundingClientRect().left;
   ok(rx>590&&rx<800,'right from the last rules checkbox reaches the Table & Venue panel',nm(c.N.NAV.el));
   c.N.navSet(els.refl);c.N.navMove(1,0);
-  ok(c.N.NAV.el===els.snd||c.N.NAV.el===els.amb,'right from Reflections reaches the Audio panel',nm(c.N.NAV.el));
+  ok(c.N.NAV.el===els.refl,'right from Reflections (the last panel) stops at the edge',nm(c.N.NAV.el));
   c.N.navSet(els.dRed);c.N.navMove(-1,0);
   ok(c.N.NAV.el===els.dRed||c.N.NAV.el.getBoundingClientRect().left<334,'left never jumps rightwards',nm(c.N.NAV.el));}
 
@@ -334,7 +334,7 @@ function suite(src,lsrc){
   wrap.add(pA,pB);scr.add(wrap,bar);c.doc.body.add(scr);
   c.SCREENS.menu={back:'home',lay:{wrap:'#wrapM',btn:'btnLay',panels:['pA','pB']}};c.__scr='menu';
   c.doc.querySelector=sel=>c.doc.body.querySelector(sel);
-  vm.runInContext(lsrc+';globalThis.__lay={set:(k,b)=>{layEditing=k;layBar=b;},LAY_PAD};',c);
+  vm.runInContext(lsrc+';globalThis.__lay={set:(k,b)=>{layEditing=k;layBar=b;},LAY_PAD,layPx};',c);
   const L=c.__lay;L.set('menu',bar);
   // layout.js applies the live screen when it loads, which hands a wrap with no save back to the CSS flow (inline
   // styles cleared) — so the arrangement being edited is laid down after it.
@@ -361,7 +361,16 @@ function suite(src,lsrc){
   press(0);press(15);press(15);press(0);
   ok(!L.LAY_PAD.el&&pB.style.left==='448px','A drops it where it now is',pB.style.left);
   const sv=c.cfg.layouts.menu;
-  ok(!!(sv&&sv.p.pB&&sv.p.pA)&&sv.p.pB.x-sv.p.pA.x===432,'the drop is SAVED, normalised like a mouse release',sv&&JSON.stringify(sv.p));
+  ok(!!(sv&&sv.v===2&&sv.p.pB&&sv.p.pA)&&L.layPx(sv.p.pB,1200).x-L.layPx(sv.p.pA,1200).x===432,'the drop is SAVED (v:2 fractions), normalised like a mouse release',sv&&JSON.stringify(sv.p));
+  N.navSet(pA);step(30);
+  ok(/X|Reset panel/.test(N.NAV.hintSig)&&/Y|Undo/.test(N.NAV.hintSig)&&/B|Save/.test(N.NAV.hintSig),'on a panel: X resets it, Y undoes, B saves',N.NAV.hintSig);
+  const before=JSON.stringify(c.cfg.layouts.menu);press(0);press(13);press(0);
+  ok(JSON.stringify(c.cfg.layouts.menu)!==before,'a second move is saved');
+  press(3);ok(JSON.stringify(c.cfg.layouts.menu)===before,'Y undoes exactly one step',JSON.stringify(c.cfg.layouts.menu));
+  press(0);press(0);ok(JSON.stringify(c.cfg.layouts.menu)===before,'a grab dropped where it was costs no undo step');
+  press(3);ok(c.cfg.layouts.menu==null,'…so the next Y goes back past it, to no arrangement at all',JSON.stringify(c.cfg.layouts.menu));
+  Object.assign(pA.style,{left:'16px',top:'16px',width:'384px',height:'288px'});Object.assign(pB.style,{left:'448px',top:'16px',width:'384px',height:'288px'});
+  N.navSet(pB);
   for(let i=0;i<200;i++)press(15);
   ok(parseFloat(pB.style.left)<=1200-384,'a pad cannot push a panel off the wrap either',pB.style.left);
   L.set(null,null);step(2);
@@ -402,6 +411,8 @@ const MUT=[
  ['Switch labelled by print, not position',()=>mutate("nin:{A:{t:'B'},B:{t:'A'},","nin:{A:{t:'A'},B:{t:'B'},")],
  ['PlayStation face buttons typed as letters',()=>mutate("ps:{A:{s:'cross',","ps:{A:{t:'X',")],
  ['family change never re-labels the page',()=>mutate('if(f!==NAV.fam){NAV.fam=f;padLabels();}','if(f!==NAV.fam){NAV.fam=f;}')],
+ ['Y does not undo in the editor',()=>mutate("else layUndo();NAV.hintT=0;continue;}","NAV.hintT=0;continue;}")],
+ ['a no-move drop is an undo step (both guards off)',()=>{const m=mutL('if(layNums(o)===layNums(L)){if(o&&L.d&&!o.d){o.d=1;saveCfg();laySelSync();}return false;}','');const m2=m.replace(' if(layPxSame(cfg.layouts[k],n,A))return;','');if(m2===m)throw new Error('MUTATION DID NOT APPLY: layPxSame');return [NAVSRC,m2];}],
  ['editor offers the DOM, not whole panels',()=>mutate('function navList(R){return R.cands?R.cands():navCands(R.el);}','function navList(R){return navCands(R.el);}')],
  ['a held panel lets the cursor move instead',()=>mutate('if(navGrab()){layPadNudge(dx,dy);','if(false){layPadNudge(dx,dy);')],
  ['B keeps the move',()=>[NAVSRC,mutL('if(!keep&&LAY_PAD.was)','if(false&&LAY_PAD.was)')]],

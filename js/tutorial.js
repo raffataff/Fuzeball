@@ -193,7 +193,7 @@ function tutFinish(){
  TUT.fin=true;TUT.card=true;
  if(!cfg.tutDone){cfg.tutDone=true;saveCfg();}   // monotonic: the achievement reads this
  TRN.freeze=true;
- Au.goal();if(typeof confetti==='function')confetti();
+ Au.goal('medal');if(typeof confetti==='function')confetti();
  TUT.sig='';tutHudSync();
 }
 // From trainingExit (gotoMenu): drop the gate, hide the chrome, give the sandbox its settings back.
@@ -295,7 +295,7 @@ SCREENS.tutorial.onShow=()=>{
  on('tutKbm',()=>tutBegin('kbm'));
  on('tutPad',()=>tutBegin('pad'));
  on('tutSkip',tutSkipAll);
- on('tutBack',()=>{Au.ui();showScreen(TUT.back);});
+ on('tutBack',()=>{Au.ui('back');showScreen(TUT.back);});
  on('btnTrnTutorial',()=>{Au.init();Au.ui();tutOpen('training',null);});
  const card=$('btnTrnTutorial');if(card&&!tutOn())card.classList.add('hidden');
 })();

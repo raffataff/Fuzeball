@@ -77,7 +77,7 @@ function initCustomize(){
   $('czScale').oninput=e=>{cfg[PV.team===0?'redScale':'blueScale']=+e.target.value;czAfterFinish();};
  $('czYaw').oninput=e=>{const key=PV.team===0?'redYaw':'blueYaw';cfg[key]=+e.target.value;PV.yaw=cfg[key];
   PV.spin=false;$('czSpin').classList.remove('on');saveCfg();czSyncYaw();};
- addEventListener('resize',()=>{if(PV.on)pvResize();});
+ addEventListener('resize',()=>{if(PV.on){czStripFit();pvResize();}});
  $('czSpin').classList.add('on');
 }
 
@@ -92,8 +92,21 @@ function openCustomize(team){
  if(team===0||team===1){PV.team=team;PV.yaw=team===0?cfg.redYaw:cfg.blueYaw;}
  try{Au.ui();}catch(e){}
  showScreen('customize');
- czSyncUI();
+ czSyncUI();czStripFit();   // before pvResize: the strip's height is what the preview has left
  requestAnimationFrame(()=>{pvInit();pvLoadModel();pvResize();PV.on=true;pvTick();});
+}
+/* The figurine strip under the preview (CONFIG.playerModel.strip): the fewest rows that fit every card
+   at its minimum size, then cards as large as the width allows, up to max. Past maxRows it stays at
+   maxRows and the strip scrolls sideways, so a longer cast never eats the preview. */
+function czStripFit(){
+ const st=$('czStrip'),mc=$('czModels'),C=CONFIG.playerModel.strip;if(!st||!mc)return;
+ const cs=getComputedStyle(st),g=parseFloat(getComputedStyle(mc).columnGap)||0,n=mc.children.length;
+ const W=st.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+ if(!n||W<=0)return;
+ const fit=Math.max(1,Math.floor((W+g)/(C.min+g)));
+ const rows=clamp(Math.ceil(n/fit),C.minRows,C.maxRows),cols=Math.ceil(n/rows);
+ mc.style.setProperty('--czCols',cols);
+ mc.style.setProperty('--czCard',clamp(Math.floor((W-g*(cols-1))/cols),C.min,C.max)+'px');
 }
 function closeCustomize(){showScreen('menu');}   // onHide above does the stop/refresh
 

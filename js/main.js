@@ -61,9 +61,9 @@ function loop(t){
    else if(S.phase==='count'){
     S.countT-=rdt;
     const v=Math.ceil(S.countT);
-    if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.beep(880,.09,'square',.14);}
+    if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.count(v);}
     hudCount(S.countT>3?'READY':v>=1?v:'');
-    if(S.countT<=0){hudCount('');Au.beep(1400,.2,'square',.18);serve();}
+    if(S.countT<=0){hudCount('');Au.count(0);serve();}
    }
   }
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);

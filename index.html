@@ -53,7 +53,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.35.6</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.36</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -193,11 +193,6 @@
       <div class="row"><label>Location</label><select id="setRoom"></select></div>
       <div class="row"><label>Reflections</label><input type="checkbox" id="setReflect" checked></div>
     </div>
-    <div class="panel" id="menuAudioPanel">
-      <h3>Audio</h3>
-      <div class="row"><label>Sound</label><input type="checkbox" id="setSound" checked></div>
-      <div class="row"><label>Ambience</label><input type="checkbox" id="setAmbience" checked></div>
-    </div>
   </div>
   </div>
   <div class="foot">First to score wins the crowd · special balls drop from above</div>
@@ -220,12 +215,11 @@
       </div>
       <div class="czDrag">drag to rotate · scroll to zoom</div>
     </div>
+    <div class="czStrip" id="czStrip">
+      <div id="czModels" class="czModels"></div>
+    </div>
     <div class="czPanel">
       <h2 class="czTitle">CUSTOMIZE</h2>
-      <div class="czSect">
-        <h4>Figurine</h4>
-        <div id="czModels" class="czModels"></div>
-      </div>
       <div class="czSect">
         <h4>Kit colour</h4>
         <div id="czSwatch" class="czSwatch"></div>
@@ -320,9 +314,15 @@
   </div>
   <div class="scrTab" id="lgTab_season">
   <div class="lgWrap">
-    <div class="panel" id="lgStandingsPanel">
-      <h3>Standings</h3>
-      <div id="lgTable"></div>
+    <div class="lgSide lgLeft">
+      <div class="panel" id="lgStandingsPanel">
+        <h3>Standings</h3>
+        <div id="lgTable"></div>
+      </div>
+      <div class="panel hidden" id="lgLastPanel">
+        <h3>Last Round</h3>
+        <div class="lgFixList" id="lgLast"></div>
+      </div>
     </div>
     <div class="lgSide">
       <div class="panel" id="lgFixturePanel">
@@ -335,14 +335,13 @@
         <button class="btn lgPlayBtn" id="lgPlay">▶ Play Match</button>
         <div class="lgFixList" id="lgRound"></div>
       </div>
-      <div class="panel hidden" id="lgLastPanel">
-        <h3>Last Round</h3>
-        <div class="lgFixList" id="lgLast"></div>
-      </div>
     </div>
     <div class="panel hidden lgScout" id="lgScout">
-      <h3 id="lgScoutName">SCOUT</h3>
-      <div class="lgScoutRec" id="lgScoutRec"></div>
+      <h3 id="lgScoutTitle">Opponent</h3>
+      <div class="lgScoutHead">
+        <div class="lgScoutId"><div class="lgScoutTeam" id="lgScoutName"></div><div class="lgScoutRec" id="lgScoutRec"></div></div>
+        <div class="lgScoutFig" id="lgScoutFig"></div>
+      </div>
       <div class="lgScoutRate" id="lgScoutBody"></div>
     </div>
   </div>
@@ -538,10 +537,6 @@
       <div class="optHint">Press <b>+</b>, then a key, a mouse button or the wheel. Click a key to remove it. ESC cancels. A key already doing something else moves to the new action.</div>
       <div class="optHint" id="kbCtrlW"><b>Ctrl+W, Ctrl+T and Ctrl+N</b> close or open browser tabs and a web page can't stop them. With finesse on a Ctrl key, slide on the arrows rather than W / S when playing in a browser.</div>
     </div>
-    <div class="panel optPanel" id="optKbmRefPanel">
-      <h3>Keyboard Reference</h3>
-      <div class="ctl" id="optCtlRefKbm"></div>
-    </div>
   </div>
   </div><!-- /optTab_kbm -->
 </div>
@@ -624,8 +619,16 @@
 <div id="championsCup" class="screen hidden">
   <button id="cupBack" class="optGear backBtn" title="Back to league">&#9664;</button>
   <button id="cupEditLayout" class="optGear lyGearBtn" title="Arrange panels">⊞</button>
+  <button id="cupClubEditLayout" class="optGear lyGearBtn hidden" title="Arrange panels">⊞</button>
   <h2 class="lgTitle" id="cupTitle">CHAMPIONS CUP</h2>
   <div class="lgSub" id="cupSub"></div>
+  <!-- Three tabs, like the league lobby: the tie, your squad, and the rules + honours. -->
+  <div class="scrTabs">
+    <button class="scrTabBtn on" id="cupTabBtnCup">Cup</button>
+    <button class="scrTabBtn" id="cupTabBtnSquad">Squad</button>
+    <button class="scrTabBtn" id="cupTabBtnClub">Club</button>
+  </div>
+  <div class="scrTab" id="cupTab_cup">
   <div class="lgWrap">
     <div class="panel" id="cupBracketPanel">
       <h3>Bracket</h3>
@@ -635,39 +638,50 @@
       <div class="panel" id="cupFixturePanel">
         <h3>Next Tie</h3>
         <div class="lgFixture" id="cupFixture"></div>
-      </div>
-
-      <div class="panel" id="cupSettingsPanel">
-        <h3>Match Settings</h3>
-        <div class="lgRuleNote">Shared with the league — changing one changes both.</div>
-        <div class="row"><label>Goals to win</label><select id="cupGoals">
-          <option>3</option><option>5</option><option>7</option><option>10</option>
-        </select></div>
-        <div class="row"><label>Game time</label><select id="cupGameTime">
-          <option value="0">No limit</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
-        </select></div>
-        <div class="row"><label>Special balls</label><input type="checkbox" id="cupSpecial"></div>
-        <div class="row"><label>Power-ups</label><input type="checkbox" id="cupPower"></div>
-        <div class="row"><label>Control</label><select id="cupControl">
+        <div class="row" id="cupControlRow"><label>You control</label><select id="cupControl">
           <option value="">All rods</option><option value="GK">GK only</option><option value="DEF">DEF only</option>
           <option value="MID">MID only</option><option value="ATT">ATT only</option><option value="watch">Spectate</option>
         </select></div>
         <button class="btn gold lgPlayBtn" id="cupPlay">▶ Play Tie</button>
       </div>
-      <div class="panel hidden lgHist" id="cupHistPanel">
-        <h3>Cup Honours <span style="color:var(--gold);font-weight:400" id="cupTitles"></span></h3>
-        <div id="cupHist"></div>
-      </div>
     </div>
+    <div class="panel hidden lgScout" id="cupScout">
+      <h3 id="cupScoutTitle">Opponent</h3>
+      <div class="lgScoutHead">
+        <div class="lgScoutId"><div class="lgScoutTeam" id="cupScoutName"></div><div class="lgScoutRec" id="cupScoutRec"></div></div>
+        <div class="lgScoutFig" id="cupScoutFig"></div>
+      </div>
+      <div id="cupScoutBody"></div>
+    </div>
+  </div>
+  </div>
+  <div class="scrTab hidden" id="cupTab_squad">
+  <div class="lgWrap">
     <div class="panel" id="cupSquadPanel">
       <h3>Squad · <span class="lgUPWrap"><span id="cupUP">0</span> parts</span></h3>
       <div id="cupSquad"></div>
     </div>
-    <div class="panel hidden lgScout" id="cupScout">
-      <h3 id="cupScoutName">SCOUT</h3>
-      <div class="lgScoutRec" id="cupScoutRec"></div>
-      <div id="cupScoutBody"></div>
+  </div>
+  </div>
+  <div class="scrTab hidden" id="cupTab_club">
+  <div class="lgWrap">
+    <div class="panel" id="cupSettingsPanel">
+      <h3>Match Rules</h3>
+      <div class="lgRuleNote">Shared with the league — changing one changes both.</div>
+      <div class="row"><label>Goals to win</label><select id="cupGoals">
+        <option>3</option><option>5</option><option>7</option><option>10</option>
+      </select></div>
+      <div class="row"><label>Game time</label><select id="cupGameTime">
+        <option value="0">No limit</option><option value="5">5 minutes</option><option value="10">10 minutes</option>
+      </select></div>
+      <div class="row"><label>Special balls</label><input type="checkbox" id="cupSpecial"></div>
+      <div class="row"><label>Power-ups</label><input type="checkbox" id="cupPower"></div>
     </div>
+    <div class="panel hidden lgHist" id="cupHistPanel">
+      <h3>Cup Honours <span style="color:var(--gold);font-weight:400" id="cupTitles"></span></h3>
+      <div id="cupHist"></div>
+    </div>
+  </div>
   </div>
   <div class="btnRow hidden" id="cupBtnRow">
     <button class="btn gold hidden" id="cupDone">Continue ▶</button>

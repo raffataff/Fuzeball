@@ -178,6 +178,7 @@ function serve(){
  b.m.position.set(sz?sz.x+rngR(SR,-sz.spread,sz.spread):rngR(SR,-SRV.spread,SRV.spread),SRV.dropY,rngR(SR,-SRV.zSpread,SRV.zSpread));
   b.v.set(rngR(SR,-SRV.vel,SRV.vel),0,rngR(SR,-SRV.vel,SRV.vel));
   b.spin=rngR(SR,-SRV.spin,SRV.spin);
+  Au.drop(b);   // the ball fed in and rattling onto the pitch (recorded only)
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
  // tier 2: the ball drops in front of you — the old 'SPECIAL BALL DROPPING' subtitle under a
