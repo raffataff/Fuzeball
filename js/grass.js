@@ -1,31 +1,14 @@
 'use strict';
-/* ================= blade grass (pitch dressing) =================
-   A grass pitch is a flat textured box, so a normal map is all it has: fine from the default
-   camera, flat as paper from a low one, because a normal map can't change a silhouette. So a grass
-   pitch grows real blades: one instanced draw of a small strip (two rows of quads, narrowing to a
-   slanted top so one corner stands higher = the point), scattered on a jittered grid over the
-   pitch's up-facing faces. ~55k blades at the default density, 4 tris each.
-
-   WHY NOT SHELLS (stacked alpha-cut copies of the pitch, the first version): a shell can't draw a
-   vertical face, so a flat blade seen side-on came apart into its layer slices, and every layer
-   was a pitch-sized alpha-tested draw. Blades are opaque geometry: early-z works, MSAA smooths them.
-
-   REUSABLE BY CONFIG ONLY: a pitch opts in with `grass:true` (CONFIG.grass.blade) or
-   `grass:{...}` (overrides) on its CONFIG.pitches entry. Each blade takes the pitch's own texture
-   at its root, so stripes, lines and logos grow with it and a new grass pitch needs nothing else.
-
-   VISUAL ONLY. Physics still rolls on the flat y=0 floor. The blade mesh is a child of the pitch
-   group, so it rides, hides and disposes with it (disposeModelTemplate walks children). Blade
-   positions are in the pitch group's space, which sits unscaled in the table like every pitch.
-   Quality is cfg.grass ('off'|'low'|'high' -> CONFIG.grass.amount); grassApply() rebuilds live. */
+// ================= blade grass (pitch dressing) =================
+// a grass pitch grows real blades (a normal map can't change a silhouette): one instanced draw of a small slanted strip scattered on a jittered grid over the pitch's up-facing faces (~55k at default density); opaque, so early-z and MSAA work (shells didn't)
+// a pitch opts in with `grass:true` (CONFIG.grass.blade) or `grass:{...}` in CONFIG.pitches; each blade takes the pitch texture at its root
+// visual only (physics rolls on the flat floor); child of the pitch group, so it rides, hides and disposes with it; cfg.grass ('off'|'low'|'high') sets quality, grassApply() rebuilds live
 const grassT={value:0},grassB={value:[0,1,2,3].map(()=>new THREE.Vector4())};  // shared by every blade mesh
 let grassLast=0;
 function grassAmount(){const G=CONFIG.grass;return G&&G.on?+((G.amount&&G.amount[cfg.grass])||0):0;}
 function grassOpts(id){const P=CONFIG.pitches[id];if(!P||!P.grass||!CONFIG.grass)return null;
  return Object.assign({},CONFIG.grass.blade,P.grass===true?{}:P.grass);}
-/* Blade roots over a mesh's up-facing triangles, in its parent's space: a jittered grid at
-   o.density per unit, each with the pitch uv under it. Shuffled (seeded, so a pitch always grows
-   the same lawn) so any prefix is an even spread and a lower quality just draws fewer. */
+// blade roots over a mesh's up-facing triangles in its parent's space: a jittered grid at o.density per unit with the pitch uv; shuffled (seeded) so any prefix is an even spread and a lower quality draws fewer
 function grassRoots(mesh,o){
  const src=mesh.geometry,pos=src.attributes.position,nor=src.attributes.normal,uv=src.attributes.uv,ix=src.index;
  if(!pos||!nor||!uv)return [];
@@ -48,8 +31,7 @@ function grassRoots(mesh,o){
  for(let i=out.length-1;i>0;i--){const j=(rnd()*(i+1))|0,s=out[i];out[i]=out[j];out[j]=s;}
  return out;
 }
-/* One blade, unit-sized: x across (-.5..5), y up (0..1). Two rows so it can bend; the top edge
-   slopes by o.slant, so the +x corner is the tip. The shader scales, turns, bends and places it. */
+// one blade, unit-sized: x across (-.5..5), y up (0..1), two rows so it can bend; the top edge slopes by o.slant (the +x corner is the tip); the shader scales, turns, bends and places it
 function grassGeo(roots,o,n){
  if(!roots.length||n<1)return null;
  const g=new THREE.InstancedBufferGeometry(),s=o.slant;
@@ -63,10 +45,7 @@ function grassGeo(roots,o,n){
  g.instanceCount=Math.min(roots.length,n);
  return g;
 }
-/* The pitch's own material, taught to build blades. Colour, roughness and emissive are sampled
-   at the root's uv (the whole blade is the pitch colour under it), darkened toward the root. The
-   normal is mostly UP, tilted a little toward the blade's face, so a lawn lights like the pitch it
-   grows from instead of like a field of tiny mirrors; both faces use it (no back-face flip). */
+// the pitch's own material taught to build blades: colour, roughness and emissive sampled at the root's uv and darkened toward the root; normal mostly up, tilted toward the face; both faces use it
 function grassMat(src,o){
  const m=src.clone();m.side=THREE.DoubleSide;m.normalMap=null;m.bumpMap=null;
  const u={uT:grassT,uB:grassB,uH:{value:o.height},uW:{value:o.width},uLean:{value:o.lean},uSway:{value:o.sway},
@@ -97,8 +76,7 @@ function grassMat(src,o){
  m.customProgramCacheKey=()=>'grass3';
  return m;
 }
-/* Per render: the clock (advanced by at most 50 ms a frame, so the 4 Hz menu throttle slows the
-   sway rather than stepping it) and the balls on the floor, which press the blades flat. */
+// per render: the clock (at most 50 ms a frame, so the 4 Hz menu throttle slows the sway) and the balls on the floor, which press blades flat
 function grassPre(){
  const now=performance.now()/1000;grassT.value+=Math.min(.05,Math.max(0,now-grassLast));grassLast=now;
  const B=grassB.value,bs=(typeof S!=='undefined'&&S.balls)||[];
@@ -117,7 +95,7 @@ function grassDrop(g){
  const d=[];g.traverse(c=>{if(c.userData.grass)d.push(c);});
  for(const s of d){s.parent.remove(s);s.geometry.dispose();s.material.dispose();}
 }
-/* (Re)dress one pitch group. Called by ensurePitch on load and by grassApply on a quality change. */
+// (re)dress one pitch group; called by ensurePitch on load and by grassApply on a quality change
 function grassAttach(id,g){
  if(!g)return;grassDrop(g);
  const o=grassOpts(id),f=grassAmount();if(!o||!(f>0))return;

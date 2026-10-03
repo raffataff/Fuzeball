@@ -7,8 +7,7 @@ function sdBox2(x,z,cx,cz,hx,hz){const qx=Math.abs(x-cx)-hx,qz=Math.abs(z-cz)-hz
 function smin(a,b,k){const h=clamp(.5+.5*(b-a)/k,0,1);return lerp(b,a,h)-k*h*(1-h);}
 
 // ---- combined arena SDF (plan view) ----
-// cavity boxes span x ∈ [±(L/2−mouthIn), ±(L/2+goalDepth)] — mouthIn reaches
-// INTO the field (opens the mouth blend), goalDepth reaches out behind the line.
+// cavity boxes span x in [±(L/2-mouthIn), ±(L/2+goalDepth)]
 function arenaSD(x,z,gh0,gh1){
  const r=sdRRect(x,z,ARENA.length/2,ARENA.width/2,ARENA.cornerR);  // outer bowl length (side walls) × width (end walls)
  const cx=F.L/2+(F.goalDepth-ARENA.mouthIn)/2,hx=(ARENA.mouthIn+F.goalDepth)/2;
@@ -32,16 +31,13 @@ function arenaContact(b,pen,nx,ny,nz){
  p.x+=nx*pen;p.y+=ny*pen;p.z+=nz*pen;
  const vn=v.x*nx+v.y*ny+v.z*nz;
  if(vn<0){
-  // static geometry: mass-free reflection. Slow contact goes inelastic → ball ROLLS up/down
-  // The two branches are literally the impact/roll split the audio model wants, so each feeds its
-  // own half: the bouncing branch fires a gated one-shot, the inelastic branch drives the roll
-  // layer (physics.js rollProbe skips the bowl walls precisely because this does it better —
-  // it already knows the surface normal, so the tangential speed here is exact).
+  // static geometry: mass-free reflection; slow contact goes inelastic so the ball rolls
+  // the bounce branch fires a gated one-shot, the inelastic branch drives the roll layer (physics.js rollProbe skips the bowl walls)
   if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;
    if(hitFresh(b,ny>ARENA.fricNy?0:1,-vn,ny>ARENA.fricNy?PHY.floorHitSnd:PHY.wallHitSnd)){Au.wall(-vn,b.t.audio?.wall,b,ny>ARENA.fricNy?1:0);
     if(ny<=ARENA.fricNy)spawnMark(b,nx,ny,nz,-vn);}}   // bowl WALL only — the floor and its fillet get nothing
   else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;
-   // tangential = what's left of v once the normal component is removed (just done, so |v| IS it)
+   // tangential = what's left of v once the normal component is removed
    Au.rollFeed(ny>ARENA.fricNy?0:1,Math.hypot(v.x,v.y,v.z),b.t.audio);}
   if(ny>ARENA.fricNy){const f=Math.exp(-PHY.floorFric*hStep);v.x*=f;v.z*=f;}
  }
@@ -57,25 +53,23 @@ function arenaClampSpawn(pp){
  }
 }
 
-/* ===== arena mesh generator (shared: visuals, debug, mirrored in tools/build_arena_table.py) ===== */
+// ===== arena mesh generator (shared: visuals, debug, mirrored in tools/build_arena_table.py) =====
 let arenaTable=null,arenaLedLine=null,hStep=0,arenaMats=null,tableNets={};
-const tableGroups={};                  // table id -> THREE.Group (holds the procedural fallback + skin sub-groups). Set by buildTable / buildArenaTable / models.js.
-const roomGroups={};                   // ROOM id -> its backdrop environment GLB group (CONFIG.rooms). Populated by models.js ensureRoom; shown/hidden by applyRoom (world.js). Rooms are independent of tables.
-let activeTable=CONFIG.tables.classic; // the currently-selected table def; applyTable() sets it. physics reads its collision via ARENA_ON.
+const tableGroups={};                  // table id -> THREE.Group (fallback + skin sub-groups)
+const roomGroups={};                   // room id -> its backdrop GLB group (CONFIG.rooms); filled by models.js ensureRoom, shown by applyRoom
+let activeTable=CONFIG.tables.classic; // the selected table def; applyTable() sets it, physics reads its collision via ARENA_ON
 // --- skins (swappable paint jobs on a table's shape; see CONFIG.tables[*].skins) ---
-const skinGroups={};                   // table id -> { skinId -> THREE.Group holding that skin's loaded GLB }. Filled by models.js loadSkin.
+const skinGroups={};                   // table id -> { skinId -> THREE.Group holding that skin's GLB }; filled by models.js loadSkin
 const skinHasFrame={};                 // table id -> { skinId -> true if that skin's GLB supplies its own goal_frame posts }
-const skinLed={};                      // table id -> { skinId -> that skin's LED material } (applySkin repoints ledMat at the active skin)
-const skinRodHoles={};                 // table id -> { skinId -> [{o,mat,rod,...}] } — the rod-hole rings, one entry per ring (models.js registerRodHoles)
+const skinLed={};                      // table id -> { skinId -> that skin's LED material } (applySkin repoints ledMat)
+const skinRodHoles={};                 // table id -> { skinId -> [{o,mat,rod,...}] }: the rod-hole rings (models.js registerRodHoles)
 let rodHoleMeshes=[];                  // the ACTIVE skin's rings, and the only ones fx.js drives
-const tablePrimObjs={};                // table id -> [procedural fallback meshes]; shown only when the active skin has no GLB. Set by buildTable / buildArenaTable.
-// big-goal morph of the baked arena shell (arena_bowl + led ring). Registered from the arena GLB
-// load; driven by arenaMorphUpdate. Each entry precomputes per-vertex deltas to the widened mouth.
+const tablePrimObjs={};                // table id -> [procedural fallback meshes], shown only when the active skin has no GLB
+// big-goal morph of the baked arena shell (arena_bowl + led ring): registered from the arena GLB load, driven by arenaMorphUpdate
 let arenaMorph=[],arenaMorphDirty=false;
-let tableHasFrame={};   // deprecated — per-skin goal-frame flags now live in skinHasFrame[id][skinId] (see applySkin); kept to avoid a dangling ref
+let tableHasFrame={};   // deprecated: per-skin goal-frame flags live in skinHasFrame[id][skinId]; kept to avoid a dangling ref
 
-// outline polyline matching arenaSD: rounded rect + OUTWARD goal cavities (back walls
-// at ±(L/2+goalDepth)). Rough corners are fine — every sample gets Newton-projected.
+// outline polyline matching arenaSD (rounded rect + outward goal cavities); rough corners are fine, every sample is Newton-projected
 function arenaOutline(){
  const hl=ARENA.length/2,gl=F.L/2,hw=ARENA.width/2,gh=F.goalHalf,gd=F.goalDepth; // hl=outer corner, gl=goal line
  return [[-gl,-gh],[-gl-gd,-gh],[-gl-gd,gh],[-gl,gh],[-hl,hw],[hl,hw],
@@ -101,8 +95,7 @@ function arenaProject(x,z,targetSD,iters){
  }
  return {x,z};
 }
-// profile rows: quarter-circle fillet (0..fp) then vertical wall (fp..profile).
-// th = fillet angle: 0 at floor, π/2 at wall base (wall rows keep π/2).
+// profile rows: quarter-circle fillet (0..fp) then vertical wall (fp..profile); th = fillet angle
 function arenaProfile(profile){
  const CR=ARENA.creaseR,WH=F.wallH,rows=[];
  const fp=CR>0.01?Math.max(1,Math.floor(profile*.55)):0; // CR≈0 → no fillet rows, sharp 90° wall
@@ -139,11 +132,10 @@ function arenaGridGeo(perim,profile){
  return geo;
 }
 
-/* ===== arena table build ===== */
+// ===== arena table build =====
 function buildArenaTable(){
  arenaTable=new THREE.Group();scene.add(arenaTable);tableGroups.arena=arenaTable;
- // the arena owns its materials — deliberately NOT the classic wallMat, so themes
- // leave it alone and the GLB from tools/build_arena_table.py can replace the look
+ // the arena owns its materials (not wallMat) so tools/build_arena_table.py's GLB can replace the look
  arenaMats={
   crease:new THREE.MeshStandardMaterial({color:0x1c2236,roughness:.55,metalness:.35,side:THREE.DoubleSide}),
   wall:new THREE.MeshStandardMaterial({color:0x2b3350,roughness:.4,metalness:.5,side:THREE.DoubleSide}),
@@ -166,39 +158,27 @@ function buildArenaTable(){
  return arenaTable;
 }
 
-/* ===== active flag ===== */
+// ===== active flag =====
 let ARENA_ON=false;
-let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): solid end-wall height the goal is inset into; 0 = classic open-over-the-bar ends. Read by physics.js stepBall.
-// Registry-driven: select the table by id from CONFIG.tables, show its group, hide the rest,
-// swap its environment, set the collision flag, then show the active SKIN. Adding a table or a
-// skin needs no change here.
-/* onReady (optional) fires once the selected table's skin GLB and room backdrop are BOTH
-   resident — league/cup gate their match start on it so a fixture-forced table never pops in
-   mid-kickoff. It's called synchronously when everything is already cached (the common
-   menu case), so it's cheap to pass. Table assets are lazy (CONFIG.tableAssets): the skin/room
-   fetch is kicked off HERE, and only once the new one has landed do we evict the old — so the
-   screen never shows a hole. Until then applySkin falls back to the procedural primitives. */
+let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): end-wall height the goal is inset into; 0 = classic open ends (physics.js stepBall)
+// registry-driven: select the table by id, show its group, hide the rest, set the collision flag, show the active skin
+// onReady fires once the skin GLB and room backdrop are resident (sync if cached); assets are lazy (CONFIG.tableAssets), the old one is evicted after the new one lands, until then applySkin shows primitives
 function applyTable(onReady){
  const id=CONFIG.tables[cfg.table]?cfg.table:'classic';   // fall back to classic for unknown/old saves
  activeTable=CONFIG.tables[id];
  ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
  ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
  if(typeof clearMarks==='function')clearMarks();   // scuffs belong to the table that wore them
- // show only the selected table's group (its skin sub-groups + primitives ride along)
+ // show only the selected table's group (its skin sub-groups and primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}
- // NOTE: the environment (room GLB + shared ground backdrop) is owned by applyRoom (world.js) now —
- // it's a location, independent of the table. applyTable only touches the table itself.
- // the shared pitch plane rides inside whichever table group is active
+ // the environment (room GLB + shared ground) is owned by applyRoom (world.js), not the table
  const grp=tableGroups[id]||primTable;
  if(fieldMesh&&grp){grp.add(fieldMesh);fieldMesh.visible=true;}
- // The pitch rides inside whichever table group is active, so a TABLE change has to re-parent it.
- // pitchShown (world.js) is whichever pitch group drawField currently has on screen; drawField
- // below re-runs anyway, but re-parenting here keeps it from flicking out for a frame first.
+ // the pitch rides inside the active table group, so a table change re-parents it (pitchShown, world.js) before drawField re-runs
  if(typeof pitchShown!=='undefined'&&pitchShown&&grp)grp.add(pitchShown);
  const nets=tableNets[id];
  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
- // load (if needed) + show the active skin; applySkin owns primitives/goal-frame/LED. Prune only
- // AFTER the incoming skin is resident, so nothing visible is ever freed.
+ // load (if needed) and show the active skin; prune only after the incoming skin is resident
  const sk=curSkin(id);
  const settled=()=>{
   if(typeof pruneSkins==='function')pruneSkins(sk?id+'/'+sk:null);
@@ -208,49 +188,35 @@ function applyTable(onReady){
  else settled();
  applySkin(id);
  if(typeof drawField==='function')drawField();
- // Rods are a per-table livery (visual only): ensure this table's set is resident, then reskin the
- // rod hardware in. Idempotent + no-op when already wearing this set, so repeated applyTable calls
- // are cheap; shows stock rods until a table's own GLBs land (or forever if it has none).
+ // rods are a per-table livery (visual only): ensure the set is resident, then reskin (idempotent); stock rods show until the table's own GLBs land
  if(typeof ensureTableRods==='function')ensureTableRods(id,()=>{if(typeof reskinRods==='function')reskinRods(id);});
 }
 
-// The skin (livery) currently selected for a table: cfg.skins[id], else the table's defSkin.
+// the skin currently selected for a table: cfg.skins[id], else the table's defSkin
 function curSkin(id){
  const T=CONFIG.tables[id];if(!T||!T.skins)return null;
  const s=(cfg.skins||{})[id];
  return T.skins[s]?s:(T.defSkin&&T.skins[T.defSkin]?T.defSkin:Object.keys(T.skins)[0]);
 }
-// Show the active skin's GLB, hide the other skins, fall back to the procedural primitives when
-// the active skin has no GLB, repoint the LED-fx material, and hide the primitive goal frame when
-// the skin brings its own posts. Cheap: sub-group .visible toggles (a hidden group hides its subtree).
-// 'Loaded' means the sub-group has CHILDREN, not merely that it exists: loadSkin parents an EMPTY
-// group the moment a fetch starts, so with lazy table assets the first switch to a table would
-// otherwise hide the primitives and render nothing until the GLB landed. Empty = keep primitives up,
-// and the loadSkin callback re-runs this to swap them out.
+// show the active skin's GLB, hide the others, fall back to primitives when it has none, repoint the LED-fx material, hide the primitive goal frame if the skin has its own
+// 'loaded' means the sub-group has children (loadSkin parents an empty group when a fetch starts)
 function applySkin(id){
  const T=CONFIG.tables[id];if(!T)return;
  const sk=curSkin(id),groups=skinGroups[id]||{},g=groups[sk],active=(g&&g.children.length)?g:null;
  for(const s in groups)groups[s].visible=(s===sk);         // show active skin, hide siblings
  const prims=tablePrimObjs[id];
  if(prims)prims.forEach(m=>{m.visible=!active;});          // primitives fill in only when the skin has no GLB (yet)
- // LED fx follow whatever is actually on screen: the active skin's baked LED material, or the
- // procedural one the primitives use while a skin GLB is still loading / absent.
+ // LED fx follow what's on screen: the skin's baked LED material, or the procedural one while a skin loads
  if(active&&skinLed[id]&&skinLed[id][sk])ledMat=skinLed[id][sk];
  else if(!active&&primLedMat)ledMat=primLedMat;
- // Rod-hole rings follow the same rule, for the same reason: with cacheSkins:2 a second skin is
- // still resident, and writing its materials every frame would be work for a table nobody is
- // looking at. Empty for a skin that ships no rings (the arena bowl), which makes fx.js inert.
+ // rod-hole rings follow the same rule; empty for a skin with no rings (the arena bowl), which makes fx.js inert
  rodHoleMeshes=(active&&skinRodHoles[id]&&skinRodHoles[id][sk])||[];
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
  goalFrames.forEach(gf=>{if(gf.userData&&gf.userData.front)gf.userData.front.visible=!custom;});
  if(typeof shadowDirty==='function')shadowDirty();   // table shell swapped — casters changed
 }
-// Pick a skin for a table (from the Skin dropdown): remember it, lazy-load its GLB, show it,
-// then evict skins past CONFIG.tableAssets.cacheSkins — AFTER the new one has landed, so
-// A/B-ing two skins with cacheSkins:2 never re-fetches and never shows a gap.
-// onReady (optional) fires once the skin GLB is RESIDENT — the same contract applyTable/applyRoom
-// offer, which is what lets js/flow.js venueLoad stage a skin swap behind the loading veil rather
-// than dropping its cost on the first visible frame. Synchronous when the skin is already cached.
+// pick a skin for a table (Skin dropdown): remember it, lazy-load, show, then evict past cacheSkins after the new one lands
+// onReady fires once the skin GLB is resident (sync if cached), so flow.js venueLoad can stage it behind the veil
 function selectSkin(id,skinId,onReady){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
  if(typeof loadSkin==='function'){
@@ -264,29 +230,19 @@ function selectSkin(id,skinId,onReady){
  if(typeof saveCfg==='function')saveCfg();
 }
 
-/* ===== arena debug wireframe ===== */
+// ===== arena debug wireframe =====
 function buildArenaDebugMesh(){
  return new THREE.Mesh(arenaGridGeo(80,6),
   new THREE.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.25,wireframe:true,depthWrite:false}));
 }
 
-/* ===== big-goal morph of the baked (GLB) arena shell =====
-   Standard "slide the goal walls out" widen — NOT an SDF re-projection (that reshaped the postR
-   fillet as the mouth grew and pinched/bulged the rounded bends). Each shell vertex slides in z
-   toward the widened mouth by an amount taken from its own crease→wall COLUMN's wall-lip (sd=0)
-   reference, not its own inset position: the widen is `bigGoalMult` at the mouth inner edge
-   (|z|≤goalHalf) and eases to 1 at the outer bowl wall (|z|→width/2), gated to the goal region in x
-   (full behind the goal line, faded out `bigGoalReach` into the field). Referencing the lip means
-   every vert in a column (fillet base up to wall top) shifts by the SAME z-delta, so the crease
-   fillet slides rigidly with the wall instead of shearing/warping. This slides the two little side
-   walls outward, stretches the back wall to match, and the corner bends ride along for free because
-   their verts share the same continuous field. Pure z, so it never touches x or Y and leaves UVs —
-   hence textures — untouched. Local & order-independent (survives glTF splitting by material). */
-// Called once per arena GLB mesh (arena_bowl / led ring). Precomputes, per vertex, the z delta to a
-// fully-open RIGHT mouth (dR) and LEFT mouth (dL) so the per-frame path is a cheap blend (x delta=0).
+// ===== big-goal morph of the baked (GLB) arena shell =====
+// a 'slide the goal walls out' widen, not an SDF re-projection (that pinched the fillets): each vertex slides in z by an amount from its column's wall-lip (sd=0) reference, so a whole fillet column shifts rigidly
+// the widen is `bigGoalMult` at the mouth inner edge (|z|<=goalHalf) easing to 1 at the outer wall, gated to the goal region in x (faded out `bigGoalReach` into the field); pure z, UVs untouched
+// called once per arena GLB mesh: precomputes per-vertex z deltas to a fully-open right (dR) and left (dL) mouth, so the per-frame blend is cheap
 function registerArenaMorph(root){
  const gh=F.goalHalf,M=PHY.bigGoalMult,gl=F.L/2,hw=ARENA.width/2,reach=ARENA.bigGoalReach;
- // widen weight 0..1 for a column at (x≥0, az=|z| of its wall lip): zPin pins the outer wall, xNear gates to the goal.
+ // widen weight 0..1 for a column at (x>=0, az=|z| of its wall lip): zPin pins the outer wall, xNear gates to the goal
  const gate=(x,az)=>{
   const zPin=clamp((hw-az)/(hw-gh),0,1);                 // 1 at/inside the mouth edge, 0 at the outer wall
   const xNear=x>=gl?1:clamp((x-(gl-reach))/reach,0,1);   // 1 behind the line, 0 a `reach` into the field
@@ -300,9 +256,7 @@ function registerArenaMorph(root){
   const base=new Float32Array(N*3),dR=new Float32Array(N*3),dL=new Float32Array(N*3);
   for(let i=0;i<N;i++){const j=i*3,x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
    base[j]=x;base[j+1]=y;base[j+2]=z;
-   // Project this vert out to its column's wall lip (sd=0) so the whole fillet column shares one
-   // reference z. A vertical-wall vert projects to itself (flare unchanged); a fillet vert (inset
-   // inward) recovers the same lip as the wall above it → they slide together, no shear.
+   // project this vert out to its column's wall lip (sd=0) so the fillet column shares one reference z
    const lip=arenaProject(x,z,0,3),azR=Math.abs(lip.z);
    dR[j+2]=lip.x>0?lip.z*(M-1)*gate( lip.x,azR):0;   // widen right mouth (+x half only) — uniform per column, x delta stays 0
    dL[j+2]=lip.x<0?lip.z*(M-1)*gate(-lip.x,azR):0;   // widen left  mouth (−x half only)
@@ -311,9 +265,7 @@ function registerArenaMorph(root){
  });
  console.log('arena shell morph: '+arenaMorph.length+' mesh(es)');
 }
-// Per-frame blend. tR/tL are the eased 0..1 open amounts, read off the same lerped multipliers the
-// frame/net ride (goalFrames[1]=right, [0]=left). Runs only while opening/closing; one restore frame
-// on settle back to rest, then idle. Deltas for the two mouths don't overlap, so summing is safe.
+// per-frame blend: tR/tL are the eased 0..1 open amounts off the same multipliers as the frame/net (goalFrames[1]=right, [0]=left); only while opening/closing, one restore frame on settle
 function arenaMorphUpdate(){
  if(!ARENA_ON||!arenaMorph.length)return;
  const M=PHY.bigGoalMult,den=(M-1)||1;

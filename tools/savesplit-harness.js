@@ -1,20 +1,7 @@
 'use strict';
-/* ============================================================================================
-   savesplit-harness.js — assert cfg persists as PLAYER + MACHINE and never blends the two.
-
-     node tools/savesplit-harness.js        (from the project root or from tools/)
-
-   WHY THIS EXISTS. cfg is one live object but two saved blobs (see the PLAYER/MACHINE block in
-   js/config.js). The failure this guards against is silent and remote: a MACHINE key leaking
-   into the PLAYER blob, which Steam Cloud then carries to another machine — a desktop's
-   renderScale:1 / shadows:true landing on a Steam Deck. Nothing in the game would report that;
-   the player just finds their settings "reset themselves" and the handheld running at 20fps.
-
-   It boots js/core.js + js/config.js for real, in a fresh V8 context per scenario, against a
-   fake localStorage. No DOM, no three.js, no deps.
-
-   Exit 0 = pass, 1 = fail.
-   ========================================================================================== */
+// savesplit-harness.js: assert cfg persists as PLAYER + MACHINE and never blends the two. node tools/savesplit-harness.js (from the project root or tools/)
+// the failure guarded is silent and remote: a MACHINE key leaking into the PLAYER blob, which Steam Cloud carries to another machine (a desktop's renderScale:1 / shadows:true landing on a Steam Deck)
+// boots js/core.js + js/config.js in a fresh V8 context per scenario against a fake localStorage; no DOM, three.js or deps; exit 0 = pass, 1 = fail
 const fs=require('fs'),path=require('path'),vm=require('vm');
 
 const ROOT=fs.existsSync(path.join(process.cwd(),'index.html'))

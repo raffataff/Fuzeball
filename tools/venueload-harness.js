@@ -1,21 +1,10 @@
-/* Behavioural harness for the IDLE-RENDER GATE (js/world.js) and the STAGED VENUE SWAP
-   (js/flow.js). No three.js, no browser, no DOM: the pieces are string-sliced out of the
-   real sources and rebuilt with new Function against stubs, so the harness tests the code
-   that ships rather than a copy of it.
-
-   Both features are ASYNC and ORDER-SENSITIVE — the whole point of venueLoad is WHEN each
-   step runs relative to a paint — so time here is a virtual clock (`tick`) driving both
-   setTimeout and requestAnimationFrame. A rAF callback that queues another rAF lands on the
-   NEXT tick, exactly as a browser would, which is what makes the "veil has painted before
-   the stall" claim actually testable.
-
-   Run: node tools/venueload-harness.js                                                    */
+// behavioural harness for the IDLE-RENDER GATE (js/world.js) and the STAGED VENUE SWAP (js/flow.js). Run: node tools/venueload-harness.js
+// no three.js, browser or DOM: the real sources are string-sliced and rebuilt with new Function against stubs
+// both are async and order-sensitive, so time is a virtual clock (`tick`) driving setTimeout and requestAnimationFrame (a rAF that queues another lands on the next tick, which is what makes 'the veil painted before the stall' testable)
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
-// Read through a CRLF strip. js/*.js is CRLF and a multi-line needle written as a template
-// literal has its terminators normalised to LF by the ECMAScript lexer itself, so it could
-// never match the raw bytes. Same fix rng-harness.js carries; see CLAUDE.md 2026-08-23.
+// read through a CRLF strip (a multi-line template-literal needle is normalised to LF and could never match; same fix as rng-harness.js)
 const rd=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
 const WORLD=rd('js/world.js'), FLOW=rd('js/flow.js');
 
@@ -190,12 +179,7 @@ function ok(c,msg,extra){if(c)pass++;else{fail++;fails.push(msg+(extra===undefin
  c.camera.quaternion.y=0.3;                     // camera.lookAt
  ok(drawn(c,6)===6,'change: a camera ROTATION counts too (lookAt writes the quaternion)');
 
- /* THE SHADOW-FLAG TRAP. `renderer.shadowMap.needsUpdate` looks like the obvious extra dirty
-    signal. It is poison: r128's WebGLShadowMap.render() returns on `enabled === false` BEFORE it
-    clears the flag, so with shadows switched off in Options the flag latches true forever the
-    first time anything calls shadowDirty(). A gate that reads it then marks EVERY frame dirty and
-    does nothing at all — for exactly the players who most need it. Caught in a headless run
-    reporting 100% of menu frames still rendering with shadows off. */
+ // the shadow-flag trap: `renderer.shadowMap.needsUpdate` looks like a dirty signal but r128 never clears it with shadows off, so a gate reading it marks every frame dirty (caught as 100% of menu frames rendering)
  const s=buildGate(WORLD,{settle:0.05,hz:1});
  s.renderer.shadowMap.needsUpdate=true;              // latched, as it is whenever shadows are off
  drawn(s,40);
@@ -238,9 +222,7 @@ function ok(c,msg,extra){if(c)pass++;else{fail++;fails.push(msg+(extra===undefin
  q.camera.quaternion.y+=0.01;                      // camera.lookAt writes the quaternion
  ok(drawn(q,6)===6,'asymptote: a rotation is detected on its own threshold');
 
- // zero thresholds = the original bug. It DOES terminate eventually (float64 lerp lands exactly
- // after a few hundred iterations) — that is precisely why it was invisible in review and only
- // showed up as "every menu frame rendered" in a headless run.
+ // zero thresholds = the original bug; it does terminate eventually (float64 lerp lands exactly), which is why it was invisible in review
  const tight=buildGate(WORLD,{settle:0.05,hz:1,camEps:0,camRotEps:0});
  let t=0;
  for(let i=0;i<600;i++){tight.camera.position.x+=(TARGET-tight.camera.position.x)*K;
@@ -258,11 +240,7 @@ function ok(c,msg,extra){if(c)pass++;else{fail++;fails.push(msg+(extra===undefin
     'wiring: shadowDirty() calls renderDirty(), so applyRoom/applySkin/rebuildRodMen/'+
     'buildRoomProps/the sim step all mark the frame without being touched');
  // the appearance-only changes, which move no casters and so never reach shadowDirty
- /* shadowDirty() counts, because it CALLS renderDirty() unconditionally (see the note on it in
-    world.js). drawField reaches it that way: the pitch is a shadow RECEIVER and swapping it is a
-    structural change to the table, so shadowDirty is the more correct call of the two. Accepting
-    only renderDirty here would have failed a correct implementation, which is how an assertion
-    teaches people to route around it. */
+ // shadowDirty() counts, since it calls renderDirty() unconditionally (see world.js); drawField reaches it that way (the pitch is a shadow receiver); accepting only renderDirty would fail a correct implementation
  [['applyColors','kit colour'],['applyFog','fog'],['applyDisplay','render scale'],['drawField','pitch swap']]
   .forEach(([fn,what])=>ok(/(render|shadow)Dirty\(\)/.test(fnAt(WORLD,fn)),
     'wiring: '+fn+' marks the frame ('+what+' moves no casters)'));

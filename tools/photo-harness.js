@@ -1,10 +1,5 @@
-/* Headless harness for js/photo.js.
-   Boots config.js + core.js + state.js + photo.js in one vm context against a stubbed DOM and a
-   minimal THREE.Vector3, then exercises the rig maths — the parts that are pure geometry and
-   therefore actually testable without a GPU: yaw/pitch derivation, the free-look invariant (the
-   camera must NOT move), the aim round-trip, the crop rect, the crop-fov formula that makes the
-   letterbox preview agree with the capture, and the output-size clamp.
-   Run: node tools/photo-harness.js */
+// headless harness for js/photo.js. Run: node tools/photo-harness.js
+// boots config.js + core.js + state.js + photo.js in one vm against a stubbed DOM and a minimal THREE.Vector3 and exercises the rig maths (testable without a GPU): yaw/pitch derivation, the free-look invariant (the camera must not move), the aim round-trip, the crop rect, the crop-fov formula that makes the letterbox preview agree with the capture, the output-size clamp
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const root=path.join(__dirname,'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -23,10 +18,7 @@ class V3{
  length(){return Math.sqrt(this.lengthSq());}
  normalize(){const l=this.length()||1;this.x/=l;this.y/=l;this.z/=l;return this;}
 }
-/* Id-keyed element registry. getElementById has to hand back the SAME object every call or the
-   lifecycle checks below are meaningless — a fresh blank stub per lookup would swallow every
-   classList change photoEnter/photoExit make. Setting innerHTML pre-registers any id="…" inside it,
-   which is how the panel's markup string becomes addressable without a real parser. */
+// id-keyed element registry: getElementById must return the same object every call, or the lifecycle checks are meaningless; setting innerHTML pre-registers any id="..." inside it
 const REG=new Map();
 function mkEl(id){
  const cls=new Set();
@@ -244,9 +236,7 @@ ok('near < far and near > 0',run('PHR.near>0&&PHR.near<PHR.far'));
 ok('S.photo starts null (the cross-module gate)',run('S.photo')===null);
 ok('PH.freezeFx mirrors the config flag fx.js reads',run('PH.freezeFx===PHOTO.freezeFx'));
 
-/* Lifecycle. This is where the cross-module contract lives: S.photo is the ONE thing main.js,
-   fx.js, input.js and training.js gate on, so it has to be exactly null-or-PH, and entering from
-   the pause screen has to leave the world frozen with no menu over it. */
+// lifecycle: S.photo is the one thing main.js, fx.js, input.js and training.js gate on (null or PH exactly); entering from pause must leave the world frozen with no menu over it
 console.log('\nenter / exit lifecycle');
 const body=sandbox.document.body;
 run('S.phase="menu";');

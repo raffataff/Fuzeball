@@ -30,10 +30,10 @@ $basis  = Join-Path $vendor 'basis'
 New-Item -ItemType Directory -Force -Path $vendor, $fonts, $basis | Out-Null
 
 # Google Fonts CSS query — the families css/styles.css names, with the weights it uses.
-# Russo One ships ONE weight (400) so it takes no :wght list; Rajdhani ships 500/600/700.
-$FontQuery = 'family=Russo+One&family=Rajdhani:wght@500;600;700&display=swap'
+# Russo One ships ONE weight (400) so it takes no :wght list; Space Grotesk is variable (500-700 requested).
+$FontQuery = 'family=Russo+One&family=Space+Grotesk:wght@500;600;700&display=swap'
 # Families the generated vendor/fonts.css MUST end up declaring. Checked at the end.
-$FontFamilies = @('Russo One', 'Rajdhani')
+$FontFamilies = @('Russo One', 'Space Grotesk')
 
 function Get-File($url, $out) {
   Write-Host "  down  $url"

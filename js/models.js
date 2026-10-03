@@ -1,36 +1,24 @@
 'use strict';
-/* ================= GLB table + rod + ball loaders =================
-   Optional. If the .glb files are present under assets/ they replace the
-   primitive table/rods/ball built in world.js/balls.js; if a file is missing
-   or fails, the primitive stays as a fallback. The game's theming/colour/fx
-   code keeps working because we repoint fieldMesh / ledMat / netMats at the
-   loaded materials, and tint the rod 'team' / 'team_glow' materials per side.
-   For balls, we load a single GLB with material slots (classic, fireball,
-   cannonball, golden, split) and map them to ball types. */
-const rodSets={};        // rod-set key -> {men:scene, _done:true}. key '_shared' = stock assets/rods/; a table id = that table's own livery (CONFIG.tables[id].rods)
+// ================= GLB table + rod + ball loaders =================
+// optional: the primitives from world.js/balls.js stay as the fallback when a file is missing
+const rodSets={};        // rod-set key -> {men:scene, _done:true}; '_shared' = stock assets/rods/, a table id = its own livery
 const rodSetLoading={};   // rod-set key -> [pending cbs] while its load batch is in flight
 const ROD_SIZES=[1,2,3,5];
 let ballModel=null;      // loaded ball GLB scene (with material slots)
-let roomModel=null;      // deprecated — room/location GLBs now live in roomGroups[id] (arena.js), keyed by CONFIG.rooms id; kept to avoid a dangling ref
-// (pitchModel is gone — pitches are per-id groups in pitchGroups now; see the pitch block below)
+let roomModel=null;      // deprecated: room GLBs live in roomGroups[id] (arena.js); kept to avoid a dangling ref
+// pitches are per-id groups in pitchGroups, see the pitch block below
 const ballMatMap={};     // ballType -> material name in GLB
 const pitchMatMap={};    // pitch variant -> material (unused for now; mirrors ball loader)
-const explosionTemplates={}; // figurine id -> {scene, clips} — see CONFIG.playerModel.models[].explosionSrc. Lazy: only the figurines actually on the table are loaded (ensureExplosionModel), not all ~17.
-const explosionLoading={};    // figurine id -> true while its GLB fetch is in flight (guards double-loads / avoids a bad partial entry in explosionTemplates)
-let ballExplosionTemplate=null; // {scene, clips} — the cannonball's own shatter GLB (CONFIG.cannonball.explosionSrc), consumed by fracture.js spawnBallFracture
-let respawnSwirlTemplate=null;  // {scene, clips} — the shared swirly respawn-particle GLB (CONFIG.cannonball.respawnSwirlSrc), consumed by fracture.js spawnRespawnSwirl
+const explosionTemplates={}; // figurine id -> {scene, clips} (explosionSrc); lazy, only figurines on the table
+const explosionLoading={};    // figurine id -> true while its GLB fetch is in flight
+let ballExplosionTemplate=null; // {scene, clips}: the cannonball's shatter GLB, used by fracture.js spawnBallFracture
+let respawnSwirlTemplate=null;  // {scene, clips}: the shared respawn-swirl GLB, used by fracture.js spawnRespawnSwirl
 
-/* --- static table --------------------------------------------------------- */
-/* LAZY BY DEFAULT (CONFIG.tableAssets). A table skin GLB + its room backdrop are the fattest
-   single assets in the game, and only ONE table is ever visible — so boot fetches only the
-   ACTIVE table's active skin and room. Every other skin/room loads on demand the moment it's
-   picked (applyTable / selectSkin are the only switch paths and both call through here), and
-   LRU-evicted past the caps. Set CONFIG.tableAssets.preloadAll to restore the old eager boot.
-   Groups for EVERY table are still created here: applyTable's visibility loop walks tableGroups,
-   and buildTable/buildArenaTable put each table's procedural fallback inside its own group. */
+// --- static table ---
+// lazy by default (CONFIG.tableAssets): boot fetches only the active table's skin and room, LRU-evicted; preloadAll restores the eager boot
+// groups for every table are still created here (applyTable walks tableGroups)
 function loadTableModel(){
- // Prop index first: applyRoom below may place props, and propLib() needs the manifest to
- // resolve an id. A missing manifest is legal (CONFIG.props.lib still works), so this never gates.
+ // prop index first: applyRoom may place props; a missing manifest never gates
  if(typeof loadPropManifest==='function'&&!loadTableModel._props){loadTableModel._props=1;
   loadPropManifest(()=>{if(typeof applyRoom==='function')applyRoom();});}
  const eager=!!(CONFIG.tableAssets&&CONFIG.tableAssets.preloadAll);
@@ -41,38 +29,25 @@ function loadTableModel(){
   const sk=(typeof curSkin==='function')?curSkin(id):null;
   if(sk)loadSkin(id,sk,()=>{applyTable();applyRoom();applyColors();drawField();});
  }
- // Rooms (locations) are their own axis now: boot fetches only the active room's backdrop; the
- // rest load when picked. preloadAll fetches every room's backdrop up front (old eager boot).
+ // rooms are their own axis: boot fetches only the active backdrop; preloadAll fetches all
  if(eager){for(const id in CONFIG.rooms)ensureRoom(id);}
  else{const rm=(typeof cfg!=='undefined'&&CONFIG.rooms[cfg.room])?cfg.room:'open';ensureRoom(rm,()=>{if(typeof applyRoom==='function')applyRoom();});}
 }
 
-/* --- skin residency (LRU) --------------------------------------------------
-   skinOrder holds 'id/skinId' keys, least-recently-used first. Loading or showing a skin
-   touches it; pruneTableAssets disposes the tail past CONFIG.tableAssets.cacheSkins. Rooms
-   get the same treatment via roomOrder. The ACTIVE table's skin/room are always protected,
-   so a cap of 1 is legal (and means "never hold anything you aren't looking at"). */
+// --- skin residency (LRU) ---
+// skinOrder holds 'id/skinId' keys, least-recently-used first (rooms use roomOrder); the active skin and room are protected
 const skinOrder=[],roomOrder=[];
-const skinLoadingCbs={};   // 'id/skinId' -> [pending cbs] while that skin's GLB fetch is in flight (so a 2nd caller queues instead of firing early)
+const skinLoadingCbs={};   // 'id/skinId' -> pending cbs while that skin's fetch is in flight
 function skinKey(id,skinId){return id+'/'+skinId;}
 function touchSkin(id,skinId){const k=skinKey(id,skinId),i=skinOrder.indexOf(k);if(i>=0)skinOrder.splice(i,1);skinOrder.push(k);}
 function touchRoom(id){const i=roomOrder.indexOf(id);if(i>=0)roomOrder.splice(i,1);roomOrder.push(id);}
 
-/* Load one skin (a textured GLB of a table's shape) into its own sub-group under the table
-   group, cached by id/skin. Missing GLB -> drop the empty group so applySkin falls back to the
-   procedural primitives. cb runs on success OR failure. Every mesh is stamped with its owning
-   skin key so disposeTableSkin can unpick this skin's entries from the shared big-goal /
-   arena-morph registries without disturbing the skin that's still on screen. */
+// load one skin into its own sub-group, cached by id/skin; a missing GLB drops the empty group so applySkin falls back to primitives; cb runs on success or failure
 function loadSkin(id,skinId,cb){
  skinGroups[id]=skinGroups[id]||{};
  const key=skinKey(id,skinId);
  const existing=skinGroups[id][skinId];
- // 'loaded' now means the sub-group actually HAS meshes — not merely that the placeholder group
- // exists. loadSkin parents an empty group the instant a fetch starts (so applySkin keeps the
- // primitives up meanwhile), and the old truthy-group check treated that empty placeholder as
- // "done" and fired cb early — a caller gating kickoff on it would start a match with the skin
- // still downloading (untextured table on a skipped intro). Truly-resident short-circuits here;
- // an in-flight fetch QUEUES the cb so it fires when the GLB actually lands.
+ // 'loaded' means the sub-group has meshes, not just the placeholder; an in-flight fetch queues the cb
  if(existing&&existing.children.length){touchSkin(id,skinId);if(cb)cb();return;}
  if(skinLoadingCbs[key]){if(cb)skinLoadingCbs[key].push(cb);touchSkin(id,skinId);return;}
  const T=CONFIG.tables[id],S=T&&T.skins&&T.skins[skinId];
@@ -87,11 +62,7 @@ function loadSkin(id,skinId,cb){
  const hook=gltf=>{
   try{
    let hasFrame=false;
-   // Pre-scan: does this skin ship the new single-mesh-per-side goal_frame_l/goal_frame_r (the
-   // arena-table convention — see build_arena_table.py build_goal_frames)? Some GLBs (e.g. the
-   // classic alien-ship table) still carry the OLDER goal_post/goal_crossbar meshes too, added
-   // before the goal_frame_l/r convention existed — if both are present in the same skin the new
-   // goal_frame_* wins and the legacy posts/crossbar are hidden below so they don't double up.
+   // pre-scan: a skin with goal_frame_l/r wins over the legacy goal_post/goal_crossbar, which are hidden below
    let hasNewFrame=false;
    gltf.scene.traverse(c=>{if(c.isMesh&&onm(c).startsWith('goal_frame'))hasNewFrame=true;});
    gltf.scene.traverse(c=>{
@@ -102,7 +73,7 @@ function loadSkin(id,skinId,cb){
     if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
     else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
     else if(n.startsWith('goal_net'))c.visible=false;                            // keep the built-in diamond net
-    else if(/^(goal_post|goal_crossbar)/.test(n)){hasFrame=true;if(hasNewFrame)c.visible=false;} // legacy posts/crossbar: still count as a custom frame, but superseded (hidden) if goal_frame_l/r is also present
+    else if(/^(goal_post|goal_crossbar)/.test(n)){hasFrame=true;if(hasNewFrame)c.visible=false;} // legacy posts/crossbar: count as a custom frame but are hidden if goal_frame_l/r is present
     else if(n.startsWith('goal_frame'))hasFrame=true;                            // custom posts: hide the primitive front frame
    });
    (skinHasFrame[id]=skinHasFrame[id]||{})[skinId]=hasFrame;
@@ -125,10 +96,8 @@ function loadSkin(id,skinId,cb){
  loader.load(primary,hook,undefined,()=>{S.glbFallback?loader.load(S.glbFallback,hook,undefined,fail):fail();});
 }
 
-/* Free one loaded skin: strip its meshes out of the shared big-goal + arena-morph registries
-   (they're stamped with skinKey), detach the sub-group, then dispose its geometry/textures.
-   Safe to hard-dispose (unlike figurine templates) because a skin GLB is never clone()d — the
-   loaded scene IS the only instance. NEVER call on the skin currently being shown. */
+// free one loaded skin: unregister its meshes from the big-goal and arena-morph registries, detach, dispose
+// safe to hard-dispose (a skin GLB is never cloned); never on the skin on screen
 function disposeTableSkin(id,skinId){
  const grp=skinGroups[id]&&skinGroups[id][skinId];if(!grp)return;
  if(!grp.children.length)return;   // sub-group exists but the GLB hasn't landed — leave the in-flight load alone
@@ -155,14 +124,8 @@ function disposeTableSkin(id,skinId){
  console.log('table skin freed: '+key);
 }
 
-/* Evict skins/rooms past their caps, least-recently-used first. `keep*` are the assets currently
-   ON SCREEN and are never freed; the caps count them, so cacheSkins:1 leaves room for nothing
-   else and cacheSkins:2 keeps one previous skin warm. Deliberately measured as "how many NON-kept
-   entries may stay" rather than a raw list length, so a stale asset can't squat the last slot
-   when the active table brings none of its own. Called only after a switch has SETTLED — the
-   incoming asset is already resident, so nothing visible is ever freed.
-   Skins (table paint jobs) and rooms (locations) are pruned by SEPARATE functions now that they're
-   independent axes: applyTable prunes skins, applyRoom prunes rooms. */
+// evict skins past their caps, LRU first; keep* are on screen and never freed
+// counts non-kept entries, so cacheSkins:1 holds nothing extra; called once a switch has settled
 function pruneSkins(keepSkin){
  const extraS=Math.max(0,((CONFIG.tableAssets||{}).cacheSkins||1)-1);
  let nS=0;for(const k of skinOrder)if(k!==keepSkin)nS++;
@@ -186,17 +149,11 @@ function pruneRooms(keepRoom){
 // Back-compat shim (no in-tree caller): prune both axes at once.
 function pruneTableAssets(keepSkin,keepRoom){pruneSkins(keepSkin);pruneRooms(keepRoom);}
 
-/* Register a loaded table GLB's goal parts for the big-goal widen. The diamond net already
-   grows (it's a goalFrames sub-group fx.js scales on z), but the GLB frame posts and the little
-   end-walls flanking each mouth are baked at identity with world-space verts, so nothing moved
-   them. Classify each by world-x (which goal) and hand them to bigGoalUpdate: frame meshes are
-   symmetric about z=0 so they just scale; end-walls keep their outer edge pinned to the table
-   side and only their inner edge tracks the mouth, so they open rather than stretch. Meshes are
-   measured AFTER updateMatrixWorld so the world AABB is current. */
+// register a table GLB's goal parts for the big-goal widen: classify by world x, frames scale about z=0, end-walls pin the outer edge
 function registerBigGoalMeshes(root){
  const bb=new THREE.Box3();let nGrow=0,nWall=0;
  root.traverse(c=>{
-  if(!c.isMesh||c.visible===false)return;  // skip legacy goal_post/goal_crossbar meshes hidden above (superseded by goal_frame_l/r) — no point growing invisible geometry
+  if(!c.isMesh||c.visible===false)return;  // skip the hidden legacy goal_post/goal_crossbar meshes
   const n=onm(c),pn=c.parent?onm(c.parent):'';
   const grow=/^(goal_post|goal_crossbar|goal_frame)/.test(n)||/^(goal_post|goal_crossbar|goal_frame)/.test(pn),
         wall=n.startsWith('wall_end')||pn.startsWith('wall_end');
@@ -214,53 +171,7 @@ function registerBigGoalMeshes(root){
  console.log('registerBigGoalMeshes: '+nGrow+' frame + '+nWall+' wall mesh(es) ('+glbGoalSplit.length+' split)');
 }
 
-/* Register a skin's ROD-HOLE RINGS for the stamina readout (js/fx.js rodHolesUpdate).
-
-   The rings already exist in every table skin as their own material slot inside a wall mesh — they
-   are not cut into the wall surface — but the grouping and the material name differ per skin
-   (`metal` under two wall objects on classic, `slide_holes` under one on strike, `rod_metal` under
-   the other one on circuit). So the contract here is the OBJECT NAME and nothing else: name it
-   `rod_hole*` in Blender and it works, whatever material it wears and whatever it hangs under.
-   Do NOT prefix it `led`, `field`, `goal_` or `wall_end` — loadSkin's traverse claims all four.
-
-   WHICH ROD A RING BELONGS TO IS DECIDED BY WORLD X against CONFIG.rods.defs, the same
-   classification registerBigGoalMeshes uses on goal parts — so a ring keeps working when Blender
-   renames it `rod_hole_3.001`, and an export that numbers them backwards still lights the right
-   rods. A ring further than half a rod-spacing from every rod is REFUSED with a console line
-   rather than snapped to the nearest one: silently lighting the wrong rod all match is the worse
-   failure, and it is the one nobody would think to look for.
-
-   EACH RING TAKES ITS OWN MATERIAL CLONE. Eight objects split out of one wall in Blender still
-   share a single material datablock, and one material cannot show eight different values. The
-   clone carries the authored rest look in userData.rhRest so a ring can always settle back to
-   exactly what the artist made. disposeModelTemplate frees the clones with the rest of the skin
-   (it disposes whatever material is ON the mesh), so nothing extra is needed at teardown.
-
-   Shadow casting is turned OFF here. loadSkin stamps castShadow on every mesh in a skin GLB, and
-   these rings run to ~2000 triangles each in the current exports for something that is never a
-   visible caster — 30k triangles in the shadow map for no shadow anybody can see. */
-/* Turn one ring's material into a LEVEL GAUGE, by height, in the shader.
-
-   The alternative was to cut each ring into horizontal bands in Blender and light them from the
-   bottom up — eight rings times eight bands is sixty-four objects and sixty-four draw calls for a
-   thing thirty pixels across, and it would have to be re-authored in every skin. A world-Y
-   threshold in the fragment shader does the same job on the geometry that is already there, at no
-   extra draw call, with a soft waterline instead of eight steps, and it works on whatever ring an
-   artist exports next.
-
-   WORLD Y, NOT OBJECT Y. The contract says transforms are applied, so the two are normally equal —
-   but "normally" is how a table that gets parented or scaled later turns into a bug nobody can
-   find, and `modelMatrix * transformed` costs one multiply in a vertex shader that is already
-   doing several.
-
-   ADDED TO gl_FragColor RATHER THAN TO material.emissive. The authored material is then never
-   written to at all: no rest state to capture, nothing to restore when the effect is switched off,
-   and a skin whose rings carry their own emissive keeps it. The add happens before
-   <tonemapping_fragment>, i.e. in linear space, which is exactly where emissive would have landed.
-
-   BOTH ANCHORS ARE CHECKED. r128 is pinned, but a chunk name is still a string in someone else's
-   file — if either goes missing the ring keeps its authored look and says so in the console,
-   rather than rendering black. */
+// turn one ring's material into a level gauge by world height in the shader (added to gl_FragColor before tonemapping); a missing shader chunk anchor logs and keeps the authored look
 function rodHoleShader(m,y0,y1){
  m.userData.rhU=null;                      // filled in when the program compiles (first render)
  m.onBeforeCompile=sh=>{
@@ -286,32 +197,9 @@ function rodHoleShader(m,y0,y1){
  };
 }
 
-/* Register a skin's ROD-HOLE RINGS for the stamina readout (js/fx.js rodHolesUpdate).
-
-   The rings already exist in every table skin as their own material slot inside a wall mesh — they
-   are not cut into the wall surface — but the grouping and the material name differ per skin
-   (`metal` under two wall objects on classic, `slide_holes` under one on strike, `rod_metal` under
-   the other one on circuit, `Metal`/`Gold` merged into the bowl on the two arenas). So the contract
-   here is the OBJECT NAME and nothing else: name it `rod_hole*` in Blender and it works, whatever
-   material it wears and whatever it hangs under. Do NOT prefix it `led`, `field`, `goal_` or
-   `wall_end` — loadSkin's traverse claims all four.
-
-   WHICH ROD A RING BELONGS TO IS DECIDED BY WORLD X against CONFIG.rods.defs, the same
-   classification registerBigGoalMeshes uses on goal parts — so a ring keeps working when Blender
-   renames it `rod_hole_3.001`, and an export that numbers them backwards still lights the right
-   rods. A ring further than half a rod-spacing from every rod is REFUSED with a console line
-   rather than snapped to the nearest one: silently lighting the wrong rod all match is the worse
-   failure, and it is the one nobody would think to look for.
-
-   EACH RING TAKES ITS OWN MATERIAL CLONE. Eight objects split out of one wall in Blender still
-   share a single material datablock, and one material cannot show eight different levels. The
-   clones share one compiled program (their onBeforeCompile source is identical, so r128's cache
-   key matches) and differ only in uniform values, which is exactly the split we want.
-   disposeModelTemplate frees them with the rest of the skin.
-
-   Shadow casting is turned OFF here. loadSkin stamps castShadow on every mesh in a skin GLB, and
-   an unconverted ring set runs to ~2000 triangles per ring for something that is never a visible
-   caster. */
+// register a skin's rod-hole rings for the stamina readout (fx.js rodHolesUpdate)
+// the contract is the object name `rod_hole*` (not prefixed led, field, goal_ or wall_end); the rod comes from world x against CONFIG.rods.defs
+// each ring gets its own material clone (one compiled program, different uniforms); casting is off
 function registerRodHoles(root,id,skinId){
  const defs=CONFIG.rods.defs;
  let gap=Infinity;for(let i=1;i<defs.length;i++)gap=Math.min(gap,Math.abs(defs[i].x-defs[i-1].x));
@@ -327,7 +215,7 @@ function registerRodHoles(root,id,skinId){
   const m=c.material.clone();
   rodHoleShader(m,bb.min.y,bb.max.y);      // this ring's OWN height — it differs per skin
   c.material=m;
-  list.push({o:c,mat:m,rod:ri,fill:1,v:0,col:new THREE.Color(CONFIG.fx.rodHoles.idle),off:false});
+  list.push({o:c,mat:m,rod:ri,fill:1,v:0,col:kitLin(CONFIG.fx.rodHoles.idle),off:false});
  });
  if(list.length||bad){
   (skinRodHoles[id]=skinRodHoles[id]||{})[skinId]=list;
@@ -335,83 +223,15 @@ function registerRodHoles(root,id,skinId){
  }
 }
 
-/* --- rooms / locations (environment backdrops) ------------------------------
-   A room GLB is authored in game/world coords (floor ~y=-44, walls ±190, centred on origin),
-   so it drops straight into the scene with no transform. Rooms are keyed by ROOM id (CONFIG.rooms)
-   and are independent of tables — applyRoom (world.js) toggles which one is shown and bakes its
-   reflection env. */
-/* Load ONE room's backdrop GLB into roomGroups[id]. Lazy + idempotent: a no-op if the room has no
-   glb, it's already resident, or a fetch is in flight. cb runs on success, failure, and every
-   no-op, so applyRoom can gate on it. */
-/* ===== GLB light + emissive transfer =====================================
-   Everything an artist authors in Blender has to survive the trip to the screen.
-   Two things did not, and both were silent.
-
-   --- 1. EMISSIVE STRENGTH ---
-   KHR_materials_emissive_strength is NOT in r128's GLTFLoader extension table, so
-   a material authored at strength 4 arrived at strength 1 and the loader said
-   nothing. The value is not lost though: addUnknownExtensionsToUserData parks every
-   extension the loader does not handle on material.userData.gltfExtensions, so the
-   number is sitting right there and only needs applying. emissiveIntensity is the
-   correct target — it multiplies `emissive` in the shader, so the authored COLOUR
-   stays intact and only its strength scales. Nine GLBs in this project author it
-   (both rooms, three tables, the explosion + swirl FX).
-
-   Note this only READS as intended with tone mapping on: strength 4 pushes the
-   emissive well past 1.0, which without a tone curve clips to flat white — i.e.
-   supporting the extension and CONFIG.render.toneMapping are the same fix.
-
-   --- 2. PUNCTUAL LIGHT INTENSITY ---
-   glTF carries candela. Blender authors under inverse-square. three.js r128 with
-   physicallyCorrectLights=false does NOT use inverse-square — it uses
-       pow( saturate( 1 - d/distance ), decay )
-   which is a LINEAR reach that hits exactly zero at d=distance. Two consequences
-   the old code walked straight into:
-
-     * A per-light `Math.min(intensity*scale, 4)` clamp. The saucer authors a 46199cd
-       key and an 8153cd fill — a deliberate 5.7:1 ratio. Both landed on 4. Any two
-       lights over the ceiling become EQUAL, so the clamp does not dim a room, it
-       deletes its lighting design. Fixed by normalising the room as a GROUP: if the
-       brightest light exceeds `max`, every light scales by the same factor and the
-       relationships survive. (max:0 = off, which is now the default — with `gain`
-       doing the work there is nothing for a ceiling to protect against.)
-
-     * A forced distance of 260 (spot) / 180 (point). Those are constants, and rooms
-       are not the same size. The saucer's key hangs 209 units from the table, so
-       (1 - 209/260)^2 = 0.038: it delivered under 4% and read as unlit. The pub's
-       fireplace and all three sconces sit BEYOND 180 and delivered exactly zero.
-       Tuning lightScale could not fix either, because above ~8000cd the clamp ate
-       the change first — which is precisely why the knob felt dead.
-
-   What replaces it. Two derivations, in this order:
-
-     base = candela / d0^2      (d0 = the light's own distance to the table)
-       This is the one line that makes the transfer faithful. It reproduces the
-       inverse-square RELATIONSHIP Blender rendered under, so a near fill and a
-       distant key keep their true relative contribution at the table instead of
-       being flattened onto one falloff curve. It also drags the number into a
-       human range: `gain` reads ~3 rather than ~0.0005.
-       NB the honest ratio at the table is therefore the IRRADIANCE ratio (saucer
-       1.78:1), not the raw wattage ratio (5.7:1) — the fill is closer, so it earns
-       back some of the difference. That is what Blender showed.
-
-     distance = d0 * reach      (falloff at the table = (1-1/reach)^decay, a CONSTANT)
-       Scale-invariant on purpose: a pendant 97 units up and a spot 209 units up now
-       land on the same falloff at the table, so a room's brightness stops depending
-       on how high its fixtures happen to hang. Because that factor is constant and
-       known, `gain` finally means something you can predict. The room itself still
-       gets falloff shaping — near walls brighter than far ones — which is why this
-       keeps a cutoff at all rather than setting distance=0.
-
-   Why not just flip physicallyCorrectLights and get true inverse-square everywhere:
-   it is a RENDERER flag, so it would also rewrite the 2 goalLights and the 5-strong
-   fxLightPool, whose intensities are hand-tuned at ~5 call sites against the legacy
-   curve. Converting those needs a reference distance per site and each one is a
-   visible effect (goal flash, ball glow, explosion, respawn swirl) — the conversion
-   factors work out between ~37x and ~204x depending on the distance guessed, so
-   there is no single constant and every site would be an unverified guess. The room
-   lights are the only lights in the game whose values come from an external tool, so
-   the transfer is fixed where the transfer actually happens. */
+// --- rooms / locations (environment backdrops) ---
+// a room GLB is authored in game coords (floor ~y=-44, walls ±190), keyed by CONFIG.rooms id; applyRoom (world.js) toggles which is shown
+// load one room's backdrop GLB into roomGroups[id]; lazy and idempotent, cb runs on success, failure and no-ops
+// ===== GLB light + emissive transfer =====
+// emissive: r128 ignores KHR_materials_emissive_strength, so read it from userData.gltfExtensions into emissiveIntensity (needs tone mapping)
+// punctual lights: glTF carries candela under inverse-square, r128 falls off linearly to `distance`
+//    base = candela / d0^2 keeps near and far fixtures' relative contribution; distance = d0 * reach makes the falloff at the table constant, so `gain` is predictable
+//    the ceiling (max) scales the whole room, not each light; max:0 = off
+// physicallyCorrectLights stays off (it would rewrite the hand-tuned goal and fx lights)
 function applyEmissiveStrength(root){
  if(!root||CONFIG.render&&CONFIG.render.emissiveStrength===false)return;
  const seen=new Set();
@@ -429,9 +249,7 @@ function applyEmissiveStrength(root){
   });
  });
 }
-/* Transfer a room GLB's baked punctual lights. Called with the room still detached,
-   so world matrices are forced up to date first — d0 is a WORLD distance and the
-   whole derivation above hangs off it. */
+// transfer a room GLB's baked lights; world matrices are forced up to date first (d0 is a world distance)
 function applyRoomLights(room,R){
  const D=(CONFIG.render&&CONFIG.render.roomLight)||{};
  const C=Object.assign({gain:1,reach:3,decay:2,minDist:20,max:0},D,(R&&R.light)||{});
@@ -439,18 +257,10 @@ function applyRoomLights(room,R){
  const lights=[];const p=new THREE.Vector3();
  room.traverse(c=>{if(c.isLight)lights.push(c);});
  if(!lights.length)return lights;
- // Fixtures the room switches off by name — usually because the editor DETACHED one into an
- // authored rooms.<id>.lights entry that can be moved, and two copies of one lamp is one too
- // many. intensity 0 rather than visible=false on purpose: hiding a light changes the scene's
- // light count and recompiles every material, and a dev toggling a lamp should not pay that.
+ // fixtures the room switches off by name (e.g. detached into an authored light); intensity 0 rather than visible=false, which would change the light count
  const off=new Set(((R&&R.lightsOff)||[]).map(s=>String(s).toLowerCase()));
  lights.forEach(l=>{
-  /* AUTHORED CANDELA, stashed on the FIRST pass only. The transfer below OVERWRITES intensity,
-     so without this stash the function is not idempotent — and it is called twice in real use:
-     once at GLB load, then again on every drag of the room editor's gain/reach sliders. A second
-     pass would divide the already-transferred value by d0^2 a second time and collapse the room
-     to black; worse, a room authored at gain:0 lands every fixture on 0 and could NEVER come
-     back, because 0*gain is 0 for every gain. That is exactly what made those sliders read dead. */
+  // authored candela is stashed on the first pass only, so the transfer is idempotent (the editor's sliders call it repeatedly)
   if(l.userData.rlCandela===undefined){
    l.userData.rlCandela=l.intensity;
    l.userData.rlDist=l.distance;
@@ -469,35 +279,26 @@ function applyRoomLights(room,R){
    l.intensity=cd*C.gain;                              // directional/ambient inside a room glb: no falloff to derive
   }
  });
- // Ratio-preserving ceiling. Scales the WHOLE room by one factor so the authored
- // key:fill relationship cannot be flattened the way a per-light clamp flattens it.
+ // ratio-preserving ceiling: scales the whole room by one factor so the key:fill ratio survives
  if(C.max>0){
   let mx=0;lights.forEach(l=>{if(l.intensity>mx)mx=l.intensity;});
   if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity*=k);
    console.log('room lights normalised x'+k.toFixed(3)+' (peak '+mx.toFixed(2)+' > max '+C.max+')');}
  }
- // Applied LAST so a silenced fixture cannot drag the ceiling above down onto the ones
- // that are still lit — the peak must be measured over the lights that actually contribute.
+ // applied last so a silenced fixture can't drag the ceiling down onto the lit ones
  lights.forEach(l=>{if(l.userData.roomOff){l.userData.roomOffInt=l.intensity;l.intensity=0;}});
  return lights;
 }
 
 const roomLoading={};   // room id -> [pending cbs] while its backdrop GLB is in flight
-/* Rooms whose GLB came back 404. WITHOUT this a room pointing at a file that isn't there is
-   re-fetched on EVERY applyRoom — and applyRoom runs on every venue change, so a missing backdrop
-   cost a network round-trip per screen transition. Worse, applyRoom's "this room has no backdrop"
-   fallback (the shared ground plane) tests rm.glb, which is still set on a room whose file
-   is absent — so it never engaged and the room rendered as an empty void that CLAIMED, in the
-   console, to be using the shared backdrop. roomHasGlb() is the honest test both paths read.
-   Session-scoped: a reload re-tries, so dropping the file in during development still works. */
+// rooms whose GLB 404'd: not re-fetched per applyRoom; roomHasGlb() is the test for the ground-plane fallback; a reload retries
 const roomFailed={};
 function roomHasGlb(id){const R=CONFIG.rooms&&CONFIG.rooms[id];return !!(R&&R.glb&&!roomFailed[id]);}
 function ensureRoom(id,cb){
  const R=CONFIG.rooms&&CONFIG.rooms[id];
  if(!roomHasGlb(id)){if(cb)cb();return;}
  if(roomGroups[id]){touchRoom(id);if(cb)cb();return;}
- // In flight: QUEUE the cb so it fires when the backdrop is truly resident, not immediately —
- // a kickoff gate reading this must not proceed with the room still downloading (skipped intro).
+ // in flight: queue the cb so it fires when the backdrop is truly resident
  if(roomLoading[id]){if(cb)roomLoading[id].push(cb);touchRoom(id);return;}
  const cbs=roomLoading[id]=cb?[cb]:[];touchRoom(id);
  const flush=()=>{delete roomLoading[id];cbs.forEach(f=>f&&f());};
@@ -505,10 +306,7 @@ function ensureRoom(id,cb){
  newGLTF().load(url,gltf=>{
   try{
    const room=gltf.scene;
-   // backdrop, not a shadow caster. Room GLASS (any transparent material, e.g. the moon dome) is the
-   // farthest transparent thing on screen, so it draws FIRST among them (renderOrder -1) rather than
-   // being depth-sorted by its centre, which sits under the table and would put it over smoke and
-   // trails; and it never receives shadows, or the table's shadow lands on the panes.
+   // backdrop, not a shadow caster; room glass draws first among transparent things (renderOrder -1) and never receives shadows
    room.traverse(c=>{if(!c.isMesh)return;c.castShadow=false;
     const ms=Array.isArray(c.material)?c.material:[c.material];
     const glass=ms.some(m=>m&&m.transparent);c.receiveShadow=!glass;if(glass)c.renderOrder=-1;});
@@ -521,24 +319,13 @@ function ensureRoom(id,cb){
   }catch(e){console.warn('room GLB hookup failed for '+id,e);}
   flush();                                          // resident now → release every queued cb
  },undefined,()=>{
-  roomFailed[id]=true;                              // latch: never re-fetch this file, and let applyRoom fall back to the shared backdrop for real
+  roomFailed[id]=true;                              // latch: never re-fetch this file; applyRoom falls back to the shared backdrop
   const oi=roomOrder.indexOf(id);if(oi>=0)roomOrder.splice(oi,1);
   console.warn('room GLB missing for '+id+' ('+url+'), using shared backdrop');
   flush();                                          // GLB missing → shared backdrop; release queued cbs so a gate doesn't wait forever
  });
 }
-/* Free an evicted room backdrop. Rooms are never cloned, so a hard dispose is safe. NEVER call on
-   the room currently visible.
-   THE REFLECTION BAKE IS DELIBERATELY LEFT BEHIND. It used to be freed right here, one line below
-   the group it came from, which looked like tidy bookkeeping and was the expensive half of a room
-   switch. The bake is an independent ~6MB cubemap that holds no reference back to the group; the
-   group is 20-45MB of geometry and texture. Freeing the small thing — the one that costs a full
-   PMREM pass to recreate — in order to free the large thing alongside it is the trade backwards,
-   and it meant an A/B room toggle re-baked BOTH rooms every single time. roomEnvCache has its own
-   LRU now (CONFIG.tableAssets.cacheEnvs, world.js pruneEnvs) and that is what bounds it.
-   The leak the old code guarded against is still guarded, just from there: pruneEnvs frees through
-   envDispose(), never tex.dispose() — a PMREM bake is a RENDER TARGET and freeing its texture
-   alone leaves the framebuffer allocated (see world.js envKeep). */
+// free an evicted room backdrop (a hard dispose is safe, never cloned); never the visible one; its reflection bake stays (own LRU, world.js pruneEnvs)
 function disposeRoom(id){
  const room=roomGroups[id];if(!room)return;
  if(typeof disposeRoomProps==='function')disposeRoomProps(id);   // instanced props go with the room
@@ -547,21 +334,12 @@ function disposeRoom(id){
  disposeModelTemplate(room);
  console.log('room freed: '+id+' (reflection bake kept — see the note above)');
 }
-// Back-compat shim: the old eager all-rooms loader. Nothing calls it now — kept so an
-// external/console caller doesn't hit a missing function.
+// back-compat shim: the old eager all-rooms loader, nothing calls it now
 function loadRoomModel(){for(const id in CONFIG.rooms)ensureRoom(id);}
 
-/* ---- room skies (CONFIG.rooms.<id>.sky) ----------------------------------
-   A sky is SIX cube faces (<src>_px.ktx2 … _nz) assembled into one CubeTexture and handed to
-   scene.background. One draw call, no geometry, never fogged, and the ball cube camera picks it up
-   for free. Deliberately NOT a panorama: r128 converts an equirect background into a cube render
-   target at runtime (a 4K panorama = ~64MB of image PLUS ~100MB of cube target, uncompressed),
-   while six KTX2 faces stay block-compressed on the GPU (1024² faces ≈ 8MB with mips).
-   r128's setTextureCube already uploads a CubeTexture whose six images are CompressedTextures —
-   that is the DDS cube path — so the faces go straight from the KTX2 worker to the GPU.
-   ext:'jpg'/'png' also works (CubeTextureLoader) for authoring, at uncompressed cost.
-   NO ROTATION: r128's background has no rotation or intensity, so both are baked into the faces.
-   Residency mirrors rooms: LRU by room id, CONFIG.tableAssets.cacheSkies, active always kept. */
+// --- room skies (CONFIG.rooms.<id>.sky) ---
+// six KTX2 cube faces (<src>_px.ktx2 ... _nz) in one CubeTexture on scene.background: one draw call, never fogged; ext:'jpg'/'png' works for authoring
+// r128's background can't rotate or dim, so both are baked into the faces; LRU by room id (cacheSkies), active kept
 const skyCache={},skyOrder=[],skyLoading={},skyFailed={};
 const SKY_FACES=['px','nx','py','ny','pz','nz'];
 function roomHasSky(id){const R=CONFIG.rooms&&CONFIG.rooms[id];return !!(R&&R.sky&&R.sky.src&&!skyFailed[id]);}
@@ -613,20 +391,12 @@ function pruneSkies(keep){
  }
 }
 
-/* --- rods (per-table livery, lazy) ----------------------------------------
-   Rods used to be one global asset loaded once. Now each TABLE may bring its own rod set
-   (CONFIG.tables[id].rods); tables without one share the stock assets/rods/ set. Sets are keyed
-   by rodSetKey (a table id, or '_shared'), lazy-loaded the first time a table needs them, cloned
-   per rod by makeRodModel, and kept resident (rod GLBs are tiny hardware meshes — no LRU needed,
-   and they're clone SOURCES so hard-disposing them while clones live would be unsafe anyway).
-   Per size, a table set that lacks a GLB falls back to the shared set, then to the primitive rod
-   in world.js buildRods. VISUAL ONLY — physics/RODDEFS are identical across tables. */
+// --- rods (per-table livery, lazy) ---
+// each table may bring its own rod set (CONFIG.tables[id].rods), else assets/rods/; keyed by rodSetKey, cloned per rod by makeRodModel, kept resident
+// a missing size falls back to the shared set, then the primitive rod in world.js buildRods; visual only
 function rodSetKey(tableId){const T=CONFIG.tables[tableId];return (T&&T.rods)?tableId:'_shared';}
 
-/* Load one rod set by KEY. '_shared' loads assets/rods/fuzeball_rod_<n>man.glb (old assets/ root
-   as a fallback). A table key loads from CONFIG.tables[key].rods.folder (per-size 404 -> leave the
-   size unset so makeRodModel falls back to the shared template). cb runs once the whole batch
-   settles; concurrent callers for the same set are queued. Idempotent once loaded. */
+// load one rod set by key: '_shared' = assets/rods/fuzeball_rod_<n>man.glb, a table key = CONFIG.tables[key].rods.folder; a per-size 404 leaves it unset; cb runs once the batch settles
 function loadRodSet(key,cb){
  const set=rodSets[key]||(rodSets[key]={});
  if(set._done){if(cb)cb();return;}
@@ -647,23 +417,20 @@ function loadRodSet(key,cb){
   });
  });
 }
-// Boot: prime the SHARED set + the active table's set (may BE the shared set), then onReady so
-// buildRods can clone them.
+// boot: prime the shared set and the active table's set, then onReady so buildRods can clone them
 function loadRodModels(onReady){
  const tid=(typeof cfg!=='undefined'&&CONFIG.tables[cfg.table])?cfg.table:'classic';
  const keys=['_shared'];const tk=rodSetKey(tid);if(tk!=='_shared')keys.push(tk);
  let left=keys.length;const done=()=>{if(--left===0)onReady();};
  keys.forEach(k=>loadRodSet(k,done));
 }
-// Ensure a table's rod set is resident (used by applyTable on a table switch); cb on settle.
+// ensure a table's rod set is resident (table switch); cb on settle
 function ensureTableRods(tableId,cb){
  if(typeof loadRodSet!=='function'){if(cb)cb();return;}
  loadRodSet(rodSetKey(tableId),cb);
 }
 
-/* Clone the right rod set's model for one rod, tinting the team-coloured parts. `tableId` picks
-   the set; a size the set lacks falls back to the shared set, else null (buildRods draws the
-   primitive). */
+// clone the rod set's model for one rod and tint the team parts; falls back to the shared set, else null (primitive)
 function makeRodModel(men,team,tableId){
   const key=(typeof rodSetKey==='function')?rodSetKey(tableId):'_shared';
   const tpl=(rodSets[key]&&rodSets[key][men])||(rodSets._shared&&rodSets._shared[men]);
@@ -691,8 +458,7 @@ function ballKey(o){return onm(o).replace(/[._]?\d+$/,'');}
 function wx(obj){return obj.getWorldPosition(new THREE.Vector3()).x;}
 function hideMeshes(obj){if(obj)obj.traverse(c=>{if(c.isMesh)c.visible=false;});}
 
-/* Clone dest material and carry over any PBR texture maps (normal, roughness, metalness,
-   ao, bump) from src so that GLB-baked detail survives team-colour swaps in rods/players. */
+// clone dest material and carry over src's PBR maps so baked detail survives team-colour swaps
 function cloneWithMaps(dest,src){
  if(!src||!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap)return dest;
  const m=dest.clone();
@@ -705,17 +471,9 @@ function cloneWithMaps(dest,src){
  return m;
 }
 
-/* --- fracture / explosion models -------------------------------------------
-   Optional per-figurine "explode & collapse" GLB, consumed by js/fracture.js on a
-   cannonball kill. Only figurines with an explosionSrc get the effect; the rest keep the
-   original instant-vanish. A live explosion is just a clone() + mixer.play() — no disk hit
-   and no fresh material mid-match, because the two on-table figurines' shatters are primed
-   and shader-warmed ahead of time (ensureExplosionModel). */
-/* Boot: load ONLY the two shared, always-needed shatter GLBs — the cannonball's own
-   explosion and the respawn swirl. The per-figurine player-explosion GLBs are NO LONGER
-   bulk-loaded here (that was ~17 heavy fractured meshes resident for the 2 ever on the
-   table); ensureExplosionModel pulls each figurine's shatter in on demand — main.js primes
-   the active red/blue at boot, reloadPlayerModel primes a freshly-picked one. */
+// --- fracture / explosion models ---
+// optional per-figurine explode GLB (explosionSrc) for fracture.js; figurines without one vanish
+// boot loads only the two shared GLBs (cannonball explosion, respawn swirl); per-figurine ones come from ensureExplosionModel (main.js primes red/blue, reloadPlayerModel a new pick)
 function loadExplosionModels(onReady){
   const off=CONFIG.debug?.fractureFx===false;                       // master kill-switch: no fracture GLBs loaded at all
   const ballSrc=off?null:CONFIG.cannonball.explosionSrc;            // the ball's own shatter GLB (shared, always needed)
@@ -737,11 +495,7 @@ function loadExplosionModels(onReady){
   }
 }
 
-/* Lazy-load ONE figurine's explosion GLB (by model id) and shader-warm it off-screen so a
-   later cannonball kill is still just clone()+play() — no mid-match disk read or compile
-   stall. No-op if fracture fx is off, the id has no explosionSrc, it's already loaded, or a
-   load is already in flight. Safe to call on every model change; cb (optional) runs on
-   success OR skip. spawnFracture falls back to instant-vanish while a template isn't ready. */
+// lazy-load one figurine's explosion GLB and shader-warm it off-screen; no-op if fracture fx is off, no explosionSrc, loaded or in flight; spawnFracture vanishes until it's ready
 function ensureExplosionModel(id,cb){
   if(CONFIG.debug?.fractureFx===false||!id||explosionTemplates[id]||explosionLoading[id]){if(cb)cb();return;}
   const m=CONFIG.playerModel.models.find(x=>x.id===id);
@@ -756,10 +510,7 @@ function ensureExplosionModel(id,cb){
    ()=>{delete explosionLoading[id];console.warn('explosion GLB missing for '+id+' ('+m.explosionSrc+')');if(cb)cb();});
 }
 
-/* Free a per-figurine explosion template's GPU buffers/textures and drop it from the cache.
-   Live fracture instances clone-share this template's geometry+textures, so the caller MUST
-   have cleared them first (clearFractures) — startMatch/gotoMenu both do before pruning. The
-   template re-loads on demand via ensureExplosionModel. */
+// free a figurine explosion template (the caller must have cleared live fractures first); reloads on demand
 function disposeExplosionModel(id){
   const t=explosionTemplates[id];if(!t)return;
   t.scene.traverse(c=>{if(!c.isMesh)return;
@@ -771,15 +522,13 @@ function disposeExplosionModel(id){
     if(m.dispose)m.dispose();}});
   delete explosionTemplates[id];
 }
-/* Dispose every per-figurine explosion template EXCEPT the ids in keep[] — bounds resident
-   shatter GLBs to the (usually two) figurines actually about to play. The shared cannonball +
-   respawn-swirl templates live in their own vars, so they're never touched here. */
+// dispose every figurine explosion template except keep[]; the shared ball and swirl templates are untouched
 function pruneExplosionModels(keep){
   const k=new Set(keep||[]);
   for(const id in explosionTemplates)if(!k.has(id))disposeExplosionModel(id);
 }
 
-/* --- ball model ------------------------------------------------------------ */
+// --- ball model ---
 
 function loadBallModel(onReady){
   if(!CONFIG.debug?.useBallModel){
@@ -817,12 +566,11 @@ function loadBallModel(onReady){
       ()=>{console.warn('no ball GLB, using primitive balls');if(onReady)onReady();}));
 }
 
-/* the GLB holds one mesh per ball type (classic/fire/cannon/split/golden), all at
-   the origin — show ONLY the matching one; missing types fall back to classic. */
+// the GLB holds one mesh per ball type at the origin: show only the matching one, else classic
 function makeBallModel(key){
   if(!ballModel)return null;
   const want=key.toLowerCase();
-  if(!ballMatMap[want])return null;   // no baked mesh slot for this type (e.g. knuckleball) → caller uses the generated colour sphere
+  if(!ballMatMap[want])return null;   // no baked mesh slot for this type (e.g. knuckleball): the caller uses the generated sphere
   const g=ballModel.clone(true);
   let any=false;
   g.traverse(c=>{
@@ -834,15 +582,9 @@ function makeBallModel(key){
   return any?g:null;
 }
 
-/* --- power-up pickup models -------------------------------------------------
-   The floating pickup for a power-up type (CONFIG.powerups.models). Optional per type:
-   a type with no entry, or whose GLB is missing, falls back to the procedural octahedron
-   in powerups.js — the pickup still spawns and still collects, it just looks plainer.
-   Templates are loaded once at boot and clone()d per spawn, so a pickup popping in
-   mid-match costs one clone and nothing else. Everything that would otherwise touch a
-   MATERIAL at spawn time (glow, shadow flags) is baked into the template here instead:
-   a fresh material mid-match means a shader compile, i.e. a hitch at the exact moment
-   the pickup appears. */
+// --- power-up pickup models ---
+// CONFIG.powerups.models: optional per type, a missing GLB falls back to the octahedron in powerups.js
+// templates load at boot and are cloned per spawn; anything touching a material is baked in here to avoid a mid-match compile
 const puTemplates={};      // power-up key -> THREE.Group (recentred + fit-scaled). Cloned by makePUModel.
 function loadPowerupModels(onReady){
  const M=CONFIG.powerups.models;
@@ -855,19 +597,12 @@ function loadPowerupModels(onReady){
   loader.load(d.src,gltf=>{
    try{
     const wrap=new THREE.Group();wrap.add(gltf.scene);
-    // Recentre on the model's own middle (so the idle spin turns about it, not about whatever
-    // origin the artist happened to leave) and normalise the size: `fit` is the bounding-sphere
-    // radius we want in world units, which makes the authored Blender scale irrelevant.
+    // recentre on the model's middle and normalise size to the bounding-sphere radius `fit`
     const bb=new THREE.Box3().setFromObject(gltf.scene);
     gltf.scene.position.sub(bb.getCenter(new THREE.Vector3()));
     const rad=bb.getSize(new THREE.Vector3()).length()/2;
     if(d.fit&&rad>1e-4)wrap.scale.setScalar(d.fit/rad);
-    // Strip any KHR punctual light the artist baked in. A pickup is added to the scene MID-MATCH,
-    // and r128 bakes the scene's light COUNT into every material's shader program — so one light
-    // riding in on the pickup would force a whole-scene recompile (a multi-hundred-ms freeze) the
-    // instant it pops in, and again when it's collected. Use `glow` for brightness instead; if a
-    // pickup ever genuinely needs to cast light, borrow one from the resident fx light pool
-    // (world.js fxLightGet) rather than adding one here.
+    // strip baked KHR lights (a light joining mid-match recompiles the scene); use `glow` or fxLightGet
     const lights=[];wrap.traverse(o=>{if(o.isLight)lights.push(o);});
     lights.forEach(l=>{if(l.parent)l.parent.remove(l);});
     if(lights.length)console.warn('power-up GLB '+k+': stripped '+lights.length+' baked light(s) — see CONFIG.powerups.models glow');
@@ -878,8 +613,7 @@ function loadPowerupModels(onReady){
      const ms=Array.isArray(o.material)?o.material:[o.material];
      ms.forEach(m=>{
       if(!m||!m.emissive)return;
-      // Keep an authored emissive colour; only fall back to the type's HUD colour when the
-      // material has none, so a hand-painted glow isn't overwritten by the swatch.
+      // keep an authored emissive colour, fall back to the type's HUD colour only when there is none
       if(d.glowCol!==undefined)m.emissive.setHex(d.glowCol);
       else if(!m.emissive.getHex())m.emissive.setHex((ty&&ty.col)||0xffffff);
       m.emissiveIntensity=d.glow;m.needsUpdate=true;
@@ -892,10 +626,9 @@ function loadPowerupModels(onReady){
   },undefined,()=>{console.warn('power-up GLB missing for '+k+' ('+d.src+'), using the procedural gem');done();});
  });
 }
-// One pickup instance, or null when that type has no loaded model (caller draws the gem).
+// one pickup instance, null if the type has no model (caller draws the gem)
 function makePUModel(key){const t=puTemplates[key];return t?t.clone(true):null;}
-/* Off-screen shader precompile. A pickup joins the scene mid-match, so without this its first
-   frame compiles there — same reasoning (and same shape) as warmFractureTemplate. */
+// off-screen shader precompile so a pickup's first frame doesn't compile mid-match
 function warmPowerupShaders(){
  if(!renderer||!scene||!camera)return;
  for(const k in puTemplates){
@@ -904,23 +637,15 @@ function warmPowerupShaders(){
  }
 }
 
-/* --- pitches (one GLB each, lazy + LRU) --------------------------------------
-   Was ONE 32MB atlas holding all eight, so booting into any pitch downloaded it and GLTFLoader
-   decoded all 22 of its images — to show three. drawField then detached the seven meshes you were
-   not using, which correctly kept VRAM down and did nothing at all about the fetch or the decode
-   that had already happened. Now it is the same shape rooms and skins already use: one file per
-   id, fetched when picked, evicted past CONFIG.tableAssets.cachePitches, LRU, active protected.
-   Split with tools/pitch-split.mjs — see the note above CONFIG.pitches for why the variant key is
-   the MATERIAL name and not the mesh name. */
+// --- pitches (one GLB each, lazy + LRU) ---
+// fetched when picked, evicted past CONFIG.tableAssets.cachePitches, active protected; split with tools/pitch-split.mjs (see the note above CONFIG.pitches for why the variant key is the material name)
 const pitchGroups={};    // pitch id -> its loaded GLB group (parented into the table group when shown)
 const pitchLoading={};   // pitch id -> [pending cbs] while its GLB fetch is in flight
-const pitchFailed={};    // 404 latch — same reason roomFailed exists: without it a missing file is
-                         // re-fetched on every drawField, and drawField runs on every venue change
+const pitchFailed={};    // 404 latch: without it a missing file is re-fetched on every drawField
 const pitchOrder=[];     // LRU, least-recent first
 function pitchHasGlb(id){const P=CONFIG.pitches&&CONFIG.pitches[id];return !!(P&&P.glb&&!pitchFailed[id]);}
 function touchPitch(id){const i=pitchOrder.indexOf(id);if(i>=0)pitchOrder.splice(i,1);pitchOrder.push(id);}
-/* Ensure one pitch's GLB is resident. Idempotent; cb fires on success, on failure, and on every
-   no-op, so drawField can gate on it the way applyRoom gates on ensureRoom. */
+// ensure one pitch's GLB is resident; idempotent, cb fires on success, failure and no-ops
 function ensurePitch(id,cb){
   const P=CONFIG.pitches&&CONFIG.pitches[id];
   if(!pitchHasGlb(id)){if(cb)cb();return;}
@@ -960,7 +685,7 @@ function ensurePitch(id,cb){
    flush();
   });
 }
-/* Free an evicted pitch. Never call on the one currently shown — prunePitches protects it. */
+// free an evicted pitch; never the one shown (prunePitches protects it)
 function disposePitch(id){
   const g=pitchGroups[id];if(!g)return;
   if(g.parent)g.parent.remove(g);
@@ -969,9 +694,7 @@ function disposePitch(id){
   disposeModelTemplate(g);                  // shared GPU-free helper (world.js)
   console.log('pitch freed: '+id);
 }
-/* Evict past CONFIG.tableAssets.cachePitches, LRU first. Measured as "how many NON-kept entries
-   may stay", the same way pruneSkins/pruneRooms/pruneEnvs are, so cachePitches:1 legally means
-   "hold nothing you are not standing on". */
+// evict past cachePitches, LRU first, counting non-kept entries like pruneSkins/pruneRooms/pruneEnvs
 function prunePitches(keepId){
   const extra=Math.max(0,((CONFIG.tableAssets||{}).cachePitches||2)-1);
   let n=0;for(const id of pitchOrder)if(id!==keepId)n++;

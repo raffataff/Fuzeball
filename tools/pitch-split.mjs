@@ -1,27 +1,12 @@
-/* Split the pitch atlas GLB into one minimal file per variant.
-
-   WHY THIS EXISTS RATHER THAN "just export each one from Blender": a glTF exporter embeds the
-   images the SCENE references, not the ones the selected mesh references. Exporting eight times
-   with a different pitch selected produces eight copies of the whole atlas — measured on this
-   project, 8 x ~28MB where the original was one 32MB file, and loading any one of them still
-   fetches and decodes all 22 images. The saving has to be made after the export, on the glTF
-   itself, by deleting the other meshes and pruning what is then unreferenced.
-
-   THE VARIANT KEY IS THE MATERIAL NAME, NOT THE MESH NAME, and that distinction is load-bearing.
-   Blender suffixes duplicate object names, so the atlas carries `champions_green` AND
-   `champions_green.001`, and `verdant` AND `verdant.001`. models.js `ballKey()` strips a trailing
-   `.NNN`, so those two pairs collapse onto one key each — which is why `champions_purple` and
-   `pub_classic` have never resolved and have been silently falling back to their JPEGs. Their
-   MATERIALS say exactly what they are (`field_champions_purple`, `field_pub_classic`), so that is
-   what this reads. Output is named from the material, and CONFIG.pitches keeps the mapping from
-   its own key to that filename — the same shape CONFIG.rooms already uses.
-
-   USAGE
-     node tools/pitch-split.mjs <atlas.glb> [outDir]
-     ... --dry     report the split without writing
-   Default outDir is the atlas's own folder. Refuses to overwrite the atlas itself.
-
-   REQUIRES: npm i in tools/ (same deps as ktx2-encode.mjs). */
+// Split the pitch atlas GLB into one minimal file per variant.
+// why not export each from Blender: a glTF exporter embeds the images the scene references, so eight exports make eight copies of the atlas (8 x ~28MB) and each still decodes all 22 images; the saving has to be made on the glTF itself, deleting the other meshes and pruning what's unreferenced
+// the variant key is the material name, not the mesh name: Blender suffixes duplicate objects (`champions_green.001`) and models.js ballKey() strips `.NNN`, so those collapse onto one key (champions_purple and pub_classic silently fell back to JPEGs); output is named from the material and CONFIG.pitches maps its own key to that filename
+//
+// USAGE
+//   node tools/pitch-split.mjs <atlas.glb> [outDir]
+//   ... --dry     report the split without writing
+// default outDir is the atlas's own folder; refuses to overwrite the atlas itself
+// REQUIRES: npm i in tools/ (same deps as ktx2-encode.mjs)
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { prune } from '@gltf-transform/functions';

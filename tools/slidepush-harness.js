@@ -1,8 +1,5 @@
-/* Slide-push + player-hold harness.   node tools/slidepush-harness.js
-   Slices the REAL collideRod (physics.js), holdCfg (rods.js) and shotHoldUpdate (shots.js) out of
-   their files and runs them against live CONFIG, so a retune shows up HERE rather than in play.
-   The question it exists to answer: what does a rod SLIDING into a ball hand that ball, at each
-   input depth, with and without the L2 hold — and can a swing still hit at full power. */
+// slide-push + player-hold harness. node tools/slidepush-harness.js
+// slices the real collideRod (physics.js), holdCfg (rods.js) and shotHoldUpdate (shots.js) and runs them on live CONFIG: what does a rod sliding into a ball hand it, at each input depth, with and without the L2 hold, and can a swing still hit at full power
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -14,20 +11,18 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const real=[
  slice(rd('js/physics.js'),'function collideRod(b,r){','function ballBall('),
  slice(rd('js/rods.js'),'function styleCfg(',NL+'function kickStyleCfg'),
- slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'/* Was a contact'),
- slice(rd('js/rods.js'),'function holdCfg(r){',NL+'/* aimAt'),
- slice(rd('js/shots.js'),'function shotsOn(){',NL+NL+'/* ---- the modifier axis'),
- slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+NL+'/* The swing CURVE'),
+ slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'function passFaceOK('),
+ slice(rd('js/rods.js'),'function holdCfg(r){',NL+'function kickRod('),
+ slice(rd('js/shots.js'),'function shotsOn(){',NL+'function shotTrigD('),
+ slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+'const SHOT_CURVE_KEYS'),
  slice(rd('js/stats.js'),'function stHit(r){',NL),
  slice(rd('js/stats.js'),'function stGrip(r){',NL),
  slice(rd('js/stats.js'),'function stCapFrac(r){',NL),
  slice(rd('js/physics.js'),'function capSpeed(b,r,sweet,in2){',NL+'function collideRod(')
 ].join(NL);
 
-/* ---- stubs: everything collideRod touches that is not the contact algebra ----
-   cfg and FOOT_JITTER are deliberately NOT stubbed — they are config.js top-level names and a
-   second declaration in the same scope is a SyntaxError, the shared-scope trap this repo already
-   documents. RNG.jit returns 0.5, so the jitter term is exactly 0 and cannot smear a reading. */
+// ---- stubs: everything collideRod touches that isn't the contact algebra ----
+// cfg and FOOT_JITTER are not stubbed (config.js top-level names; a second declaration is a SyntaxError); RNG.jit returns 0.5 so the jitter term is exactly 0
 const stubs=[
 "var S={time:0,eff:[{boost:-1,frozen:-1,big:-1},{boost:-1,frozen:-1,big:-1}],balls:[],lastTouch:-1,teamStats:null,shake:0};",
 "var dbgLogRod=null;",
@@ -43,9 +38,7 @@ const stubs=[
 "function stFat(){return 1;} function stAccFrac(){return 0;}"
 ].join(NL);
 
-/* ONE run, and the values come out through an EXPLICIT export: config.js's aliases are top-level
-   `const`, which are lexical and never become properties of the vm context. Read them off ctx and
-   every threshold silently reads back undefined — which looks exactly like a passing test. */
+// one run, and values come out through an explicit export: config.js's aliases are lexical consts, so reading them off ctx gives undefined that looks like a passing test
 const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,
  localStorage:{getItem:()=>null,setItem:()=>{}}};
 ctx.globalThis=ctx;
@@ -70,9 +63,7 @@ function mkBall(z,vz,type){                             // ball resting on the f
  return {m:{position:{x:0,y:P.ballR,z:z}},v:{x:0,y:0,z:vz||0},t:X.BALL_TYPES[type||'classic'],
   spin:0,didSplit:false,scored:false};
 }
-/* Drive a sideways slide into a resting ball and report the speed the ball leaves with. The boot
-   starts clear in z and is stepped in at vz until it has passed through — the same sequence the
-   sim runs, so depenetration and repeat contacts are included rather than assumed away. */
+// drive a sideways slide into a resting ball and report the speed it leaves with; the boot starts clear in z and steps in at vz the way the sim does (depenetration and repeat contacts included)
 function slideInto(vz,opt){
  opt=opt||{};
  const r=mkRod(opt.rod);
@@ -90,10 +81,7 @@ function slideInto(vz,opt){
  }
  return {ball:Math.hypot(b.v.x,b.v.z),boot:r.vz,ratio:Math.hypot(b.v.x,b.v.z)/r.vz};
 }
-/* A ball arriving at a STATIONARY boot. Reported as the residual after ONE contact and the number
-   of sim steps until it is dead: the passive boot is already an absorber given enough substeps, so
-   the final speed measures nothing — what the grip buys is killing it in fewer, shallower touches,
-   which is the difference between trapping a ball and wrestling it. */
+// a ball arriving at a stationary boot: the residual after one contact and the sim steps until it's dead (what the grip buys is killing it in fewer, shallower touches)
 function arriveAt(bv,opt){
  opt=opt||{};const r=mkRod();
  const b=mkBall(P.footBox.z+REACH-0.02,-bv);
@@ -133,9 +121,7 @@ ok('and proportional — no knee in the curve',near(rows[3].ball/rows[1].ball,3,
 
 console.log(NL+'=== 2. slidePush is the knob, and 1 is the old behaviour ===');
 const was=K.slidePush,capOn=K.cap&&K.cap.on;
-/* The 'as it shipped' figures are measured with the per-contact SPEED CEILING OFF, because it
-   did not exist then - this section is about what slidePush alone did, and leaving the ceiling
-   in would quietly fold a later, separate mechanism into a historical number. */
+// the 'as it shipped' figures are measured with the per-contact speed ceiling off, since it didn't exist then
 const capOff=()=>{if(K.cap)K.cap.on=false;},capBack=()=>{if(K.cap)K.cap.on=capOn;};
 K.slidePush=1;capOff();const old80=slideInto(80).ball;capBack();
 K.slidePush=was;const now80=slideInto(80).ball;

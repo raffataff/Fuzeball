@@ -1,16 +1,8 @@
-/* build_moon_pitch.mjs  --  the MOON pitch: regolith, raked bands, worn paint -> GLB
-
-     node tools/build_moon_pitch.mjs            (from the repo root or tools/; after `npm i` in tools/)
-     node tools/ktx2-encode.mjs assets/pitches/pitch_moon.glb
-
-   The dust is the Moon room's own regolith (tools/build/moon/, from build_moon_base.py), tiled at
-   the room's 40-unit repeat so the pitch and the crater floor outside the dome are one material.
-   What a groundskeeper would do to it: rake it in bands across the table (the Moon's mowing
-   stripes: a slightly lighter/darker band, streaked along the pull), then paint the
-   markings with a roller that didn't quite cover (the dust shows through, worn where the ball runs).
-
-   Layout, markings and the GLB writer are shared with the other generated pitches (pitchlib.mjs).
-   Masters are not kept: this script IS the master, it is deterministic. */
+// build_moon_pitch.mjs: the MOON pitch (regolith, raked bands, worn paint) -> GLB
+//      node tools/build_moon_pitch.mjs            (from the repo root or tools/; after `npm i` in tools/)
+//      node tools/ktx2-encode.mjs assets/pitches/pitch_moon.glb
+// the dust is the Moon room's own regolith (tools/build/moon/, from build_moon_base.py) at the room's 40-unit repeat, so pitch and crater floor are one material; raked in bands across the table (lighter/darker, streaked along the pull), then roller-painted markings that don't quite cover (dust shows through, worn where the ball runs)
+// layout, markings and the GLB writer are shared (pitchlib.mjs); deterministic, so this script is the master
 import { P, L, WD, W, H, PPU, clamp, sstep, hash, fbm, raw, samp, lineDist, spot, writePitch } from './pitchlib.mjs';
 
 // ---- the numbers that matter (game units, 1 = 1 cm) --------------------------------------------

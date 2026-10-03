@@ -1,37 +1,13 @@
 'use strict';
-/* ================= match stats ==============================================
-   THE LEDGER. moments.js answers "was that dramatic"; this answers "what actually
-   happened over the match". Every counter is banked off a hook that ALREADY fires
-   — the two contact sites in collideRod, kickRod, the rod slide, the goal test —
-   so the only new work in the hot path is one small per-ball record per contact
-   and one identity check per rod per sim step.
-
-   INDEPENDENT OF CONFIG.moments.on, ON PURPOSE. Saves and woodwork are written by
-   the moment detectors because they ARE that event and detecting them twice would
-   be silly; everything else is counted here whether or not the drama tier is on,
-   and off its OWN per-ball contact record rather than moments' b.tc. The cost is
-   one extra small object write per contact — a handful a second — and the payoff
-   is that the stat sheet can never quietly empty itself because a cosmetic toggle
-   was flipped, which is the worst class of bug to go looking for.
-
-   Everything lands in S.stats (allocated by freshStats, js/state.js) and is read
-   once, by msWinRender, when the match ends.
-   ========================================================================== */
+// ================= match stats =================
+// the ledger: every counter is banked off a hook that already fires (collideRod's contact sites, kickRod, the slide, the goal test) plus one small per-ball record per contact
+// independent of CONFIG.moments.on (saves and woodwork are the moment detectors'), so a cosmetic toggle can't empty the sheet; lands in S.stats (freshStats, js/state.js), read once by msWinRender
 function msOn(){return MSTAT.on&&!!S.stats;}
 
-/* Per-ball record clear. Called from syncBall — i.e. after ANY hard set of the
-   position (serve, re-drop, split, NaN recovery) — for the same reason momReset
-   is: a record that survived a teleport would credit the next rally's goal to the
-   last one's boot. msc = last contact, mss = last SWING (the striker). */
+// per-ball record clear, from syncBall (any hard set of position), or a record survives a teleport; msc = last contact, mss = last swing (the striker)
 function msReset(b){b.msc=null;b.mss=null;}
 
-/* Per-rod bucket, keyed team|role. Cached ON the rod against the IDENTITY of the
-   stats object it belongs to: this is called once per rod per sim step from the
-   slide accumulator, and a string concat plus a map lookup ~960 times a second to
-   fetch a reference that changes once a match is exactly the sort of thing that
-   turns up on the M panel. The identity test is what makes the cache safe —
-   freshStats hands out a NEW object every match, so last match's bucket can never
-   be written into. */
+// per-rod bucket keyed team|role, cached on the rod against the identity of its stats object (freshStats is a new object per match, so a stale bucket is never written)
 function msRod(r){
  const st=S.stats;if(!st)return null;
  if(r.msBFor===st)return r.msB;
@@ -39,15 +15,12 @@ function msRod(r){
  const b=st.rods[k]||(st.rods[k]={team:r.team,role:r.role,goals:0,og:0,shots:0,onTarget:0,kicks:0,passes:0,dist:0});
  r.msBFor=st;r.msB=b;return b;
 }
-/* Read-only lookup for the renderer — never creates, so a rod that did nothing all
-   match renders as zeroes instead of adding a bucket at read time. */
+// read-only lookup for the renderer: never creates, so an idle rod renders as zeroes
 const MS_ZERO=Object.freeze({goals:0,og:0,shots:0,onTarget:0,kicks:0,passes:0,dist:0});   // frozen: it is HANDED OUT, so a stray += would poison every empty rod at once
 function msRodOf(team,role){return (S.stats&&S.stats.rods[team+'|'+role])||MS_ZERO;}
 
-/* ---- swings (js/rods.js kickRod) ----------------------------------------
-   The TEAM total is gated on S.stats alone, not on msOn(): it predates this file
-   and the legacy off-switch panel still prints it, so MSTAT.on:false must not
-   silently zero a column it goes on to display. Only the per-rod bucket is new. */
+// ---- swings (js/rods.js kickRod) ----
+// the team total is gated on S.stats alone, not msOn(): the legacy panel prints it too
 function msKick(r){
  if(!S.stats)return;
  S.stats.kicks[r.team]++;
@@ -55,40 +28,27 @@ function msKick(r){
  const b=msRod(r);if(b)b.kicks++;
 }
 
-/* ---- contact (js/physics.js collideRod, both passes) ---------------------
-   Runs at the two S.lastTouch sites. Order against momContact does NOT matter —
-   this keeps its own record, deliberately (see the header). */
+// ---- contact (js/physics.js collideRod, both passes) ----
+// runs at the two S.lastTouch sites; order against momContact doesn't matter (own record)
 function msContact(b,r){
  if(!msOn()||S.phase!=='play')return;
  const st=S.stats,p=b.m.position,sw=r.kickT>=0,prev=b.msc;
- /* PASS COMPLETED — a teammate ROD receiving a ball another of its rods struck.
-    Deliberately NOT keyed to the AI's 'pass' kick style: a human has no pass verb
-    yet (FEATURE-IDEAS 2.2), and a clearance that finds a teammate is a completed
-    pass in every stat sheet ever printed. The receiving touch needn't be a swing —
-    trapping it is receiving it. An opponent touch in between overwrites b.msc, so
-    the chain breaks by itself with no extra bookkeeping. */
+ // pass completed: a teammate rod receiving a ball another of its rods struck (not tied to the AI's 'pass' style; trapping is receiving); an opponent touch overwrites b.msc and breaks the chain
  if(prev&&prev.sw&&prev.team===r.team&&prev.rod!==r&&S.time-prev.t<MSTAT.passT){
   st.passes[r.team]++;const pb=msRod(prev.rod);if(pb)pb.passes++;
  }
  if(sw){
   const sp=b.v.length();
   if(sp>st.hardest[r.team])st.hardest[r.team]=sp;
-  /* SHOT — one per SWING, not one per contact: a ball rattling along a boot across
-     four substeps is one attempt. r.msSw is the latch, cleared in kickRod. */
+  // shot: one per swing, not per contact (r.msSw is the latch, cleared in kickRod)
   if(!r.msSw){r.msSw=true;msShot(b,r,p);}
  }
  const rec={team:r.team,role:r.role,rod:r,sw:sw,t:S.time};
  b.msc=rec;if(sw)b.mss=rec;
 }
-/* Was that swing an attempt at goal, and was it on target? Two separate tests, and
-   they are not the same projection by accident:
-   · ATTEMPT is measured here — goalward off the boot at shotVX, with the straight
-     line landing within shotWide goal-widths of centre. Wider or slower than that
-     is a clearance or a switch of play, and counting those makes the column
-     meaningless.
-   · ON TARGET is momOnTarget(), the SAME projection the keeper-save detector uses.
-     That reuse is the point: the SAVE notice and the on-target column must never
-     be able to disagree about whether a given shot was going in. */
+// was that swing an attempt at goal, and on target?
+//   ATTEMPT: goalward off the boot at shotVX, landing within shotWide goal-widths of centre (wider or slower is a clearance)
+//   ON TARGET: momOnTarget(), the same projection as the keeper-save detector
 function msShot(b,r,p){
  const st=S.stats,dir=r.team===0?1:-1;
  if(b.v.x*dir<MSTAT.shotVX)return;
@@ -100,20 +60,15 @@ function msShot(b,r,p){
  if(ot&&ot.sx===dir){st.onTarget[r.team]++;if(rb)rb.onTarget++;}
 }
 
-/* ---- rod work (js/rods.js updateRods) ------------------------------------
-   Slide distance, in table units. Play-phase only, so the AI shuffling back into
-   shape during a goal celebration isn't billed to anyone. */
+// ---- rod work (js/rods.js updateRods) ----
+// slide distance in table units, play phase only
 function msSlide(r,d){
  if(!msOn()||S.phase!=='play'||!(d>0))return;
  S.stats.dist[r.team]+=d;const b=msRod(r);if(b)b.dist+=d;
 }
 
-/* ---- per-step (js/physics.js, beside the possession line) ----------------
-   Territory (where the ball actually IS, split across the pitch thirds) and the
-   rally clock. Territory is shared out between LIVE balls rather than read off
-   S.balls[0] — in multi-ball the first ball is an arbitrary pick, and splitting dt
-   between them is the honest answer. b.cur is the true sim position; b.m.position
-   carries the render interpolation. */
+// ---- per-step (js/physics.js, beside the possession line) ----
+// territory (the ball across the pitch thirds, shared between live balls) and the rally clock; b.cur is the true sim position
 function msTick(dt){
  if(!msOn()||S.phase!=='play')return;
  const st=S.stats,n=S.balls.length;if(!n)return;
@@ -121,9 +76,7 @@ function msTick(dt){
  const nb=st.terr.length,w=F.L/nb,sh=dt/n;
  for(const b of S.balls)st.terr[clamp(Math.floor((b.cur.x+F.L/2)/w),0,nb-1)]+=sh;
 }
-/* A rally is one uninterrupted period of play: serve to goal / out. A dead-ball
-   re-drop deliberately does NOT end it — play never actually stopped, the ball was
-   just moved somewhere it could be played from. */
+// a rally is one uninterrupted period of play, serve to goal/out; a dead-ball re-drop doesn't end it
 function msRallyReset(){if(msOn())S.stats.rally=0;}
 function msRallyEnd(){
  if(!msOn())return;const st=S.stats;
@@ -131,13 +84,9 @@ function msRallyEnd(){
  st.rally=0;
 }
 
-/* ---- goals (js/flow.js onGoal) -------------------------------------------
-   MUST be called before removeBall — the records hang off the ball.
-   OWN GOAL is derived here rather than taken from momGoal's verdict, by the SAME
-   rule momKind uses (last CONTACT was a swing by the conceding side), so the two
-   agree by construction and the ledger still works with CONFIG.moments.on false.
-   A passive deflection off a defender is NOT an own goal — it stays the striker's,
-   which is why the credit reads b.mss (last SWING) and not b.msc. */
+// ---- goals (js/flow.js onGoal) ----
+// call before removeBall (the records hang off the ball)
+// own goal uses momKind's rule (last contact a swing by the conceding side); a passive deflection stays the striker's, so credit reads b.mss not b.msc
 function msGoal(team,b){
  if(!msOn())return;
  const st=S.stats,g=msScorer(b,team);
@@ -146,34 +95,18 @@ function msGoal(team,b){
  const rb=msRod(g.rod);if(!rb)return;
  if(g.own)rb.og++;else if(g.rod.team===team)rb.goals++;
 }
-/* WHO SCORED, AS A ROD — and the ONLY derivation of that question in the codebase.
-   Split out of msGoal so the goal FX can flash the scorer's own rod-hole ring (js/fx.js
-   rodHoleGoal) off exactly the answer the ledger used. Two independent derivations of "who
-   scored" is the kind of thing that agrees for a year and then disagrees on the one goal anybody
-   remembers — a deflected winner lighting the wrong ring while the sheet credits the right rod.
-   Reads the same two records msGoal always did: b.msc (last CONTACT) decides whether it was an own
-   goal, and b.mss (last SWING) takes the credit otherwise, so a passive deflection off a defender
-   stays the striker's goal. Deliberately NOT gated on msOn(): with stats off both records are
-   null, which falls through to rod:null and simply means no flash.
-   MUST be called before removeBall — the records hang off the ball. */
+// who scored, as a rod: the only derivation, split out so the goal FX flashes the scorer's ring (fx.js rodHoleGoal) off the same answer
+// b.msc decides an own goal, b.mss takes the credit; not gated on msOn() (stats off = null records = no flash); call before removeBall
 function msScorer(b,team){
  const last=b&&b.msc,own=!!(last&&last.sw&&last.team===1-team),src=own?last:((b&&b.mss)||last);
  return {src:src||null,rod:(src&&src.rod)||null,role:src?src.role:'',own:own};
 }
 
-/* =========================================================================
-   POST-MATCH SHEET
-   Two tabs. MATCH is the sheet you actually read — a mirrored comparison bar per
-   stat, the classic broadcast layout, because a column of paired numbers with
-   nothing between them is the thing nobody reads. RODS is the deep dive, and it's
-   a tab rather than a fourth block because it exists to make upgrade spending feel
-   earned, not to be the first thing you see.
-   ========================================================================= */
+// =========== POST-MATCH SHEET ===========
+// two tabs: MATCH (a mirrored comparison bar per stat) and RODS (the deep dive)
 function msNum(v){return String(Math.round(v));}
 function msClock(s){const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x;}
-/* One comparison row. a/b drive the split; disp formats the printed value. When
-   both sides are zero the track stays EMPTY rather than splitting 50/50 — a flat
-   half-and-half bar reads as "even", which 0 v 0 is not. */
+// one comparison row: a/b drive the split, disp formats the value; 0 v 0 leaves the track empty rather than 50/50
 function msRow(lab,a,b,disp,i){
  const t=a+b,pa=t?a/t*100:0,pb=t?b/t*100:0,d=(i*MSTAT.barStagger).toFixed(3);
  return '<div class="msRow"><b class="l">'+disp(a)+'</b><div class="msMid"><span class="msLab">'+lab+'</span>'+
@@ -181,11 +114,7 @@ function msRow(lab,a,b,disp,i){
   '<i class="r" style="width:'+pb.toFixed(2)+'%;--d:'+d+'s"></i></div></div>'+
   '<b class="r">'+disp(b)+'</b></div>';
 }
-/* Territory. The one figure that isn't a two-way split, so it gets its own bar:
-   where the ball spent the match, left to right in WORLD-X order. terr[0] is the
-   third team 0 DEFENDS (team 0 attacks toward +x), which is why the key names the
-   TEAMS rather than saying attacking/defensive — those words only mean anything
-   once you already know which way each side is kicking. */
+// territory: where the ball spent the match in world-x order; terr[0] is the third team 0 defends, so the key names teams
 function msTerrHTML(){
  const st=S.stats,tot=st.terr.reduce((a,b)=>a+b,0)||1,n=st.terr.length;
  let bar='';
@@ -193,17 +122,13 @@ function msTerrHTML(){
   const p=st.terr[i]/tot*100,cls=i===0?'a':i===n-1?'b':'m';
   bar+='<i class="'+cls+'" style="width:'+p.toFixed(2)+'%">'+(p>=9?Math.round(p)+'%':'')+'</i>';
  }
- // The key names the two ENDS and, when there is exactly one segment between them, the middle.
- // At any other bucket count the interior is left unlabelled rather than invented — 'midfield'
- // means nothing about the second fifth of a pitch.
+ // the key names the two ends and, with exactly one segment between, the middle; other counts leave the interior unlabelled
  let key='';
  for(let i=0;i<n;i++)key+='<span>'+(i===0?teamName(0)+' third':i===n-1?teamName(1)+' third':(n===3?'Midfield':''))+'</span>';
  return '<div class="msTerrWrap"><span class="msLab">Territory</span>'+
   '<div class="msTerrBar">'+bar+'</div><div class="msTerrKey">'+key+'</div></div>';
 }
-/* Scorers, in the order they went in. An own goal is listed under the team that
-   BENEFITED, with the conceding rod's role and an (OG) mark — the way every score
-   line in football prints it. */
+// scorers in order; an own goal is listed under the team that benefited, with the conceding rod's role and (OG)
 function msScorersHTML(){
  const st=S.stats;if(!st.scorers.length)return'';
  const col=t=>st.scorers.filter(g=>g.team===t)
@@ -218,10 +143,7 @@ function msFootHTML(){
   '<span><em>'+st.longRally.toFixed(1)+'</em> s longest rally</span></div>';
 }
 const MS_ROLES=['GK','DEF','MID','ATT'];
-/* RODS tab. Saves are read off the TEAM total rather than a per-rod counter,
-   because the save detector is GK-ONLY by design (js/moments.js) — every save a
-   team made was made by that one rod, so a second counter could only ever end up
-   disagreeing with the first. */
+// RODS tab: saves are read off the team total, since the save detector is GK-only (js/moments.js)
 function msRodsHTML(){
  const st=S.stats,
   head='<div class="msRodHead"><span class="rl">Rod</span><span>Goals</span><span>Shots</span><span>On tgt</span><span>Saves</span><span>Kicks</span><span>Dist</span></div>',
@@ -239,14 +161,11 @@ function msRodsHTML(){
   };
  return '<div class="msRods">'+team(0)+team(1)+'</div>';
 }
-/* Fill both tabs. Called once, from endMatch. MSTAT.on:false renders the ORIGINAL
-   three-number panel and drops the tab bar entirely — a true off switch, not a
-   version of the sheet with empty columns in it. */
+// fill both tabs, once, from endMatch; MSTAT.on:false renders the original three-number panel with no tab bar
 function msWinRender(){
  const st=S.stats,sheet=$('winStats'),rodsEl=$('winRods'),tabs=$('winTabs');
  if(!st||!sheet)return;
- // Team colours come from teamCol(), NOT from --c0/--c1: those are only repainted
- // for a LEAGUE match, so a quick match on a custom kit would draw the wrong bars.
+ // team colours come from teamCol(), not --c0/--c1 (only repainted for a league match)
  const c0=teamCol(0),c1=teamCol(1);
  sheet.style.setProperty('--t0',c0);sheet.style.setProperty('--t1',c1);
  sheet.style.setProperty('--msGrow',MSTAT.barGrow+'s');
@@ -280,8 +199,7 @@ function msWinRender(){
  if(rodsEl)rodsEl.innerHTML=msRodsHTML();
  msWinTab('match');
 }
-/* The win screen is an OVERLAY, not a registered screen (js/screens.js), so it
-   carries its own two-line tab toggle rather than going through the router. */
+// the win screen is an overlay, not a registered screen (js/screens.js), so it has its own tab toggle
 function msWinTab(t){
  const m=t!=='rods',a=$('winStats'),b=$('winRods'),ba=$('winTabMatch'),bb=$('winTabRods');
  if(a)a.classList.toggle('hidden',!m);

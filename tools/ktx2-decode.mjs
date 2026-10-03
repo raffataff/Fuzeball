@@ -1,24 +1,11 @@
-/* KTX2 -> PNG: turn a shipped Fuzeball GLB back into one that Blender can open.
-
-   WHY: the game's GLBs carry their textures as KTX2/Basis (KHR_texture_basisu; see ktx2-encode.mjs) because that stays
-   compressed all the way to the GPU. Blender's glTF importer does not implement the extension and refuses the file
-   outright ("Extension KHR_texture_basisu is not available"). This is the reverse of ktx2-encode.mjs: it transcodes
-   every KTX2 image to RGBA with the SAME Basis transcoder the game ships (vendor/basis, r137, ETC1S + UASTC + Zstd),
-   writes it as PNG, and drops the extension, leaving everything else in the file untouched (nodes, animations,
-   materials, KHR_materials_clearcoat, KHR_texture_transform, ...).
-
-   The Shardsmith Blender add-on runs this for you (Import Game GLB); it is also usable on its own:
-
-       node tools/ktx2-decode.mjs <in.glb> <out.glb> [--max-size 2048]
-
-   --max-size N   decode the smallest mip level that is <= N pixels on its longer side (default: full size).
-                  A 4096² ETC1S albedo is 64MB of RAM in Blender once decoded; fracturing rarely needs that.
-
-   NORMAL MAPS: the encoder stores them as two channels (RG). If the transcoded blue channel is not already ~1 the
-   normal is rebuilt as z = sqrt(1 - x² - y²), so Blender's Normal Map node gets a valid vector.
-
-   Prints one line per image and a final JSON line ({"images":[...]}) that the add-on reads.
-   REQUIRES: npm i in tools/ (@gltf-transform/core, @gltf-transform/extensions, sharp). No basisu binary needed. */
+// KTX2 -> PNG: turn a shipped Fuzeball GLB back into one that Blender can open.
+// the game's GLBs carry textures as KTX2/Basis (KHR_texture_basisu, see ktx2-encode.mjs), which Blender's importer refuses; this is the reverse of ktx2-encode.mjs: it transcodes every KTX2 image to RGBA with the game's own Basis transcoder (vendor/basis, r137), writes PNG, drops the extension and leaves everything else alone
+// the Shardsmith add-on runs this on 'Import Game GLB'; standalone:
+//     node tools/ktx2-decode.mjs <in.glb> <out.glb> [--max-size 2048]
+// --max-size N decodes the smallest mip level <= N pixels on its longer side (default full size; a 4096² albedo is 64MB in Blender)
+// normal maps are stored as two channels (RG); if the decoded blue isn't ~1 the normal is rebuilt as z = sqrt(1 - x² - y²)
+// prints one line per image and a final JSON line ({"images":[...]}) the add-on reads
+// REQUIRES: npm i in tools/ (@gltf-transform/core, extensions, sharp); no basisu binary
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import sharp from 'sharp';

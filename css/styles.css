@@ -1,9 +1,8 @@
 :root{
    --c0:#e5604d;
    --c1:#3d8bff;
- /* ---- FEDERATION PALETTE (DIRECTION.md §3) --------------------------------------------------
-      Blue is STRUCTURE (plates, bars, fills). Gold is EARNED: focus, the selected option, the
-      primary action, trophies. Never a wash. Team colours always beat UI colours. */
+ /* ---- FEDERATION PALETTE (DIRECTION.md §3) ----
+   blue is structure (plates, bars, fills); gold is earned (focus, selection, primary action, trophies); team colours beat UI colours */
    --space:#07111c;           /* backgrounds */
    --fed:#123f5e;             /* Federation blue: plates */
    --fed-hi:#1b5a82;          /* the lit top edge of a plate */
@@ -21,50 +20,34 @@
    --cut:13px;                /* the HUD board's 20° end cut, at button height (36px · tan 20°) */
    --font-display:'SoccerLeague College','SoccerLeague',sans-serif;   /* titles only, italic */
    --font-ui:'SoccerLeague',sans-serif;
-   --font-body:'Rajdhani',system-ui,sans-serif;
+   --font-body:'Space Grotesk',system-ui,sans-serif;
    --font-italic:'SoccerLeague',sans-serif;
- /* ---- PANEL TYPE SCALE + TEXT ROLES -----------------------------------------------------------
-
-      micro — column heads / table headers. ALWAYS uppercase + wide tracking; it's a caption, never content.
-      label — stat names, role heads, small chips.
-      head  — a panel's own h3. Same px as `num` but a separate token: they're different roles and
-              only one of them should move if the heading scale is ever retuned.
-      num   — numeric readouts (scores, points, ratings). Pair with var(--font-ui).
-      body  — the default: list rows, fixture rows, anything you actually read.
-      lead  — the ONE headline line in a panel (the next fixture), and settings-form rows.
-    Colours are a five-step ramp, dim → bright, chosen by IMPORTANCE not by what the thing is:
-    dim (captions, separators) · mute (field labels) · body (default) · strong (names + numeric
-    values, one step out of a row so they read without bold) · bright (emphasis). */
+ /* ---- PANEL TYPE SCALE + TEXT ROLES ----
+   micro: column/table heads (uppercase, wide tracking) · label: stat names, role heads, chips · head: a panel's h3 · num: numeric readouts (pair with --font-ui)
+   body: the default · lead: the one headline line in a panel, and settings rows
+   colour ramp, dim to bright, by importance: dim (captions) · mute (field labels) · body · strong (names, values) · bright (emphasis) */
 --fs-micro:11.5px; --fs-label:13px; --fs-head:15px; --fs-num:15px; --fs-body:15.5px; --fs-lead:18px;   /* ui-scale (2026-09-25): +2px, read from a sofa and at 1280×800 */
  --tr-micro:.18em; --tr-label:.12em; --tr-head:.22em;
  /* Colour ramp by IMPORTANCE, not by element type: dim → mute → body → strong → bright. */
  --tx-dim:#4f7285; --tx-mute:#6f9aae; --tx-body:#9dbccb; --tx-strong:#d2e2ea; --tx-bright:#edf0f1; }
 *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--space);font-family:var(--font-body);font-weight:600;color:var(--text)}
-/* Scrollbars: a thin steel thumb on no track, lit while the pointer is over the box. These are the
-   standard properties (Chromium 121+, so Electron); setting them switches the ::-webkit-scrollbar
-   pseudo-elements off, so don't add any. Not gold: gold is focus, and a scrollbar is never focused. */
+/* scrollbars: a thin steel thumb on no track, lit on hover; the standard properties (Chromium 121+) switch the ::-webkit-scrollbar pseudo-elements off, so don't add any; not gold (never focused) */
 *{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--steel) 45%,transparent) transparent}
 *:hover{scrollbar-color:var(--steel) transparent}
 canvas#game{position:fixed;inset:0;display:block;cursor:crosshair}
-/* A menu screen darkens the live table behind it rather than blurring it: the table is the one
-   thing every venue shares, so it stays in view. The top band is darker, the broadcast bar's ground. */
+/* a menu screen darkens the live table behind it rather than blurring it; the top band is darker (the broadcast bar's ground) */
 .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:40;
  background:linear-gradient(180deg,rgba(7,17,28,.97) 0,rgba(7,17,28,.86) 120px,rgba(7,17,28,.8) 60%,rgba(7,17,28,.93) 100%)}
 .hidden{display:none!important}
-/* ui-motion: a routed screen arrives behind ONE wipe, left to right, its edge leaning at the plates' 20°
-   (36.4vh of run over the full height). Added by showScreen on a change of screen, removed when it
-   ends. No fades, no panels sliding in one by one. */
+/* a routed screen arrives behind one left-to-right wipe leaning at the plates' 20° (36.4vh of run); added by showScreen, removed when it ends */
 .screen.scrIn{animation:scrWipe .32s cubic-bezier(.3,.7,.2,1) both}
 @keyframes scrWipe{from{clip-path:polygon(0 0,0 0,-36.4vh 100%,-36.4vh 100%)}to{clip-path:polygon(0 0,calc(100% + 36.4vh) 0,100% 100%,-36.4vh 100%)}}
 @media(prefers-reduced-motion:reduce){.screen.scrIn{animation:none}}
 .lowFx .screen.scrIn{animation:none}
 /* ===== FEDERATION PLATES =====
-   The shared shape: a plate whose ends are cut at the HUD board's 20°. Drawn by two clipped layers
-   BEHIND the element (::before = the rim, ::after = the fill, 1.5px in), so the element itself is
-   never clipped: its text, a child's focus ring and a drop-shadow glow all survive. A plate is
-   styled ONLY through --pl (fill), --pr (rim), --pc (the cut) and --pk (text). A new plate-shaped
-   control joins the :is() lists here and nowhere else. */
+   shared shape: ends cut at the HUD board's 20°, drawn by two clipped layers behind the element (::before rim, ::after fill, 1.5px in) so the element itself is never clipped
+   style a plate ONLY through --pl (fill), --pr (rim), --pc (cut), --pk (text); a new plate-shaped control joins the :is() lists here */
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn){
  position:relative;isolation:isolate;background:none;border:none;border-radius:0;box-shadow:none;color:var(--pk);
  --pl:linear-gradient(180deg,var(--fed-hi),var(--fed) 48%,var(--fed-lo));--pr:rgba(188,220,237,.26);--pc:var(--cut);--pk:var(--text);
@@ -74,8 +57,7 @@ canvas#game{position:fixed;inset:0;display:block;cursor:crosshair}
  content:'';position:absolute;z-index:-1;pointer-events:none;clip-path:polygon(var(--pc) 0,100% 0,calc(100% - var(--pc)) 100%,0 100%)}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::before{inset:0;background:var(--pr)}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::after{inset:1.5px;background:var(--pl)}
-/* The states every plate shares. Hover lifts the rim to ice. SELECTED (.on) is a gold rim and gold
-   type. The pad cursor is the whole plate in gold. Pressed drops to copper. */
+/* states every plate shares: hover lifts the rim to ice, SELECTED (.on) is gold rim and type, the pad cursor is the whole plate in gold, pressed drops to copper */
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn):hover{--pr:var(--ice)}
 :is(.scrTabBtn,.optTabBtn,.miniBtn,.teamBtn,.rodOpt,.trlTab,.trnBtn).on{--pr:var(--gold);--pk:var(--gold);--pl:linear-gradient(180deg,#1d4a66,#102f47)}
 body.padNav :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn).navFocus{
@@ -83,8 +65,7 @@ body.padNav :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,
  filter:drop-shadow(0 0 10px rgba(240,178,74,.45))}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn):active{--pl:linear-gradient(180deg,#9c521a,var(--copper))}
 :is(.btn,.miniBtn,.sPlus,.rosDevBtn,.rodOpt):disabled,:is(.rodOpt,.rosDevBtn).taken{opacity:.4;cursor:not-allowed}
-/* Screen titles: the broadcast caption. College italic, silver, engraved into the dark, with the
-   tagline beneath as a steel strap. No gradient text, no glow. */
+/* screen titles: the broadcast caption (college italic, silver, engraved), tagline beneath as a steel strap; no gradient text, no glow */
 .scrTitle,.lgTitle,.czTitle{font-family:var(--font-display);font-style:italic;font-weight:400;color:var(--text);
  font-size:clamp(28px,3.6vw,44px);letter-spacing:.06em;line-height:1;
  text-shadow:0 3px 0 #02070c,0 0 18px rgba(7,17,28,.9)}
@@ -94,14 +75,11 @@ img.logo{display:block;max-width:460px;width:clamp(260px,30vw,460px);height:auto
 .tagline::before,.tagline::after,.lgSub::before,.lgSub::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,var(--steel))}
 .tagline::after,.lgSub::after{transform:scaleX(-1)}
 /* ===== HOME =====
-   A menu column down the left, the live table on the right: the screen darkens only the side the
-   menu sits on. The mode plates step left down the column by one cut per row, so their slanted ends
-   line up into one diagonal: --step = row pitch × tan 20°. */
+   a menu column down the left, the live table on the right; the mode plates step down the column by one cut per row so their slanted ends line up: --step = row pitch × tan 20° */
 #home{align-items:flex-start;justify-content:center;padding:0 0 60px clamp(28px,7vw,140px);
  background:linear-gradient(90deg,rgba(7,17,28,.95) 0,rgba(7,17,28,.82) 32%,rgba(7,17,28,.25) 62%,rgba(7,17,28,.1) 100%),
   linear-gradient(0deg,rgba(7,17,28,.9) 0,transparent 26%)}
-/* The mode plates step RIGHT down the column at 12°, shallower than the 20° buttons elsewhere, and their
-   ends are cut the other way (leaning back) so each plate's slanted end lines up with the next: --step = row pitch × tan 12°. */
+/* the mode plates step right at 12° (shallower than the 20° buttons), ends cut the other way: --step = row pitch × tan 12° */
 .homeCol{display:flex;flex-direction:column;align-items:flex-start;--row:66px;--tan:.213;--step:calc(var(--row) * var(--tan))}
 .homeCol img.logo{margin:0 0 26px -10px}
 .homeMenu{display:flex;flex-direction:column;gap:8px;margin-left:36px}
@@ -174,8 +152,7 @@ body.padNav .modeRow .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 .icoInline{width:1em;height:1em;vertical-align:-.14em}
 .icoInline.gold{color:var(--gold)}
 .panelWrap{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;align-items:stretch;min-width:1200px;max-width:1640px;padding:16px;margin:0 auto}
-/* A panel is a slab under the broadcast: flat dark fill, a lit top rail, square corners. Its first
-   h3 is a caption TAB growing out of that rail, cut at the board's 20° on its right end. */
+/* a panel is a slab: flat dark fill, lit top rail, square corners; its first h3 is a caption tab growing out of the rail, cut at 20° on its right end */
 .panel{flex:1 1 0;max-width:320px;min-height:260px;background:linear-gradient(180deg,rgba(12,33,50,.96),rgba(7,17,28,.96) 60%);border:1px solid rgba(107,170,188,.16);border-top:2px solid var(--fed-hi);border-radius:0;padding:16px 20px 18px;pointer-events:auto;box-shadow:0 14px 34px rgba(0,0,0,.45)}
 /* h3 has NO weight, so it was picking up the UA's bold default — same synthetic smear as 800. */
 .panel h3{font-family:var(--font-ui);font-weight:400;font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-mute);margin-bottom:12px;text-transform:uppercase}
@@ -195,8 +172,7 @@ select:hover,input[type=text]:hover{border-color:rgba(188,220,237,.6)}
 input[type=text]:focus{border-color:var(--gold);background-color:#0f2536}
 select option{background:#0a1c2b;color:var(--text)}
 input[type=color]{width:42px;height:28px;border:1px solid rgba(188,220,237,.4);border-radius:0;background:none;padding:0 2px;cursor:pointer;pointer-events:auto}
-/* A checkbox is a two-position switch: a dim knob parked left, or an ice knob on a lit Federation-blue
-   slot. Not gold: a settings panel is mostly switches that are on, and gold is earned. */
+/* a checkbox is a two-position switch (dim knob left, ice knob on a Federation-blue slot); not gold, since most switches are on */
 input[type=checkbox]{-webkit-appearance:none;appearance:none;position:relative;flex:none;width:40px;height:20px;cursor:pointer;pointer-events:auto;
  background:#0a1c2b;border:1px solid rgba(107,170,188,.4);border-radius:0;transition:background .15s,border-color .15s}
 input[type=checkbox]::before{content:'';position:absolute;top:2px;left:2px;width:17px;height:14px;background:var(--steel);transition:transform .15s,background .15s}
@@ -214,8 +190,7 @@ input[type=text]{width:110px;text-transform:uppercase}
 .ctl b{font-family:var(--font-ui);font-size:12px;font-weight:400;background:#0f2536;border:1px solid rgba(188,220,237,.24);border-bottom:2px solid rgba(188,220,237,.42);border-radius:2px;padding:3px 7px;text-align:center;color:var(--ice);white-space:nowrap;letter-spacing:.06em;display:block}
 .ctl span{color:var(--tx-body);font-size:15px;letter-spacing:.02em;text-align:center;display:block}
 .foot{margin-top:20px;font-family:var(--font-ui);font-size:14px;letter-spacing:.24em;color:var(--tx-dim);text-transform:uppercase}
-/* HUD — one canvas over the game (js/hud.js). pointer-events:none is load-bearing: every mouse
-   control in the game listens on #game underneath it; the rod chips are hit-tested from js. */
+/* HUD: one canvas over the game (js/hud.js); pointer-events:none is load-bearing (every mouse control listens on #game underneath) */
 #hud{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:20;pointer-events:none}
 .pop{animation:scorePop .5s cubic-bezier(.2,2.4,.4,1)}   /* league result reveal (.lgRev.pop) */
 @keyframes scorePop{40%{transform:scale(1.7)}}
@@ -262,8 +237,7 @@ body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--
 #pause h2,#win h2,#lgForfeit h2,#lgWipe h2,#uiConfirm h2{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:56px;letter-spacing:.05em;margin-bottom:8px;text-shadow:0 4px 0 #02070c}
 #lgForfeit h2,#lgWipe h2,#uiConfirm h2{font-size:38px;color:#ef6a4a}
 #lgForfeitMsg,#lgWipeMsg,#uiConfirmMsg{font-size:18px;color:var(--tx-body);margin:6px 0 14px}
-/* FULL TIME: the in-match board, bigger. Team plates cut outward at the board's 20°, the score on a dark
-   slab between them; the side that lost dims. */
+/* FULL TIME: the in-match board, bigger; team plates cut outward at 20°, the score on a dark slab between; the losing side dims */
 .ftCap{font-family:var(--font-ui);font-size:14px;letter-spacing:.4em;text-indent:.4em;text-transform:uppercase;color:var(--steel);margin-bottom:10px}
 .ftBoard{display:flex;align-items:stretch;height:72px;margin-bottom:14px;filter:drop-shadow(0 6px 0 rgba(2,7,12,.6))}
 .ftName{display:flex;align-items:center;width:clamp(200px,24vw,300px);padding:0 30px;font-family:var(--font-ui);font-style:italic;font-size:26px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -275,9 +249,8 @@ body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--
 .ftScore b{font-family:var(--font-ui);font-weight:400;font-size:52px;color:var(--text);width:78px;text-align:center;font-variant-numeric:tabular-nums}
 .ftScore b+b{border-left:1px solid rgba(188,220,237,.2)}
 #win h2#winTitle{font-size:38px;margin:4px 0 2px}
-/* ---- POST-MATCH STAT SHEET (js/matchstats.js) ---
-   Team colours arrive as --t0/--t1, set inline by msWinRender from teamCol() — NOT --c0/--c1,
-   which are only repainted for a league match. */
+/* ---- POST-MATCH STAT SHEET (js/matchstats.js) ----
+   team colours arrive as --t0/--t1 (set by msWinRender from teamCol()), not --c0/--c1 (only repainted for a league match) */
 #win{overflow-y:auto;justify-content:safe center;padding:26px 16px 30px}
 #win .scrTabs{margin-top:14px}
 #win .btnRow{margin-top:18px}
@@ -351,8 +324,7 @@ body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--
 .kitCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
 .kitName{width:100%!important;text-align:center;font-family:var(--font-ui);font-weight:400;letter-spacing:.1em;border-bottom:2px solid var(--tc,var(--steel))!important;--tc:var(--steel)}
 .kitName:focus{border-color:var(--tc)}
-/* The figure stands in its kit colour's light: an inset floor glow (inline background-image replaces any gradient
-   layer, so the glow can't be one) and the colour as its base rail. */
+/* the figure stands in its kit colour's light: an inset floor glow (inline background-image) and the colour as its base rail */
 .kitFig{position:relative;width:100%;aspect-ratio:3/4;max-height:33vh;cursor:pointer;overflow:hidden;
  background-color:#0a1a28;box-shadow:inset 0 -46px 40px -26px color-mix(in srgb,var(--tc,var(--steel)) 40%,transparent);
  background-repeat:no-repeat;background-position:center;background-size:contain;
@@ -425,8 +397,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 
 .lgWrap>.panel:nth-child(1){flex:1 1 380px;min-width:450px;max-width:400px; min-height:400px;line-height:1.4}
 .lgSide>.panel{display:flex;flex-direction:column;gap:14px;flex:1 1 380px;min-width:380px;max-width:450px;min-height:180px; max-height:780px;margin-bottom:3px;font-size:var(--fs-body)}
-/* display:block restores ordinary block rhythm on #lgSettingsPanel/#cupSettingsPanel. The flex
-   gap stays on every OTHER .lgSide panel, where it separates genuine blocks. */
+/* display:block restores block rhythm on #lgSettingsPanel/#cupSettingsPanel; the flex gap stays on every other .lgSide panel */
 #lgSettingsPanel,#cupSettingsPanel{display:block}
 
 .lgWrap>.panel:nth-child(3){flex:1.7 1 430px;max-width:440px; min-height:400px}
@@ -436,20 +407,17 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 /* hard backstop: a panel's content can never spill into the panel next to it. */
 .lgWrap .panel{overflow:hidden;position:relative}
 .lgWrap .panel h3{position:relative}
-/* LEAGUE LOBBY TABS — sized by id, not by child order: the order-based rules above still size the Cup,
-   and an id beats them. Season: standings | next match + last round | scout. */
+/* LEAGUE LOBBY TABS: sized by id (an id beats the order-based rules above, which still size the Cup); Season: standings | next match + last round | scout */
 #league .lgWrap{min-height:0}
 #lgStandingsPanel{flex:1 1 440px;min-width:400px;max-width:500px;min-height:0}
 #lgTab_season .lgSide{flex:1 1 400px;min-width:360px;max-width:460px;display:flex;flex-direction:column;gap:18px}
-/* Standings and Last Round share the left column: the table is ~10 rows, so under it is where the
-   results fit at 1280x800 — stacked under Next Match they ran ~200px off the bottom. */
+/* Standings and Last Round share the left column (the table is ~10 rows, results fit under it at 1280x800) */
 #lgTab_season .lgSide.lgLeft{flex:1 1 440px;min-width:400px;max-width:500px}
 #lgTab_season .lgSide>.panel{min-width:0;max-width:none;flex:0 0 auto}   /* the generic .lgSide>.panel basis is 380px, which in a COLUMN is a height */
 #lgFixturePanel .lgPlayBtn{margin:4px 0 2px}
 #lgScout,#cupScout{flex:1 1 300px;min-width:280px;max-width:360px}
 /* The scout's four positions sit two by two, so the panel is as tall as the standings, not twice it. */
-/* minmax(0,1fr): a plain 1fr floors at the pip row's min-content, which made the grid 290 wide in a
-   265 panel and cut the DEF/OFF numbers off at 1280x800. The row below is sized to fit 128px. */
+/* minmax(0,1fr): a plain 1fr floors at the pip row's min-content and cut the DEF/OFF numbers off at 1280x800; the row below is sized to fit 128px */
 #lgScoutBody,#cupScoutBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 8px}
 #lgScoutBody>:not(.lgRole),#cupScoutBody>:not(.lgRole){grid-column:1/-1}
 :is(#lgScoutBody,#cupScoutBody) .lgStat{grid-template-columns:26px 1fr;gap:3px;margin:1px 0}
@@ -473,8 +441,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 #lgTable .num{font-family:var(--font-ui);font-size:var(--fs-num);text-align:center;color:var(--tx-strong);font-weight:100}
 .lgFixture{display:flex;align-items:center;justify-content:center;gap:12px;font-family:var(--font-ui);font-weight:400;font-size:var(--fs-lead);margin:4px 0 10px;flex-wrap:wrap;text-align:center}
 .lgVs{color:var(--tx-dim);font-size:var(--fs-label);letter-spacing:var(--tr-micro)}
-/* Next Match / Next Tie head-to-head (league.js lgMatchHTML): each side is its name over its standing,
-   mirrored about the VS. The opponent's side is a pad stop that re-opens it in the Opponent panel. */
+/* Next Match / Next Tie head-to-head (league.js lgMatchHTML): each side is its name over its standing, mirrored about the VS; the opponent's side is a pad stop */
 .lgMatch{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px;width:100%}
 .lgMs{display:flex;flex-direction:column;gap:4px;min-width:0}
 .lgMs.me{align-items:flex-end;text-align:right}
@@ -537,10 +504,8 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .lgTapeVs{display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .lgTapeVs span{font-family:var(--font-ui);font-size:48px;font-weight:400;letter-spacing:.2em;color:rgba(255,255,255,.12)}
 .lgTapeFig{margin-bottom:16px}
-/* isolation:isolate is load-bearing, not tidiness — .lgFigTint blends in `color` mode, and without
-   a stacking context of its own that blend reaches past the portrait into the box glow and the
-   screen behind it. overflow is hidden rather than auto: the portrait is object-fit:contain so it
-   never actually overflows, but `auto` leaves a scrollbar one rounding error away. */
+/* isolation:isolate is load-bearing: .lgFigTint blends in `color` mode and would otherwise reach the box glow and the screen behind
+   overflow is hidden, not auto (the portrait is object-fit:contain, but auto is a rounding error from a scrollbar) */
 .lgFigBox{width:600px;height:700px;border-radius:2px;overflow:hidden;isolation:isolate;position:relative;margin:0 auto 8px;background:rgba(0,0,0,.5);box-shadow:0 0 30px var(--tc),0 0 60px color-mix(in srgb,var(--tc) 35%,transparent),inset 0 0 16px rgba(0,0,0,.6);border:2px solid color-mix(in srgb,var(--tc) 50%,rgba(255,255,255,.1))}
 .lgFigImg{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
 .lgFigImg.flip{transform:scaleX(-1)}
@@ -609,8 +574,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
  .lgSetupSelect{width:100%;padding:8px 28px 8px 10px;font-size:17px;margin-bottom:6px}
  .row .lgSetupSelect{width:auto;min-width:180px;margin-bottom:0}
  .lgSetupSelect option{background:#0a1c2b;color:var(--text);font-size:16px}
- /* one-line caption under a Match rules heading: these settings belong to the SAVE, not to
-    quick match, and they carry into the cup — worth saying once where they're chosen. */
+ /* one-line caption under a Match rules heading: these settings belong to the save, not quick match, and carry into the cup */
  .lgRuleNote{font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-label);text-transform:uppercase;color:var(--tx-mute);margin:-4px 0 8px;line-height:1.4}
  /* promotion / relegation zone tints */
  .lgProZone{background:linear-gradient(90deg,rgba(108,201,143,.08),transparent)}
@@ -629,20 +593,16 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 @media(max-width:820px){.czWrap{grid-template-columns:minmax(0,1fr);grid-template-rows:42% auto minmax(0,1fr)}.czPanel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid var(--edge)}}
 @media(max-width:800px){.panelWrap{flex-wrap:wrap;max-width:100%;padding:10px;margin:0;background:transparent;box-shadow:none;border:none;border-radius:0}.panel{flex:1 1 auto;min-width:260px;min-height:auto}.ctl{grid-template-columns:1fr}}
 @media(max-width:1040px){
- /* below this width there isn't room for four content-sized columns
-    side by side, so stack them full-width in priority order rather
-    than squeezing everyone back down to the old bleed-prone layout */
+ /* below this width four content-sized columns don't fit side by side: stack them full-width in priority order */
  .lgWrap{max-width:520px}
- /* #cupBracketPanel is listed by ID because its own sizing rule is an ID rule — a class/nth-child
-    selector here would lose the specificity fight and leave a 560px panel in a 520px wrap. */
+ /* #cupBracketPanel is listed by ID because its sizing rule is an ID rule (a class selector would lose the specificity fight) */
  .lgWrap>.panel:nth-child(1),.lgSide,.lgWrap>.panel:nth-child(3),.lgWrap>.panel.lgScout,#cupBracketPanel{flex:1 1 100%;max-width:100%;min-width:0}
  #league .lgWrap>*{flex:1 1 100%!important;max-width:100%!important;min-width:0!important}
  :is(#lgSquadPanel #lgSquad,#cupSquadPanel #cupSquad){grid-template-columns:repeat(2,minmax(0,1fr))}
  #cupBracketPanel .cupRound{min-width:150px}
 }
 /* Options screen */
-/* Options is built like every other menu (owner, 2026-09-25): centred, boxed .panel groups, the standard
-   .screen backdrop. The open-columns-over-the-scene pass was undone for consistency. */
+/* Options is built like every other menu: centred boxed .panel groups on the standard .screen backdrop */
 #options{justify-content:flex-start;overflow-y:auto;padding:24px 16px 32px}
 #options .optTabs{margin:0 auto 6px}
 #options .optTab{width:100%;max-width:1180px}
@@ -651,8 +611,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 #options .optKeysPanel{flex:2 1 600px;max-width:740px}
 #options .optKeysPanel .kbList{display:block;columns:2;column-gap:28px}   /* newspaper columns: each reads top to bottom */
 #options .optKeysPanel .kbRow{break-inside:avoid;margin-bottom:3px}
-/* The reference cards read as a list: button, then what it does, left-aligned beside it. Centred in two
-   equal columns every description wrapped, and boxed panels pushed the Controller tab past 800px. */
+/* the reference cards read as a list: button, then what it does, left-aligned beside it (two centred columns wrapped every description) */
 #options .ctl{grid-template-columns:auto 1fr;gap:5px 12px}
 #options .ctl span{text-align:left}
 /* Corner buttons are badges: two corners cut on the same diagonal as the plates. */
@@ -661,14 +620,9 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .optGear svg{width:22px;height:22px;transition:transform .2s}   /* the cog is SVG; .lyGearBtn keeps its ⊞ text glyph (monochrome everywhere) */
 .optGear:hover{--pk:#fff}
 .optGear:hover svg{transform:rotate(45deg)}
-/* Screen tabs. `.scrTab*` are the generic names — `.optTabs` etc. are the Options screen's
-   original class names kept as aliases so that screen didn't have to change. Use .scrTab* on
-   anything new. */
+/* screen tabs: `.scrTab*` are the generic names (`.optTabs` etc. are the Options aliases); use .scrTab* on anything new */
 .optTabs,.scrTabs{display:flex;gap:2px;justify-content:center;margin:0 auto 8px;flex-wrap:wrap}
-/* width:100% is load-bearing, not cosmetic. A .screen is a CENTRED flex column, so a plain block
-   child is shrink-to-fit — its width would come from its content, which for a .lyCustom wrap is
-   absolutely-positioned panels contributing NOTHING. The wrap's own width:100% would then resolve
-   against a collapsed box. Spanning the screen gives it a real basis to measure against. */
+/* width:100% is load-bearing: a .screen is a centred flex column, so a block child is shrink-to-fit, and a .lyCustom wrap (absolutely-positioned panels) would collapse; spanning the screen gives it a basis */
 .scrTab{width:100%}
 .scrTab.hidden{display:none}
 .optTabBtn,.scrTabBtn{font-family:var(--font-ui);font-size:16px;letter-spacing:.16em;text-transform:uppercase;padding:10px 34px;cursor:pointer;pointer-events:auto;--pc:12px;--pk:var(--tx-mute)}
@@ -678,9 +632,8 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .optWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1820px;width:100%;padding:16px;margin:0 auto;flex-wrap:wrap}
 .optPanel{flex:1 1 0;min-width:272px;max-width:350px;min-height:auto}
 .optDiv{height:1px;background:var(--edge);margin:13px 0}
-.optHint{font-size:14px;color:var(--tx-mute);line-height:1.5;margin-top:12px;letter-spacing:.02em}
-/* Key bindings (js/options.js kbRender). Keys are the same keycap as the reference card's .ctl b, so a
-   binding reads as a key; the + waiting for a press takes the gold that marks selection. */
+.optHint{font-size:14px;color:var(--tx-mute);line-height:1.42;margin-top:12px;letter-spacing:0}
+/* key bindings (js/options.js kbRender): keys use the reference card's .ctl b keycap; the + waiting for a press takes the selection gold */
 .optKeysPanel{max-width:380px}
 .kbList{display:flex;flex-direction:column;gap:3px}
 .kbRow{display:grid;grid-template-columns:128px 1fr;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)}
@@ -747,8 +700,8 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .troCardYrs{font-size:13px;letter-spacing:.06em;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .troCardN{font-family:var(--font-ui);font-weight:400;font-size:17px;color:var(--tc)}
 #lgSeasonEnd{justify-content:flex-start;overflow-y:auto;padding:22px 16px 0;background:radial-gradient(1300px 820px at 50% 0%,rgba(18,63,94,.42),rgba(7,17,28,.97) 72%)}
-/* ---- season end (league.js renderLgSeasonEnd): one 1280x800 screen, no scroll. Title + tagline, then
-   result | your division's table | rewards + squad changes, then "Around the league" (the other two). ---- */
+/* ---- season end (league.js renderLgSeasonEnd): one 1280x800 screen, no scroll ----
+   title + tagline, then result | your division's table | rewards + squad changes, then 'Around the league' */
 .lgSEWrap{width:100%;max-width:1240px;margin:0 auto;text-align:center}
 .lgSEWrap>.lgTitle{animation:lgSEDrop .5s cubic-bezier(.2,2,.3,1) both}
 .lgSEWrap>.lgSub{justify-content:center;margin:6px 0 16px}
@@ -765,8 +718,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .lgSEDiv{min-width:0;background:linear-gradient(180deg,var(--glass),rgba(7,17,28,.96));border:1px solid var(--edge);border-radius:2px;padding:14px 14px 10px;box-shadow:inset 0 2px 8px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.4);animation:lgReveal .4s .05s ease-out both}
 .lgSEDivHead{font-family:var(--font-ui);font-weight:400;font-size:16px;letter-spacing:.2em;text-align:center;color:var(--text);text-transform:uppercase}
 .lgSEChamp{display:flex;align-items:center;justify-content:center;gap:6px;font-size:16px;font-weight:700;color:var(--gold);margin:2px 0 8px;letter-spacing:.04em}
-/* Fixed row height: the old 13px bottom margin plus the promoted/relegated tint made rows uneven, and ten of
-   them ran out of the bottom of a fixed 400px card. */
+/* fixed row height: the promoted/relegated tint made rows uneven and ten ran off a fixed 400px card */
 .lgSEHead,.lgSERow{display:grid;grid-template-columns:18px 22px minmax(0,1fr) 26px 26px 30px 30px 36px;gap:4px;align-items:center;font-size:15.5px}
 .lgSERow{height:29px;margin-bottom:2px}
 .lgSEHead{color:var(--tx-mute);font-family:var(--font-ui);font-size:12.5px;letter-spacing:.05em;border-bottom:1px solid rgba(127,147,186,.2);padding-bottom:4px;margin-bottom:4px}
@@ -1114,8 +1066,7 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .trnEmpty span{display:block;margin-top:10px;font-family:var(--font-body);font-size:var(--fs-body);letter-spacing:0;color:var(--tx-dim);line-height:1.55}
 
 /* ===== skill trials (js/trials.js) =====
-   In-match HUD top-centre, deliberately not another 14px glass card — sits over live play.
-   No backdrop-filter (a blurred layer over the canvas costs frames during the mode that scores you on time). */
+   in-match HUD top-centre over live play; no backdrop-filter (a blurred layer over the canvas costs frames in the mode that scores on time) */
 #trlHud{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:24;pointer-events:none;
  display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
 #trlHud.hidden{display:none}
@@ -1125,8 +1076,7 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .trlClock{font-family:var(--font-ui);font-size:34px;letter-spacing:.04em;color:var(--tx-bright);
  text-shadow:0 3px 0 rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
 .trlClock.warn{color:#ff7a5a}
-/* RESULT PANEL is body-level (not child of #trlHud): #trlHud is transformed and a transformed ancestor
-   is what position:fixed descendants resolve against. z-index above HUD, below .screen (40). */
+/* RESULT PANEL is body-level, not a child of #trlHud (a transformed ancestor is what position:fixed resolves against); z-index above HUD, below .screen (40) */
 .trlCard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:34;
  min-width:320px;padding:26px 38px 22px;border-radius:0;background:linear-gradient(180deg,rgba(12,33,50,.97),rgba(7,17,28,.97) 60%);
  border:1px solid rgba(107,170,188,.16);border-top:2px solid var(--fed-hi);box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:center;
@@ -1142,9 +1092,7 @@ body.photoOn #vignette{opacity:0;transition:opacity .25s}
 .trlMed{margin-top:6px;font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-head)}
 .trlMed.gold{color:var(--gold)} .trlMed.silver{color:#cfd8e6} .trlMed.bronze{color:#d08a4d}
 .trlKeys{margin-top:10px;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);color:var(--tx-dim)}
-/* TUTORIAL (js/tutorial.js). The lesson panel sits where the trial HUD does and reads the same way:
-   a small step count, the lesson name, then the instruction as a sentence (so --font-body), with the
-   keys drawn as keycaps and the pad buttons as padnav's glyphs. The finish card IS a .trlCard. */
+/* TUTORIAL (js/tutorial.js): the lesson panel sits where the trial HUD does: a step count, the lesson name, the instruction as a sentence (--font-body) with keycaps and padnav glyphs; the finish card is a .trlCard */
 #tutHud{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:24;pointer-events:none;
  display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;max-width:min(680px,90vw)}
 #tutHud.hidden{display:none}
@@ -1237,20 +1185,14 @@ body.padNav .trlTab.navFocus :is(.trlTabName,.trlTabCt){color:var(--ink)}
 .trlRowMeta i{font-style:normal;color:var(--tx-mute)}
 
 /* ===== controller cursor + prompt strip (js/padnav.js) =====
-   Only drawn under body.padNav, i.e. while the pad is the thing in use — the first mouse movement
-   takes the class off, so a mouse player never sees a gold ring left behind by someone's controller.
-   Outline, not border: it can't move a single pixel of the layout. The pointer hides too, because a
-   mouse arrow parked over the menu reads as a second cursor. */
+   only under body.padNav (the pad is in use; the first mouse movement takes the class off); outline, not border, so it moves no layout; the pointer hides too */
 body.padNav{cursor:none}
 body.padNav .navFocus{outline:3px solid var(--focus)!important;outline-offset:3px;
  }
 body.padNav .btn.navFocus{transform:translateY(-2px)}
 body.padNav select.navFocus,body.padNav input.navFocus{background-color:#0f2536}
-/* A value OPEN for editing (padnav navAdjStart): ◀▶ now change it rather than move, so it has to look
-   different from a control the cursor is merely resting on — the field fills with the focus gold. */
-/* A dropdown opened from the pad (padnav navDropOpen) — our own list, since the native one only answers
-   the keyboard. Same field as the select it drops from; gold marks the option the D-pad is on, a tick
-   the value it has now. Fixed above everything, including the Options overlay. */
+/* a value OPEN for editing (padnav navAdjStart): ◀▶ change it rather than move, so it fills with the focus gold */
+/* a dropdown opened from the pad (padnav navDropOpen): our own list (the native one only answers the keyboard); gold marks the option the D-pad is on, a tick the current value; above everything, incl. Options */
 .navDrop{position:fixed;z-index:9000;overflow-y:auto;background:#0a1c2b;border:1px solid var(--focus);border-radius:2px;
  box-shadow:0 10px 30px rgba(0,0,0,.6);padding:3px;font-family:var(--font-body);font-size:16px}
 .navDropI{padding:6px 12px 6px 22px;color:var(--tx-strong);border-radius:4px;white-space:nowrap;cursor:pointer;position:relative}
@@ -1259,8 +1201,7 @@ body.padNav select.navFocus,body.padNav input.navFocus{background-color:#0f2536}
 .navDropI.off{color:#56617a;cursor:default}
 body.padNav select.navAdj,body.padNav input.navAdj{background-color:color-mix(in srgb,var(--focus) 24%,#0f2536);
  }
-/* A panel held on the pad in the layout editor: lifted off the grid, with the corner that Y turns into
-   a resize handle lit when that's what the D-pad is doing. */
+/* a panel held on the pad in the layout editor: lifted off the grid, the corner that Y turns into a resize handle lit when resizing */
 body.padNav .lyEditing .panel.lyDrag.navFocus{transform:translateY(-3px);
  box-shadow:0 0 0 7px rgba(240,178,74,.26),0 18px 40px rgba(0,0,0,.6)!important}
 .lyRzOn .lyRz{width:28px;height:28px;border-color:var(--focus)}
@@ -1269,10 +1210,7 @@ body.padNav .lyEditing .panel.lyDrag.navFocus{transform:translateY(-3px);
  font-family:var(--font-ui);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#edf0f1}
 #navHints.hidden{display:none}
 .nhI{display:flex;align-items:center;gap:6px;white-space:nowrap}
-/* A pad button, wherever one is named (js/padnav.js padKeyHTML). Shoulders and triggers are a PILL,
-   face buttons and sticks a DISC — never the square keycap a keyboard key is, so which device a
-   prompt means reads before the label does. A face button carries the hardware's own colour on its
-   rim and glyph; PlayStation's shapes are SVG, drawn the same way the HUD draws them. */
+/* a pad button, wherever one is named (js/padnav.js padKeyHTML): shoulders and triggers are a pill, face buttons and sticks a disc, never the square keycap; face buttons carry the hardware's colour; PlayStation shapes are SVG */
 .nhK{min-width:22px;height:22px;padding:0 7px;display:inline-flex;align-items:center;justify-content:center;flex:none;
  background:#123f5e;border:1px solid rgba(188,220,237,.35);border-radius:2px;color:#edf0f1;
  font-family:var(--font-ui);font-weight:400;font-size:13px;letter-spacing:.04em;line-height:1}
@@ -1283,9 +1221,7 @@ body.padNav .lyEditing .panel.lyDrag.navFocus{transform:translateY(-3px);
 .ctl .ctlPad{display:flex;align-items:center;justify-content:center;gap:3px}
 
 /* ===== VALUE SELECTORS (js/vsel.js) =====
-   ◀ VALUE ▶: a dark slot with an arrow either side and the select's own value centred between them.
-   Fixed width in a settings row so a column of them lines up like a game's options page. Opened on
-   the pad (padnav navAdj) the slot turns gold and the arrows light: ◀▶ now change it. */
+   ◀ VALUE ▶: a dark slot, an arrow either side, the select's value centred; fixed width so a column lines up; opened on the pad the slot turns gold and the arrows light */
 .vsel{display:inline-flex;align-items:stretch;flex:none;width:230px;height:36px;
  background:linear-gradient(180deg,#0f2536,#0a1c2b);border:1px solid rgba(107,170,188,.28);border-bottom-color:rgba(188,220,237,.5);transition:border-color .12s}
 .vsel.wide{width:100%;margin-bottom:8px}

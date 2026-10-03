@@ -1,13 +1,7 @@
-/* audio-preview.js — render the synthesized crowd to WAV files you can listen to outside the game.
-     node tools/audio-preview.js [outDir]        (default tools/build/audio-preview/, gitignored)
-
-   Boots the REAL js/audio.js (auVox / auClaps / AUREACT and CONFIG.audioMix.crowd), so what you hear
-   is what the game builds at runtime, minus the room reverb and the limiter. Writes:
-     crowd_bed_calm.wav, crowd_bed_wild.wav   the two synthesized bed layers, through the in-game lowpass
-     crowd_<reaction>.wav                     each synthesized reaction
-     crowd_moment.wav                         12 s: the bed building on tension, a goal roar, applause
-   and prints each one's peak / RMS and how long it took to render (the game renders them in idle
-   slices, so the time is spread out, but it is the total cost). */
+// audio-preview.js: render the synthesized crowd to WAV files you can listen to outside the game.
+//      node tools/audio-preview.js [outDir]        (default tools/build/audio-preview/, gitignored)
+// boots the real js/audio.js (auVox / auClaps / AUREACT, CONFIG.audioMix.crowd), so you hear what the game builds minus the room reverb and limiter; writes crowd_bed_calm.wav, crowd_bed_wild.wav (through the in-game lowpass), crowd_<reaction>.wav, and crowd_moment.wav (12 s: the bed building on tension, a goal roar, applause)
+// prints each one's peak / RMS and render time
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
@@ -58,9 +52,7 @@ if(require.main===module){
   one[k]=g;wav(path.join(OUT,'crowd_'+k+'.wav'),g.L,g.R,sr);line('crowd_'+k,stat(g.L,g.R),ms,ctx.CONFIG.audioMix.sounds['crowd_'+k].vol);}
  {const t0=Date.now(),g=ctx.auClaps(Object.assign({sr,seed:47},AU_CLAP));one.applause=g;
   wav(path.join(OUT,'crowd_applause.wav'),g.L,g.R,sr);line('crowd_applause',stat(g.L,g.R),Date.now()-t0,ctx.CONFIG.audioMix.sounds.crowd_applause.vol);}
- /* The moment: what bedTick does, offline. Excitement = base + tension (a ball pushed up the table over
-    seconds 2-6) + exc (1 at the goal, decaying at excDecay); calm/wild crossfade on equal power; the
-    roar at 6 s and the applause 1.1 s after it, as Au.goal('goal') schedules them. */
+ // the moment, as bedTick does it offline: excitement = base + tension (a ball pushed up the table over seconds 2-6) + exc (1 at the goal, decaying at excDecay); calm/wild crossfade on equal power; roar at 6 s, applause 1.1 s after (as Au.goal('goal') schedules)
  {const secs=12,n=sr*secs,L=new Float32Array(n),R=new Float32Array(n),C=AUC,S=ctx.CONFIG.audioMix.sounds,
    cL=beds.crowd_bed_calm,wL=beds.crowd_bed_wild,bn=cL.L.length;
   let x=0,lvl=0;

@@ -1,10 +1,7 @@
-/* Pin harness.   node tools/pin-harness.js
-   The PIN (CONFIG.shots.pin): finesse + raise poses the men, a slow ball touching a tilted man is
-   caught and carried with the slide outside the contact solver, and a kick from it is the pin shot.
-   Slices the REAL pinUpdate / pinBallStep / pinRelease (physics.js) and shotPinInput / shotPinFire
-   (shots.js) out of their files and runs them against live CONFIG, with plain-object rods and balls.
-   Every release path is pinned here, because a ball that stays glued to a rod it should have left
-   is a soft-lock, and one that slips out of a pin it should have kept is the bug this replaced. */
+// pin harness. node tools/pin-harness.js
+// the PIN (CONFIG.shots.pin): finesse + raise poses the men, a slow ball touching a tilted man is caught and carried with the slide outside the contact solver, a kick from it is the pin shot
+// slices the real pinUpdate / pinBallStep / pinRelease (physics.js) and shotPinInput / shotPinFire (shots.js) and runs them on live CONFIG with plain-object rods and balls
+// every release path is pinned (a ball glued to a rod it should have left is a soft-lock; one slipping out of a pin it should have kept is the bug this replaced)
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -23,8 +20,8 @@ let pass=0,fail=0;const fails=[];
 function ok(c,msg){if(c)pass++;else{fail++;fails.push(msg);}}
 
 function boot(PHYS,SHOTS){
- const real=[slice(PHYS,'/* ================= THE PIN','/* ================= contact AUDIO'),
-  slice(SHOTS,'function shotPinInput(r,I){','/* The swing CURVE')].join(NL);
+ const real=[slice(PHYS,'function pinUpdate(){','function hitFresh('),
+  slice(SHOTS,'function shotPinInput(r,I){','const SHOT_CURVE_KEYS')].join(NL);
  const ctx={console,Math,JSON,Object,Array,Set,Map,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,real,

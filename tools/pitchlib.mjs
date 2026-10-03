@@ -1,9 +1,5 @@
-/* pitchlib.mjs  --  shared by the generated pitches (build_moon_pitch.mjs, build_deck_pitch.mjs)
-
-   The pitch every GLB shares: 120 x 68, uv u = x, v = z, image top-left = (-60,-34), 2048 x 1160
-   (17 px per unit). Noise, the markings (read off royal.jpeg, so a generated pitch lines up with the
-   painted ones) and the writer, which copies pitch_royal.glb's box and node and swaps in our images,
-   so the loader sees nothing new. Everything here is deterministic: a script is its own master. */
+// pitchlib.mjs: shared by the generated pitches (build_moon_pitch.mjs, build_deck_pitch.mjs)
+// the pitch every GLB shares: 120 x 68, uv u = x, v = z, image top-left = (-60,-34), 2048 x 1160 (17 px per unit); noise, the markings (read off royal.jpeg so a generated pitch lines up with the painted ones) and a writer that copies pitch_royal.glb's box and node and swaps in our images; deterministic
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { createRequire } from 'node:module';
@@ -64,9 +60,7 @@ export function spot(x, z) {           // filled spots: centre, penalties
 }
 
 // ---- output ------------------------------------------------------------------------------------
-/* A (albedo), N (normal, glTF/OpenGL), M (R unused, G roughness, B metal): W*H*3 byte buffers.
-   Writes assets/pitches/pitch_<id>.glb (PNG textures; run ktx2-encode.mjs on it next) and the
-   JPEG fallback assets/pitches/<id>.jpeg that CONFIG.pitches.<id>.tex points at. */
+// A (albedo), N (normal, glTF/OpenGL), M (R unused, G roughness, B metal): W*H*3 byte buffers; writes assets/pitches/pitch_<id>.glb (PNG textures; run ktx2-encode.mjs next) and the JPEG fallback assets/pitches/<id>.jpeg that CONFIG.pitches.<id>.tex points at
 export async function writePitch(id, A, N, M, emissive) {
   const img = (b) => sharp(b, { raw: { width: W, height: H, channels: 3 } });
   const albPng = await img(A).png().toBuffer(), nrmPng = await img(N).png().toBuffer(), ormPng = await img(M).png().toBuffer();

@@ -1,21 +1,6 @@
-/* Behavioural harness for ROOM SKIES (js/models.js ensureSky / disposeSky / pruneSkies) and the
-   parts of js/world.js applyRoom that wait on them. No three.js, no browser: the functions are
-   string-sliced out of the real sources and rebuilt with new Function against stubs, so what is
-   tested is the code that ships.
-
-   What must hold:
-     - six faces, one CubeTexture, built only once all six are in; its format/encoding come from
-       the faces (a compressed cube with the wrong format uploads as garbage or not at all)
-     - two callers during one load share it: 6 fetches, not 12
-     - a missing face latches the room to the flat colour and is never re-fetched
-     - the LRU never frees the sky on screen, and keeps cacheSkies-1 others
-     - applyRoom's onReady fires ONCE, after BOTH the backdrop and the sky, in either order
-     - a sky or backdrop landing after the player left must not touch the screen
-     - two overlapping props builds of one room (boot does this) leave one group, not an orphan
-     - the Moon's sun in the sky (build_moon_sky.py SUN_DIR) points where its shadows come from
-       (CONFIG.rooms.moon.dir.pos): a sun that disagrees with the shadows is the mistake everyone sees
-
-   Run: node tools/sky-harness.js                                                               */
+// behavioural harness for ROOM SKIES (js/models.js ensureSky / disposeSky / pruneSkies) and the parts of js/world.js applyRoom that wait on them. Run: node tools/sky-harness.js
+// no three.js or browser: functions are string-sliced from the real sources and rebuilt against stubs
+// must hold: six faces build one CubeTexture only once all six are in (format/encoding from the faces); two callers during one load share it (6 fetches, not 12); a missing face latches the room to the flat colour and is never re-fetched; the LRU never frees the sky on screen and keeps cacheSkies-1 others; applyRoom's onReady fires once after both backdrop and sky; a sky or backdrop landing after the player left mustn't touch the screen; overlapping props builds leave one group; the Moon's sun (build_moon_sky.py SUN_DIR) points where its shadows come from (CONFIG.rooms.moon.dir.pos)
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');

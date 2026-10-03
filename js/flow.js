@@ -1,21 +1,12 @@
 'use strict';
 /* ================= game flow ================= */
 let matchLoading=false;
-/* Match-start GATE. Every quick / AI / rematch / training start funnels through here so a match can
-   NEVER kick off before the assets it needs are resident — the "textures missing when I skip the
-   loading screen" bug (skipping the intro reveals the menu, but the timed asset load hadn't run yet).
-   ensureMatchAssets (main.js) resolves synchronously when everything's cached (the normal case → no
-   visible delay); when it isn't (a skipped intro, or a table/room/figurine the player just picked),
-   we show a brief LOADING overlay and start the instant it's ready. League/cup matches already gate
-   their own assets (applyTable/applyRoom/loadPlayerModel) before calling in, so they pass straight
-   through (S.lg set). */
+// match-start gate: every quick/AI/rematch/training start goes through here so a match can't kick off before its assets are resident
+// ensureMatchAssets (main.js) resolves synchronously when cached, else a LOADING overlay shows; league/cup gate their own assets (S.lg set)
 function startMatch(mode,rodLockRole){
  if(S.lg||typeof ensureMatchAssets!=='function'){startMatchNow(mode,rodLockRole);return;}
  if(matchLoading)return;                     // a start is already pending — swallow repeat clicks
- // `veil` tracks whether we ACTUALLY raised the loader. It used to be enough to just call
- // showMatchLoading(false) unconditionally, because the call was a plain toggle — but the veil is
- // refcounted now (a venue swap can be holding it at the same time), so an unbalanced lower would
- // pull it off someone else's half-built room. Only lower what this path raised.
+ // `veil` = whether this path actually raised the loader (it's refcounted, only lower what you raised)
  matchLoading=true;let sync=false,veil=false;
  const go=()=>{sync=true;matchLoading=false;
   if(veil){veil=false;showMatchLoading(false);}
@@ -24,10 +15,7 @@ function startMatch(mode,rodLockRole){
  ensureMatchAssets(go);
  if(!sync){veil=true;showMatchLoading(true,'LOADING');}   // assets weren't ready synchronously → show the loader until go() fires
 }
-/* The loading veil. REFCOUNTED, because two things can want it at once now: the match-start gate
-   above and a venue swap (venueLoad, below). Without a count, whichever finished first would pull
-   the veil off the other and reveal a half-built room. `label` is only read on the way up, so the
-   caller that raised it owns the wording until it comes down. */
+// the loading veil is refcounted: the match-start gate and a venue swap (venueLoad) can both want it
 let mlN=0;
 function showMatchLoading(on,label){
  let el=$('matchLoad');
@@ -38,39 +26,11 @@ function showMatchLoading(on,label){
  el.classList.toggle('show',mlN>0);
 }
 
-/* ===== STAGED VENUE SWAP ==================================================
-   Changing the room, table, skin, pitch or reflections used to happen in ONE synchronous run
-   straight off a <select> change: fetch and parse the backdrop GLB (the pub's is ~45MB), bake a
-   PMREM env, recompile every material in the scene if the incoming room's key-light configuration
-   differs from the outgoing one, rebuild the props — and then hand the browser a first frame
-   carrying the whole texture upload. Nothing yielded anywhere in that chain, so the browser never
-   got a paint in between. THAT is why it reads as the tab hanging rather than as something
-   loading, and why bolting a spinner onto it would have changed nothing: the spinner could not
-   have been drawn either.
-
-   THE FIX IS NOT MAKING THE WORK FASTER, IT IS GIVING IT SOMEWHERE TO HAPPEN — the same shape as
-   the league's tape screen. Four steps, each on its own frame:
-     1. veil up, then WAIT OUT ITS CSS FADE. Skipping this wait is the obvious optimisation and it
-        is wrong: the stall lands mid-transition and the veil freezes half-drawn, which reads worse
-        than no veil at all.
-     2. run(done) — the caller's applyRoom / applyTable / selectSkin. Every one of those already
-        takes an onReady that fires when its assets are RESIDENT, and resolves synchronously when
-        they already are; that existing contract is the only reason this is cheap to add.
-     3. warm: renderer.compile(scene,camera). THIS IS THE LOAD-BEARING LINE. compile() forces the
-        shader link AND the texture upload that three.js otherwise defers to the first render, so
-        the cost lands here, under the veil, instead of on the first frame the player sees.
-        js/props.js warmPropShaders already proved the technique — it just never ran for a room
-        with no props, i.e. `open`, `saucer` and `pub`, which is most of them.
-     4. one clean frame, then the veil drops.
-
-   COALESCED, NOT QUEUED. Holding the arrow keys on the room dropdown fires a change per room, and
-   running those in series would load every room between where you started and where you stopped.
-   A request arriving mid-swap REPLACES the pending one, so only the room you actually settled on
-   is ever fetched.
-
-   `silent` runs the identical staging with no veil — for a swap the player is not waiting on: the
-   league's own tape screen is already up, or the venue is being handed back in the background. The
-   staging alone is most of the win; the veil is just what makes the wait legible. */
+// ===== STAGED VENUE SWAP =====
+// room, table, skin, pitch or reflection changes used to run as one synchronous chain with no paint between, so the tab seemed to hang; now four steps, one frame each:
+//   1. veil up, wait out its CSS fade   2. run(done): the caller's applyRoom / applyTable / selectSkin (onReady fires when assets are resident)
+//   3. warm: renderer.compile(scene,camera) forces shader link and texture upload under the veil   4. one clean frame, veil drops
+// coalesced, not queued: a request mid-swap replaces the pending one; `silent` runs the staging with no veil
 let venueBusy=false,venuePend=null;
 function venueLoad(run,opts){
  opts=opts||{};
@@ -83,8 +43,7 @@ function venueLoad(run,opts){
  const minT=(V.minT===undefined?0.45:V.minT)*1000;
  const t0=Date.now();
  if(veil)showMatchLoading(true,opts.label||'LOADING');
- // One SETTLED frame later. The rAF pair matters: the first callback runs before the paint that
- // applies whatever we just changed, so work scheduled on it still lands in the same visual frame.
+ // one settled frame later: the first rAF callback runs before the paint that applies the change
  const next=(fn,ms)=>{
   if(!staged){fn();return;}
   const go=()=>requestAnimationFrame(()=>requestAnimationFrame(fn));
@@ -101,8 +60,7 @@ function venueLoad(run,opts){
   },veil?Math.max(0,minT-(Date.now()-t0)):0);
  };
  const warm=()=>{
-  // Gated on `staged` so CONFIG.venue.on:false is a TRUE off switch — the old path did no warm,
-  // and an escape hatch that still changes behaviour is not an escape hatch.
+  // gated on `staged` so CONFIG.venue.on:false is a true off switch (the old path did no warm)
   if(staged){
    try{if(typeof renderer!=='undefined'&&renderer&&scene&&camera)renderer.compile(scene,camera);}
    catch(e){console.warn('venue warm failed',e);}            // a warm that throws must not strand the veil
@@ -113,44 +71,31 @@ function venueLoad(run,opts){
  next(()=>{
   let done=false;
   const settle=()=>{if(done)return;done=true;next(warm);};
-  // Hard ceiling on the wait. Every loader in the tree falls back on a miss (a 404 room uses the
-  // shared backdrop, a missing skin keeps the primitives), but a hung fetch fires neither load nor
-  // error — and a veil that never lifts is a worse bug than the freeze this replaces.
+  // hard ceiling on the wait: a hung fetch fires neither load nor error, and a veil that never lifts is worse than the freeze
   setTimeout(settle,(V.maxT===undefined?9:V.maxT)*1000);
   try{run(settle);}catch(e){console.warn('venue load threw',e);settle();}
  },veil?fade:0);
 }
 function startMatchNow(mode,rodLockRole){
- // The menu is clickable BEFORE main.js's boot() has run (intro skipped by a key/click, the
- // reduced-motion path, or the intro's holdMax expiring while GLBs are still loading). Starting
- // then gave a match with rods===[] → S.ctrlRods empty → every canvas move/click threw on
- // S.ctrlRods[S.ctrl]. boot() is idempotent and falls back to primitives, so just force it.
+ // the menu is clickable before boot() has run (skipped intro, reduced motion); starting then threw on S.ctrlRods[S.ctrl]; boot() is idempotent, so force it
  if(!rods.length){
   if(typeof boot==='function')boot();
   if(!rods.length)return;   // main.js not parsed yet — swallow the click rather than start a rodless match
  }
  Au.init();Au.ui('start');
- // 'roster' = the Kick Off lobby's line-up (S.roster, js/roster.js). userTeam is the PRIMARY
- // seat's team — it drives the camera/HUD tint and the handle-side flip, not per-player state —
- // so with an empty roster it falls to -1 and the match is an AI-vs-AI spectate, same as 'ai'.
+ // 'roster' = the Kick Off line-up (S.roster, js/roster.js); userTeam is the primary seat's team, -1 with an empty roster = an AI-vs-AI spectate like 'ai'
  S.mode=mode;
  S.userTeam=mode==='roster'?(S.roster.length?S.roster[0].team:-1)
   :(mode==='red'||mode==='training')?0:mode==='blue'?1:-1;
  S.rodLockRole=mode==='roster'?null:(rodLockRole||null);
- // Seed the sim's random surface (js/rng.js) BEFORE anything draws from it - clearPU below is
- // the first consumer. seedNext is consumed here, like serveAt, so a trial's seed can't leak
- // into the next match; with nothing set it's the wall clock and play is as varied as ever.
+ // seed the sim's random surface (js/rng.js) before anything draws; seedNext is consumed here so a trial's seed can't leak into the next match
  S.seed=(S.seedNext!=null)?(S.seedNext>>>0):(Date.now()>>>0);S.seedNext=null;rngSeed(S.seed);
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;S.pendingWin=null;
  S.serveAt=null;   // a restart spot left over from the last match must not aim its first kickoff
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
   clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();
-  // Prime BOTH teams' shatter GLBs here — every mode funnels through startMatch, so this covers
-  // quick/AI matches AND league/cup (whose loadPlayerModel setup skips reloadPlayerModel's prime).
-  // clearFractures() above means no live instance references any template, so it's safe to then
-  // prune every OTHER figurine's shatter — residency stays bounded to the two teams on the table.
-  // (The player's league team is always one of the two, so it's kept automatically — no special case.)
+  // prime both teams' shatter GLBs (every mode funnels through startMatch, incl. league/cup); no live instance uses a template now, so prune every other figurine's
   if(typeof ensureExplosionModel==='function'){
    const ea=activeModel(0).id,eb=activeModel(1).id;
    ensureExplosionModel(ea);ensureExplosionModel(eb);
@@ -159,9 +104,7 @@ function startMatchNow(mode,rodLockRole){
   S.active=[[],[]];S.pairCd=[0,0];
   rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
    r.kickT=-1;r.raise=false;r.raiseKeep=false;r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;r.cd=0;r.exert=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
-   // NOTE: r.exert (swing fatigue) is cleared HERE and nowhere else. It must NOT go in
-   // resetRodRotation — that runs on every goal / dead ball / out, which would wipe the
-   // accumulation several times a match and leave the channel permanently near zero.
+   // r.exert (swing fatigue) is cleared here only, not in resetRodRotation (that runs on every goal/dead ball/out)
    r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
    r.removedUntil=[];r.men.forEach(m=>{m.visible=true;});
    r.pivot.rotation.z=0;r.pivot.position.z=0;
@@ -170,42 +113,29 @@ function startMatchNow(mode,rodLockRole){
    else{const hs=mine?1:-1,C=rodCollar(r.maxOff);
     r.handle.position.z=hs*(C+CONFIG.rods.handleLen/2);
     r.collar.position.z=-hs*(C+CONFIG.rods.collarLen/2);}});
-  // SEATS (js/seats.js). The roster's specs become live seats here; every other entry point
-  // (league, training, the AI showdown) gets the single solo seat that holds every device, which
-  // is byte-identical to the old S.ctrl/S.ctrlRods singleton.
+  // SEATS (js/seats.js): the roster's specs become live seats; every other entry point gets one solo seat holding every device
   S.seats=mode==='roster'?S.roster.map(p=>makeSeat(p.team,p.devs,p.lockRole))
    :S.userTeam<0?[]:[soloSeat(S.userTeam,rodLockRole)];
   seatBindRods();
-  // The camera persists between matches, so a shot that was fine last game (a red-only end cam)
-  // may not be offerable now that blue has a player too — step off it rather than start there.
+  // the camera persists between matches: step off a shot that's no longer offerable
   if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
-  // The hint speaks to the devices actually seated — keys for a keyboard, pad buttons for a pad, just
-  // the camera for a spectated match — and offers switching only if someone can. A seat holding both
-  // gets both, and hud.js draws whichever was touched last (a solo seat holds keyboard, mouse AND pad).
-  // The pad line says what the triggers are for in THIS mode, since the same two do different jobs.
+  // the hint speaks to the devices actually seated and offers switching only if someone can; the pad line says what the triggers do in this mode
   {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
    const sw=S.seats.some(s=>s.rods.length>1);
    const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin':''):'';
-   // Every key in the keyboard line comes off the bindings (js/binds.js), so a rebind shows here.
+   // the keyboard line comes off the bindings (js/binds.js), so a rebind shows
    const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
    hudHint(!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
     !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} kick · {X} raise'+trg:null);}
- // Remember where this match was launched from so quitting returns THERE: a quick match started
- // on Kick Off goes back to Kick Off (rematch is one click), training started on home goes back
- // to home. League/cup have their own return paths (lgReturn/cupReturn re-open the lobby with
- // fresh content), so a bare quit out of one is sent home rather than to a stale lobby.
+ // remember where this match launched from so quitting returns there (league/cup have their own return paths, a bare quit goes home)
  S.fromScreen=S.lg?'home':screenId();
  hideScreens();                                                        // every registered screen down (js/screens.js)
  $('pause').classList.add('hidden');$('win').classList.add('hidden');  // overlays aren't registered, so they're torn down by hand
  hudShow(true);   // canvas HUD up: this match's names, colours and score, no tabs carried over (js/hud.js)
-  // Pre-kickoff shader warm (fracture.js): compile every fx a match can fire — each ball type's
-  // material + the shatter/swirl templates — at THIS match's exact light count, before the whistle.
-  // Runs here (after table/room/colours are applied, before the countdown) so the first fireball /
-  // explosion / swirl never compiles mid-rally. The one-off hitch lands during the intro banner.
+  // pre-kickoff shader warm (fracture.js): compile every fx a match can fire at this light count, before the whistle
   if(typeof warmMatchAssets==='function')warmMatchAssets();
   if(mode==='training'){trainingEnter();return;}   // sandbox: no countdown/serve — training.js owns the phase from here
-  // 'GOOD LUCK' was filler under a headline that already states the format — a normal match gets
-  // no tag chip at all now; league/cup/spectate get one because it's information you can't infer.
+  // a normal match gets no tag chip; league/cup/spectate get one (information you can't infer)
   const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'');
   const _lim=gameTimeLimit();
   banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7,'var(--gold)');
@@ -218,49 +148,33 @@ function onGoal(team,b){
  if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
  b.scored=true;
  const val=b.t.value||1;
- // Classify the goal BEFORE removeBall: b.v is the velocity at the LINE (onGoal is called from
- // inside stepBall, so nothing has touched the ball since it crossed) and the mesh is freed two
- // lines down. M carries the sub chip — what the shot actually was, plus its pace — and the
- // banner accent, which an own goal takes off the scoring team. See js/moments.js.
+ // classify the goal before removeBall (b.v is the velocity at the line); M carries the sub chip and banner accent (js/moments.js)
  const M=momGoal(team,b);
- msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit + the longest-rally clock. Same constraint as momGoal — both read records that hang off the ball, and removeBall frees it three lines down.
+ msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit and rally clock; both read records hanging off the ball, which removeBall frees
  S.score[team]+=val;
- goalFx(team,b,msScorer(b,team));   // the ring flash wants the SCORING ROD, and msScorer is where that is decided (matchstats.js)
+ goalFx(team,b,msScorer(b,team));   // the ring flash wants the scoring rod; msScorer decides (matchstats.js)
  updateScoreUI(team);
  removeBall(b);
  const wins=S.suddenDeath||S.score[team]>=goalTarget();   // golden goal after a level time-up, or the target reached
  if(wins){
-  // The one goal most worth watching was the only one that never got a replay — the winner used to
-  // cut straight to the win screen. It now runs the SAME celebration + replay as any other goal and
-  // the win screen WAITS: S.pendingWin parks the winner, main.js's goal timer hands off to
-  // replayStart, and replayEnd (or a skip) routes to endMatch instead of the re-count.
-  // replayReady() is checked BEFORE anything is committed, so every case that can't show footage
-  // (feature/cfg off, rally too short, another ball still live) falls through to the immediate
-  // endMatch below — byte-identical to the old behaviour.
+  // the winning goal gets the same celebration and replay: S.pendingWin parks the winner, main.js's goal timer hands off to replayStart, replayEnd routes to endMatch
+  // replayReady() is checked first, so anything that can't show footage goes straight to endMatch
   if(REPLAY.winner&&!S.balls.length&&replayReady()){
-   // the winner keeps its own sub — the FORMAT outranks the flavour on this one goal — but an
-   // own goal still takes the neutral accent rather than the beneficiary's colour
+   // the winner keeps its own sub (the format outranks the flavour); an own goal still takes the neutral accent
    banner(teamName(team)+' GOAL',S.suddenDeath?'GOLDEN GOAL':'MATCH WINNER',1.9,M.col);
    resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
    replayQueue(team);S.pendingWin=team;return;
   }
   endMatch(team);return;
  }
- // accented in the SCORING team's colour — the old fixed blue glow made every goal look the same
- // and clashed with --c1, so a blue goal and a red goal read identically.
+ // accented in the scoring team's colour
  banner(teamName(team)+' GOAL',M.sub,1.9,M.col);
  if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
-  replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay + footage length)
+  replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay and footage length)
 }
-/* Open the win screen for a goal that's been held back for its celebration/replay. Returns false
-   when nothing is waiting, so callers just fall through to their normal path (main.js's goal timer
-   → re-count, replayEnd → re-count). The ONLY writer of S.pendingWin is onGoal above. */
+// open the win screen for a goal held back for its replay; false when nothing is waiting; onGoal is the only writer of S.pendingWin
 function finishPendingWin(){if(S.pendingWin==null)return false;const w=S.pendingWin;S.pendingWin=null;endMatch(w);return true;}
-/* Match clock (timed modes only). Called every frame during 'play' after S.matchTime advances.
-   Ticks the final-seconds warning, then at time-up either ends the match (a team ahead) or drops
-   into sudden death (level) — play carries straight on, the HUD flips to SUDDEN DEATH, and the
-   next goal wins via the guard in onGoal. Fires once: it either ends the match (phase → win) or
-   sets S.suddenDeath (which this early-returns on thereafter). Off/unlimited → no-op. */
+// match clock (timed modes), every 'play' frame after S.matchTime advances: final-seconds warning, then at time-up end the match or go to sudden death (level); fires once
 function checkMatchClock(){
  if(S.trn)return;                         // training: no clock, ever
  const lim=gameTimeLimit();               // seconds; 0 = unlimited
@@ -273,14 +187,11 @@ function checkMatchClock(){
 }
 function outOfBounds(b){
  if(S.trn){redropBall(b);Au.whistle();return;}   // training: keep the ball live, no goal-hold
- // Grab the x BEFORE removeBall frees the mesh — the restart is keyed to the third the ball left
- // from (S.serveAt → serve()), so belting it off the table out of your own corner isn't a free 60u
- // transfer up the pitch. b.cur is the true sim position (b.m.position carries the render lerp).
+ // grab x before removeBall frees the mesh: the restart is keyed to the third the ball left from (S.serveAt > serve())
  const ox=(b.cur||b.m.position).x;
  msRallyEnd();   // the ball leaving play ends the rally, same as a goal (matchstats.js)
  removeBall(b);Au.whistle();
- // Only the ball that actually ENDS the rally sets the restart spot — in multi-ball the others are
- // still live and their exit says nothing about where play stopped.
+ // only the ball that ends the rally sets the restart spot (in multi-ball the others are still live)
  if(!S.balls.length&&S.phase==='play'){S.serveAt=ox;resetRodRotation();notice('OUT OF PLAY',1.1);S.phase='goal';S.goalT=MATCH.outHold;}
 }
 function endMatch(w){
@@ -296,14 +207,12 @@ function endMatch(w){
  for(const t of [0,1]){const n=$('winName'+t);n.textContent=teamName(t);n.style.setProperty('--tc',teamCol(t));n.style.color=typeof hudInk==='function'?hudInk(teamCol(t),.62):'#fff';
   n.classList.toggle('lost',t!==w);$('winS'+t).textContent=S.score[t];}
  msRallyEnd();      // a clock-out / forfeit ends the last rally without a goal or an out
- msWinRender();     // matchstats.js owns both stat tabs — see the sheet block at the foot of that file
- // The league/cup REWARDS strip stays here: it's the one part of the win screen that knows about
- // the league bridge, and it sits outside the tabs so it's readable whichever tab is open.
+ msWinRender();     // matchstats.js owns both stat tabs (see the sheet block at the foot of that file)
+ // the league/cup REWARDS strip stays here: it knows about the league bridge and sits outside the tabs
  const lgLine=t=>'<span>'+t+'</span>';
  $('winRewards').innerHTML=!wasLg?'':(S.lg.cup
-   ?lgLine(S.lg.banner)+   // banner holds the round PLAYED (cupRecord already advanced LG.cup.round)
-    // parts/champ are stamped by cupRecord just above. Winning a cup tie used to pay nothing and
-    // SAY nothing until the final, so three rounds out of four ended on a bare round name.
+   ?lgLine(S.lg.banner)+   // banner holds the round played (cupRecord already advanced LG.cup.round)
+    // parts/champ are stamped by cupRecord just above
     (S.lg.champ?lgLine(CUP.name.toUpperCase()+' WINNERS · +'+S.lg.parts+' upgrade parts')
      :S.lg.parts?lgLine('Through to the next round · +'+S.lg.parts+' upgrade parts'):'')
    :lgLine('+'+(w===0?CONFIG.league.upWin:CONFIG.league.upLoss)+' upgrade parts')+
@@ -319,12 +228,8 @@ function togglePause(){
  else if(S.phase==='pause'){S.phase=S.prePause;$('pause').classList.add('hidden');mouseLockRequest();Au.ui('back');}   // the Resume click is the gesture the lock needs
 }
 function gotoMenu(){
-  if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods + drop the training gate
-  // KIT ONLY. The VENUE (table/skin/room/pitch) used to be restored here too, and that was the
-  // load-then-free churn: a league match handed the player's room back on the way to the lobby,
-  // which promptly forced the division's again. The league SESSION owns it now — see the venue
-  // block at the top of js/league.js. lgVenueExit below is the backstop for the quit-to-home path;
-  // it's deferred a tick, so a `gotoMenu(); openLeague()` return cancels it instead of thrashing.
+  if(S.trn&&typeof trainingExit==='function')trainingExit();   // restore hidden rods and drop the training gate
+  // kit only: the venue belongs to the league session (top of js/league.js); lgVenueExit is the quit-to-home backstop, deferred a tick so `gotoMenu(); openLeague()` cancels it
   if(S.lg&&S.lg.prevKit){
    cfg.redColor=S.lg.prevKit.redColor;cfg.blueColor=S.lg.prevKit.blueColor;
    cfg.modelRed=S.lg.prevKit.modelRed;cfg.modelBlue=S.lg.prevKit.modelBlue;
@@ -333,8 +238,7 @@ function gotoMenu(){
   }
   if(typeof lgVenueExit==='function')lgVenueExit();
   S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();clearMarks();
-  // No match live — free every shatter GLB except the two figurines the menu now shows (kept warm
-  // so starting the next match doesn't re-fetch them). Safe: clearFractures() just cleared all live ones.
+  // no match live: free every shatter GLB except the two figurines the menu shows
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);
  S.lg=null;S.teamStats=null; // drop any league-match bridge (abandoned matches aren't recorded)
  $('pause').classList.add('hidden');$('win').classList.add('hidden');hudShow(false);  // overlays — not in the screen registry

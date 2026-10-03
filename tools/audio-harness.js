@@ -1,13 +1,6 @@
-/* audio-harness.js — headless tests for js/audio.js (samples, routing, room, crowd, stand-ins).
-   Run:  node tools/audio-harness.js
-
-   Boots three.js + core.js + config.js + audio.js in one vm context against a MOCK WebAudio that
-   records every node and connection, so routing is checked as a graph (does this sound reach the
-   UI bus? through a panner? into the room?), not by reading the code. The pure DSP (auVox, auIR,
-   auClaps) is measured on its real output.
-
-   Every assertion is also run against MUTANTS of audio.js; each mutant must break at least one,
-   and a mutant whose anchor has drifted off the source reports itself instead of passing. */
+// audio-harness.js: headless tests for js/audio.js (samples, routing, room, crowd, stand-ins). Run: node tools/audio-harness.js
+// boots three.js + core.js + config.js + audio.js in one vm against a MOCK WebAudio that records every node and connection, so routing is checked as a graph (does this sound reach the UI bus? through a panner? into the room?); the pure DSP (auVox, auIR, auClaps) is measured on its real output
+// every assertion also runs against MUTANTS of audio.js; each must break one, and a drifted anchor reports itself
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..'),rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8');

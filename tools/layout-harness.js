@@ -1,20 +1,11 @@
 'use strict';
-/* ============================================================================================
-   layout-harness.js — the layout editor's stored form (js/layout.js, v:2).
-
-     node tools/layout-harness.js        (from the project root or from tools/)
-
-   A saved layout is FRACTIONS across (x, w) and px down (y, h). What must hold:
-     1. save → apply at the same canvas width is EXACT, at every width (or every save drifts a panel)
-     2. a gutter between two panels survives any rescale at exactly one grid square, and nothing
-        that didn't overlap starts to
-     3. an arrangement scales with the canvas (three columns stay three columns on the Deck)
-     4. a v1 (px) save converts once, looks identical where it's converted, and a too-wide one fills
-        the canvas instead of overflowing it
-
-   Boots js/layout.js for real in a vm with no screens registered (no DOM needed for the maths).
-   Exit 0 = pass, 1 = fail.
-   ========================================================================================== */
+// layout-harness.js: the layout editor's stored form (js/layout.js, v:2). node tools/layout-harness.js (from the project root or tools/)
+// a saved layout is fractions across (x, w) and px down (y, h); must hold:
+//   1. save then apply at the same canvas width is exact, at every width
+//   2. a gutter between two panels survives any rescale at one grid square, and nothing that didn't overlap starts to
+//   3. an arrangement scales with the canvas (three columns stay three on the Deck)
+//   4. a v1 (px) save converts once, looks identical where converted, and a too-wide one fills the canvas
+// boots js/layout.js in a vm with no screens registered (no DOM needed); exit 0 = pass, 1 = fail
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=fs.existsSync(path.join(process.cwd(),'index.html'))?process.cwd():path.resolve(process.cwd(),'..');
 const SRC=fs.readFileSync(path.join(ROOT,'js/layout.js'),'utf8');

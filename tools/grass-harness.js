@@ -1,12 +1,5 @@
-/* Behavioural harness for BLADE GRASS (js/grass.js).
-
-   Boots grass.js against the vendored three.js and a real box, like the pitch GLBs (24 verts, the
-   top face at +y, the node squashed in y). What must hold: only grass pitches grow blades, quality
-   picks how many, 'off' means NONE (not an empty draw), blades root on the TOP face only and at
-   its height, the lawn is the same every time, a lower quality is an even thinning (not one
-   corner), a quality change rebuilds rather than stacks, and the setting is a machine one.
-
-   Run: node tools/grass-harness.js                                                             */
+// behavioural harness for BLADE GRASS (js/grass.js). Run: node tools/grass-harness.js
+// boots grass.js against the vendored three.js and a real box like the pitch GLBs (24 verts, top face at +y, node squashed in y); must hold: only grass pitches grow blades, quality picks how many, 'off' means none (not an empty draw), blades root on the top face only at its height, the lawn is the same every time, a lower quality is an even thinning, a quality change rebuilds rather than stacks, and the setting is a machine one
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');

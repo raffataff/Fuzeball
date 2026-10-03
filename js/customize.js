@@ -1,22 +1,14 @@
 'use strict';
-/* ================= customize panel =================
-   A self-contained turntable studio (its own tiny three.js scene) plus the
-   controls that drive it. Colour + finish edits are pushed onto the live game
-   materials too, so what you sculpt here is exactly what walks onto the table. */
+// ================= customize panel =================
+// a self-contained turntable studio (its own three.js scene) plus the controls that drive it; colour and finish edits also go onto the live game materials
 
-// w/h/dpr = the studio viewport, fed to the SHARED preview renderer (PRV, world.js) each frame.
-// There is deliberately no `renderer` here any more — see the PRV block for why.
+// w/h/dpr = the studio viewport, fed to the shared preview renderer (PRV, world.js); there is no `renderer` here
 const PV={on:false,ready:false,loadedId:null,team:0,spin:true,
  yaw:.5,pitch:0,dist:8,dragging:false,px:0,py:0,
  w:0,h:0,dpr:1,scene:null,camera:null,root:null,model:null,mats:[],hairMats:[],
  rim:null,platform:null,ringMesh:null,cache:{},cacheOrder:[],baseScale:1};
 
-/* Record a figurine template into the shared preview cache (PV.cache — used by the studio,
-   menu thumbnails and league setup) and evict LRU entries past CONFIG.playerModel.cacheMax.
-   dispose=false (ref-drop only): the studio/thumb/league may still hold a clone of an evicted
-   template, so we never free its GPU here — dropping the JS ref still lets V8 reclaim the bulk
-   (decoded images + geometry arrays) once every clone of it is gone. Protects the ids currently
-   shown so an on-screen preview is never yanked. */
+// record a figurine template into the shared preview cache (PV.cache) and evict LRU past CONFIG.playerModel.cacheMax; ref-drop only (a preview may hold a clone); shown ids are protected
 function pvCachePut(id,scene){
  if(typeof cacheModelTemplate!=='function'){PV.cache[id]=scene;return;} // helpers live in world.js; degrade gracefully
  cacheModelTemplate(PV.cache,PV.cacheOrder,id,scene);
@@ -25,14 +17,12 @@ function pvCachePut(id,scene){
  capModelCache(PV.cache,PV.cacheOrder,protect,false);
 }
 
-/* ---- build controls + wire buttons (called once at boot) ---- */
+// ---- build controls + wire buttons (called once at boot) ----
 function initCustomize(){
  const mc=$('czModels');mc.innerHTML='';
  CONFIG.playerModel.models.forEach(m=>{
   const d=document.createElement('div');d.className='czCard';d.dataset.id=m.id;d.title=m.blurb||m.name;
-  // The figure mark is the FALLBACK layer and is always in the DOM; mugImg lays the rendered
-  // portrait over it and stamps .hasMug once the file actually decodes (see mugImg in core.js).
-  // Figurines whose mugshot isn't rendered yet keep the neutral mark — no broken-image frame.
+  // the figure mark is the fallback layer; mugImg (core.js) lays the portrait over it and stamps .hasMug once the file decodes
   d.innerHTML='<div class="cIco">'+ICO.figure+'</div><div class="cName">'+m.name+'</div>';
   mugImg(m,d,'czMug','hasMug');
   d.onclick=()=>czPickModel(m.id);mc.appendChild(d);
@@ -81,12 +71,10 @@ function initCustomize(){
  $('czSpin').classList.add('on');
 }
 
-/* ---- open / close ---- */
-/* Teardown hangs off the SCREEN, not off the Done button: Esc (input.js → backScreen) leaves
-   this screen without ever calling closeCustomize, and a turntable left running would keep
-   rendering through the shared preview context behind the menu. */
+// ---- open / close ----
+// teardown hangs off the screen, not the Done button (Esc leaves without closeCustomize, and the turntable would keep rendering)
 SCREENS.customize.onHide=()=>{PV.on=false;refreshKitUI();};
-// Right stick turns the turntable (js/padnav.js) — the pad's version of dragging the canvas, same limits.
+// right stick turns the turntable (js/padnav.js), like dragging the canvas
 SCREENS.customize.onPadStick=(rx,ry,dt)=>{if(!PV.on)return false;PV.yaw+=rx*2.6*dt;PV.pitch=clamp(PV.pitch+ry*1.4*dt,-.6,.7);return true;};
 function openCustomize(team){
  if(team===0||team===1){PV.team=team;PV.yaw=team===0?cfg.redYaw:cfg.blueYaw;}
@@ -95,9 +83,7 @@ function openCustomize(team){
  czSyncUI();czStripFit();   // before pvResize: the strip's height is what the preview has left
  requestAnimationFrame(()=>{pvInit();pvLoadModel();pvResize();PV.on=true;pvTick();});
 }
-/* The figurine strip under the preview (CONFIG.playerModel.strip): the fewest rows that fit every card
-   at its minimum size, then cards as large as the width allows, up to max. Past maxRows it stays at
-   maxRows and the strip scrolls sideways, so a longer cast never eats the preview. */
+// the figurine strip under the preview (CONFIG.playerModel.strip): the fewest rows that fit every card at its minimum size, cards as large as the width allows up to max; past maxRows it scrolls sideways
 function czStripFit(){
  const st=$('czStrip'),mc=$('czModels'),C=CONFIG.playerModel.strip;if(!st||!mc)return;
  const cs=getComputedStyle(st),g=parseFloat(getComputedStyle(mc).columnGap)||0,n=mc.children.length;
@@ -110,8 +96,7 @@ function czStripFit(){
 }
 function closeCustomize(){showScreen('menu');}   // onHide above does the stop/refresh
 
-/* Live kit summary in the menu's two-column Teams & Kits panel: figurine
-   thumbnails, model caption, palette selection + team-tinted accents. */
+// live kit summary in the menu's Teams & Kits panel: thumbnails, model caption, palette, team-tinted accents
 function refreshKitUI(){
  [0,1].forEach(team=>{
   const col=(team===0?cfg.redColor:cfg.blueColor).toLowerCase();
@@ -132,9 +117,8 @@ function applyKitThumbs(){
  });
 }
 
-/* ---- control handlers ---- */
-// Single source of truth for a team's colour — used by the menu palette AND the
-// studio picker, so the two stay perfectly in sync.
+// ---- control handlers ----
+// single source of truth for a team's colour, used by the menu palette and the studio picker
 function setKitColor(team,hex){
  hex=hex.toLowerCase();
  if(team===0)cfg.redColor=hex;else cfg.blueColor=hex;
@@ -152,8 +136,7 @@ function czPickModel(id){
  if(typeof reloadPlayerModel==='function')reloadPlayerModel();
  czSyncModels();refreshKitUI();
 }
-// Touching a finish slider means the user wants MANUAL values — drop the team out of
-// the 'Default' (authored-materials) mode so the slider actually reads on the model.
+// touching a finish slider means manual values: drop the team out of 'Default' (authored-materials) mode
 function czLeaveDefault(){cfg[PV.team===0?'redFinishDefault':'blueFinishDefault']=false;}
 function czPickFinish(k){
   const f=CONFIG.playerModel.finishes[k];if(!f)return;
@@ -179,7 +162,7 @@ function czResetAll(){
  applyColors();pvApply();czSyncUI();refreshKitUI();
 }
 
-/* ---- control <-> cfg sync ---- */
+// ---- control <-> cfg sync ----
 function czSyncModels(){
  const cur=cfg[PV.team===0?'modelRed':'modelBlue'];
  document.querySelectorAll('#czModels .czCard').forEach(c=>{if(c.dataset.id)c.classList.toggle('on',c.dataset.id===cur);});
@@ -223,13 +206,11 @@ function czSyncYaw(){
 }
 function czSyncUI(){czSyncModels();czSyncColor();czSyncFinish();czSyncYaw();}
 
-/* ================= three.js turntable studio ================= */
+// ================= three.js turntable studio =================
 function pvInit(){
  if(PV.ready)return;
  const cv=$('pvCanvas');
- // #pvCanvas is a plain 2D surface now: pvTick renders through the SHARED offscreen context (PRV)
- // and blits the result here. Never attach a WebGLRenderer to it — a canvas hands out exactly one
- // context type for its lifetime, and getContext('2d') would start returning null.
+ // #pvCanvas is a plain 2D surface (pvTick blits the shared PRV render here); never attach a WebGLRenderer to it, a canvas keeps one context type
  PV.dpr=Math.min(devicePixelRatio,2);
  PV.scene=new THREE.Scene();
  PV.camera=new THREE.PerspectiveCamera(42,1,.1,200);
@@ -301,8 +282,7 @@ function pvApply(){
   if(PV.model)PV.model.scale.setScalar(PV.baseScale*tmScale(PV.team));
 }
 
-// Record the viewport for PRV rather than sizing a renderer — the shared context is only resized
-// at draw time, and only when the numbers actually changed.
+// record the viewport for PRV rather than sizing a renderer; the shared context resizes at draw time, only when the numbers changed
 function pvResize(){
  if(!PV.ready)return;
  const cv=$('pvCanvas'),w=cv.clientWidth||cv.parentElement.clientWidth,h=cv.clientHeight||cv.parentElement.clientHeight;
@@ -329,10 +309,8 @@ function pvSnapshot(){
  $('czSnap').classList.add('on');setTimeout(()=>$('czSnap').classList.remove('on'),350);
 }
 
-/* ================= menu figurine thumbnails =================
-   Stamps a posed, team-coloured figurine into each menu column on demand (never per-frame),
-   through the SHARED preview context (PRV) — no renderer of its own. Shares PV.cache so the .glb
-   isn't fetched twice. THB.W/H is the thumbnail size handed to PRV at render time. */
+// ================= menu figurine thumbnails =================
+// stamps a posed, team-coloured figurine into each menu column on demand through the shared preview context (PRV); shares PV.cache; THB.W/H = the size handed to PRV
 const THB={ready:false,W:240,H:320,dpr:2,scene:null,cam:null,root:null,rim:null,
  model:[null,null],mats:[[],[]],loadedId:[null,null],baseScale:[1,1]};
 function thumbInit(){
@@ -378,7 +356,7 @@ function thumbRender(team){
   THB.mats[team].forEach(m=>{m.color.copy(col);applyTeamFinish(m,team,col,false);});
   THB.rim.color.copy(col);
   THB.model[team].scale.setScalar(THB.baseScale[team]*tmScale(team));
- THB.root.rotation.y=team===0?cfg.redYaw:cfg.blueYaw;   // per-team configurable pose
+ THB.root.rotation.y=team===0?-CONFIG.playerModel.kitYaw:Math.PI+CONFIG.playerModel.kitYaw;   // always face each other
  THB.cam.position.set(0,2.0,7.6);THB.cam.lookAt(0,1.65,0);
  return PRV.dataURL(THB.scene,THB.cam,THB.W,THB.H,THB.dpr);
 }

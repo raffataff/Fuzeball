@@ -1,22 +1,13 @@
-/* Behavioural harness for controller menu navigation (js/padnav.js).
-   Boots core.js + the REAL padnav.js in a vm against a fake DOM whose elements carry fixed
-   rectangles, then drives it the way a pad does: edges through navTick, directions through
-   navDir. What it pins down is the part a re-read can't see:
-     · the spatial choice — including the Kick Off geometry, measured in the live game, where a
-       3x sideways penalty sent "down" from the tab bar to Game time, skipping three rows;
-     · pad family — "Xbox Wireless Controller" contains "wireless controller", which is how a
-       DualShock names itself; testing PlayStation first labelled an Xbox A as ✕;
-     · the container rule, the capture region, clamp-vs-wrap on a <select>, slider snapping;
-     · the first press only revealing the cursor, the lobby's onPad hook winning over the cursor,
-       Start as the screen's primary action, and B pressing the screen's own Back button;
-     · cursor memory used on the way BACK to a screen, never on a fresh entry;
-     · padNavFilter keeping a press the menu used away from the rod;
-     · button glyphs by family (a Switch pad's A SLOT is printed B), the last-device switch, the
-       data-pad relabel, and the in-match hint picking the pad lines only when a pad was last used;
-     · the layout editor on a pad (the REAL js/layout.js pad functions): whole panels as the stops,
-       A grabs, the D-pad moves a grid square, Y resizes, B puts it back, A saves.
-   Every mutation below must break at least one assertion.
-   Run: node tools/padnav-harness.js                                                        */
+// behavioural harness for controller menu navigation (js/padnav.js). Run: node tools/padnav-harness.js
+// boots core.js + the real padnav.js in a vm against a fake DOM with fixed rectangles and drives it like a pad (edges via navTick, directions via navDir); pins what a re-read can't see:
+//   the spatial choice (incl. the Kick Off geometry, where a 3x sideways penalty sent 'down' from the tab bar to Game time)
+//   pad family ('Xbox Wireless Controller' contains 'wireless controller', which is how a DualShock names itself)
+//   the container rule, the capture region, clamp-vs-wrap on a <select>, slider snapping
+//   the first press only revealing the cursor, the lobby's onPad hook winning, Start as primary action, B pressing the screen's own Back
+//   cursor memory on the way back (not a fresh entry); padNavFilter keeping a menu press from the rod
+//   glyphs by family, the last-device switch, the data-pad relabel, the in-match hint choosing pad lines only when a pad was last used
+//   the layout editor on a pad (the real js/layout.js functions): panels as stops, A grabs, D-pad moves, Y resizes, B puts back, A saves
+// every mutation below must break at least one assertion
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
@@ -142,9 +133,7 @@ function suite(src,lsrc){
   root.add(a,nb,b);c.N.NAV.root={key:'x',el:root};c.N.navSet(a);c.N.navMove(0,1);
   ok(c.N.NAV.el===b,'a taller neighbour 4px lower in the same row is not "down"',nm(c.N.NAV.el));}
 
- /* 4 · <select>: ◀▶ MOVE past a closed one; A opens it; open, ◀▶ clamp and skip disabled; A keeps,
-      B puts back, ▲▼ or the cursor leaving closes it. ◀▶ used to change any select the cursor
-      rested on, so there was no way sideways OUT of a column of them — the owner's report. */
+ // 4 · <select>: ◀▶ move past a closed one; A opens it; open, ◀▶ clamp and skip disabled; A keeps, B puts back, ▲▼ or the cursor leaving closes it (◀▶ used to change any select the cursor rested on)
  {const c=boot(src),E=c.E,root=E('div',{r:[0,0,800,600]});
   const sel=E('select',{id:'s',r:[10,10,80,30],sel:0,options:[{},{disabled:true},{}]}),nx=E('button',{id:'nx',r:[200,10,80,30]});
   root.add(sel,nx);
@@ -178,9 +167,7 @@ function suite(src,lsrc){
   ok(String(rg.value)==='0.55'&&c.N.NAV.el===rg,'open: right nudges it',rg.value);
   c.N.navAdjEnd(false);ok(String(rg.value)==='0.5','B puts the slider back',rg.value);}
 
- /* 4c · a VALUE SELECTOR (js/vsel.js wraps the select in .vsel): A opens it IN PLACE, not as a list;
-       ◀▶ step it, wrapping and skipping disabled options, firing input+change each step; B puts it
-       back, A keeps it. Closed, ◀▶ still move on to the next control. */
+ // 4c · a VALUE SELECTOR (js/vsel.js): A opens it in place, ◀▶ step it (wrapping, skipping disabled, firing input+change), B puts back, A keeps; closed, ◀▶ move on
  {const c=boot(src),E=c.E,root=E('div',{r:[0,0,800,600]});
   const w=E('span',{cls:['vsel'],r:[10,10,200,34]}),sel=E('select',{id:'vs',r:[40,10,140,34],sel:0,options:[{},{disabled:true},{},{}]}),nx=E('button',{id:'nx3',r:[300,10,80,30]});
   w.add(sel);root.add(w,nx);c.N.NAV.root={key:'x',el:root};c.N.NAV.show=true;c.N.navSet(sel);
@@ -193,9 +180,7 @@ function suite(src,lsrc){
   c.N.navAdjEnd(false);ok(sel.selectedIndex===0,'B puts the selector back',sel.selectedIndex);
   c.N.navActivate(sel);c.N.navDir(-1,0);c.N.navAdjEnd(true);ok(sel.selectedIndex===3&&c.N.NAV.adj===null,'A keeps it',sel.selectedIndex);}
 
- /* 4b · ◀▶ go to the NEXT PANEL or nowhere. The owner's report: right from a dropdown wandered down
-       its own panel (a nearer control two rows lower) instead of crossing to the next one, and at the
-       edge the first fix fell back to a corner gear — Reset Controls, one A from wiping settings. */
+ // 4b · ◀▶ go to the next panel or nowhere (right from a dropdown wandered down its own panel; the first fix fell back to Reset Controls at the edge)
  {const c=boot(src),E=c.E,root=E('div',{r:[0,0,1400,800]});
   const pA=E('div',{cls:['panel'],r:[0,0,300,400]}),pB=E('div',{cls:['panel'],r:[500,0,300,400]});
   const sa=E('select',{id:'sa',r:[20,20,100,30],options:[{},{}]}),low=E('input',{id:'low',type:'checkbox',r:[200,150,20,20]});
@@ -336,8 +321,7 @@ function suite(src,lsrc){
   c.doc.querySelector=sel=>c.doc.body.querySelector(sel);
   vm.runInContext(lsrc+';globalThis.__lay={set:(k,b)=>{layEditing=k;layBar=b;},LAY_PAD,layPx};',c);
   const L=c.__lay;L.set('menu',bar);
-  // layout.js applies the live screen when it loads, which hands a wrap with no save back to the CSS flow (inline
-  // styles cleared) — so the arrangement being edited is laid down after it.
+  // layout.js applies the live screen when it loads (clearing inline styles), so the arrangement being edited is laid down after it
   Object.assign(pA.style,{left:'16px',top:'16px',width:'384px',height:'288px'});Object.assign(pB.style,{left:'416px',top:'16px',width:'384px',height:'288px'});
   let T=1000;const step=n=>{for(let i=0;i<(n||1);i++){T+=16.7;N.navTick(T);}};
   const press=b=>{gp.buttons[b].pressed=true;step(3);gp.buttons[b].pressed=false;step(3);};

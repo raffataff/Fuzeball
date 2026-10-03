@@ -1,10 +1,7 @@
 'use strict';
-/* ================= options screen =================
-   Dedicated OPTIONS panel (main-menu gear + pause "Options"). Controller config
-   (per-stick axis / sensitivity / invert + deadzone), mouse & keyboard sensitivity,
-   and a live pad tester. Everything writes straight to `cfg` (persisted via saveCfg);
-   input.js reads those keys each frame, so changes take effect instantly — no reload.
-   Sensitivities are MULTIPLIERS on the CONFIG bases (1 = the tuned default). */
+// ================= options screen =================
+// the OPTIONS panel (main-menu gear + pause 'Options'): controller config, mouse and keyboard sensitivity, a live pad tester
+// everything writes straight to `cfg` (saveCfg) and input.js reads it each frame, so changes apply instantly; sensitivities multiply the CONFIG bases (1 = tuned default)
 
 const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,mouseLock:true,
@@ -16,14 +13,11 @@ const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleS
 const OPT_BTNS=[[0,'A'],[1,'B'],[2,'X'],[3,'Y'],[4,'LB'],[5,'RB'],[6,'LT'],[7,'RT'],
  [8,'BACK'],[9,'START'],[10,'L3'],[11,'R3'],[12,'▲'],[13,'▼'],[14,'◀'],[15,'▶']];
 let optPills=[], optRAF=0, optFrom='menu', optSwingPh=0, optSwing=null, optSwingPrev=false, optLiveSx=null;
-// Display-tab refresh detector (measured from optionsTick's own rAF cadence, which is uncapped even
-// when the game's fps cap is on) — see optionsTick.
+// Display-tab refresh detector, measured from optionsTick's own rAF cadence (uncapped by the game's fps cap)
 let optRefLast=0, optRefAcc=[], optRefShown=0;
 
-/* ---- Display / graphics ------------------------------------------------
-   Quality presets bundle the four heavy knobs so a casual player gets one-click choices; touching any
-   individual control flips the preset to 'custom'. Applied live via applyDisplay() (render scale +
-   shadows, world.js) and applyRoom()/refreshBallReflect() (reflections) — no reload. */
+// ---- Display / graphics ----
+// presets bundle the four heavy knobs; touching any control flips the preset to 'custom'; applied live via applyDisplay() and applyRoom()/refreshBallReflect()
 const GFX_PRESETS={
  low:{renderScale:0.5,shadows:false,shadowQuality:'low',grass:'off',reflections:false,fpsCap:30,reducedFx:true},
  medium:{renderScale:0.75,shadows:true,shadowQuality:'low',grass:'low',reflections:false,fpsCap:60,reducedFx:true},
@@ -36,14 +30,12 @@ function applyGfxPreset(name){
  cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
  cfg.gfxPreset=name;
  applyDisplay();applyReducedFx();if(typeof grassApply==='function')grassApply();
- // A preset moves `reflections`, which re-decides the room's env map and pays a PMREM bake — so
- // it goes through the staged gate (js/flow.js) like every other venue-touching control.
+ // a preset moves `reflections` (a PMREM bake), so it goes through the staged gate (js/flow.js)
  venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'APPLYING PRESET'});
  if($('setReflect'))$('setReflect').checked=cfg.reflections;   // keep the Match-Setup mirror in step
  syncDisplayUI();saveCfg();
 }
-/* Shadow quality only means anything while shadows are ON, so it greys out with the tick rather
-   than sitting there as a live control that does nothing — same call as the charge-input row. */
+// shadow quality only means anything while shadows are on, so it greys out with the tick
 function syncShadowQ(){
  $('optShadowQ').value=cfg.shadowQuality==='high'?'high':'low';
  $('optShadowQ').disabled=cfg.shadows===false;
@@ -62,16 +54,16 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optMarks').checked=cfg.marks!==false;
  $('optRodHoles').checked=cfg.rodHoles!==false;
  $('optFog').checked=cfg.fog!==false;
+ $('optPinHint').checked=cfg.pinHint!==false;
  $('optFpsCap').value=String(cfg.fpsCap||0);
  $('optPhysQ').value=cfg.physQuality||'high';
  $('optShowFps').checked=!!cfg.showFps;
 }
-// Display, Audio, then one tab per input device (ui-scale: fewer panels per screen). Tab name → the suffix of its ids.
+// Display, Audio, then one tab per input device (fewer panels per screen); tab name > the suffix of its ids
 const OPT_TABS={display:'Display',audio:'Audio',controls:'Controls',kbm:'Kbm'};
 
-/* ---- Audio tab -----------------------------------------------------------------------------------
-   Four bus volumes (js/audio.js Au.mix) and three switches. Sound and Crowd are the same cfg keys as
-   the Kick Off lobby's Audio panel, so both sets of boxes are kept in step. */
+// ---- Audio tab ----
+// four bus volumes (js/audio.js Au.mix) and three switches; Sound and Crowd share cfg keys with the Kick Off lobby's Audio panel
 const OPT_VOL=[['optVolMaster','volMaster'],['optVolFx','volFx'],['optVolCrowd','volCrowd'],['optVolUi','volUi']];
 const optVolT={};
 function optVolSample(k){                                  // hear the bus you're setting; throttled so a drag doesn't machine-gun
@@ -90,11 +82,9 @@ function optSetTab(name){
  for(const k in OPT_TABS){$('optTab_'+k).classList.toggle('hidden',k!==name);$('optTabBtn'+OPT_TABS[k]).classList.toggle('on',k===name);}
 }
 
-/* ---- TC swing analyser -------------------------------------------------
-   Simulates a struck ball's horizontal flight with the REAL match physics —
-   stepBall's Magnus rotation (spinTurn/spinMax), spin decay, floor friction —
-   from a representative strike speed, out to goal range. The live faint curve
-   tracks the stick; pressing A 'swings' and locks the full breakdown. */
+// ---- TC swing analyser ----
+// simulates a struck ball's horizontal flight with the real match physics (stepBall's Magnus rotation, spin decay, floor friction) out to goal range
+// the faint curve tracks the stick; A swings and locks the breakdown
 const TC_SIM={v0:90,range:60,h:1/120};                       // strike speed (u/s), downrange sample distance, sim step
 function tcShotSim(sx){
  const spin0=clamp(sx*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
@@ -160,12 +150,9 @@ function updateTCVis(){                                    // TC sliders + teste
  const off=cfg.padControlMode!=='total';
  $('optTC').classList.toggle('hidden',off);$('optSwerve').classList.toggle('hidden',off);
  $('optCtlRefTC').classList.toggle('hidden',off);   // the reference card's Total Control paragraph, likewise
- /* The charge-input row is CLASSIC-only: in Total Control the right stick's pull-back is the
-    wind-up and the two triggers held together arm it, so there is nothing to choose. A live control
-    that silently does nothing is the thing you debug twice — same call as the room editor's fog
-    boxes, which now say so rather than sitting there inert. */
+ // the charge-input row is classic-only: in Total Control the stick's pull-back is the wind-up, so there's nothing to choose
  const shots=(typeof shotsOn==='function')&&shotsOn(),nr=shots&&CONFIG.shots.charge.needRaise;
- // With needRaise the kick button is always the release and never the hold, so there is no choice to offer.
+ // with needRaise the kick button is always the release and never the hold, so there's no choice to offer
  $('optChargeRow').classList.toggle('hidden',!off||!shots||nr);
  $('optChargeHint').classList.toggle('hidden',!shots);
  $('optChargeHint').innerHTML=off
@@ -179,7 +166,7 @@ function updateAxisLines(){                                   // highlight the b
  $('optRAxis').className='optAxisLine '+(cfg.padAngleAxis==='ry'?'vert':'horz');
  $('optLLbl').textContent='L · '+(cfg.padSlideAxis==='ly'?'↕':'↔')+' slide';
  $('optRLbl').textContent='R · '+(cfg.padAngleAxis==='ry'?'↕':'↔')+' angle'+(tc?' + '+(cfg.padAngleAxis==='ry'?'↔':'↕')+' swerve':'');
- // TC hint names the actual axes in play, so rebinding the angle axis re-labels the swerve line.
+ // TC hint names the actual axes in play, so rebinding the angle axis re-labels the swerve line
  $('optTCHint').textContent='LT = precision steps + a softer swing · RT = fast steps + a harder one · BOTH, with the '
   +'stick pulled back = charge · A = kick · X = raise · right stick '
   +(cfg.padAngleAxis==='ry'?'↔':'↕')+' = swerve line (bends the ball on contact) · angle stays '
@@ -199,20 +186,17 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
  updateOptLabels();updateAxisLines();updateTCVis();syncDisplayUI();syncAudioUI();kbRender();
 }
-/* ---- key bindings (js/binds.js) ----------------------------------------------------------------
-   One row per action: its inputs as keys (click one to remove it) and a + that waits for the NEXT
-   key, mouse button or wheel turn. The wait is owned by capture-phase window listeners that swallow
-   the press, so the Esc that cancels it never reaches input.js (which would close Options) and the
-   click that binds the left button never lands on whatever it was over. Everything the list shows
-   comes off bindList, and the in-match hints read the same thing. */
+// ---- key bindings (js/binds.js) ----
+// one row per action: its inputs as keys (click to remove) and a + that waits for the next key, mouse button or wheel turn
+// the wait is owned by capture-phase window listeners that swallow the press (Esc that cancels never reaches input.js, a bound left click never lands on what it was over)
+// everything shown comes off bindList, which the in-match hints read too
 const KB={cap:null,swallow:0};
 function kbShots(){return (typeof shotsOn==='function')&&shotsOn();}
 function kbMsg(t){const m=$('kbMsg');if(m)m.textContent=t||'';}
 function kbRender(){
  const box=$('kbList');if(!box)return;
  const sh=kbShots();
- // Read-only rows for what isn't a binding of its own: the mouse slide, the pin (a chord spelled from the
- // two bindings it is made of) and Esc. This list IS the keyboard reference now; there is no second card.
+ // read-only rows for what isn't a binding: the mouse slide, the pin chord and Esc; this list is the keyboard reference
  const fixed=(lab,cap)=>'<div class="kbRow kbFixed"><span class="kbLab">'+lab+'</span><span class="kbKeys"><span class="kbCap">'+cap+'</span></span></div>';
  const fl=bindList('finesse'),rl=bindList('raise');
  box.innerHTML=fixed('Slide','MOUSE ↕')+CONFIG.binds.list.filter(b=>sh||!b.shots).map(b=>{
@@ -247,8 +231,7 @@ addEventListener('mousedown',e=>{
  KB.swallow=2;KB.swallowT=performance.now();        // …and the click / context menu this press would become
  kbCapTake('Mouse'+e.button);
 },true);
-// Time-boxed as well as counted: a press whose mouseup never arrives (focus lost mid-click) must not
-// leave the next real click on the screen silently eaten.
+// time-boxed as well as counted: a press whose mouseup never arrives mustn't leave the next real click eaten
 for(const ev of ['click','contextmenu','auxclick'])addEventListener(ev,e=>{
  if(KB.swallow<=0||performance.now()-KB.swallowT>700){KB.swallow=0;return;}
  e.preventDefault();e.stopImmediatePropagation();
@@ -264,9 +247,7 @@ function optDot(id,x,y){const R=34;                           // move a well dot
  $(id).style.transform='translate(calc(-50% + '+(clamp(x,-1,1)*R)+'px), calc(-50% + '+(clamp(y,-1,1)*R)+'px))';}
 function optionsTick(){                                       // self-driven while the screen is open
  if($('options').classList.contains('hidden')){optRAF=0;return;}
- // Refresh detector (Display tab): time this rAF against the last. This callback is NOT the game loop,
- // so it isn't affected by the fps cap — it samples the true display cadence. Median of recent frames
- // → Hz, so a one-off long frame can't skew it. Read-only: browsers don't let a page set refresh/vsync.
+ // refresh detector (Display tab): time this rAF against the last (not the game loop, so the fps cap doesn't affect it); the median of recent frames gives Hz; read-only
  {const now=performance.now();
   if(optRefLast){const d=now-optRefLast;if(d>1&&d<100){optRefAcc.push(d);if(optRefAcc.length>90)optRefAcc.shift();}}
   optRefLast=now;
@@ -281,10 +262,8 @@ function optionsTick(){                                       // self-driven whi
  const ax=gp?gp.axes:[];
  optDot('optLDot',ax[0]||0,ax[1]||0);optDot('optRDot',ax[2]||0,ax[3]||0);
  for(const p of optPills){const d=!!(gp&&gpDown(gp,p.i));if(p.on!==d){p.on=d;p.el.classList.toggle('on',d);}}
- // TC swing analyser: tcSwerveFromAxes is the SAME pipeline input.js feeds the strike with, and the
- // sim uses stepBall's spin constants — so the readout IS what a contact at that stick would do.
- // Faint dashed curve + % track the stick live; pressing A (kick) locks the swing: bold flight
- // curve, ball looping along it, and the stat row (swerve/spin/bend/drift) underneath.
+ // TC swing analyser: tcSwerveFromAxes is the pipeline input.js feeds the strike and the sim uses stepBall's spin constants, so the readout is what a contact would do
+ // the faint dashed curve and % track the stick; A (kick) locks the swing: bold curve, a ball looping along it, stat row (swerve/spin/bend/drift)
  const sw=$('optSwerve');
  if(!sw.classList.contains('hidden')){
   const sx=gp?tcSwerveFromAxes(gp):0;
@@ -301,10 +280,7 @@ function optionsTick(){                                       // self-driven whi
  }
  optRAF=requestAnimationFrame(optionsTick);
 }
-/* Options is reachable from more than one place, so its back-target is written per open rather
-   than declared in the registry. The PAUSE route stays off the router entirely: #pause is an
-   overlay sitting on a LIVE match, so routing to it would leave the router's current screen
-   pointing at a menu that isn't coming back until gotoMenu. */
+// Options is reachable from several places, so its back-target is written per open; the PAUSE route stays off the router (#pause overlays a live match)
 SCREENS.options.onHide=()=>{if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}};
 function openOptions(from){
  optFrom=from||'menu';
@@ -359,7 +335,7 @@ function bindOptions(){
   $('optRScaleV').textContent=Math.round(cfg.renderScale*100)+'%';applyDisplay();saveCfg();};
  $('optShadows').onchange=e=>{cfg.shadows=e.target.checked;cfg.gfxPreset='custom';$('optPreset').value='custom';
   syncShadowQ();applyDisplay();saveCfg();};
- // Map size + filter + bias, from CONFIG.render.shadow.quality — applyDisplay swaps them live.
+ // map size, filter and bias from CONFIG.render.shadow.quality; applyDisplay swaps them live
  $('optShadowQ').onchange=e=>{cfg.shadowQuality=e.target.value==='high'?'high':'low';
   cfg.gfxPreset='custom';$('optPreset').value='custom';applyDisplay();saveCfg();};
  $('optGrass').onchange=e=>{cfg.grass=e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';
@@ -372,20 +348,20 @@ function bindOptions(){
  $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live
  $('optMarks').onchange=e=>{cfg.marks=e.target.checked;if(!cfg.marks)clearMarks();saveCfg();};  // off wipes what is already up
  $('optRodHoles').onchange=e=>{cfg.rodHoles=e.target.checked;saveCfg();};   // rings settle back to their authored look on their own
- // Deliberately does NOT flip the preset to 'custom': fog is a LOOK, not one of the four heavy
- // knobs a preset bundles, so it is no more a preset member than ball trails are.
+ // does not flip the preset to 'custom': fog is a look, not one of the four heavy knobs
  $('optFog').onchange=e=>{cfg.fog=e.target.checked;applyFog();saveCfg();};   // world.js: one recompile per real change
+ $('optPinHint').onchange=e=>{cfg.pinHint=e.target.checked;saveCfg();};   // hud.js reads it live, so it takes effect mid-match
  $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
  $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset
  $('optShowFps').onchange=e=>{cfg.showFps=e.target.checked;saveCfg();};
  $('optReset').onclick=()=>{Object.assign(cfg,OPT_DEFAULTS);bindReset();kbCapEnd();saveCfg();syncOptionsUI();Au.ui();};
- // Key bindings: one delegated handler for the whole list, since kbRender rebuilds it on every change.
+ // key bindings: one delegated handler for the whole list, since kbRender rebuilds it on every change
  $('kbList').onclick=e=>{
   const k=e.target.closest('.kbKey'),a=e.target.closest('.kbAdd');
   if(k){bindRemove(k.dataset.act,k.dataset.code);saveCfg();kbMsg(bindLabel(k.dataset.code)+' removed from '+bindActLabel(k.dataset.act));kbRender();Au.ui();}
   else if(a){if(KB.cap===a.dataset.act)kbCapEnd();else kbCapStart(a.dataset.act);Au.ui();}
  };
  $('kbResetAll').onclick=()=>{bindReset();kbCapEnd();saveCfg();kbMsg('Every key is back to its default');kbRender();Au.ui();};
- applyReducedFx();   // apply saved reduced-effects mode at boot (physics/render quality already applied in config/world)
+ applyReducedFx();   // apply saved reduced-effects mode at boot (physics/render quality are already applied in config/world)
  syncOptionsUI();
 }

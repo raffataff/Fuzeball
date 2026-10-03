@@ -1,14 +1,6 @@
-/* moments-harness.js — headless behaviour tests for js/moments.js.
-   Run:  node tools/moments-harness.js
-
-   Boots core.js + config.js + moments.js in one vm context (so MOM/F/PHY/GRAV are the REAL
-   tuning values, not a copy that can drift) against a stubbed S / notice / Au / teamCol, then
-   exercises the projection, the save gate, the deferred verdict and the goal classifier.
-
-   Inputs are picked to EXPOSE bugs, not to pass: the projection is tested from real shooting
-   distances (where an unfloored ballistic drop reads as "fallen through the pitch"), the
-   classifier is tested on combinations where two rules both match so the priority order is
-   pinned, and the save gate is tested with a DEF whose state is otherwise identical to the GK's. */
+// moments-harness.js: headless behaviour tests for js/moments.js. Run: node tools/moments-harness.js
+// boots core.js + config.js + moments.js in one vm (MOM/F/PHY/GRAV are the real values) against a stubbed S / notice / Au / teamCol
+// inputs are picked to expose bugs: the projection from real shooting distances, classifier combinations where two rules match (pinning the priority), and a DEF whose state matches the GK's
 'use strict';
 const fs=require('fs'),vm=require('vm');
 
@@ -17,9 +9,7 @@ const log=[];
 const ctx={console,Math,Date,JSON,Object,Array,isFinite,isNaN,
  S:null,notice:null,teamCol:null,Au:null,HYPE:['H1','H2']};
 ctx.globalThis=ctx;vm.createContext(ctx);
-// js/rng.js is CORE and must be in here: momPick draws from RNG.line (the seeded 'line' stream),
-// so without it momGoal throws ReferenceError on the first banner. Order matches index.html —
-// rng.js reads CONFIG.rng at load, so it goes AFTER config.js and BEFORE its consumers.
+// js/rng.js is core and must be loaded (momPick draws from RNG.line); order matches index.html: after config.js, before its consumers
 for(const f of ['js/core.js','js/config.js','js/rng.js','js/moments.js'])
  new vm.Script(fs.readFileSync(f,'utf8'),{filename:f}).runInContext(ctx);
 
@@ -29,15 +19,9 @@ ctx.notice=(m,d,c)=>fired.push({ch:'notice',m,d,c});
 ctx.teamCol=t=>t===0?'#red':'#blue';
 ctx.Au={react:k=>fired.push({ch:'react',m:k})};
 
-/* config.js's aliases are top-level CONSTs, which are LEXICAL — they are not properties of the
-   vm context, so ctx.MOM reads back undefined and every threshold silently becomes NaN. Function
-   DECLARATIONS do land on the global object, which is why ctx.momOnTarget works without this.
-   Hand them out explicitly. (Same trap CLAUDE.md flags under Verifying changes.) */
+// config.js's aliases are top-level consts (lexical, not vm context properties), so hand them out explicitly or every threshold reads NaN (same trap as CLAUDE.md's Verifying changes)
 new vm.Script('globalThis.__c={MOM,F,PHY,BALL_R,GRAV,ARM};').runInContext(ctx);
-/* rng.js self-seeds from Date.now() at load, which would make the banner pick differ every run.
-   The assertions below are membership tests rather than exact strings so that is not a
-   correctness problem — but a harness whose output moves is a harness whose failure cannot be
-   reproduced, so pin it. */
+// rng.js self-seeds from Date.now(); pin it so the output doesn't move between runs
 new vm.Script('rngSeed(20260823);').runInContext(ctx);
 const {MOM,F,BALL_R}=ctx.__c;
 if(!MOM||!F||!BALL_R)throw new Error('alias export failed');

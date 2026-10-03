@@ -1,18 +1,10 @@
-/* menu-shots.js — screenshot every menu screen at a fixed size and report anything that scrolls.
-     node tools/menu-shots.js                    every screen at 1280x800 (the Steam Deck)
-     node tools/menu-shots.js league options     only steps whose name contains one of the words
-     node tools/menu-shots.js --size=1920x1080   another window size
-
-   Writes to tools/build/menu-shots/ (gitignored): one PNG per screen, contact-sheet.jpg (all of them on
-   one page) and notes.txt. Exit 1 if any screen, or any box on it, overflows at that size: since
-   2026-09-28 no menu screen scrolls at 1280x800, and this is how that stays true.
-
-   Needs Chrome or Edge installed (set CHROME=path to pick one); nothing to npm install. It serves the
-   repo itself on a free port, runs the browser headless at device scale 1 with a FRESH profile each
-   run (so a first-run save, with no layouts), drives the screens through their own functions, and
-   builds a league with three rounds played so the Season tab has standings and a last round.
-   The cup is drawn straight away (cupCreate) rather than after a played season.
-   Not covered: pause / win overlays, the match HUD. */
+// menu-shots.js: screenshot every menu screen at a fixed size and report anything that scrolls.
+//      node tools/menu-shots.js                    every screen at 1280x800 (the Steam Deck)
+//      node tools/menu-shots.js league options     only steps whose name contains one of the words
+//      node tools/menu-shots.js --size=1920x1080   another window size
+// writes to tools/build/menu-shots/ (gitignored): a PNG per screen, contact-sheet.jpg and notes.txt; exit 1 if any screen or box overflows (no menu screen scrolls at 1280x800)
+// needs Chrome or Edge (CHROME=path to pick one); serves the repo on a free port, runs headless with a fresh profile, drives screens through their own functions, builds a league with three rounds played, draws the cup straight away (cupCreate)
+// not covered: pause / win overlays, the match HUD
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),{spawn}=require('child_process'),{pathToFileURL}=require('url');
 const ROOT=path.resolve(__dirname,'..'),OUT=path.join(ROOT,'tools','build','menu-shots');
@@ -31,9 +23,7 @@ const MIME={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
 const LEAGUE=`if(typeof LG==='undefined'||!LG||!LG.teams){openSetup(0);$('lgSetupCreate').click();await wait(500);
  for(let i=0;i<3;i++){S.lg={};S.score=[i+2,1];lgRecord();}S.lg=null;}
  openLeague();await wait(8000);`;                       // the lobby stages its venue behind a veil
-/* A fresh league in slot 5 starting in division `div`, every round played with `win(round)` deciding the
-   player's result (the rest of the table is simulated as normal). `second` hands the best other club
-   100 points before the last round, so a perfect season finishes 2nd. Ends on the season-end screen. */
+// a fresh league in slot 5 starting in division `div`, every round played with `win(round)` deciding the player's result; `second` hands the best other club 100 points before the last round (a perfect season finishes 2nd); ends on the season-end screen
 const seasonEnd=(div,win,second)=>`hideScreens();
  lgNewSeason(false,{name:'SEASON TEST',teamName:'TEAM 1',teamCol:'#d0142c',model:CONFIG.playerModel.models[0].id,
   startDiv:${div},goals:5,gameTime:0,special:true,power:true,control:''},5);

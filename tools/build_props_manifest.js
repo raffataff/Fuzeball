@@ -1,18 +1,6 @@
-/* Writes assets/props/manifest.json — the index js/props.js reads to turn a folder of
-   GLBs into a placeable prop library.
-
-   WHY THIS EXISTS AT ALL: a browser cannot list a directory. Over file:// there is no
-   index to fetch, and over http you would be trusting the server's autoindex. So
-   "drop a glb in a folder and use it" needs a generated manifest, which is what this is.
-
-   Run after adding or removing a prop:
-       node tools/build_props_manifest.js
-
-   It reads each GLB's JSON chunk for its real dimensions, so the manifest records the
-   authored HEIGHT of every prop — that is the number you want when deciding a `fit`,
-   and reading it here beats loading the model in-game to find out. Existing entries in
-   the manifest are PRESERVED (your hand-tuned fit/yaw/scale survive a re-run); only new
-   files are added and deleted ones dropped.                                          */
+// Writes assets/props/manifest.json, the index js/props.js reads to make a folder of GLBs a placeable prop library (a browser can't list a directory, so a manifest is generated).
+// Run after adding or removing a prop:  node tools/build_props_manifest.js
+// it reads each GLB's JSON chunk for its authored height (the number for deciding a `fit`); existing entries are preserved (hand-tuned fit/yaw/scale survive), only new files are added and deleted ones dropped
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -28,9 +16,7 @@ function jsonChunk(p){
   o+=8+len;}
  return null;
 }
-/* Authored size straight from the accessor MIN/MAX bounds glTF is required to store for
-   POSITION — no mesh decode needed. Node transforms are ignored: props are authored at
-   origin and `ground`/`fit` normalise on load anyway, so this is a size hint, not a bbox. */
+// authored size from the accessor MIN/MAX bounds glTF stores for POSITION (no mesh decode; node transforms ignored, so a size hint, not a bbox)
 function sizeOf(j){
  if(!j||!j.meshes)return null;
  const a=j.accessors||[];let lo=[1e30,1e30,1e30],hi=[-1e30,-1e30,-1e30],got=false;

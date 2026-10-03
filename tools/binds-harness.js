@@ -1,24 +1,8 @@
 'use strict';
-/* ===== binds harness — node tools/binds-harness.js =====
-   Boots core + config + rng + js/shots.js + js/binds.js in ONE vm context against the same stubs
-   shots-harness uses (kickRod, gpDown, sweepClips, a recording Au), plus a keys map and a seat
-   table, and drives the KEYBOARD/MOUSE half of the shot system through the REAL merged step
-   (shotSeatsUpdate) rather than a restatement of it.
-
-   What it pins, in the order it matters:
-     · the binding DATA — every action listed and defaulted, no default clash inside a group, no
-       reserved key bound, every default label drawable as a HUD keycap;
-     · REBINDING — taking a key off the action that had it, only within its own group, refusing a
-       reserved key, a list edited back to default following CONFIG again;
-     · DEVICE OWNERSHIP — in co-op a mouse button drives the mouse player's rod, never the
-       keyboard player's;
-     · THE MERGE — the whole reason shotSeatsUpdate exists: an IDLE pad beside the keyboard must
-       not release the keyboard's wind-up, and another source going down mid-wind-up must not
-       steal it;
-     · the keyboard verbs themselves — charge + release, a tap, kick as a second release, the
-       pass axis, the eased grip, the hand-off, and the off switch.
-   MUTATIONS at the bottom each rewrite one of those decisions and the suite must fail for every
-   one; mutate() refuses a mutant identical to its source so a drifted anchor reports itself. */
+// ===== binds harness: node tools/binds-harness.js =====
+// boots core + config + rng + js/shots.js + js/binds.js in one vm against shots-harness's stubs plus a keys map and seat table, and drives the keyboard/mouse half of the shot system through the real merged step (shotSeatsUpdate)
+// pins, in order: the binding data (every action defaulted, no clash in a group, no reserved key bound, every default label drawable); rebinding (taking a key off the action that had it, within its group, refusing a reserved key, a list edited back to default following CONFIG); device ownership (a mouse button drives the mouse player's rod); the merge (an idle pad mustn't release the keyboard's wind-up, another source mustn't steal it); the keyboard verbs
+// MUTATIONS at the bottom must each break the suite; mutate() refuses a no-op mutant
 
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -155,9 +139,8 @@ function run(srcShots,srcBinds){
  }
  reset();
 
- /* ===== 4. THE WIND-UP: POWER + A PULL-BACK, FIRED ONLY BY A KICK (charge.needRaise) =====
-    Power alone is not a charge, and letting go is not a shot — a one-key charge that fired on
-    release was an advantage the keyboard had over a pad. Every device obeys the same three-part rule. */
+ // ===== 4. THE WIND-UP: POWER + A PULL-BACK, FIRED ONLY BY A KICK (charge.needRaise) =====
+ // power alone isn't a charge and letting go isn't a shot (a one-key release charge was a keyboard advantage over a pad); every device obeys the same rule
  ok(CH.needRaise===true,'needRaise ships ON');
  const PW='ShiftRight',RS='ShiftLeft';
  const tBand=(CH.sweetFrom+CH.sweetTo)/2/CH.rate;
@@ -323,10 +306,8 @@ function run(srcShots,srcBinds){
  }
  reset();
 
- /* ===== 7. THE PIN CHORD (finesse + raise) =====
-    Both were temperamental live (2026-09-25): the pin waited on finesse's EASED grip, so a chord
-    pressed together landed the raise too early; and a raise TAPPED between two frames was never seen
-    by the once-a-frame read of what is held. */
+ // ===== 7. THE PIN CHORD (finesse + raise) =====
+ // both were temperamental live: the pin waited on finesse's eased grip (a chord landed the raise too early), and a raise tapped between two frames was missed by the once-a-frame read
  {
   const r=rod(),s=solo(r);
   keys.ControlRight=true;keys[RS]=true;frames(1);
@@ -392,10 +373,8 @@ for(const m of muts){
  else console.log('  MISSED  '+m.name);
 }
 
-/* ---- modSync (js/input.js): a modifier that lost its keyup ----
-   Sliced out of input.js and run on its own: Windows can drop one Shift's keyup while the other is
-   held, and with power on R-Shift and raise on L-Shift a stuck one turned every later raise into a
-   wind-up. The event's own modifier flags are the truth; keys[] is reconciled to them. */
+// ---- modSync (js/input.js): a modifier that lost its keyup ----
+// sliced out of input.js: Windows can drop one Shift's keyup while the other is held, and a stuck one turned every raise into a wind-up; the event's modifier flags are the truth, keys[] is reconciled to them
 function modRun(srcInput,quiet){
  const a=srcInput.indexOf('const MOD_KEYS='),e0=srcInput.indexOf('function modSync(e){'),b=srcInput.indexOf('\n}\n',e0)+3;
  if(a<0||e0<0||b<3)throw new Error('modSync slice miss');

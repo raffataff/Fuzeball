@@ -1,13 +1,5 @@
-/* Static harness for the KTX2 WIRING (js/world.js, js/debug.js, index.html, vendor/).
-
-   Deliberately NOT a behavioural harness. The interesting behaviour here is a WebGL transcode into
-   a GPU block format, which cannot be faked in node — that half was proved in a headless browser
-   against the real room and figurine GLBs (see CLAUDE.md). What node CAN guard, and what actually
-   rots, is the wiring: a new `new THREE.GLTFLoader()` slipping in without the ktx2Loader attached,
-   the r137 vendor pin being "tidied up" to match r128, the transcoder path drifting from where the
-   files live, and memTex() going back to reporting compressed textures as uncompressed RGBA.
-
-   Run: node tools/ktx2-harness.js                                                              */
+// static harness for the KTX2 wiring (js/world.js, js/debug.js, index.html, vendor/). Run: node tools/ktx2-harness.js
+// not behavioural (the WebGL transcode can't be faked in node; it was proved in a headless browser): it guards what rots, a new `new THREE.GLTFLoader()` without the ktx2Loader, the r137 vendor pin being 'tidied' to r128, the transcoder path drifting, and memTex() reporting compressed textures as RGBA
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -23,10 +15,7 @@ ok(ex('vendor/KTX2Loader.js'),'vendor: KTX2Loader.js present');
 ok(ex('vendor/WorkerPool.js'),'vendor: WorkerPool.js present — KTX2Loader references THREE.WorkerPool');
 ok(ex('vendor/basis/basis_transcoder.js'),'vendor: basis_transcoder.js present');
 ok(ex('vendor/basis/basis_transcoder.wasm'),'vendor: basis_transcoder.wasm present');
-/* THE r137 PIN. r128's transcoder wasm is 440,267 bytes and predates KTX2 container + Zstandard
-   support; r137's is 499,935. Someone "fixing the version inconsistency" by copying r128's files
-   over these is the single most likely way this feature dies, and it would fail at runtime with an
-   unhelpful transcode error rather than at load. Pin the size. */
+// the r137 pin: r128's transcoder wasm (440,267 bytes) predates KTX2 + Zstandard support, r137's is 499,935; copying r128's files over would fail at runtime with an unhelpful transcode error; pin the size
 ok(sz('vendor/basis/basis_transcoder.wasm')>480000,
    'vendor: the transcoder is the r137 build, not r128\'s pre-KTX2 one — do NOT "fix" this to match three\'s pin',
    sz('vendor/basis/basis_transcoder.wasm')+' bytes, expected ~499935');
@@ -47,10 +36,7 @@ ok(/WorkerPool/.test(rd('vendor/WorkerPool.js')),'vendor: WorkerPool.js defines 
 
 /* ---- 3. NO loader escapes newGLTF() ------------------------------------- */
 {
- /* Comments are stripped FIRST, and line numbers are preserved by blanking rather than deleting.
-    Without this the rule's own documentation — the block in world.js that says "every GLTFLoader
-    must come from newGLTF()" and quotes the thing it is banning — reports itself as a breach. A
-    harness that fails on its own explanation is a harness people learn to ignore. */
+ // strip comments first, preserving line numbers, or the rule's own documentation in world.js (which quotes the banned form) reports itself as a breach
  const decomment=s=>s.replace(/\/\*[\s\S]*?\*\//g,m=>m.replace(/[^\n]/g,' '))
                      .replace(/(^|[^:])\/\/[^\n]*/g,(m,p)=>p+' '.repeat(m.length-p.length));
  const files=fs.readdirSync(path.join(ROOT,'js')).filter(f=>/\.js$/.test(f));
@@ -117,13 +103,7 @@ ok(/WorkerPool/.test(rd('vendor/WorkerPool.js')),'vendor: WorkerPool.js defines 
  ok(/setRequired\(true\)/.test(e),
     'encoder: KHR_texture_basisu is marked required — a KTX2 asset with a silent PNG fallback is just both files shipped');
  ok(/\.bak/.test(e),'encoder: keeps a .bak of every original');
- /* NO IMAGE LIBRARY IN THE ENCODE PATH. basisu reads png/jpg itself and resizes itself
-    (-resample), and ImageUtils.getSize reads dimensions off the file header — so the original
-    bytes go from the GLB straight to the encoder. The first version routed everything through
-    sharp and libvips refused SEVEN of this project's own room textures on Windows
-    ("colourspace: parameter space not set", a VipsInterpretation of 32 that is not in the enum)
-    while handling the same files fine on Linux. sharp is still present as a TRANSITIVE dep of
-    @gltf-transform/functions; what must not come back is us calling it. */
+ // no image library in the encode path: basisu reads and resizes images itself and ImageUtils.getSize reads the header; sharp/libvips refused seven room textures on Windows; sharp stays as a transitive dep, but we must not call it
  ok(!/from 'sharp'|require\('sharp'\)|import\('sharp'\)/.test(e),
     'encoder: does not use sharp — the original image bytes go straight to basisu');
  ok(/ImageUtils\.getSize/.test(e),'encoder: dimensions come off the file header, not from a decode');
@@ -132,10 +112,7 @@ ok(/WorkerPool/.test(rd('vendor/WorkerPool.js')),'vendor: WorkerPool.js defines 
  for(const dep of ['@gltf-transform/core','@gltf-transform/extensions','@gltf-transform/functions','@gpu-tex-enc/basis'])
   ok(!!pk.dependencies[dep],'tools: package.json declares '+dep);
  ok(!pk.dependencies.sharp,'tools: sharp is NOT a direct dependency any more');
- /* THE INVERSE OF THE OBVIOUS ASSERTION, and it cost a broken run to learn: setting
-    "type":"module" here makes every .js in tools/ an ES module, and every other harness in this
-    folder is CommonJS using require() — they all die on the spot. The encoder is .mjs, which is
-    ESM on its own extension. */
+ // the inverse of the obvious assertion: "type":"module" here would make every .js in tools/ an ES module and kill every CommonJS harness; the encoder is .mjs (ESM on its own extension)
  ok(pk.type===undefined,
     'tools: package.json does NOT set type:module — it would break every CommonJS harness in tools/',
     'type='+pk.type);

@@ -1,28 +1,9 @@
 'use strict';
-/* ================= the tutorial =================
-   TRAINING WITH A LESSON PLAN ON TOP — the same structural call trials.js made. training.js already
-   owns everything a lesson needs (rods shown and hidden, AI off, balls placed by hand, goals that
-   end nothing), so the tutorial runs as mode 'training' and adds ONE more nullable gate, S.tut,
-   which only this file and one-line typeof-guarded hooks ever test (trainingEnter / trainingTick /
-   trainingGoal / trainingExit, the pad's VIEW, the mouse-lock gate). A missing tutorial.js leaves
-   the game exactly as it was.
-
-   THE FLOW. #tutorial asks KEYBOARD & MOUSE or CONTROLLER. That choice picks the PROMPTS, never the
-   devices: the seat holds every device, as in any solo match, so switching hands mid-lesson works —
-   it just isn't what the words describe. Lessons run back to back (CONFIG.tutorial.lessons), each
-   one checked once per FRAME (tutCheck), never on the sim path. The finish card offers REDO, which
-   is simply going back to #tutorial — the match was launched from there, so gotoMenu lands on it.
-
-   THREE WAYS IN. The Training menu card (always); the first Kick Off or League start (once —
-   cfg.tutSeen, set the moment it is offered and answered, so SKIP means skip); and REDO. The first
-   two remember where to go afterwards (TUT.back) and the first-match one also what the player was
-   actually trying to do (TUT.cont — start that match, open the league), so finishing or skipping
-   carries straight on into it.
-
-   FINISHING SETS cfg.tutDone, a PLAYER key, and never clears it. The achievement (ACHIEVEMENTS.md,
-   ACH_TUTORIAL) reads that flag rather than an event, so it is granted retroactively to anyone who
-   finished before the achievement engine existed, and skipping at the first match locks nobody out:
-   Training → Tutorial is always there. */
+// ================= the tutorial =================
+// training with a lesson plan on top, like trials.js: it runs as mode 'training' behind one more nullable gate, S.tut
+// #tutorial asks KEYBOARD & MOUSE or CONTROLLER (prompts only, never which devices work); lessons run back to back (CONFIG.tutorial.lessons), checked once per frame (tutCheck)
+// ways in: the Training card, the first Kick Off or League start (once, cfg.tutSeen), and REDO; TUT.back / TUT.cont remember where to go and what the player was doing
+// finishing sets cfg.tutDone (a PLAYER key, never cleared); the achievement (ACHIEVEMENTS.md) reads it, so it's granted retroactively
 const TUTC=CONFIG.tutorial;
 const TUT={on:false,pending:false,kind:'kbm',i:0,t0:0,lastT:0,done:false,nextAt:0,fin:false,card:false,
  cont:null,contLbl:'',back:'training',offer:false,saved:null,hudBuilt:false,sig:'',
@@ -32,8 +13,8 @@ function tutOn(){return !!(TUTC&&TUTC.on&&TUTC.lessons&&TUTC.lessons.length);}
 function tutLesson(){return tutOn()?(TUTC.lessons[TUT.i]||null):null;}
 function tutRod(){return (S.seats&&S.seats[0])?seatRod(S.seats[0]):null;}
 
-/* ---- ways in ---- */
-// back: the screen to return to when it is over. cont: what to do after that (first-match only).
+// ---- ways in ----
+// back: the screen to return to when it's over; cont: what to do after that (first-match only)
 function tutOpen(back,cont,contLbl){
  if(!tutOn())return false;
  TUT.back=back||'training';TUT.cont=cont||null;TUT.contLbl=contLbl||'Play match';TUT.offer=!!cont;
@@ -41,8 +22,7 @@ function tutOpen(back,cont,contLbl){
  showScreen('tutorial');
  return true;
 }
-/* The first-match gate: roster.js (Kick Off's Start) and league.js (the League card) ask this before
-   going ahead, and stop if it returns true. Offered ONCE, ever — see the header. */
+// the first-match gate: roster.js (Kick Off's Start) and league.js (the League card) ask this and stop if it returns true; offered once, ever
 function tutOffer(cont,contLbl){
  if(!tutOn()||!TUTC.firstMatch||cfg.tutSeen)return false;
  return tutOpen(screenId(),cont,contLbl);
@@ -61,14 +41,13 @@ function tutSkipAll(){
  if(c)c();
 }
 
-/* ---- the run ---- */
-/* Called at the END of trainingEnter, like trialArm. Returns true when it took the sandbox over.
-   S.tut still being set with nothing pending is the pause menu's RESTART (trainingEnter runs again
-   without a gotoMenu between), and that restarts the lesson plan from the top. */
+// ---- the run ----
+// called at the end of trainingEnter, like trialArm; true when it took the sandbox over
+// S.tut set with nothing pending is the pause menu's RESTART, which restarts the plan from the top
 function tutArm(){
  if(!TUT.pending&&!S.tut)return false;
  TUT.pending=false;TUT.on=true;S.tut=TUT;TUT.fin=false;TUT.card=false;
- // The sandbox's own settings are the player's (its panel persists them); give them back on the way out.
+ // the sandbox's own settings are the player's (its panel persists them); give them back on the way out
  if(!TUT.saved)TUT.saved={hidden:TRN.hidden.slice(),ai:TRN.ai.slice(),lift:TRN.lift.slice(),
   deadball:TRN.deadball,score:TRN.score,ballType:TRN.ballType};
  buildTutHud();
@@ -77,14 +56,13 @@ function tutArm(){
  tutGo(0);
  return true;
 }
-// The bottom hint speaks to the chosen device only (hud.js draws whichever of the two it is given).
+// the bottom hint speaks to the chosen device only (hud.js draws whichever of the two it's given)
 function tutHint(){
  if(TUT.kind==='pad')hudHint(null,'{START} pause · {LB} {RB} switch rod\n{A} kick · {X} raise · {LT} touch · {RT}+{X} wind up');
  else{const H=bindHintRods(true,true);
   hudHint([bindJoin(['[ESC] pause',H.sw,H.slide]),H.act,H.mod].filter(Boolean).join('\n'),null);}
 }
-/* Set up lesson i: which of your rods are on the table (the opposition never is), which one you
-   are handed, and the ball. A `keep` lesson carries a ball that is already pinned straight over. */
+// set up lesson i: which of your rods are on the table (the opposition never is), which one you're handed, and the ball; a `keep` lesson carries a ball already pinned over
 function tutGo(i){
  TUT.i=i;const L=tutLesson();
  if(!L){tutFinish();return;}
@@ -92,8 +70,7 @@ function tutGo(i){
  TUT.t0=S.time;TUT.lastT=S.time;TUT.done=false;TUT.nextAt=0;TUT.stuck=false;TUT.acc=0;TUT.lastOff=null;
  TUT.seen=[];TUT.raised=false;TUT.behind=false;TUT.goals=0;TUT.deadT=0;
  TRN.freeze=false;TRN.stepQ=0;TRN.score=false;TRN.deadball=false;TRN.ai=[false,false];TRN.ballType='classic';
- // Your rods you are NOT holding lift out of the way (as in a trial), except where a lesson needs
- // one to RECEIVE: a lifted attack lets a pass roll straight under it and no pass is ever counted.
+ // your rods you aren't holding lift out of the way (as in a trial), except where a lesson needs one to receive
  TRN.lift=[L.lift!==false,false];
  rods.forEach((r,k)=>trnSetRodShown(k,r.team===0&&L.rods.indexOf(r.role)>=0));
  const s=S.seats[0];
@@ -117,8 +94,7 @@ function tutServe(){
  b.v.set(L.ball.vx||0,0,L.ball.vz||0);
  TUT.servedAt=S.time;TUT.deadT=0;TUT.behind=false;
 }
-/* Has the player done what the lesson asks? Once per frame. Each kind reads state the game already
-   keeps; only SLIDE, SWITCH and RAISE accumulate anything of their own. */
+// has the player done what the lesson asks? once per frame; only SLIDE, SWITCH and RAISE accumulate anything of their own
 function tutCheck(L,r,s){
  const b=S.balls[0]||null;
  switch(L.check){
@@ -129,10 +105,7 @@ function tutCheck(L,r,s){
    return TUT.acc>=TUTC.slideDist;
   case 'goal':return TUT.goals>0;
   case 'raise':{
-   /* The men must be UP WHILE THE BALL GOES UNDER THEM. Remembering "raised at some point" let a
-      later ball that slipped between the men count, and raising after the ball has already come to
-      rest against their backs swings the boots through it and fires it at your own goal — the
-      lesson is to lift BEFORE it arrives, so only a crossing made under raised men passes. */
+   // the men must be up while the ball goes under them (raising after it rests against their backs would fire it at your own goal)
    if(!r||!b)return false;
    const rel=(b.m.position.x-r.x)*r.kickDir,up=r.angle*r.kickDir<KICK.raiseA*0.5;
    if(rel<-1)TUT.behind=true;
@@ -145,16 +118,14 @@ function tutCheck(L,r,s){
    if(TUT.seen.indexOf(r)<0)TUT.seen.push(r);
    return TUT.seen.length>=Math.min(3,s?s.rods.length:3);
   case 'pass':return !!(S.stats&&S.stats.passes[0]>0);
-  // a released wind-up stamped IN the sweet band (shots.js shotVerdict), whose swing actually went
+  // a released wind-up stamped in the sweet band (shots.js shotVerdict), whose swing actually went
   case 'charge':return !!(r&&r.chgEndT!=null&&r.chgEndT>TUT.chgT&&r.chgEndBand===1&&r.kickT>=0);
   case 'pin':return !!(r&&r.pinB);
   case 'pinShot':return !!(r&&r.kickT>=0&&r.kickStyle==='trapShot'&&r.kickHit);
  }
  return false;
 }
-/* A ball that dies away from the lesson has to come back, or the player is left with nothing to do.
-   A ROLLED ball is re-served once it has been dead for a beat, or has run off behind the rod (a
-   missed pin); a PLACED ball only once it has come to rest somewhere else (a miss into a corner). */
+// a ball that dies away from the lesson has to come back: a rolled ball is re-served once dead for a beat or run off behind the rod, a placed ball once at rest elsewhere
 function tutKeepBall(L,r,dt){
  if(!L.ball)return;
  const b=S.balls[0];
@@ -182,7 +153,7 @@ function tutTick(){
  }
  tutHudSync();
 }
-// A training goal (trainingGoal, before the sandbox respawns the ball). team 0 = the player scored.
+// a training goal (trainingGoal, before the sandbox respawns the ball); team 0 = the player scored
 function tutGoal(team){if(S.tut&&team===0)TUT.goals++;}
 // Skip the lesson — offered on the retry key / VIEW once a lesson has run past stuckT.
 function tutSkip(){
@@ -196,7 +167,7 @@ function tutFinish(){
  Au.goal('medal');if(typeof confetti==='function')confetti();
  TUT.sig='';tutHudSync();
 }
-// From trainingExit (gotoMenu): drop the gate, hide the chrome, give the sandbox its settings back.
+// from trainingExit (gotoMenu): drop the gate, hide the chrome, give the sandbox its settings back
 function tutExit(){
  S.tut=null;TUT.on=false;TUT.pending=false;TUT.fin=false;TUT.card=false;TUT.done=false;
  TRN.freeze=false;TRN.stepQ=0;
@@ -205,7 +176,7 @@ function tutExit(){
  const h=$('tutHud');if(h)h.classList.add('hidden');
  const c=$('tutCard');if(c)c.classList.add('hidden');
 }
-/* ---- the finish card's three ways out ---- */
+// ---- the finish card's three ways out ----
 function tutCardGo(){                    // CONTINUE into what the first match was for, or DONE
  Au.ui();const c=TUT.cont;TUT.cont=null;TUT.offer=false;
  S.fromScreen=TUT.back;gotoMenu();
@@ -213,11 +184,9 @@ function tutCardGo(){                    // CONTINUE into what the first match w
 }
 function tutCardRedo(){Au.ui();S.fromScreen='tutorial';gotoMenu();}   // back to pick the controls again
 
-/* ---- lesson text ---- */
+// ---- lesson text ----
 const tutEsc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-/* An action's keycaps: its first KEY and, beside it, its first MOUSE input — nearly everyone plays
-   with a hand on each, so "SPACE / LMB" is the prompt, not "SPACE" alone. An action with no mouse
-   input (finesse, power) shows just its key; one with nothing bound says so rather than going blank. */
+// an action's keycaps: its first key and, beside it, its first mouse input ("SPACE / LMB"); one with nothing bound says so
 function tutKey(act){
  if(act==='mouse')return'<b class="tutKey m">MOUSE</b>';
  const l=(typeof bindList==='function')?bindList(act):[];
@@ -226,14 +195,13 @@ function tutKey(act){
  return[k?'<b class="tutKey">'+tutEsc(bindLabel(k))+'</b>':'',m?'<b class="tutKey m">'+tutEsc(bindLabel(m))+'</b>':'']
   .filter(Boolean).join('<i class="tutOr">/</i>');
 }
-/* [act] -> that action's first key binding as a keycap (a rebind shows here); {A} / {LT+X} -> pad
-   glyphs, drawn by padnav.js padLabels in the family of the last pad used. */
+// [act] > that action's first key binding as a keycap; {A} / {LT+X} > pad glyphs (padnav.js padLabels)
 function tutText(t,kind){
  return kind==='pad'?t.replace(/\{([A-Z+\/]+)\}/g,'<span class="tutPad" data-pad="$1"></span>')
   :t.replace(/\[(\w+)\]/g,(m,a)=>tutKey(a));
 }
 
-/* ---- HUD (DOM, like the trial HUD — see buildTrialHud for why the card is a sibling) ---- */
+// ---- HUD (DOM, like the trial HUD, see buildTrialHud for why the card is a sibling) ----
 function buildTutHud(){
  if(!TUT.hudBuilt){
   TUT.hudBuilt=true;
@@ -278,7 +246,7 @@ function tutHudSync(){
  if(TUT.kind==='pad'&&typeof padLabels==='function')padLabels();
 }
 
-/* ---- #tutorial: pick the controls ---- */
+// ---- #tutorial: pick the controls ----
 SCREENS.tutorial.onShow=()=>{
  const again=!!cfg.tutDone;
  $('tutTitle').textContent=TUT.offer&&!again?'FIRST MATCH?':'TUTORIAL';
@@ -299,8 +267,7 @@ SCREENS.tutorial.onShow=()=>{
  on('btnTrnTutorial',()=>{Au.init();Au.ui();tutOpen('training',null);});
  const card=$('btnTrnTutorial');if(card&&!tutOn())card.classList.add('hidden');
 })();
-// The retry key skips a lesson once it has been offered. Owned here so a missing tutorial.js can't
-// change what any key does (the trials.js precedent).
+// the retry key skips a lesson once offered; owned here so a missing tutorial.js can't change any key
 addEventListener('keydown',e=>{
  if(!S.tut||S.photo)return;
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;

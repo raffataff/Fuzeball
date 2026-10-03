@@ -1,21 +1,11 @@
 #!/usr/bin/env node
-/* ================= rod-hole ring contract — checker =================
-     node tools/rodholes-check.mjs                 # every table skin
-     node tools/rodholes-check.mjs <file.glb> ...  # just these
-
-   Reads a table skin GLB straight off disk and answers the only two questions that matter while
-   you are doing the Blender pass:
-
-     BEFORE  — where are this skin's rings right now? Which object holds them, which material slot
-               to select, how many triangles you are about to inherit.
-     AFTER   — does this export satisfy the `rod_hole*` contract registerRodHoles (js/models.js)
-               will hold it to? Eight objects, one per rod, transforms applied, nothing extra
-               dragged in, and — the one nobody thinks to check — no ORPHANED ring geometry left
-               behind in the wall, which is what you get from a duplicate instead of a separate and
-               which shows up in game as rings that never light plus z-fighting.
-
-   Zero dependencies and it never launches the game, so it is safe to run between every export.
-   Everything it knows about rod positions comes from ROD_X below, which mirrors CONFIG.rods.defs. */
+// ================= rod-hole ring contract: checker =================
+//      node tools/rodholes-check.mjs                 # every table skin
+//      node tools/rodholes-check.mjs <file.glb> ...  # just these
+// reads a table skin GLB off disk and answers the two questions of the Blender pass:
+//   BEFORE: where are this skin's rings now (which object, which material slot, how many triangles)?
+//   AFTER: does the export satisfy the `rod_hole*` contract registerRodHoles (js/models.js) enforces: eight objects, one per rod, transforms applied, nothing extra, and no orphaned ring geometry left in the wall (rings that never light, plus z-fighting)
+// zero dependencies, never launches the game; rod positions come from ROD_X below, which mirrors CONFIG.rods.defs
 
 import fs from 'fs';
 import path from 'path';
@@ -115,9 +105,7 @@ function measure(g,bin,e){
  const even=nz.length?Math.max(...nz)/Math.min(...nz):0;
  return {nv,tris:idx?idx.length/3:0,counts,used,even,maxOff,
    ringFrac:nv?inRing/nv:0,spanX:maxX-minX,
-   /* "this primitive IS the rings": essentially every vertex sits on a rod, spread over 7+ of
-      them, spanning the table. Evenness is reported but NOT required — the arena's rings differ
-      in size per rod, and gating on it would hide them. */
+   // "this primitive is the rings": essentially every vertex sits on a rod, spread over 7+ of them, spanning the table; evenness is reported but not required (the arena's rings differ per rod)
    isRings:(nv?inRing/nv:0)>0.98 && used>=7 && (maxX-minX)>90};
 }
 

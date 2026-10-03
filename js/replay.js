@@ -1,20 +1,11 @@
 'use strict';
 /* ================= goal instant replay ================= */
-/* Flight recorder + broadcast playback. recordReplay() runs once per fixed sim
-   step during 'play': ~40 float writes into preallocated typed arrays, zero
-   allocation, zero render cost. On a goal (after the live slow-mo celebration)
-   replayStart() freezes the sim in a dedicated 'replay' phase, re-poses pooled
-   ghost balls + the REAL rod pivots straight from the buffer, and shoots it with
-   one of several hand-held camera moves — easing into slow-mo + a gentle fov
-   push for the finish, freeze-framing the strike, then handing back to the
-   normal re-count. The buffer is CUT on serve/redrop so a replay can never show
-   a teleport streak. Any key / click / pad button skips instantly. */
+// flight recorder + broadcast playback
+// recordReplay() runs once per fixed sim step in 'play' into preallocated typed arrays; on a goal, replayStart() freezes the sim in a 'replay' phase, re-poses pooled ghost balls and the real rod pivots from the buffer under a hand-held camera, eases into slow-mo, freeze-frames the strike, then hands back to the re-count
+// the buffer is cut on serve/redrop (no teleport streaks); any key, click or pad button skips
 
-/* ===== recorder (ring buffer) ===== */
-/* tot = total steps recorded since the last cut, i.e. a monotonic ABSOLUTE step index. The
-   ring's logical step j maps to abs = tot - n + j. The sound log below stores abs rather than
-   a ring slot, so an event can't be silently re-pointed at different footage when the ring
-   wraps underneath it. */
+// ===== recorder (ring buffer) =====
+// tot = steps recorded since the last cut (a monotonic absolute index, ring step j = abs tot - n + j); the sound log stores abs so a wrapping ring can't re-point an event
 const RB={cap:0,n:0,head:0,tot:0,pos:null,typ:null,rod:null,slots:4,keys:Object.keys(CONFIG.ballTypes)};
 function replayAlloc(){
  RB.cap=Math.ceil(REPLAY.buffer*SIM.hz);
@@ -23,11 +14,7 @@ function replayAlloc(){
  RB.rod=new Float32Array(RB.cap*rods.length*2);
 }
 function replayCut(){RB.n=0;RB.head=0;RB.tot=0;RS.n=0;RS.head=0;RP.queued=false;}
-                                                          // serve / redrop / new match — stale footage AND any stale queue die together
-                                                          // (a too-short rally leaves its queue set; without this, the next out-of-bounds
-                                                          // goal-phase would replay the wrong moment). The SOUND log is cut with the
-                                                          // positions, and must be: abs indices restart at 0, so a surviving event would
-                                                          // fire against whatever footage happened to land on its old step number.
+                                                          // serve / redrop / new match: stale footage and queue die together; the sound log is cut with the positions
 function recordReplay(){
  if(!REPLAY.on||!cfg.replay)return;
  if(!RB.pos)replayAlloc();
@@ -45,23 +32,9 @@ function rbIdx(j){return(RB.head-RB.n+j+RB.cap)%RB.cap;}
 // logical step j → absolute step index (what the sound log stores)
 function rbAbs(j){return RB.tot-RB.n+j;}
 
-/* ===== sound recorder =====
-   The sim is FROZEN during playback, so a replay generates no sound of its own — it used to
-   run silent under the live crowd bed. The rally's impacts are logged as they happen and
-   re-fired against the footage clock.
-
-   Logged by TAPPING Au ITSELF rather than by instrumenting the ~10 call sites across
-   physics/fx/powerups: one place to maintain, no per-call cost added to the physics hot path
-   beyond what's already inside those methods, and a sound added later is recorded for free.
-   Only the in-rally IMPACT channels are tapped — whistles, countdown beeps, the goal horn and
-   UI clicks are match chrome, not footage, and the horn is re-fired deliberately at the
-   freeze-frame instead (REPLAY.audio.goalSting).
-
-   Each entry stores the ABS step it fired on plus the arguments those methods take: a
-   magnitude, the ball type's audio config OBJECT, WHERE it happened (the ball's position and type,
-   copied, so the replayed hit pans where the ball was and a fireball take stays a fireball's), and
-   the surface kind. The config object is stored by reference in a preallocated slot array — a few
-   live references, never a growing allocation. */
+// ===== sound recorder =====
+// the sim is frozen in playback, so the rally's impacts are logged by tapping Au itself and re-fired against the footage clock; only in-rally impacts (not whistles, countdown, the goal horn or UI clicks)
+// an entry = abs step, magnitude, the ball type's audio config (by reference), the ball's position and type (copied, for panning) and the surface kind
 const RS={cap:CONFIG.replay.audio.events,n:0,head:0,step:null,kind:null,p:null,arg:null,pos:null,key:null,e:null,
  src:{x:0,y:0,z:0,key:null},keys:['kick','wall','post','power','boom']};
 function replaySndAlloc(){
@@ -70,14 +43,12 @@ function replaySndAlloc(){
  RS.pos=new Float32Array(RS.cap*3);RS.key=new Array(RS.cap);RS.e=new Int8Array(RS.cap);
 }
 function rsIdx(j){return(RS.head-RS.n+j+RS.cap)%RS.cap;}
-// The tap. Gated exactly like recordReplay, plus a !RP.on guard so the sounds playback
-// re-fires can't log themselves back into the buffer.
+// the tap: gated like recordReplay plus !RP.on so replayed sounds can't log themselves
 function replaySndLog(k,p,a,s,e){
  if(!REPLAY.on||!REPLAY.audio.on||!cfg.replay||RP.on||S.phase!=='play')return;
  if(!RS.step)replaySndAlloc();
  const i=RS.head,q=s&&(s.m?s.m.position:s);
- RS.step[i]=RB.tot;   // sounds fire inside physics(), which runs BEFORE recordReplay in the same
-                      // step — so RB.tot is still the index of the step about to be written
+ RS.step[i]=RB.tot;   // sounds fire inside physics(), before recordReplay in the same step, so RB.tot is the index of the step about to be written
  RS.kind[i]=k;RS.p[i]=p||0;RS.arg[i]=a||null;
  RS.pos[i*3]=q?q.x:NaN;RS.pos[i*3+1]=q?q.y:NaN;RS.pos[i*3+2]=q?q.z:NaN;RS.key[i]=(s&&s.key)||null;RS.e[i]=e|0;
  RS.head=(RS.head+1)%RS.cap;if(RS.n<RS.cap)RS.n++;
@@ -89,15 +60,11 @@ function replaySndLog(k,p,a,s,e){
   Au[nm]=function(p,a,s,e){replaySndLog(k,p,a,s,e);return fn.call(this,p,a,s,e);};
  }
 })();
-/* Fire everything the footage has passed since the last frame. Playback is strictly forward,
-   so this is a cursor walk, not a search. Pitch/level are set around the loop and reset in the
-   same breath — Au.rate/vol are global, and a skip landing mid-loop must not leave the next
-   rally detuned. */
+// fire everything the footage has passed since the last frame (a cursor walk); pitch and level are set around the loop and reset right after (Au.rate/vol are global)
 function replaySndUpdate(absNow,zk){
  const A=REPLAY.audio;
  if(!A.on||!RS.n||RP.sndI>=RS.n)return;
- // tape slowdown: pitch tracks the PLAYBACK rate, so a slow-mo strike lands as a deep thud and
- // the sound slows with the picture instead of clattering over it
+ // tape slowdown: pitch tracks the playback rate, so slow-mo lands as a deep thud
  const sp=lerp(REPLAY.speed,REPLAY.slowSpeed,zk);
  Au.rate=Math.max(A.pitchMin,lerp(1,sp,A.pitch));Au.vol=A.gain;
  while(RP.sndI<RS.n){
@@ -111,46 +78,30 @@ function replaySndUpdate(absNow,zk){
  Au.rate=1;Au.vol=1;
 }
 
-/* ===== playback state ===== */
-// sndI = cursor into the sound log (see replaySndUpdate). keep = this replay's recording has
-// been promoted to a file. sting = the goal horn has already been re-fired for this replay.
-// camSaved/camSave = free-roam parking spot stashed on the way in (see replayCamStash).
+// ===== playback state =====
+// sndI = cursor into the sound log; keep = promoted to a file; sting = goal horn already re-fired; camSaved/camSave = free-roam parking spot
 const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,
  shot:0,lastShot:-1,fov0:0,snap:false,ghosts:null,hasLook:false,sndI:0,keep:false,sting:false,
  camSaved:false,camSave:new THREE.Vector3(),
  look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3()};
 
-/* ===== free-roam handoff =====
-   The broadcast camera doesn't need this: cameraUpdate re-derives its placement from the shot
-   table every frame, so it lerps home on its own the instant playback lets go. FREE ROAM is
-   different — the camera position IS the state, and nothing regenerates it, so a replay that
-   flew off to the corner crane would leave the spectator dumped there with no memory of where
-   they'd parked. Stash the spot on the way in and put it back on the way out.
-   Only stashed when free roam is already on: entering free roam DURING a replay is the player
-   deliberately grabbing the camera where it stands, and yanking them elsewhere on the handback
-   would be the same bug in reverse. Rotation isn't stashed — S.camYaw/S.camPitch survive the
-   replay untouched and cameraUpdate re-applies them on the first frame back, which also means
-   looking around while the replay runs still counts. */
+// ===== free-roam handoff =====
+// free roam's camera position is the state (the broadcast camera re-derives its own), so stash it on the way in and restore it on the way out; rotation survives untouched
 function replayCamStash(){
  RP.camSaved=!!S.freeRoam;
  if(RP.camSaved)RP.camSave.copy(camera.position);
 }
 function replayCamRestore(){
- // still-in-free-roam test: exiting mid-replay (Esc, lost pointer lock) hands back to the
- // broadcast camera, which wants its own placement, not the stale roam spot
+ // still in free roam: exiting mid-replay (Esc, lost pointer lock) hands back to the broadcast camera, which wants its own placement
  if(RP.camSaved&&S.freeRoam)camera.position.copy(RP.camSave);
  RP.camSaved=false;
 }
-// replayReady = is there footage worth showing RIGHT NOW (nothing queued required). flow.js tests it
-// before committing a match-winning goal to the celebration hold, so a rally too short to replay
-// still cuts straight to the win screen.
+// is there footage worth showing now; flow.js tests it before holding a match-winning goal for the celebration
 function replayReady(){return REPLAY.on&&cfg.replay&&RB.n/SIM.hz>=REPLAY.minLen;}
 function replayPending(){return RP.queued&&replayReady();}
 function replayQueue(team){RP.queued=true;RP.team=team;}
 
-/* Ghost balls: 4 pooled spheres re-tinted per recorded type — no GLB cloning,
-   no allocation after first build. Each carries a spawnTrail shim so the replay
-   reuses the live trail-sprite pool for free. */
+// ghost balls: 4 pooled spheres re-tinted per recorded type, no allocation after first build; each carries a spawnTrail shim for the live trail pool
 function replayGhosts(){
  if(RP.ghosts)return;
  RP.ghosts=[];
@@ -158,26 +109,18 @@ function replayGhosts(){
   const m=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,20,14),
    new THREE.MeshStandardMaterial({color:0xffffff,roughness:.4,metalness:.05}));
   m.visible=false;scene.add(m);
-  // models: type-index -> GLB clone (lazy, cached for the session). When a type has
-  // a baked GLB slot we show that instead of the tinted sphere; null = no slot (e.g.
-  // knuckleball) or ball models disabled → keep the sphere fallback. active = the
-  // model currently shown for this ghost (null when the sphere is the active one).
-  // rq = accumulated ROLL (see replayRoll) — the buffer holds no orientation, so it's
-  // re-derived from the path and applied to whichever mesh is showing.
+  // models: type-index to GLB clone (lazy, cached); null = no slot or ball models off (keep the sphere); active = the model shown; rq = accumulated roll (replayRoll), re-derived since the buffer holds no orientation
   RP.ghosts.push({m,typ:-1,trailT:0,prev:new THREE.Vector3(),rq:new THREE.Quaternion(),
    shim:{m:{position:m.position},t:{trail:'#ffffff'}},models:null,active:null,primed:false});
  }
 }
-// Lazily clone the GLB model for a recorded ball type; null if unavailable (no slot
-// or CONFIG.debug.useBallModel off). Cached per ghost so each replay type is built once.
+// lazily clone the GLB model for a recorded ball type, null if unavailable; cached per ghost
 function replayGhostModel(g,ti){
  if(!g.models)g.models={};
  let model=g.models[ti];
  if(model!==undefined)return model;
  model=makeBallModel(RB.keys[ti]);
- // rqBase: the clone's AUTHORED orientation. Roll is applied on top of it (replayRollSet),
- // never in place of it — a GLB root can carry a baked rotation, and stamping the roll
- // straight onto .quaternion would silently discard it.
+ // rqBase: the clone's authored orientation; the roll is applied on top of it, never in place of it
  if(model){model.scale.setScalar(1);model.visible=false;model.userData.rqBase=model.quaternion.clone();scene.add(model);}
  g.models[ti]=model;
  return model;
@@ -186,25 +129,14 @@ function replayGhostModel(g,ti){
 function replayGhostHide(g){
  g.m.visible=false;g.m.quaternion.set(0,0,0,1);
  ballHeatSet(g.m,0);          // park it cold; a still-live ghost of the same type re-heats the shared material at heatClose
- // rest the orientation as well as the roll accumulator, so REPLAY.roll:false is a true
- // off-switch even after a session that had it on (a parked mesh would otherwise keep its
- // last rolled pose and the next replay would open on a crooked ball).
+ // reset the orientation as well as the roll accumulator, so REPLAY.roll:false is a true off-switch
  if(g.models)for(const k in g.models){const mm=g.models[k];if(mm){mm.visible=false;ballHeatSet(mm,0);
   const b=mm.userData.rqBase;if(b)mm.quaternion.copy(b);else mm.quaternion.set(0,0,0,1);}}
  g.active=null;g.primed=false;g.rq.set(0,0,0,1);
 }
-/* ===== rolling =====
-   The recorder stores POSITION ONLY (3 floats a slot a step), so a replayed ball has no
-   recorded orientation — it used to slide down the pitch with its texture frozen, which
-   reads fine on a plain sphere and badly on anything with a print on it. Orientation is
-   therefore RE-DERIVED from the path: a ball rolling without slipping turns about the
-   horizontal axis perpendicular to its travel by (distance travelled / radius). Same axis
-   convention as the live ball (physics.js: +x travel turns about −z, +z travel about +x)
-   and horizontal-only for the same reason, so a replay matches what you just watched.
-   Driven by DISTANCE, not time, so slow-mo slows the spin with the ball for free.
-   Accumulated as a world-axis quaternion rather than the live Euler pair — a replayed
-   curve stacks many small turns about changing axes, which is exactly where Euler
-   accumulation starts to tumble. */
+// ===== rolling =====
+// the recorder stores position only, so orientation is re-derived: a rolling ball turns about the horizontal axis perpendicular to travel by distance/radius (same convention as physics.js)
+// driven by distance (slow-mo slows the spin) and accumulated as a world-axis quaternion (Euler tumbles on curves)
 const _rlAx=new THREE.Vector3(),_rlQ=new THREE.Quaternion();
 function replayRoll(g,dx,dz){
  const d=Math.hypot(dx,dz);
@@ -234,7 +166,7 @@ function replayTint(g,ti){
  }
  g.shim.t.trail=t.trail||'#ffffff';
 }
-// interpolated pose of slot s at logical float step j → out vector; false when the slot is empty
+// interpolated pose of slot s at logical float step j into out; false when the slot is empty
 function rbBall(s,j,out){
  const j0=Math.floor(j),j1=Math.min(j0+1,RB.n-1),a=j-j0;
  const t0=RB.typ[rbIdx(j0)*RB.slots+s];if(t0<0)return-1;
@@ -245,14 +177,9 @@ function rbBall(s,j,out){
  return t0;
 }
 
-/* ===== camera shots ===== */
-/* Each shot is a hand-placed move, picked at random per replay (never the same
-   twice running). bp = the followed ball, t01 = 0..1 through the footage.
-   All placement numbers live in CONFIG.replay.shots — tweak there, reload, score.
-   A shot sets RP.cx/cy/cz (camera placement, chased at camLerp for the hand-held
-   feel); by default the camera looks at the ball, but a shot may instead set
-   RP.lookTo + RP.hasLook=true to aim the gaze itself (the ball cam does).
-   All of them end near the beaten goal (RP.gx = ±L/2) so the slow-mo finish reads. */
+// ===== camera shots =====
+// hand-placed moves picked at random per replay; bp = the followed ball, t01 = 0..1 through the footage; numbers in CONFIG.replay.shots
+// a shot sets RP.cx/cy/cz (chased at camLerp) and looks at the ball unless it sets RP.lookTo + RP.hasLook (the ball cam); all end near the beaten goal (RP.gx = ±L/2)
 const REPLAY_SHOTS=[
  // RAIL CAM — elevated sideline dolly chasing the ball down the pitch
  function(bp,t01){const H=REPLAY.shots.rail;
@@ -260,26 +187,20 @@ const REPLAY_SHOTS=[
  // NET CAM — behind the beaten goal, drifting like a cameraman leaning for the angle
  function(bp,t01){const H=REPLAY.shots.net;
   RP.cx=RP.gx*H.xMult;RP.cy=H.y+H.rise*t01;RP.cz=Math.sin(t01*4.2)*H.sway;},
- // CORNER CRANE — starts high over the scoring corner, pushes down + in as the shot builds
+ // CORNER CRANE: starts high over the scoring corner, pushes down and in as the shot builds
  function(bp,t01){const H=REPLAY.shots.crane,e=t01*t01*(3-2*t01);
   RP.cx=RP.gx*lerp(H.xFrom,H.xTo,e);RP.cy=lerp(H.yFrom,H.yTo,e);RP.cz=lerp(H.zFrom,H.zTo,e);},
  // SKY DRONE — slow high float that leans toward the goal end
  function(bp,t01){const H=REPLAY.shots.drone;
   RP.cx=bp.x*.5+RP.gx*.25*t01;RP.cy=H.y-H.dip*t01;RP.cz=H.z+H.sway*Math.sin(t01*2.1);},
- // BALL CAM — rides just goal-side of the ball, gazing back UP the pitch so the
- // scoring team is in frame driving the ball at you; ends inside the goal mouth
+ // BALL CAM: rides just goal-side of the ball, gazing back up the pitch; ends inside the goal mouth
  function(bp,t01){const H=REPLAY.shots.ball,d=RP.gx>0?1:-1;
   RP.cx=bp.x+d*H.back;RP.cy=Math.max(bp.y+H.up,H.minY);RP.cz=bp.z;
   RP.lookTo.set(bp.x-d*H.lookAhead,H.lookY,bp.z*.6);RP.hasLook=true;}
 ];
 
-/* ===== saving the clip =====
-   The canvas recorder (js/capture.js) is armed on the FIRST FRAME of every replay, so the save
-   key can be pressed at any point — including on the freeze-frame, which is the moment you
-   actually know the goal was worth keeping — and still write the WHOLE replay out rather than
-   the tail from the keypress. A recording nobody presses for is dropped on stop.
-   The clip is the CANVAS only: the letterbox bars, the tag and this hint are DOM, so what lands
-   on disk is clean footage with no chrome burnt into it. */
+// ===== saving the clip =====
+// the canvas recorder (js/capture.js) is armed on the replay's first frame, so the save key writes the whole replay whenever pressed; unsaved recordings are dropped; the clip is canvas only (bars, tag and hint are DOM)
 function replaySaveArm(){
  RP.keep=false;
  if(!REPLAY.save.on){replaySaveUI('off');return;}
@@ -300,9 +221,8 @@ function replayStart(){
  RP.len=Math.min(RB.n/SIM.hz,REPLAY.len);
  RP.start=RB.n-RP.len*SIM.hz;
  RP.t=0;RP.hold=0;RP.mode='play';RP.snap=true;RP.sting=false;RP.prevJ=-1;
- RP.gx=(RP.team===0?1:-1)*F.L/2;             // the goal that was scored INTO
- // sound cursor: skip past everything that fired BEFORE the stretch of footage being shown,
- // so a long rally trimmed to REPLAY.len doesn't dump its whole history in the first frame
+ RP.gx=(RP.team===0?1:-1)*F.L/2;             // the goal that was scored into
+ // sound cursor: skip everything fired before the stretch shown, so a trimmed rally doesn't dump its history in frame one
  RP.sndI=0;
  if(RS.n){const a0=rbAbs(RP.start);while(RP.sndI<RS.n&&RS.step[rsIdx(RP.sndI)]<a0)RP.sndI++;}
  let si=Math.floor(Math.random()*REPLAY_SHOTS.length);
@@ -318,8 +238,7 @@ function replayStart(){
 }
 function replayEnd(){
  if(!RP.on)return;RP.on=false;
- Au.rate=1;Au.vol=1;                          // belt and braces: a skip can land between the set and
-                                              // the reset inside replaySndUpdate
+ Au.rate=1;Au.vol=1;                          // belt and braces: a skip can land between the set and the reset inside replaySndUpdate
  camera.fov=RP.fov0;camera.updateProjectionMatrix();
  replayCamRestore();                          // put a free-roam spectator back where they were parked
   for(const g of RP.ghosts)replayGhostHide(g);
@@ -327,17 +246,15 @@ function replayEnd(){
  clipStop();                                  // writes the file iff it was promoted; async, lands a beat later
  const saved=RP.keep;RP.keep=false;
   hudReplay(false);
- // Confirmation goes out AFTER the letterbox is down: the bottom bar is where the save state was
- // shown, and a toast landing on top of it reads as the bar glitching rather than as a result.
+ // confirm after the letterbox is down (the bottom bar showed the save state)
  if(saved)toast('CLIP SAVED','goal replay → downloads');
- // A match-winning goal held its win back so this replay could play (flow.js onGoal) — go to the
- // win screen instead of a re-count. endMatch does its own flash/shake, so don't double up.
+ // a match-winning goal held its win back for this replay (flow.js onGoal): go to the win screen
  if(finishPendingWin())return;
  flash();
  startCount(MATCH.recount);
 }
 function replaySkip(){if(S.phase==='replay'){Au.ui();replayEnd();}}
-// hard bail (menu quit / new match) — tear playback down WITHOUT handing off to a re-count
+// hard bail (menu quit / new match): tear playback down without handing off to a re-count
 function replayAbort(){
  RP.queued=false;
  if(!RP.on)return;
@@ -359,13 +276,11 @@ function replayUpdate(rdt){
  if(RP.mode==='play'){
   RP.t+=rdt*lerp(REPLAY.speed,REPLAY.slowSpeed,zk);
   if(RP.t>=RP.len){RP.t=RP.len;RP.mode='hold';RP.hold=REPLAY.holdT;
-   // The horn lands ON the freeze-frame, at NORMAL pitch — it isn't footage, it's the
-   // celebration arriving, and a tape-slowed horn reads as a fault rather than as drama.
+   // the horn lands on the freeze-frame at normal pitch (it's the celebration, not footage)
    if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();}}
  }else{RP.hold-=rdt;if(RP.hold<=0){replayEnd();return;}}
  const j=clamp(RP.start+RP.t*SIM.hz,0,RB.n-1);
- // SIM steps advanced since the last rendered frame -> the sim time they took. Ghost speed is
- // measured against THAT, not rdt, so the slow-mo doesn't cool a ball that was flying (js/balls.js).
+ // SIM steps since the last frame as sim time; ghost speed is measured against that, not rdt, so slow-mo doesn't cool a flying ball (js/balls.js)
  const jDt=(RP.prevJ>=0?Math.max(0,j-RP.prevJ):0)/SIM.hz;RP.prevJ=j;
  replaySndUpdate(rbAbs(j),zk);   // re-fire everything the footage clock has just passed
  /* rods straight from the buffer (display only — r.offset/r.angle untouched) */
@@ -383,7 +298,7 @@ function replayUpdate(rdt){
    if(ti!==g.typ)replayTint(g,ti);
    if(!g.primed){g.primed=true;g.prev.copy(g.m.position);}
    heatFeed(g.active||g.m,RB.keys[ti],jDt>0?g.prev.distanceTo(g.m.position)/jDt:0,g.shim);
-   // roll off the step just travelled — BEFORE prev is advanced (the trail test below reads it too)
+   // roll off the step just travelled, before prev is advanced (the trail test below reads it)
    if(REPLAY.roll){
     replayRoll(g,g.m.position.x-g.prev.x,g.m.position.z-g.prev.z);
     replayRollSet(g.m,g.rq);
@@ -398,8 +313,7 @@ function replayUpdate(rdt){
   g.prev.copy(g.m.position);
  }
  heatClose();
- /* camera: hand-held chase toward the shot's placement + broadcast push-in on the slow-mo.
-    Default gaze = the ball; a shot that set RP.hasLook aims the gaze itself (ball cam). */
+ // camera: hand-held chase toward the shot's placement plus a push-in on the slow-mo; the gaze is the ball unless the shot set RP.hasLook
  RP.hasLook=false;
  REPLAY_SHOTS[RP.shot](RP.focus,RP.len>0?RP.t/RP.len:1);
  const tgt=RP.hasLook?RP.lookTo:RP.focus;

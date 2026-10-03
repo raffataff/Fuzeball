@@ -1,17 +1,8 @@
 'use strict';
-/* ===== shots harness — node tools/shots-harness.js =====
-   Boots core + config + rng and then js/shots.js in ONE vm context against stubs for the four
-   things it reaches out to (kickRod, gpDown, sweepClips, passPick) plus a recording Au. No three.js,
-   no DOM, no browser.
-
-   IT ASSERTS THE DATA AS WELL AS THE CODE, which is the half worth copying. A charge whose bronze
-   is unreachable, an anchor curve naming a key CONFIG.kick does not have, a pass threshold no
-   trigger position can reach, a wind-up deeper than the rod's own raise — every one of those fails
-   as "the control feels wrong" rather than as an error, so they are checked from LIVE CONFIG here.
-
-   It also has teeth: MUTATIONS at the bottom rewrite one decision each in the real source and the
-   suite must FAIL for every one of them. mutate() refuses a mutant identical to its source, so a
-   drifted anchor reports itself instead of quietly scoring a point (the roomlights lesson). */
+// ===== shots harness: node tools/shots-harness.js =====
+// boots core + config + rng + js/shots.js in one vm against stubs (kickRod, gpDown, sweepClips, passPick) and a recording Au; no three.js, DOM or browser
+// it asserts the data as well as the code (an unreachable bronze, an anchor naming a key CONFIG.kick lacks, a pass threshold no trigger can reach), checked from live CONFIG
+// MUTATIONS at the bottom rewrite one decision each in the real source and the suite must fail for every one; mutate() refuses a no-op mutant so a drifted anchor reports itself
 
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -47,9 +38,7 @@ function build(srcShots){
   // suite counts is feeds, not one-shots. chargeFire is the release discharge and carries the band.
   Au:{chargeFeed(k,b){rec.tick++;rec.fed=k;},chargeMark(g){rec.mark.push(!!g);},
       chargeFire(k,sweet){rec.fire.push({k:k,sweet:!!sweet});},ui(){},beep(){}},
-  // A live ball is NOT optional furniture here: shotPullCap and shotPassTarget both iterate
-  // S.balls, so an empty table makes the wind-up guard and the pass silently no-op and the suite
-  // scores them as passes. The first cut of this harness did exactly that.
+  // a live ball is not optional: shotPullCap and shotPassTarget iterate S.balls, so an empty table makes the guard and the pass silently no-op and the suite scores them as passes
   S:{balls:[{m:{position:{x:24,y:1.9,z:0}},v:{x:0,y:0,z:0},scored:false}],time:0},
   __clip:false,__pass:null,__rec:rec};
  ctx.globalThis=ctx;ctx.window=ctx;
@@ -92,10 +81,7 @@ const seat=()=>({team:0,devs:['pad*'],rods:[],ctrl:0,tcMult:1,padRaise:false,sho
 function run(src,label){
  pass=0;fail=0;fails.length=0;
  const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,K=C.KICK;
- /* This suite drives the charge MACHINE — band, decay, guards, verdicts, Total Control — through the
-    single-trigger rule it was written against (RT alone winds up, letting go fires). The shipped rule
-    (charge.needRaise: power + a pull-back, fired only by a kick) sits on top of the same machine and
-    is asserted in tools/binds-harness.js, through the real merged step. */
+ // this suite drives the charge machine through the single-trigger rule it was written against (RT alone winds up, letting go fires); the shipped rule (charge.needRaise) sits on the same machine and is asserted in tools/binds-harness.js
  CH.needRaise=false;
  const rec=ctx.__rec;
 
@@ -110,12 +96,7 @@ function run(src,label){
   ok(E.strike>E.windup,'mod.'+anc+': strike after windup');
   ok(E.hold>=E.strike,'mod.'+anc+': hold at or after strike');
   ok(E.drop>E.hold,'mod.'+anc+': drop after hold');
-  /* THE ANCHORS MUST NOT TOUCH RESTITUTION OR THE POWER WINDOW, and this is the load-bearing
-     assertion of the whole block. The power is the ARC: kickA0 -> strikeA over a fixed strike
-     window, so a deeper wind-up in a shorter window is a genuinely faster foot. Opening the power
-     window as well would swap rest 0.01 for restPower — another ~1.9x on the impulse — and the axis
-     and charge multipliers would be a third helping of the same thing. Three channels stacked is
-     how a charged shot ends up ten times a normal one and every number becomes untunable. */
+  // the anchors must not touch restitution or the power window (load-bearing): power is the arc, kickA0 to strikeA over a fixed window; opening the power window too would stack three channels and make a charged shot ten times a normal one
   for(const k of ['rest','restPower','powFrom','powTo']){
    ok(A[k]===undefined,'mod.'+anc+' leaves "'+k+'" alone — the arc is the power, not the restitution');
    eq(E[k],K[k],'mod.'+anc+' blended: '+k+' still comes from CONFIG.kick');
@@ -137,10 +118,7 @@ function run(src,label){
  // The pass threshold has to be REACHABLE by a real trigger position and must not fire on a
  // neutral kick — LT alone bottoms the axis at exactly -1, so modAt must lie in [-1, 0).
  ok(SH.pass.modAt>=-1&&SH.pass.modAt<0,'pass threshold is reachable and never neutral');
- /* THE PASS HAS TO BE DELIVERABLE. The aim assist can bend a pass by CONFIG.ai.dribble.pass.assist
-    and no further, so a chooser that picks the best receiver on the table rather than a reachable
-    one hands the player a PASS label on a ball that sails past everybody — measured live at 43
-    degrees needed against 9 delivered. bendMult is that budget as a multiple of the assist. */
+ // the pass has to be deliverable: the aim assist bends a pass by CONFIG.ai.dribble.pass.assist and no further (measured: 43 degrees needed, 9 delivered); bendMult is that budget as a multiple of the assist
  ok(SH.pass.bendMult>0&&SH.pass.bendMult<3,'pass bend budget is a lining-up requirement, not a guided missile');
  {const P=C.AIC.dribble.pass,deg=P.assist*SH.pass.bendMult*180/Math.PI;
   ok(deg>5&&deg<25,'…which is '+deg.toFixed(0)+' degrees off-line — enough to offer, tight enough to aim');
@@ -156,11 +134,7 @@ function run(src,label){
  const tIn=CH.sweetFrom/CH.rate,tOut=CH.sweetTo/CH.rate;
  ok(tIn>0.15&&tIn<1.2,'sweet band opens at a human time ('+tIn.toFixed(2)+'s)');
  ok(tOut-tIn>0.12,'sweet band is wide enough to hit ('+(tOut-tIn).toFixed(2)+'s)');
- /* THE EASE HAS TO SETTLE BEFORE THE BAND OPENS. updateRods eases the rod toward the wind-up angle
-    rather than snapping to it, so the arc actually delivered is a function of HOW LONG you have
-    held as well as of the charge — and if it is still settling inside the band, a full overcook
-    ends up the strongest shot on the table however the trims are tuned. Settling is
-    e^(-pullLerp x t), so 95% by the time the band opens wants pullLerp >= 3/(sweetFrom/rate). */
+ // the ease has to settle before the band opens: the rod eases toward the wind-up angle (e^(-pullLerp x t)), so a still-settling arc would make a full overcook the strongest shot; 95% by the band's opening wants pullLerp >= 3/(sweetFrom/rate)
  {const T=CH.sweetFrom/CH.rate,settled=1-Math.exp(-CH.pullLerp*T);
   ok(settled>0.95,'the wind-up is '+(settled*100).toFixed(1)+'% settled by the time the sweet band opens');}
  ok(CH.pullA<0,'the wind-up is a BACK angle');
@@ -169,9 +143,7 @@ function run(src,label){
  ok(CH.spray>=0&&CH.spray<0.6,'spray is a nudge, not a coin toss');
  ok(CH.trem.amp>0&&CH.trem.amp<0.2,'tremble is visible but not a swing');
  ok(CH.tapMax>0&&CH.tapMax<0.3,'tap grace is a tap');
- /* THE SOUND CARRIES A DIRECTION, and it is the whole reason the build-up and the release do not
-    sound like the same event twice. Tension SWEEPS UP as it gathers; a discharge SWEEPS DOWN as it
-    lets go. Invert either and the charge reads as a release and the release reads as a wind-up. */
+ // the sound carries a direction: tension sweeps up as it gathers, a discharge sweeps down; invert either and a charge reads as a release
  {const T=CH.tone;
   ok(T.f1>T.f0,'the build-up tone sweeps UP with the charge');
   ok(T.nf1>T.nf0,'…and its air bed opens as it gathers');
@@ -290,9 +262,7 @@ function run(src,label){
   r.kickT=-1;rec.kicks.length=0;
   C.shotFire(r,SH.pass.modAt+0.01,-1);
   ok(rec.kicks[0].style!=='pass','just short of the pass threshold is a soft kick, not a pass');
-  /* THE REFUSAL. Slide that same teammate square of the ball and the bend needed passes what the
-     aim assist can deliver, so the pass must not be offered at all — it is a plain soft touch. This
-     is the case that was measured shipping a PASS label on a ball that ran out for a goal kick. */
+  // the refusal: slide the teammate square of the ball and the bend needed passes what the assist can deliver, so the pass isn't offered (a plain soft touch)
   const P=C.AIC.dribble.pass,far=Math.tan(P.assist*SH.pass.bendMult)*25+4;
   mate.offset=far;
   r.kickT=-1;rec.kicks.length=0;
@@ -338,10 +308,7 @@ function run(src,label){
   ok(rec.fire[0].sweet===true,'…and tells the mix it went off inside the band, which is what earns the snap');
   ok(rec.kicks.length===1,'releasing RT fires exactly one swing');
   ok(rec.kicks[0].on&&rec.kicks[0].pow>1,'…and it carries the charge');
-  /* THE AXIS IS THE ONE IT WAS HELD AT, not the one live on the release frame. In classic the charge
-     is held on RT, so at the instant of release RT is on its way UP — read the axis there and a
-     charged shot comes out on a NEUTRAL curve with none of the power trim, which is the power
-     trigger doing nothing to the shot it just spent half a second charging. Found live. */
+  // the axis is the one the wind-up was held at, not the live one on the release frame (RT is on its way up then, giving a neutral curve with no power trim)
   ok(rec.kicks[0].curve&&Math.abs(rec.kicks[0].curve.strikeA-MD.hard.strikeA)<1e-9,
    'a charge held on RT fires on the HARD curve, not the neutral one the release frame would read');
   ok(rec.kicks[0].pow>C.shotChgPow(CH.sweetFrom)*1.0001,'…and carries the RT power trim as well as the charge');
@@ -414,10 +381,7 @@ function run(src,label){
   // the strike itself may land later.
   ok(rec.fire.length===1,'…and letting the chord go still discharges');
   ok(r.shotOn,'…and the charge survives the release so the flick can spend it');
-  /* AN ABANDONED WIND-UP MUST ONLY EVER FADE. Power is flat across the band and falls off above it,
-     so a charge decaying down from an overcook passes back THROUGH the band — overcook on purpose,
-     let go, wait, and the shot is worth full power again, which skips the timing the band tests.
-     This walks the WHOLE fade and refuses any frame that is worth more than the release was. */
+  // an abandoned wind-up must only ever fade: a decay back through the band would restore full power; this walks the whole fade and refuses any frame worth more than the release
   let g=0,peak=-1,mono=true;
   while(r.shotOn&&g<900){C.shotPadUpdate(1/60,pad(0,0),s,r,true,-1);
    if(r.shotOn){if(r.shotPow>held+1e-9)mono=false;if(peak>=0&&r.shotPow>peak+1e-9)mono=false;peak=r.shotPow;}g++;}
@@ -462,11 +426,7 @@ function run(src,label){
   const atBand=A.find(x=>x.k>=CH.sweetFrom);
   ok(atBand&&Math.abs(A[A.length-1].a-atBand.a)<1e-6,
    'the wind-up saturates at the band LOWER edge, so the arc is already full everywhere inside it');
-  /* THE PEAK OF THE WHOLE SHOT MUST BE INSIDE THE BAND. The arc is the real power, so saturating it
-     at the band's TOP would leave power still climbing across the band and peaking one frame before
-     the overcook — measured live at 2.16x a plain tap mid-band against 2.73x fully overcooked, i.e.
-     holding too long was the strongest shot in the game. This walks the product of the two channels
-     and refuses any charge outside the band that beats every charge inside it. */
+  // the peak of the whole shot must be inside the band: saturating the arc at the band's top let an overcook beat a mid-band charge (2.73x vs 2.16x); walks the product of both channels
   const worth=k=>Math.min(1,Math.max(0,k/CH.sweetFrom))*C.shotChgPow(k);
   let bestK=0,bestW=-1;
   for(let i=0;i<=200;i++){const k=i/200,w=worth(k);if(w>bestW+1e-9){bestW=w;bestK=k;}}
@@ -532,11 +492,8 @@ function run(src,label){
   SH.on=wasOn;}
 
 
- /* ===== 13. THE READOUT MUST NOT LIE =====
-    Two separate claims. A wind-up the sweep guard REFUSES buys no arc, and the arc is where the
-    power is — so the charge number climbing while the rod goes nowhere is the readout promising a
-    shot that cannot happen. And the verdict has to outlive the release, or the one frame the
-    player needs it is the frame it disappears. */
+ // ===== 13. THE READOUT MUST NOT LIE =====
+ // a wind-up the sweep guard refuses buys no arc, so the number climbing while the rod goes nowhere would promise a shot that can't happen; and the verdict must outlive the release
  {
   const frames=(r,s,lt,rt,TC,stick,n,fn)=>{for(let i=0;i<n;i++){ctx.S.time+=1/60;
    C.shotPadUpdate(1/60,pad(lt,rt),s,r,TC,stick);if(fn)fn(i,r);}};
@@ -592,9 +549,7 @@ function run(src,label){
   {const r=stamp(0,1,20,true);
    eq(r.chgEndBand,3,'a BLOCKED release is stamped NO ROOM even though the number was mid-band');}
 
-  /* --- Total Control. Its release is not the shot — the chord only banks what the wind-up was
-     worth and the forward flick spends it — so the stamp waits for the CONTACT, and reports the
-     RELEASE TIMING rather than whatever the faded bank finally delivered. */
+  // --- Total Control: its release isn't the shot (the chord only banks the worth, the flick spends it), so the stamp waits for the contact and reports the release timing
   {const r=rod(),s=seat();
    while(r.chg<0.60){ctx.S.time+=1/60;C.shotPadUpdate(1/60,pad(1,1),s,r,true,-1);}
    const banked=r.chg;

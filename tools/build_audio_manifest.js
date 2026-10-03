@@ -1,22 +1,11 @@
-/* Writes assets/audio/manifest.json — the index js/audio.js reads to find recorded takes.
-
-   WHY THIS EXISTS AT ALL: the same reason as build_props_manifest.js. A browser cannot list a
-   folder, so "drop a file in and it plays" needs a generated index.
-
-   Run after adding, renaming or removing a sound:
-       node tools/build_audio_manifest.js
-
-   NAMING: <id>_01.ogg, <id>_02.ogg ... or just <id>.ogg, anywhere under assets/audio/ (subfolders
-   are only for you: ui/, crowd/, table/ ...). The id is the file name minus its take number, and it
-   must be one of:
-     - a sound in CONFIG.audioMix.sounds                          ball_kick_03.ogg
-     - a variant of one: <id>_hard, or <id>_<ballType>             ball_kick_hard_01.ogg, ball_wall_fire.ogg
-     - a room impulse: ir_<roomId>                                 ir_pub.wav
-   Anything else is REPORTED and left out, so a typo can't ship a sound nobody ever hears.
-   .ogg (Vorbis) is the format to ship; .wav/.flac/.mp3/.m4a/.opus/.webm decode too.
-
-   Then prints every sound's state: recorded (n takes), synthesized (no file, a stand-in plays),
-   or SILENT (recorded-only, and no file yet). That table is the to-do list for a session.   */
+// Writes assets/audio/manifest.json, the index js/audio.js reads to find recorded takes (a browser can't list a folder).
+// Run after adding, renaming or removing a sound:  node tools/build_audio_manifest.js
+// naming: <id>_01.ogg, <id>_02.ogg ... or <id>.ogg, anywhere under assets/audio/ (subfolders are only for you); the id is the file name minus its take number and must be:
+//   - a sound in CONFIG.audioMix.sounds                          ball_kick_03.ogg
+//   - a variant: <id>_hard, or <id>_<ballType>                   ball_kick_hard_01.ogg, ball_wall_fire.ogg
+//   - a room impulse: ir_<roomId>                                ir_pub.wav
+// anything else is reported and left out (a typo can't ship a sound nobody hears); ship .ogg (Vorbis), .wav/.flac/.mp3/.m4a/.opus/.webm decode too
+// then prints every sound's state: recorded (n takes), synthesized (a stand-in plays) or SILENT (recorded-only, no file yet), the to-do list for a session
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');

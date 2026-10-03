@@ -1,15 +1,7 @@
-/* Behavioural harness for the two things the room-editor lighting work added that a
-   browser is NOT needed to check, and that would fail SILENTLY if they broke.
-
-     1. THE EXPORT. It claims to emit a paste-ready CONFIG.rooms block. The only honest
-        test of that claim is to PARSE the emitted text back and compare it to the room it
-        came from — a format that is merely close enough to look right is the failure mode
-        here, and it costs you a room's worth of work when you paste it.
-     2. THE AUTHORED-LIGHT POOL (js/world.js). Its whole reason to exist is that the
-        scene's light COUNT never changes, so the assertions are about counts and about
-        re-driving being idempotent, not about pixels.
-
-   Run: node tools/roomlights-harness.js                                                */
+// behavioural harness for the room-editor lighting work, checkable without a browser:
+//   1. THE EXPORT: parse the emitted CONFIG.rooms block back and compare it to the room it came from
+//   2. THE AUTHORED-LIGHT POOL (js/world.js): the scene's light count never changes, so assert counts and idempotent re-driving
+// Run: node tools/roomlights-harness.js
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -210,11 +202,8 @@ const R_LIGHTS={
  ok(p.added.length===0,'POOL: ...and nothing is added to the scene');
 }
 {
- /* --- the shadow sub-pool ------------------------------------------------
-    castShadow is a SHADER PARAMETER, so a room light cannot simply be told to cast: it has to
-    borrow from a pool of lights that were created casting. These pin the three properties that
-    makes safe — the budget is a cap and not a suggestion, a plain light never eats a shadow
-    slot, and an unborrowed slot renders no pass. */
+ // --- the shadow sub-pool ---
+ // castShadow is a shader parameter, so a room light borrows from a pool created casting; pins three properties: the budget is a cap, a plain light never eats a shadow slot, an unborrowed slot renders no pass
  const SH_ROOMS={a:{lights:[
    {type:'spot',pos:[0,30,0],shadow:true},
    {type:'spot',pos:[10,30,0],shadow:true},
@@ -231,16 +220,11 @@ const R_LIGHTS={
    ok(p.roomShadowPool.spot.every(l=>l.castShadow===true),'SHADOW: ...and they are created CASTING');
    ok(p.roomLightPool.spot.every(l=>l.castShadow===false),'SHADOW: ...while plain slots never cast'); }
 
- { /* The plain pool must cover what the SHADOW budget cannot absorb — total minus the slots
-      that will actually be granted. Counting only the non-casting lights leaves the room one
-      slot short the moment more lights ask to cast than the budget allows, and a lamp vanishes.
-      Here: 4 spots, 3 asking, budget 2 -> 2 plain slots, so all four are served. */
+ { /* the plain pool must cover what the shadow budget can't absorb (total minus granted slots); here 4 spots, 3 asking, budget 2 gives 2 plain slots, so all four are served */
    const p=shPool({point:0,spot:2,dir:0});
    ok(p.rlpNeed().spot===2,'SHADOW: the plain pool covers what the shadow budget cannot',p.rlpNeed().spot); }
 
- { /* An unborrowed casting slot must cost NOTHING. It cannot stop casting (that recompiles),
-      so it is parked on three.js's per-light shadow gate instead. Measured cost of getting this
-      wrong: two idle slots were ~106 draw calls a frame. */
+ { /* an unborrowed casting slot must cost nothing: it can't stop casting (that recompiles), so it's parked on the per-light shadow gate (two idle slots cost ~106 draws a frame) */
    const p=shPool({point:0,spot:2,dir:0});
    ok(p.roomShadowPool.spot.every(l=>l.shadow.autoUpdate===false&&l.shadow.needsUpdate===false),
       'SHADOW: an unborrowed casting slot is gated OFF so it renders no pass'); }
@@ -279,9 +263,7 @@ const R_LIGHTS={
  ok(n.point===3,'POOL: max is a hard ceiling per type',n.point);
 }
 {
- /* THE INVARIANT THE WHOLE POOL EXISTS FOR: driving a room, then another, then the same
-    one again, never changes how many lights are in the scene. If this ever fails, every
-    material in the game recompiles on a venue change and the editor stutters per click. */
+ // the invariant the pool exists for: driving a room, another, then the same again never changes the scene's light count
  const p=pool(R_LIGHTS,true);
  p.buildRoomLightPool();
  const total=p.added.filter(o=>o.intensity!==undefined).length;
@@ -353,10 +335,8 @@ const R_LIGHTS={
  ok(p.rlpType({type:'nonsense'})==='point','TYPE: an unknown type falls back to point, not undefined');
 }
 
-/* === the config's own data ===============================================
-   The export is only paste-ready if the DESTINATION still has the shape it emits. A room
-   entry that grew an inline comment, or lost its lights/props keys, breaks the workflow
-   without breaking anything a syntax check would catch. */
+// === the config's own data ===
+// the export is only paste-ready if the destination keeps its shape (an inline comment in a room entry, or missing lights/props keys, breaks the workflow)
 {
  const cfgSrc=fs.readFileSync(path.join(ROOT,'js/config.js'),'utf8');
  const s=cfgSrc.indexOf('\n  rooms:{');
@@ -367,10 +347,7 @@ const R_LIGHTS={
    (block.split('\n').filter(l=>l.indexOf('//')>=0)[0]||'').trim());
  const ids=(block.match(/^   [a-z_]+:\{/gm)||[]).map(x=>x.trim().replace(':{',''));
  ok(ids.length>=4,'CONFIG: room entries found',ids.join(','));
- // EVERY room must sit at the SAME indent the exporter emits, or a pasted block lands crooked
- // beside its siblings — and a stray entry silently drops out of any scan that walks this block
- // by indent, including the id scan above. (This caught exactly that: arcade left at 5 spaces.)
- // the slice opens on the 'rooms:{' header line itself, which is not a room
+ // every room must sit at the indent the exporter emits, or a pasted block lands crooked and a stray entry drops out of any indent scan (this caught arcade at 5 spaces); the slice opens on the 'rooms:{' header, which isn't a room
  const heads=(block.match(/^ *[a-z_]+:\{$/gm)||[]).filter(h=>h.trim()!=='rooms:{');
  const badIndent=heads.filter(h=>!/^   [a-z_]+:\{$/.test(h));
  ok(badIndent.length===0,'CONFIG: every room entry sits at the 3-space indent the export emits',
@@ -395,15 +372,10 @@ const R_LIGHTS={
  ok(/buildGround\(\)/.test(w),'CROWD: ...and is still called from initThree');
 }
 
-/* === TEETH ===============================================================
-   Each mutation is a plausible way to write this wrong. If one of them does NOT break an
-   assertion, that assertion is decoration — the lesson from the 2026-08-20 stat-trial
-   mutation that had no teeth until the test was made to actually reach the target. */
+// === TEETH ===
+// each mutation is a plausible wrong way to write this; if one doesn't break an assertion, that assertion is decoration
 function mutate(label,mutSrc,run){
- // A mutation whose anchor has DRIFTED applies nothing and then quietly 'passes'. That is
- // exactly how a mutation suite rots into decoration — and it is not hypothetical: the
- // 'numbers not rounded' anchor drifted the moment reFmtNum grew a second branch. Comparing
- // against the two un-mutated sources catches it with no per-call-site bookkeeping to forget.
+ // a mutation whose anchor has drifted applies nothing and quietly 'passes'; comparing against the two un-mutated sources catches it
  if(mutSrc===EXPORT_SRC||mutSrc===POOL_SRC){
   fail++;fails.push('TEETH: '+label+' — MUTATION DID NOT APPLY (its anchor has drifted)');return;}
  let broke=false,note='';
@@ -493,11 +465,8 @@ mutate('spot target not added to the scene',
   return p.added.filter(o=>o.intensity===undefined).length===0;});
 
 
-/* === the REAL rooms ======================================================
-   The strongest form of the claim: take CONFIG.rooms as it actually ships, export every
-   entry, parse each block back, and require it to be the same object. Anything the four
-   real rooms contain that the emitter mishandles fails HERE rather than the first time
-   somebody pastes a night's work over a room and reloads. */
+// === the REAL rooms ===
+// the strongest form: export every shipped CONFIG.rooms entry, parse each block back and require the same object
 {
  const vm=require('vm');
  const ctx=vm.createContext({console:{log(){},warn(){}},Math,JSON,isFinite,parseFloat,parseInt,Date,

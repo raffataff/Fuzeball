@@ -1,10 +1,6 @@
-/* Wall-play harness.   node tools/wallplay-harness.js
-   Slices the REAL wallAssist (stats.js) out of its file — and, for the integration half, the real
-   collideRod + aimAssist + passFaceOK it is called from — and runs them against live CONFIG.
-   The question it answers: does a strike on a ball pinned against a side wall now leave INFIELD, for
-   both teams and both walls, without adding energy; and is everything that is NOT a forward strike on
-   a wall ball left exactly alone. The live repro (two MID rows trading a wall ball for 25s on 8 of 12
-   seeds) is in CLAUDE.md; this pins the rule so a retune can't quietly bring the loop back. */
+// wall-play harness. node tools/wallplay-harness.js
+// slices the real wallAssist (stats.js), and for the integration half collideRod + aimAssist + passFaceOK, and runs them on live CONFIG
+// question: does a strike on a ball pinned against a side wall leave infield (both teams, both walls) without adding energy, and is everything that isn't a forward strike on a wall ball left alone; the live repro (two MID rows trading a wall ball for 25s on 8 of 12 seeds) is in CLAUDE.md
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -17,14 +13,14 @@ const HEAVY=[
  slice(PHYS,'function collideRod(b,r){','function ballBall('),
  slice(PHYS,'function capSpeed(b,r,sweet,in2){',NL+'function collideRod('),
  slice(RODS,'function styleCfg(',NL+'function kickStyleCfg'),
- slice(RODS,'function kickStyleCfg(r){',NL+'/* Was a contact'),
- slice(RODS,'function passFaceOK(r,nx){',NL+'/* The BALL-CONTROL'),
- slice(RODS,'function holdCfg(r){',NL+'/* aimAt'),
- slice(rd('js/shots.js'),'function shotsOn(){',NL+NL+'/* ---- the modifier axis'),
+ slice(RODS,'function kickStyleCfg(r){',NL+'function passFaceOK('),
+ slice(RODS,'function passFaceOK(r,nx){',NL+'function holdCfg('),
+ slice(RODS,'function holdCfg(r){',NL+'function kickRod('),
+ slice(rd('js/shots.js'),'function shotsOn(){',NL+'function shotTrigD('),
  slice(STATS,'function stHit(r){',NL),
  slice(STATS,'function stGrip(r){',NL),
  slice(STATS,'function stCapFrac(r){',NL),
- slice(STATS,'function aimAssist(b,r,noPass){',NL+'/* WALL PLAY')
+ slice(STATS,'function aimAssist(b,r,noPass){',NL+'function wallAssist(')
 ].join(NL);
 
 /* cfg / FOOT_JITTER / SHOT are config.js top-level names and are NOT restubbed (a second declaration
@@ -41,8 +37,7 @@ const stubs=[
 "var STC=CONFIG.stats;function ST(r,k){return STC.base;} function stFat(){return 1;} function stAccFrac(){return 0;}"
 ].join(NL);
 
-/* Values come out through an EXPLICIT export: config.js's aliases are top-level const, which never
-   become properties of the vm context — read them off ctx and every threshold is silently undefined. */
+// values come out through an explicit export: config.js's aliases are lexical consts, so reading them off ctx gives silent undefined
 function boot(real){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,
   localStorage:{getItem:()=>null,setItem:()=>{}}};
@@ -138,9 +133,8 @@ function units(X,quiet){
  return {pass,fail};
 }
 
-/* ---- through the REAL collideRod: a MID boot at its slide limit swinging into a pinned wall ball.
-   Walks the ball IN from out of reach until the boot's leading face first touches it — a swing
-   arriving at a ball in front, as in the kick log (rel ~3.2, dz 2.1) — then compares on and off. ---- */
+// ---- through the real collideRod: a MID boot at its slide limit swinging into a pinned wall ball ----
+// walks the ball in from out of reach until the boot's leading face first touches it (as in the kick log, rel ~3.2, dz 2.1), then compares on and off
 function strikes(X){
  let pass=0,fail=0;
  const ok=(n,c,d)=>{c?pass++:fail++;console.log((c?'  ok   ':'  FAIL ')+n+(d?'   ['+d+']':''));};

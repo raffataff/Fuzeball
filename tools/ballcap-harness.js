@@ -1,8 +1,6 @@
 'use strict';
-/* tools/ballcap-harness.js — the per-contact SPEED CEILING (CONFIG.kick.cap, physics.js capSpeed).
-   Slices the REAL capSpeed and stCapFrac out of their files rather than restating them, and drives
-   them against the LIVE config, so a retune that breaks a promise fails here. rd() strips CRLF —
-   physics.js and stats.js are CRLF files and a multi-line needle can never match one otherwise. */
+// tools/ballcap-harness.js: the per-contact SPEED CEILING (CONFIG.kick.cap, physics.js capSpeed)
+// slices the real capSpeed and stCapFrac and drives them against live config, so a retune that breaks a promise fails here; rd() strips CRLF (physics.js and stats.js are CRLF and a multi-line needle can't match one)
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const J=p=>path.join(__dirname,'..','js',p);
 const rd=p=>fs.readFileSync(J(p),'utf8').replace(/\r\n/g,'\n');
@@ -103,6 +101,25 @@ for(const str of [0,5,10]){
  ok(!(flat.over>0),'C2: a strike with no charge at all never gets an allowance');
 }
 
+/* ---- C3 · the pin / trap shot keeps its ceiling for the WHOLE swing --------------------------- */
+{
+ // the boot meets the ball ~40 times in one swing and the shot's own trim is spent on the first touch, so the ceiling cannot ride on shotOn
+ const pinS=(o)=>rod(5,Object.assign({kickStyle:'trapShot',kickT:0.12},o||{}));
+ const bv=()=>({v:{x:1e4,y:0,z:0},t:BALL_TYPES.classic});
+ const plain=bv();capSpeed(plain,rod(5,{kickT:0.12}),true,0);
+ const first=bv();capSpeed(first,pinS({shotOn:true,shotPow:1.15}),true,0);
+ const later=bv();capSpeed(later,pinS(),true,0);   // shot already spent: shotOn false, the swing still in flight
+ ok(C.pin>0,'C3: the pin ceiling bonus is on');
+ ok(Math.abs(later.v.x)>Math.abs(plain.v.x)+1,'C3: a later contact of a pin shot out-runs a plain swing\'s');
+ ok(Math.abs(later.v.x)>=Math.abs(plain.v.x)+MV*C.pin*0.3,'C3: ...by a real margin, not a rounding error');
+ ok(Math.abs(first.v.x)>=Math.abs(later.v.x)-1e-9,'C3: the armed first touch is never LOWER than a spent follow-up');
+ ok(Math.abs(later.v.x)<MV,'C3: ...and the pin shot still never reaches maxV on its own (that stays the charge\'s)');
+ const pass=bv();capSpeed(pass,rod(5,{kickStyle:'pass',kickT:0.12}),true,0);
+ ok(Math.abs(pass.v.x)<=Math.abs(plain.v.x)+1e-9,'C3: a pass swing gets no pin bonus');
+ const was=C.pin;C.pin=0;const off=bv();capSpeed(off,pinS(),true,0);C.pin=was;
+ ok(Math.abs(off.v.x)<=Math.abs(plain.v.x)+1e-9,'C3: cap.pin 0 puts the pin shot back on the plain ceiling');
+}
+
 /* ---- D · only the best strikes may reach maxV, and they DO ----------------------------------- */
 {
  const best=rod(10,{shotOn:true,shotPow:1.166});
@@ -160,6 +177,10 @@ mutate('the sweet spot no longer raises the ceiling',CS,/ if\(sweet\)f\+=C\.swee
  rm=>Math.abs(rm(245,rod(10),true)-rm(245,rod(10),false))<1e-9);
 mutate('a follow-up contact in the same charged swing falls back to the plain ceiling',CS,/ else if\(r\.kickT>=0&&r\.swOver>0&&r\.swF>0\)\{if\(r\.swF>f\)f=r\.swF;if\(r\.swMx>mx\)mx=r\.swMx;\}/,'',
  rm=>{const sw=rod(5,{shotOn:true,shotPow:1.166,shotOver:1,kickT:0.02,swOver:1});rm(1e4,sw,true);sw.shotOn=false;sw.shotOver=0;return rm(1e4,sw,true)<=MV*C.max+1e-9;});
+mutate('a pin shot falls back to the plain ceiling',CS,/ if\(r\.kickStyle==='trapShot'\)f\+=C\.pin\|\|0;.*\n/,'\n',
+ rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'trapShot',kickT:0.12}),true)-rm(1e4,rod(5,{kickT:0.12}),true))<1e-9);
+mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle==='trapShot'\)f\+=C\.pin\|\|0;/,'f+=C.pin||0;',
+ rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pass',kickT:0.12}),true)-rm(1e4,rod(5,{kickStyle:'trapShot',kickT:0.12}),true))<1e-9);
 mutate('a charge no longer raises the most a ceiling may be',CS,/mx\+=\(C\.chargeTop\|\|0\)\*w;/,'',
  rm=>rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true)<=MV*C.max+1e-9);
 mutate('overspeed paid on any charge, however overcooked',CS,/const w=\(r\.shotOn&&r\.shotOver>0\)\?r\.shotOver:0;/,'const w=r.shotOn?1:0;',

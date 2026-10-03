@@ -1,9 +1,5 @@
-/* Behavioural harness for the room editor's NON-DOM logic (js/roomedit.js).
-   The panel and the picking are interactive and can only be checked in a browser; what
-   IS testable here is the part with a real correctness risk — the venue stash/restore.
-   Getting that wrong means opening a room in the editor silently becomes the player's
-   permanent Kick Off setting, which is the exact trap league.js documents for divisions.
-   Run: node tools/roomedit-harness.js                                                 */
+// behavioural harness for the room editor's non-DOM logic (js/roomedit.js). Run: node tools/roomedit-harness.js
+// the panel and picking need a browser; what's testable is the venue stash/restore (getting it wrong makes opening a room in the editor the player's permanent Kick Off setting, the trap league.js documents for divisions)
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');

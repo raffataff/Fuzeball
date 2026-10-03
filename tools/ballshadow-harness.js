@@ -1,16 +1,9 @@
 'use strict';
-/* BALL SHADOW FLICKER — tools/ballshadow-harness.js
-   The ball's shadow strobed on/off every other frame. Cause: updateBallReflect suppressed the
-   shadow pass for its 6 cube faces with `shadowMap.autoUpdate=false` ALONE, but this project runs
-   CONFIG.render.shadow.autoUpdate:false already — so needsUpdate is the ONLY gate, and r128's
-   shadow pass CLEARS it whenever it runs. Cube face 1 therefore consumed the frame's pending
-   shadow update while the lead ball was hidden, and the main pass then skipped.
-
-   This slices the REAL updateBallReflect out of js/world.js and drives it against a renderer stub
-   that reproduces r128's gating VERBATIM (read out of vendor/three.min.js):
-       if(!1===y.enabled)return; if(!1===y.autoUpdate&&!1===y.needsUpdate)return; ... y.needsUpdate=!1
-   and a CubeCamera stub that calls renderer.render 6 times — which is what r128's CubeCamera does,
-   and note it does NOT touch shadowMap.autoUpdate itself (checked: no such reference in the file).   */
+// BALL SHADOW FLICKER: tools/ballshadow-harness.js
+// the ball's shadow strobed every other frame: updateBallReflect suppressed the shadow pass for its 6 cube faces with `shadowMap.autoUpdate=false` alone, but the project already runs CONFIG.render.shadow.autoUpdate:false, so needsUpdate is the only gate and r128's shadow pass clears it whenever it runs; cube face 1 consumed the frame's pending update (lead ball hidden) and the main pass then skipped
+// slices the real updateBallReflect from js/world.js and drives it against a renderer stub reproducing r128's gating verbatim (from vendor/three.min.js):
+//        if(!1===y.enabled)return; if(!1===y.autoUpdate&&!1===y.needsUpdate)return; ... y.needsUpdate=!1
+// and a CubeCamera stub that calls renderer.render 6 times (r128's CubeCamera doesn't touch shadowMap.autoUpdate)
 const fs=require('fs');
 const rd=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n');   // CRLF-strip at the READ (2026-08-23)
 

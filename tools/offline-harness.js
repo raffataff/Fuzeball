@@ -1,30 +1,8 @@
 'use strict';
-/* ============================================================================================
-   offline-harness.js — assert Fuzeball boots with NO network access.
-
-     node tools/offline-harness.js          (from the project root or from tools/)
-
-   The Electron/Steam wrapper has no CDN and a double-clicked file:// has no origin, so every
-   byte the page loads has to already be on disk. This harness is what stops that regressing.
-   It exists because it already DID regress and nothing caught it: css/styles.css moved from
-   Orbitron to Russo One, vendor/fonts.css was never regenerated, and because index.html still
-   carried a Google Fonts <link> the game looked fine online while every offline build fell back
-   to monospace on the dev overlays.
-
-   Checks, in order:
-     1  index.html loads nothing remote — no remote <link>, no remote <script src>, no
-        <img>/preconnect/preload pointing off-machine. CDN URLs parked as the 2nd entry of a
-        boot {srcs:[...]} are allowed: they document the pinned version and, with CDN_FALLBACK
-        off, are never fetched.
-     2  CDN_FALLBACK is false.
-     3  every local path index.html references exists on disk.
-     4  every @font-face url() in vendor/fonts.css + fonts/fonts.css resolves to a real file.
-     5  every font family css/styles.css ASKS FOR has a local @font-face behind it.  <- the one
-        that would have caught the Orbitron/Russo One drift.
-     6  no remote url(), fetch() or XMLHttpRequest anywhere in css/ or js/.
-
-   No dependencies. Exit code 0 = pass, 1 = fail.
-   ========================================================================================== */
+// offline-harness.js: assert Fuzeball boots with no network access. node tools/offline-harness.js (from the project root or tools/)
+// the Electron/Steam wrapper has no CDN and a file:// page has no origin, so every byte must already be on disk (it once regressed: styles.css moved to Russo One while vendor/fonts.css was never regenerated)
+// checks: 1 index.html loads nothing remote (CDN URLs as the 2nd entry of a boot {srcs:[...]} are allowed, never fetched with CDN_FALLBACK off); 2 CDN_FALLBACK is false; 3 every local path index.html references exists; 4 every @font-face url() resolves; 5 every font family styles.css asks for has a local @font-face; 6 no remote url(), fetch() or XMLHttpRequest in css/ or js/
+// no dependencies; exit 0 = pass, 1 = fail
 const fs=require('fs'),path=require('path');
 
 /* Run from either the project root or tools/. */
@@ -37,9 +15,7 @@ let pass=0,fails=[];
 function ok(cond,msg){if(cond)pass++;else fails.push(msg);}
 function section(t){console.log('\n── '+t);}
 
-/* Strip /* *​/ and // comments so a URL mentioned in prose never fails a check. Deliberately
-   crude — it does not respect strings — which is fine here: it only ever makes the scan
-   quieter, and every real load path in this project is a bare literal. */
+// strip /* */ and // comments so a URL in prose never fails a check; crude (ignores strings) but only makes the scan quieter
 const decomment=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1')
                     .replace(/<!--[\s\S]*?-->/g,'');
 
@@ -124,9 +100,7 @@ section('5 · every font family used has a local @font-face');
   'ui-sans-serif','ui-serif','ui-monospace','ui-rounded','inherit','initial','unset','revert',
   '-apple-system','blinkmacsystemfont','arial','helvetica','segoe ui','roboto','tahoma','verdana']);
  const css=read('css/styles.css');
- /* Every declaration that can NAME a family: font-family, the font: shorthand, and the
-    --font-* custom properties css/styles.css indirects through. Only QUOTED names are
-    collected — an unquoted custom family would be missed, and the project has none. */
+ // every declaration that can name a family: font-family, the font shorthand, and the --font-* custom properties; only quoted names are collected
  const used=new Set();
  const decl=/(?:font-family|font|--font-[a-z-]+)\s*:\s*([^;}]+)/gi;
  let m;while((m=decl.exec(css))){

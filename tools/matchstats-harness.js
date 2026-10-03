@@ -1,18 +1,6 @@
-/* ===========================================================================
-   tools/matchstats-harness.js   —   node tools/matchstats-harness.js
-   Headless exercise of js/matchstats.js (FEATURE-IDEAS 1.4). No three.js, no DOM
-   beyond a recording stub, no browser.
-
-   Boots core + config + state + moments + matchstats in ONE vm context, so the
-   real CONFIG.matchStats thresholds and the real momOnTarget projection are the
-   ones under test — the alternative (re-declaring the numbers here) tests the
-   harness, not the game.
-
-   NOTE THE ALIAS HAND-OUT at the bottom of the source we build: MSTAT / F /
-   BALL_R are top-level `const`s and are therefore LEXICAL, not properties of the
-   context — ctx.MSTAT reads back `undefined` and every threshold silently becomes
-   NaN, which looks exactly like passing tests. Same trap the moments harness hit.
-   =========================================================================== */
+// tools/matchstats-harness.js: node tools/matchstats-harness.js
+// headless exercise of js/matchstats.js (FEATURE-IDEAS 1.4); boots core + config + state + moments + matchstats in one vm so the real thresholds and momOnTarget projection are under test
+// the alias hand-out below is needed: MSTAT / F / BALL_R are lexical consts, so ctx.MSTAT reads undefined and every threshold becomes NaN (same trap as the moments harness)
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');

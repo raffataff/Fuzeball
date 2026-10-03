@@ -1,18 +1,9 @@
 'use strict';
-/* ===== charge-verdict harness — node tools/chargeverdict-harness.js =====
-   The DISPLAY half of the charged shot. js/shots.js decides which band a wind-up ended in and
-   stamps it on the rod (tools/shots-harness.js covers that); this covers what the player actually
-   sees — the marker's verdict words, their colour, and the gate that keeps them out of a match.
-
-   IT DRIVES THE REAL fxUpdate(), not a copy of its logic. notice() lives in js/hud.js with the
-   canvas that draws it, so the recorder is a stub of THAT call: every notice fx.js raises lands in
-   __said with the text and colour it was given. Testing a reimplementation of fxUpdate instead
-   would have proved nothing about the file that ships.
-
-   WHY THE ONCE-PER-STAMP TEST EARNS ITS PLACE: the words are fired from the MARKER's own edge
-   (r.chgEndT changing) inside a loop that runs every frame for the whole hold. An edge test that
-   drifts to a level test turns one line into sixty, which reads as a stuck HUD rather than as a
-   bug in the shot code. Mutations at the bottom must each break the suite. */
+// ===== charge-verdict harness: node tools/chargeverdict-harness.js =====
+// the display half of the charged shot (shots.js stamps the band, shots-harness covers that): the marker's verdict words, their colour, and the gate keeping them out of a match
+// it drives the real fxUpdate(); notice() lives in js/hud.js, so the recorder stubs that call and every notice lands in __said with its text and colour
+// the once-per-stamp test matters: the words fire from the marker's edge (r.chgEndT changing) inside a per-frame loop, and an edge drifting to a level test turns one line into sixty
+// mutations at the bottom must each break the suite
 
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -22,10 +13,8 @@ let pass=0,fail=0;const fails=[];
 const ok=(c,m)=>{if(c)pass++;else{fail++;fails.push(m);}};
 const eq=(a,b,m)=>ok(a===b,m+' (got '+JSON.stringify(a)+', want '+JSON.stringify(b)+')');
 
-/* ---- the sandbox ---------------------------------------------------------------------------
-   Only what fx.js's indicator path reaches for. Anything core.js or config.js already declares
-   ($, cfg, ROD_H, F, PHY, pCount…) is ASSIGNED here, never re-declared, or the context throws
-   "already declared" and every later assertion silently becomes a pass. */
+// ---- the sandbox ----
+// only what fx.js's indicator path reaches for; anything core.js or config.js already declares ($, cfg, ROD_H, F, PHY, pCount...) is assigned here, never re-declared
 function build(srcFx){
  const els={},said=[];
  const el=id=>els[id]||(els[id]={id,textContent:'',innerHTML:'',offsetWidth:1,
@@ -63,6 +52,8 @@ function build(srcFx){
   function marksUpdate(){}   // js/marks.js — wall scuffs, nothing to do with the verdict
   var smokePuffs=[],dustRing={visible:false,material:{color:{copy(){}}},scale:{setScalar(){}},position:{}};   // world.js's smoke pool, empty
   var rodHoleMeshes=[];   // world.js's stamina gauges, none built
+  var pinRings=[];   // world.js's pinned-ball rings, none built
+  function kitLin(){return new THREE.Color();}   // world.js's kit-colour transfer
  `,ctx);
  vm.runInContext(srcFx,ctx,{filename:'fx.js'});
  vm.runInContext('globalThis.__c={CHG_COL,fxUpdate};',ctx);

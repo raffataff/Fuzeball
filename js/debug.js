@@ -1,35 +1,15 @@
 'use strict';
-/* ================= collision & AI debug overlay (press C) =================
-   IMPORTANT: the game's collisions are ANALYTIC — hard-coded in physics.js —
-   NOT the meshes. The visual models are pure decoration; nothing about them is
-   read by the sim. This overlay draws translucent proxies at the EXACT collision
-   geometry (walls, goal mouth, per-man capsules, ball spheres) so you can spot
-   where a Blender model drifts from what the game actually collides against.
-   Toggle with C. Colours: red = solid wall, green = open goal mouth,
-   yellow = player capsule, cyan = ball, blue = floor.
-
-   AI visuals (toggled in the debug panel) show the zones and thresholds that
-   drive AI decisions: keeper clamp (gkPad), raise-behind threshold, over-foot
-   reach, in-front swing range, low-height kick limit, and man hysteresis. */
+// ================= collision & AI debug overlay (press C) =================
+// collisions are analytic (physics.js), not the meshes; this draws proxies at the exact geometry
+// red = wall, green = goal mouth, yellow = player capsule, cyan = ball, blue = floor; AI layers show the zones behind AI decisions
 let dbgGroup=null,dbgOn=false,dbgCaps=[],dbgBalls=[],dbgFootS=[];
 let dbgArenaWalls=null,dbgContourRings=[];
-/* SHARED proxy geometries. Nearly every debug visual is a flat plate or an identical
-   per-man primitive, so they all ride ONE unit-cube (and one sphere/cylinder) scaled per
-   mesh rather than allocating a fresh BufferGeometry each. That matters because the
-   overlay is built once and never freed for the session — before this, the AI layers
-   alone allocated ~200 one-off geometries, most of them the same shape at a different
-   size. `dbgGeo` collects everything buildDebug creates so disposeDebug can free the lot.
-   NOTE: a mesh on a shared geometry carries its size in .scale — don't also write .scale
-   in updateAIVis for those layers (the aligned bars and sweet-spot flashes do use .scale
-   for their live animation, which is why both keep their own dedicated geometry). */
+// shared proxy geometries (one unit cube/sphere/cylinder scaled per mesh); dbgGeo collects them for disposeDebug
+// shared-geometry meshes carry size in .scale, so updateAIVis mustn't write .scale on those layers
 let dbgUnitBox=null,dbgUnitSph=null,dbgUnitCyl=null,dbgGeo=[];
 
-/* ===== memory / GPU footprint dump ======================================
-   Boot logs (see main.js) fire this at boot and again once assets have
-   uploaded, so you can see what the menu-idle scene actually costs. Call
-   memLog('label') from the console any time for a fresh snapshot. GPU counts
-   come from renderer.info (geometries/textures/shader programs), JS heap from
-   performance.memory (Chrome only). scene-node count is a rough object tally. */
+// ===== memory / GPU footprint dump =====
+// memLog('label') from the console; GPU counts from renderer.info, JS heap from performance.memory (Chrome only)
 function memFmt(b){return (b||b===0)?(b/1048576).toFixed(1)+'MB':'n/a';}
 function memLog(tag){
  tag=tag||'?';
@@ -39,20 +19,14 @@ function memLog(tag){
  const progs=(ri&&ri.programs)?ri.programs.length:'?';
  let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
  const mc=(typeof modelCache!=='undefined'&&modelCache)?Object.keys(modelCache).length:'?';
- // Resident TABLE assets, by name — the whole point of the lazy loader (CONFIG.tableAssets), so
- // list them rather than count them: a regression here reads as extra keys, not a bigger number.
+ // resident table assets listed by name, so a regression reads as extra keys
  const sk=(typeof skinOrder!=='undefined'&&skinOrder)?(skinOrder.join(',')||'none'):'?';
  const rm=(typeof roomOrder!=='undefined'&&roomOrder)?(roomOrder.join(',')||'none'):'?';
- // Baked reflection maps outlive their room now (CONFIG.tableAssets.cacheEnvs) and are NOT in the
- // scene graph, so memTexBytes() below cannot see them. Listed by key for the same reason skins and
- // rooms are listed rather than counted: a regression here reads as extra keys, not a bigger number.
+ // baked reflection maps aren't in the scene graph (memTexBytes can't see them); listed by key
  const ev=(typeof envOrder!=='undefined'&&envOrder)?(envOrder.join(',')||'none'):'?';
  const pt=(typeof pitchOrder!=='undefined'&&pitchOrder)?(pitchOrder.join(',')||'none'):'?';
  const sy=(typeof skyOrder!=='undefined'&&skyOrder)?(skyOrder.join(',')||'none'):'?';
- // The main canvas isn't the only GL context: the studio, the menu thumbnails and the league setup
- // preview all draw through ONE shared offscreen renderer (PRV, world.js), which holds its own
- // upload of whatever figurines they've shown. Reported separately because main-renderer counts
- // alone look innocent while the second context grows. It only exists once something used it.
+ // the shared offscreen renderer (PRV, world.js) holds its own uploads; reported separately
  const sub=[];
  if(typeof PRV!=='undefined'&&PRV&&PRV.r&&PRV.r.info)
   sub.push('preview '+PRV.r.info.memory.geometries+'g/'+PRV.r.info.memory.textures+'t @'+PRV.w+'x'+PRV.h);
@@ -65,22 +39,10 @@ function memLog(tag){
   +(sub.length?' | extra contexts: '+sub.join(', '):''));
 }
 
-/* ===== texture footprint audit =========================================
-   renderer.info counts textures but says nothing about their SIZE, and size is what actually
-   costs: ONE 4096² RGBA texture is 64MB uploaded (86MB with mipmaps) and roughly that again for
-   the decoded CPU-side image the loader keeps alive. Eighteen of those is 1.5GB from a scene that
-   reads as trivially small in every other metric. memTex() lists the worst offenders so an
-   oversized bake is obvious; memTexBytes() is the one-line total memLog prints.
-
-   Walks the live scene AND the off-scene template caches (figurines, explosions, evicted-but-
-   referenced skins, the ball/pitch GLBs), de-duped by texture uuid, so a texture shared between
-   ten meshes is counted once. Estimate, not truth: it assumes 8-bit RGBA and mipmaps, which is
-   what an uncompressed glTF PNG/JPG becomes once uploaded. */
+// ===== texture footprint audit =====
+// memTex() lists the worst offenders, memTexBytes() is the total; walks the live scene and the caches, de-duped by uuid; an estimate
 function texSize(t){
- /* A COMPRESSED texture is the one case where this does not have to estimate: its mip levels ARE
-    the bytes that go to the GPU, so sum them. The RGBA formula below would over-report a KTX2
-    texture by 4x or more, which would make this audit worse than useless — it is the tool you
-    reach for to decide whether the KTX2 pass worked, so it must not be the thing that lies. */
+ // a compressed texture needn't be estimated: sum its mip levels, or the audit over-reports KTX2 by 4x
  if(t&&t.isCompressedTexture&&t.mipmaps&&t.mipmaps.length){
   let b=0;for(const l of t.mipmaps)b+=(l&&l.data&&l.data.byteLength)||0;
   const m0=t.mipmaps[0]||{},im0=t.image||{};
@@ -100,8 +62,7 @@ function memTexCollect(){
  if(typeof ballExplosionTemplate!=='undefined'&&ballExplosionTemplate)push(ballExplosionTemplate.scene);
  if(typeof respawnSwirlTemplate!=='undefined'&&respawnSwirlTemplate)push(respawnSwirlTemplate.scene);
  if(typeof ballModel!=='undefined')push(ballModel);
- // Pitches are per-id groups now. Walk the RESIDENT ones, not just the shown one: an evicted-but-
- // still-cached pitch is exactly the kind of thing this audit exists to make visible.
+ // walk every resident pitch, not just the shown one
  if(typeof pitchGroups!=='undefined')for(const k in pitchGroups)push(pitchGroups[k]);
  if(typeof roomGroups!=='undefined')for(const k in roomGroups)push(roomGroups[k]);
  const KEYS=['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap','bumpMap','alphaMap','displacementMap','lightMap','envMap'];
@@ -116,34 +77,19 @@ function memTexCollect(){
  return [...seen.values()].sort((a,b)=>b.b-a.b);
 }
 function memTexBytes(){let n=0;for(const t of memTexCollect())n+=t.b;return n;}
-/* Console helper: memTex() → the 15 fattest textures resident, biggest first. Anything at
-   2048² or above on a prop the player never sees up close is a candidate for a downsize. */
+// console helper: the 15 fattest textures resident, biggest first
 function memTex(n){
  const list=memTexCollect();let tot=0,ktx=0,nk=0;
  for(const t of list){tot+=t.b;if(t.gpu){ktx+=t.b;nk++;}}
- // The KTX2 count is worth its own line: it is the difference between "this asset was encoded" and
- // "this asset silently fell back", and at a glance those look identical in the size column.
+ // the KTX2 count shows whether an asset was encoded or silently fell back
  console.log('%c[TEX] '+list.length+' unique, '+memFmt(tot)+' ('+nk+' KTX2 = '+memFmt(ktx)
   +' exact; the rest est. as uncompressed RGBA + mipmaps)','color:#ffcf4d;font-weight:bold');
  console.table(list.slice(0,n||15).map(t=>({texture:t.name,px:t.w+'×'+t.h,MB:+(t.b/1048576).toFixed(1),KTX2:t.gpu?'✓':''})));
  return tot;
 }
 
-/* ===== light audit =====================================================
-   Console-callable census of EVERY light in the game scene, with provenance —
-   because most of them are invisible in the room editor: a pooled light sits at
-   intensity 0 with no marker, and a room GLB's baked fixtures belong to the model
-   rather than to CONFIG. `lightAudit()` answers the two questions that matter:
-   what is lighting this scene, and what is it COSTING.
-
-   The cost line is the point. r128 compiles the scene's light COUNT into every
-   material's program and the fragment shader loops over ALL of them — so a light
-   parked at intensity 0 runs its full attenuation (and, for a spot, its cone
-   smoothstep) on every pixel of every MeshStandardMaterial before multiplying the
-   result by zero. Dead pool slots are not free; they cost what a lit one costs.
-
-   Shadow casters are called out separately because each one is an ENTIRE extra
-   render pass over every caster in the scene, per frame. */
+// ===== light audit =====
+// lightAudit() lists every light with provenance and cost (a pooled light at intensity 0 still costs; shadow casters are extra passes)
 function lightProvenance(l){
  if(typeof hemiLight!=='undefined'&&l===hemiLight)return 'world.js key - hemisphere (applyRoom sets colours/int)';
  if(typeof dirLight!=='undefined'&&l===dirLight)return 'world.js key - directional SUN';
@@ -151,18 +97,12 @@ function lightProvenance(l){
  if(typeof fxLightPool!=='undefined'&&fxLightPool.indexOf(l)>=0)return 'fx light pool'+(l._fxFree?' - FREE (dead weight)':' - borrowed');
  if(typeof roomLightPool!=='undefined')for(const t in roomLightPool)
   if(roomLightPool[t].indexOf(l)>=0)return 'room light pool ['+t+']'+(l._rlFree?' - FREE (dead weight)':' - authored rooms.<id>.lights');
- // Anything left is parented inside a loaded model - almost always a room GLB's baked
- // KHR_lights_punctual, which applyRoomLights transfers and models.js forces castShadow=false.
+ // anything left is inside a loaded model, usually a room GLB's baked lights
  if(typeof roomGroups!=='undefined')for(const id in roomGroups){
   let p=l;while(p){if(p===roomGroups[id])return 'BAKED into room GLB ('+id+') - position lives in the model';p=p.parent;}}
  return 'unknown parent: '+((l.parent&&(l.parent.name||l.parent.type))||'none');
 }
-/* Delivered intensity from one light at the point directly BELOW it, at height y. Comparing
-   y=0 (the table) with y=-43 (the room floor) is what makes the 'why is the rug lit through
-   the table' question answerable: nothing occludes, so the only thing separating the two is
-   distance falloff — and for a lamp out at x=+-55 the floor beneath it is 69 units away against
-   60.8 to the table centre, i.e. essentially the SAME distance. Which is why pulling `dist` in
-   cannot fix it: any setting dark enough to kill the floor kills the table with it. */
+// delivered intensity from one light at the point directly below it at height y
 function lightDeliv(l,wp,y){
  if(l.isHemisphereLight||l.isAmbientLight)return '-';
  if(l.isDirectionalLight)return +l.intensity.toFixed(3);   // no falloff
@@ -214,27 +154,14 @@ let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkB
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
 
-/* ===== per-rod kick decision tracer ======================================
-   Press L (while debug is on) to cycle which rod is traced (RED/BLU · role · x).
-   The tracer emits a compact line ONLY on a state change or an actual kick —
-   NOT every frame — so it can run live without flooding the console or tanking
-   perf. Each ★KICK line carries gap= (seconds since THIS rod's previous kick):
-   a shrinking gap is the "vibrating re-kick" made visible. Blocked frames log
-   the FIRST failing gate (deduped, so a steady block prints once). Zero cost
-   when off: every call site in ai.js is guarded by `dbgLogRod===r`, and
-   dbgLogRod stays null until you press L. Toggle the console mirror with the
-   'Kick→Console' checkbox in the AI panel. */
+// ===== per-rod kick decision tracer =====
+// L (debug on) cycles the traced rod; one line per state change or kick, ★KICK carries gap= (seconds since this rod's last kick)
+// blocked frames log the first failing gate; free when off (call sites test dbgLogRod===r); 'Kick→Console' mirrors to the console
 let dbgLogRod=null,dbgLogLines=[],dbgLogPanel=null,dbgLogBody=null,dbgLogHdr=null;
 let dbgLogPrevKick=-1,dbgLogConsole=false;
-/* Dedupe is PER CHANNEL, not one shared slot. With a single slot (the old dbgLogLastKind) any two
-   emitters that both fire every frame with different-but-steady kinds ping-pong forever: the ACT
-   trace writes 'ACT:trap', the gate trace immediately overwrites it with 'BLK:out-of-reach', so on
-   the next frame BOTH look changed and both print → 2 lines × sim hz = thousands of lines a second.
-   Now each emitter dedupes against its own last kind, so a steady state prints ONCE no matter what
-   else is logging. A real event (kick/contact) clears the channels so the following state re-announces. */
+// dedupe per channel (one shared slot would ping-pong between emitters); a real event clears the channels
 let dbgLogLast={};
-/* Repeat collapse: an identical line arriving again (a genuine per-frame oscillation, which IS worth
-   seeing) folds into a ×N counter on the existing line instead of pushing thousands of copies. */
+// an identical line folds into a xN counter instead of pushing copies
 let dbgLogRepKey='',dbgLogRepN=1,dbgLogRepTxt='',dbgLogDirty=false;
 function dbgRodName(r){return (r.team===0?'RED':'BLU')+' '+r.role+' x'+r.x;}
 function dbgFmtT(t){return 't'+t.toFixed(2);}
@@ -252,12 +179,9 @@ function buildKickLogPanel(){
  dbgLogPanel=p;dbgLogHdr=h;dbgLogBody=b;
 }
 function renderKickLog(){if(dbgLogBody)dbgLogBody.innerHTML=dbgLogLines.join('<br>');dbgLogDirty=false;}
-// Flushed once per FRAME from debugUpdate rather than on every push — the sim runs several steps per
-// frame, and rewriting innerHTML per step was both unreadable and needless DOM churn.
+// flushed once per frame from debugUpdate, not per sim step
 function flushKickLog(){if(dbgLogDirty)renderKickLog();}
-/* key = an identity for "this is the same line as before". Same key ⇒ collapse into a ×N counter on
-   the line already at the bottom; different key (or none) ⇒ a new line. The console mirror only ever
-   sees new lines, so it can't flood either. */
+// key = identity of a line: same key collapses into a xN counter, else a new line; the console mirror only sees new lines
 function dbgLogPush(s,key){
  if(key&&key===dbgLogRepKey&&dbgLogLines.length){
   dbgLogRepN++;
@@ -270,12 +194,8 @@ function dbgLogPush(s,key){
  if(dbgLogConsole)console.log('[kick] '+s);
  dbgLogDirty=true;
 }
-/* True only when `kind` differs from the last kind seen on THIS channel (see dbgLogLast above) AND
-   the channel isn't thrashing. A state that genuinely flips A→B→A every step (a real oscillation, and
-   the thing you most want to catch) would still emit a line per flip — at sim hz that's the flood all
-   over again. So a channel that changes faster than DBG_LOG_GAP has its individual lines swallowed and
-   counted; the next line that does get through is preceded by ONE '⇄ thrash  N changes suppressed'
-   summary. Oscillation stays visible, volume is capped at ~1/DBG_LOG_GAP lines per channel. */
+// true when `kind` differs from the last on this channel and the channel isn't thrashing
+// a channel changing faster than DBG_LOG_GAP has lines swallowed and counted, with one '⇄ thrash' summary
 const DBG_LOG_GAP=0.35;
 let dbgLogT={},dbgLogSkip={};
 function dbgLogNew(ch,kind){
@@ -299,47 +219,26 @@ function cycleKickLog(){
  dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
  toast('KICK LOG',dbgLogRod?dbgRodName(dbgLogRod):'off',1.0);Au.ui();   // tier 3: dev chatter, not a goal
 }
-/* state-change / action trace (benched, held-forward escape, trap-shot, ACT:*). Channel = the kind's
-   prefix before ':' when it has one, else 'act' — so the ACT:* trace dedupes against ITSELF (one line
-   per genuine action change) and can't ping-pong with the gate trace or with BENCH/HELD-ESC. */
+// state-change / action trace; channel = the kind's prefix before ':' (else 'act')
 function dbgRod(r,kind,detail){
  if(r!==dbgLogRod)return;
  const i=kind.indexOf(':'),ch=i>0?kind.slice(0,i):'act';
  if(!dbgLogNew(ch,kind))return;
  dbgLogPush(dbgFmtT(S.time)+'  '+kind+(detail?('  '+detail):''),ch+'|'+kind);
 }
-// real contact: collideRod calls this the first time a foot box (or capsule graze) actually
-// resolves against the ball during a swing — so a ★KICK followed by ✓CONTACT connected, and a
-// ★KICK that ends in a ✗WHIFF (logged by updateRods when the swing completes untouched) missed.
-/* c = the vn breakdown captured in collideRod (optional). vn is EXACTLY (foot·n − ball·n) — the two
-   halves are logged separately so a contact can be attributed: a big `foot` term is the swing driving
-   the ball, a big negative `ball` term is the ball arriving into a stationary boot. Also:
-     swing  = |rotational contact-point velocity| = ω × arm-to-contact (the whole swing, not just its
-              normal component — compare against `foot` to see how much of the swing actually landed)
-     slide  = r.vz, the rod's sideways travel — the other source of contact-point motion
-     ω      = r.angVel this step. A one-step spike here means the swing curve jumped (see the
-              windupA / raised-rod note in CLAUDE.md) rather than swept.
-     jm     = impulse actually applied along n, AFTER rest/stHit/sweet/boost
-     rest   = which restitution was used — restPower if the timed power window was open, else rest */
+// real contact: collideRod calls this when a foot box or capsule graze first resolves in a swing; ★KICK then ✓CONTACT hit, ✗WHIFF missed
+// c = the vn breakdown (vn = foot·n - ball·n); swing = |rotational contact velocity|, slide = r.vz, ω = r.angVel (a spike = the curve jumped), jm = impulse, rest = restitution
 function dbgHit(r,man,foot,pow,sweet,vn,b,c){
  if(r!==dbgLogRod)return;
  dbgLogLast={};                                  // a real event: let every steady state re-announce after it
- // vn to 1dp: a graze (vn<0.5) used to render as a flat 'vn=0', which reads like the ball gained speed
- // from a zero-force touch. It didn't — the impulse really was ~0 and the speed came from the GRIP term
- // (b.v is lerped toward the contact point's velocity, i.e. the foot's swing speed, on any contact).
+ // vn to 1dp so a graze doesn't read as 'vn=0'; the speed then comes from the grip term
  dbgLogPush(dbgFmtT(S.time)+'  ✓CONTACT '+(foot?'foot':'leg ')+' man='+man+(pow?' [POWER]':'')+(sweet?' [SWEET]':'')
   +'  vn='+vn.toFixed(1)+'  ball→'+b.v.length().toFixed(0)+'u/s');
  if(c)dbgLogPush('      vn = foot '+c.fn.toFixed(1)+' − ball '+c.bn.toFixed(1)
   +'  │ swing '+c.sw.toFixed(1)+' slide '+c.sl.toFixed(1)+' ω '+c.w.toFixed(1)
   +'  │ jm '+c.jm.toFixed(1)+' rest '+c.rest+' kickT '+c.kt.toFixed(3));
 }
-// the kick GATE: logs every fire (with gap since the last), and the first failing
-// condition when blocked (deduped). g = the gate's raw booleans/values from ai.js.
-//   ex   = this rod's banked swing exertion / kickFat.full, i.e. stamina channel B (stats.js).
-//          ai.js calls this BEFORE kickRod, so it's the count going INTO this swing — watch it
-//          step up one per ★KICK and bleed back down in the gaps.
-//   fat  = the resulting stFat multiplier, the number actually applied to speed/reaction/aim.
-//          Both channels are in it, so a fresh rod late in a match still reads under 100%.
+// the kick gate: logs every fire (with gap) and the first failing condition when blocked; g = ai.js's raw gate values; ex = exertion / kickFat.full before this swing, fat = the stFat multiplier
 function dbgKickGate(r,g){
  if(r!==dbgLogRod)return;
  const now=S.time;
@@ -429,8 +328,7 @@ function buildDebug(){
  const keep=g=>{dbgGeo.push(g);return g;};          // register a one-off geometry for disposeDebug
  const wallM=dbgMat(0xff3b3b,.30),goalM=dbgMat(0x3bff6a,.22),floorM=dbgMat(0x3b7bff,.12),
        manM=dbgMat(0xffe23b,.38),ballM=new THREE.MeshBasicMaterial({color:0x2af5ff,wireframe:true});
- // Every flat plate in the overlay comes through here, so this one line is what collapses
- // the wall/goal/zone boxes onto a single geometry. Size lives in .scale from now on.
+ // every flat plate comes through here, collapsing onto one geometry; size lives in .scale
  const box=(w,h,d,x,y,z,m,g)=>{const b=new THREE.Mesh(dbgUnitBox,m);b.scale.set(w,h,d);b.position.set(x,y,z);(g||dbgGroup).add(b);return b;};
  // Same idea for the AI layers' floor plates, which sit flat and only vary in w/d.
  const plate=(m,w,h,d,x,y,z)=>{const b=new THREE.Mesh(dbgUnitBox,m);b.scale.set(w,h,d);b.position.set(x,y,z);b.visible=false;dbgAIGroup.add(b);return b;};
@@ -446,11 +344,7 @@ function buildDebug(){
   box(0.08,F.wallH-F.goalH,F.goalHalf*2,s*F.L/2,(F.goalH+F.wallH)/2,0,wallM);   // lintel above mouth
   box(0.08,F.goalH,F.goalHalf*2,s*F.L/2,F.goalH/2,0,goalM);                     // open goal mouth
  });
- // player capsules: pivot(y=ROD_H) -> foot(-ARM), radius PRAD. Parented to each
- // pivot so they inherit rotation.z (swing) and position.z (slide) for free —
- // exactly how collideRod builds the segment.
- // Every man's proxy is the SAME size, so the geometries and materials are built once
- // here and shared across all 22 — this loop used to allocate 5 geometries per man.
+ // player capsules: pivot(y=ROD_H) to foot(-ARM), radius PRAD, parented to each pivot; built once, shared by all 22
  const rch=BALL_R*FOOT_BOX_REACH;
  const footBM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.45,wireframe:true,depthWrite:false});
  const reachM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false});
@@ -471,7 +365,7 @@ function buildDebug(){
  }
   // ball collision spheres (radius BALL_R), positioned each frame.
   for(let i=0;i<KICK.splitMax+2;i++){const s=new THREE.Mesh(dbgUnitSph,ballM);s.scale.setScalar(BALL_R);s.visible=false;dbgGroup.add(s);dbgBalls.push(s);}
-  // arena debug: low-res wireframe of the swept bowl (shown when ARENA_ON instead of flat wall proxies)
+  // arena debug: low-res wireframe of the swept bowl (when ARENA_ON)
   dbgArenaWalls=buildArenaDebugMesh();
   if(dbgArenaWalls){dbgArenaWalls.visible=false;dbgGroup.add(dbgArenaWalls);
    if(dbgArenaWalls.geometry)keep(dbgArenaWalls.geometry);}   // built in arena.js — register it so disposeDebug frees it too
@@ -498,8 +392,7 @@ function buildDebug(){
   g.visible=false;dbgAIGroup.add(g);dbgAIGKPad.push(g);
  }
 
- // Per-rod x-zones: raiseBehind, overFoot, inFront.
- // These are boxes lying flat on the floor spanning the rod's full slide range in z.
+ // per-rod x-zones: raiseBehind, overFoot, inFront (flat boxes spanning the slide range)
   const raiseM=dbgMat(0xff2bd6,.18),footM=dbgMat(0x7dff8a,.18),ufootM=dbgMat(0xff8c3a,.18),frontM=dbgMat(0x3d8bff,.18);
  const abox=(w,d,x,z,m)=>{const g=new THREE.Group();box(w,0.04,d,x,0.03,z,m,g);dbgAIGroup.add(g);return g;};
  for(const r of rods){
@@ -514,8 +407,7 @@ function buildDebug(){
   const rg=abox(rbSize,zS,rbCx,zC,raiseM);
   rg.visible=false;dbgAIRaise.push(rg);
 
-   // overFoot: forward-offset zone — [overFootOffset-overFoot, overFootOffset+overFoot] dir-relative
-   // (shifted forward of the rod so the latch releases when the ball is clearly at the men, not behind)
+   // overFoot: forward-offset zone, dir-relative
    const ofCx=r.x+AIC.overFootOffset*dir;
    const og=abox(AIC.overFoot*2,zS,ofCx,zC,footM);
    og.visible=false;dbgAIOverFoot.push(og);
@@ -532,10 +424,7 @@ function buildDebug(){
   ig.visible=false;dbgAIInFront.push(ig);
  }
 
- // dropSweep: per-man danger boxes — a ball inside one gets swiped if the rod lowers
- // from a held-forward angle. x = sweep window (heldFwd.xBack..heldFwd.xFront, dir-
- // relative), z = ±(footBox.z + BALL_R + heldFwd.zMargin) around each foot. Positioned
- // per-frame (follows slide); hot pink while the rod is actually held (r.heldFwd).
+ // dropSweep: per-man danger boxes (a ball inside is swiped if the rod lowers from held-forward); hot pink while r.heldFwd
  const dsW=AIC.heldFwd.xBack+AIC.heldFwd.xFront;
  const dsZ=(FOOT_BOX.z+BALL_R+AIC.heldFwd.zMargin)*2;
  const dsGeo=keep(new THREE.BoxGeometry(dsW,0.05,dsZ));
@@ -545,10 +434,7 @@ function buildDebug(){
   dbgDropSweep.push({mesh:m,rod:r,manIdx:i,matDim:dsDim,matHot:dsHot});
  }
 
- // footRange: the inFootRange(r,b) reach rectangle per man — the "would lowering OR raising
- // clip this ball" test that gates safeRaise + evade. x = -footRangeBack..underFootFront
- // (dir-relative, reaches deep behind for a raising swing), z = ±(footBox.z + BALL_R +
- // clearMargin) around each foot. Follows the slide; hot white while any live ball is inside.
+ // footRange: the inFootRange reach rectangle per man (gates safeRaise and evade); hot white while a live ball is inside
  const frW=AIC.footRangeBack+AIC.underFootFront;
  const frZ=(FOOT_BOX.z+BALL_R+AIC.clearMargin)*2;
  const frGeo=keep(new THREE.BoxGeometry(frW,0.05,frZ));
@@ -558,9 +444,7 @@ function buildDebug(){
   dbgFootRange.push({mesh:m,rod:r,manIdx:i,matDim:frDim,matHot:frHot});
  }
 
- // trapZone: per-rod box behind the rod (x = trap.back..trap.front dir-relative, z = full
- // slide range) where a slow-in-x ball can be trapped instead of raised over. Static
- // position; material goes hot purple while that rod's r.act==='trap'.
+ // trapZone: box behind the rod (trap.back..front); hot purple while r.act==='trap'
  const tzDim=dbgMat(0xc77dff,.15),tzHot=dbgMat(0xc77dff,.5);
  const tzW=AIC.trap.front-AIC.trap.back;
  for(const r of rods){
@@ -570,9 +454,7 @@ function buildDebug(){
   dbgTrapZone.push({mesh:m,rod:r,matDim:tzDim,matHot:tzHot});
  }
 
- // safeRaise: per-rod box behind the rod (x = safeRaise.back..front dir-relative, z = full
- // slide range) where a slow, sideways ball is lifted to SR.angle instead of left on the floor.
- // Static position; material goes hot lime while that rod's r.act==='safeRaise'.
+ // safeRaise: box behind the rod (safeRaise.back..front); hot lime while r.act==='safeRaise'
  const srDim=dbgMat(0xc2ff4d,.15),srHot=dbgMat(0xc2ff4d,.5);
  for(const r of rods){
   const dir=r.team===0?1:-1;
@@ -584,9 +466,7 @@ function buildDebug(){
   dbgSafeRaise.push({mesh:m,rod:r,matDim:srDim,matHot:srHot});
  }
 
- // evade: per-rod box directly behind the rod (x = -footRangeBack..0 dir-relative, z = full
- // slide range) — where a slow ball stuck against the men gets side-stepped instead of walled.
- // Static position; material goes hot teal while that rod's r.act==='evade'.
+ // evade: box directly behind the rod (-footRangeBack..0); hot teal while r.act==='evade'
  const evDim=dbgMat(0x00d9a3,.15),evHot=dbgMat(0x00d9a3,.5);
  const evW=AIC.footRangeBack;
  for(const r of rods){
@@ -596,9 +476,7 @@ function buildDebug(){
   dbgEvade.push({mesh:m,rod:r,matDim:evDim,matHot:evHot});
  }
 
- // evadeDead: per-rod box behind the rod (x = -behindDead..0 dir-relative, z = full slide range)
- // — where evade is suppressed because the ball is too close and would get hit backwards.
- // Tied to the evade toggle; drawn in orange to distinguish from the teal evade zone.
+ // evadeDead: box where evade is suppressed (the ball is too close); orange, tied to the evade toggle
  const edDim=dbgMat(0xff6b4a,.18),edHot=dbgMat(0xff6b4a,.55);
  const edW=AIC.evade.behindDead;
  for(const r of rods){
@@ -608,11 +486,7 @@ function buildDebug(){
   dbgEvadeDead.push({mesh:m,rod:r,matDim:edDim,matHot:edHot});
  }
 
- // makeWay (clearLane): the actual trigger region, on the rods that can actually use it —
- // x = -nearBall..behind (dir-relative, the band where the ball is the MATE BEHIND US's to play),
- // z = that mate's SLIDE BAND ± zPad (for a DEF the mate is the keeper, so this is the keeper's
- // reach: a ball outside it is a corner/wall ball nobody behind us can clear, and the row plays it
- // normally). Built only for rods in clearLane.roles. Hot pink while that rod's r.act==='lane'.
+ // makeWay (clearLane): the trigger region on the rods that use it; hot pink while r.act==='lane'
  const CLD=AIC.clearLane;
  const mwDim=dbgMat(0xffa1f0,.16),mwHot=dbgMat(0xffa1f0,.5);
  const mwW=Math.max(.1,CLD.nearBall+CLD.behind);   // behind is negative
@@ -628,11 +502,8 @@ function buildDebug(){
   dbgMakeWay.push({mesh:m,rod:r,matDim:mwDim,matHot:mwHot});
  }
 
- // dribble: the trigger band (x = dribble.back..front dir-relative — i.e. the STRIKE zone, which is
- // the point: these are balls the rod would otherwise have poked forward — by the rod's full slide
- // range in z), built only for rods in dribble.roles. Hot violet while that rod's r.act==='dribble'.
- // Plus, per rod, a carry-TARGET disc at the committed r.dribZ and a line to the chosen pass
- // receiver — both live, so the layer shows the decision as well as the region.
+ // dribble: the trigger band (the strike zone) on dribble.roles rods; hot violet while r.act==='dribble'
+ // plus a carry-target disc at r.dribZ and a line to the chosen pass receiver
  const DRD=AIC.dribble;
  const drDim=dbgMat(0x7a5cff,.15),drHot=dbgMat(0x7a5cff,.5);
  const drMark=dbgMat(0x7a5cff,.95),drPass=dbgMat(0x7a5cff,.9);
@@ -654,19 +525,13 @@ function buildDebug(){
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
  svg.visible=false;dbgAIServe.push(svg);
 
- // redropZones: dead-ball face-off zones (DEAD.redrop.zones) — each ±spread wide in x,
- // full ±DEAD.redrop.z deep in z (same z range for every zone).
+ // redropZones: dead-ball face-off zones (DEAD.redrop.zones), each ±spread in x and ±DEAD.redrop.z in z
  const redropM=dbgMat(0xff5c5c,.22);
  for(const z of DEAD.redrop.zones){
   const rzg=abox(z.spread*2,DEAD.redrop.z*2,z.x,0,redropM);
   rzg.visible=false;dbgAIRedrop.push(rzg);
  }
- // ...plus each zone's CATCHMENT (z.from) — the stretch of pitch that zone SERVES under
- // redrop.sameThird — as a thin bar along the near touchline, so the third boundaries read without
- // painting over the pitch. This is the half of the rule you otherwise can't see: watching a ball
- // re-appear in the middle zone tells you nothing about whether it was sent there or rolled a 1-in-3.
- // Clamped to the table (the outer ranges deliberately run past the goal lines to catch a ball that
- // left behind a goal) and inset a touch on each side so two neighbouring bars don't read as one.
+ // ...plus each zone's catchment (z.from) as a thin bar along the near touchline
  const catchM=dbgMat(0xff5c5c,.12);
  for(const z of DEAD.redrop.zones){
   if(!z.from)continue;
@@ -676,16 +541,9 @@ function buildDebug(){
   cg.visible=false;dbgAIRedrop.push(cg);
  }
 
- // deadzones: the active table's dead-ball pockets (activeTable.deadzones — corners where a
- // pinned ball can't be reached, so the stuck-timer ticks CONFIG.deadball.zoneMult× faster;
- // see deadzoneMult in powerups.js). Each corner zone {xMin,zMin} → one flat box per corner,
- // spanning xMin..F.L/2 by zMin..F.W/2. Static; goes hot red while a live ball sits inside a
- // pocket. updateAIVis hides boxes whose zone isn't in the CURRENT table (handles table swaps).
+ // deadzones: the active table's dead-ball pockets (activeTable.deadzones, see deadzoneMult in powerups.js); hot red while a live ball is inside; hidden for other tables
  const dzDim=dbgMat(0xff4d4d,.16),dzHot=dbgMat(0xff4d4d,.55);
- // ONE height for every flat plate on this layer. Must clear the ACTIVE TABLE SKIN's field surface:
- // a GLB pitch can sit a hair above y=0, which buries a decal at 0.05 — invisible mid-pitch (where
- // the lanes are) while the corner plates, out past the slide range, still peek. Raise if a new skin
- // hides them; it's a decal, so any small value still reads as flat on the floor.
+ // one height for every flat plate on this layer; must clear the active skin's field surface, raise if a skin hides them
  const dzY=0.35;
  const dzList=(activeTable&&activeTable.deadzones)||[];
  for(const z of dzList){
@@ -695,16 +553,12 @@ function buildDebug(){
    dbgDeadzones.push({mesh:m,zone:z,sx,sz,matDim:dzDim,matHot:dzHot});
   }
  }
- // …plus the GOAL ROOF, on the same layer: goalFrameCollide keeps a solid top over each goal box, so
- // a ball settled up there is unreachable too (CONFIG.deadball.roofMult). Plate at y=goalH over the
- // box; drawn at the stock mouth width, so under 'big goal' the live zone is wider than the plate.
+ // ...plus the goal roof (CONFIG.deadball.roofMult), drawn at the stock mouth width
  if(DEAD.roofMult>1)for(const sx of [-1,1]){
   const m=plate(dzDim,F.goalDepth,0.05,F.goalHalf*2,sx*(F.L/2+F.goalDepth/2),F.goalH,0);
   dbgDeadzones.push({mesh:m,zone:null,roof:true,sx,sz:0,matDim:dzDim,matHot:dzHot});
  }
- // …and the between-row lanes (CONFIG.deadball.rodGaps.lanes — strips neither adjacent row can swing
- // at). Same flat plate as the corner pockets, full pitch width, straight off the config list so the
- // overlay is literally what the timer reads.
+ // ...and the between-row lanes (CONFIG.deadball.rodGaps.lanes), straight off the config
  for(const ln of rodGaps()){
   const m=plate(dzDim,ln.x1-ln.x0,0.05,F.W,(ln.x0+ln.x1)/2,dzY,0);
   dbgDeadzones.push({mesh:m,zone:null,band:ln,sx:0,sz:0,matDim:dzDim,matHot:dzHot});
@@ -729,9 +583,8 @@ function buildDebug(){
    dbgAITargetDots.push({dot,rod:r});
   }
 
-  // aligned: per-man floor bars showing ±align zone along z. Green = nearest man is aligned.
-  // keeps its OWN geometry (not dbgUnitBox): updateAIVis animates these bars via .scale.z,
-  // which would fight the unit-box sizing.
+  // aligned: per-man floor bars showing the ±align zone along z, green = nearest man aligned
+  // keeps its own geometry since updateAIVis animates .scale.z
   const alGeo=keep(new THREE.BoxGeometry(0.15,0.06,AIC.alignSlow*2));
   const alMatGreen=dbgMat(0x7dff8a,.65);
   const alMatDim=dbgMat(0x7dff8a,.12);
@@ -743,10 +596,7 @@ function buildDebug(){
    }
   }
 
- // shotLanes: gap-aim visualisation. Per rod, a pool of gapAim.samples floor lines
- // (ball → goal-mouth target) recoloured green(open)/red(blocked) each frame, plus a disc
- // at the chosen target. Only drawn for rods actually gap-aiming this frame (r.aimEv set).
- // Shares the analytic lanes from ai.js shotEval (stashed on r.aimEv) — no recompute here.
+ // shotLanes: per gap-aiming rod, a pool of gapAim.samples lines (green open / red blocked) plus a target disc (r.aimEv, from shotEval)
  dbgShotOpen=new THREE.LineBasicMaterial({color:0x2bff88,transparent:true,opacity:.9});   // line: open lane
  dbgShotBlock=new THREE.LineBasicMaterial({color:0xff3b3b,transparent:true,opacity:.75});  // line: blocked lane
  dbgMarkOpen=dbgMat(0xffe14d,.95);dbgMarkBlock=dbgMat(0xff3b3b,.9);                         // disc: chosen target good/bad
@@ -762,26 +612,22 @@ function buildDebug(){
 
   dbgAIGroup.visible=false;
 
-  // sweetSpot: per-man area in front of the foot (dir-relative x band off the rod × narrow
-  // z-centre of the foot) where a clean strike earns the power/juice bonus. Static floor box
-  // matching the analytic test in physics.js collideRod (SW.zFrac, SW.xMin/xMax).
+  // sweetSpot: per-man area in front of the foot where a clean strike earns the power bonus (matches collideRod, SW.zFrac, SW.xMin/xMax)
   const sweetM=dbgMat(0xffe14d,.20),sweetHot=dbgMat(0xffe14d,.85);
   const SW=KICK.sweetSpot;
   szW=SW.xMax-SW.xMin; szCxOff=(SW.xMin+SW.xMax)/2; szZ=FOOT_BOX.z*SW.zFrac*2;
   for(const r of rods){
    for(let i=0;i<r.baseZ.length;i++){
     const g=new THREE.Group();
-    box(szW,0.04,szZ,0,0.035,0,sweetM,g);   // box at group origin; updateAIVis moves the GROUP to the live foot (no double-offset)
+    box(szW,0.04,szZ,0,0.035,0,sweetM,g);   // box at the group origin; updateAIVis moves the group to the live foot
     g.visible=false;dbgAIGroup.add(g);
     dbgSweet.push({group:g,rod:r,manIdx:i,matDim:sweetM,matHot:sweetHot});
    }
   }
 
-  // sweetSpot flash: a rising, fading disc placed at the contact point whenever a sweet kick
-  // lands (r.aimSweet set by physics each frame). Pooled, one per foot.
+  // sweetSpot flash: a fading disc at the contact point when a sweet kick lands (r.aimSweet); pooled, one per foot
   dbgSweetFlashMat=dbgMat(0xffe14d,.9);
-  // Own geometry, hoisted (was one per man): updateAIVis pops these with .scale.setScalar,
-  // so they can't ride dbgUnitCyl the way the static discs do.
+  // own geometry: updateAIVis scales these, so they can't share dbgUnitCyl
   const sfGeo=keep(new THREE.CylinderGeometry(0.5,0.5,0.1,16));
   for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
    const d=new THREE.Mesh(sfGeo,dbgSweetFlashMat);
@@ -790,16 +636,8 @@ function buildDebug(){
   }
 }
 
-/* Tear the whole overlay down and free its GPU buffers. `C` alone does NOT call this — toggling
-   off just hides, because rebuilding costs a visible hitch and you usually toggle straight back
-   on. Call this when you want it genuinely gone (console: disposeDebug()), e.g. before profiling
-   so the overlay isn't in the scene graph at all. buildDebug() runs clean afterwards.
-   The capsules and manHyst rings hang off r.pivot rather than the debug groups, so they're
-   stripped separately — anything that ever REPLACES the rod pivots (buildRods, which today only
-   runs once at boot) must call this first or they'd be stranded on discarded pivots.
-   rebuildRodMen only swaps r.men, so it leaves these alone and needs no hook.
-   Materials come from dbgMat and are never shared with game meshes, so disposing them is safe;
-   every geometry buildDebug creates is registered in dbgGeo. */
+// tear the overlay down and free its GPU buffers (console: disposeDebug()); `C` alone only hides
+// capsules and manHyst rings hang off r.pivot, so anything replacing the pivots (buildRods) must call this first
 function disposeDebug(){
  if(!dbgGroup)return;
  const mats=new Set();
@@ -839,10 +677,7 @@ function updateAIVis(){
    for(const g of dbgAIServe)g.visible=on&&dbgAIOpts.serveZone;
    for(const g of dbgAIRedrop)g.visible=on&&dbgAIOpts.redropZones;
 
-   // deadzones: static corner pockets (only for the active table — hide any built for another) plus
-   // the two goal roofs and the between-row lanes, which are table-independent. Hot red while a live
-   // ball is actually inside. The roof test defers to deadzoneMult itself rather than restating its
-   // box, so the overlay can't drift from the timer it's meant to explain.
+   // deadzones: corner pockets for the active table, plus the goal roofs and between-row lanes; the roof test defers to deadzoneMult
    {const cur=(activeTable&&activeTable.deadzones)||[];
    for(const dz of dbgDeadzones){
     const vis=!!(on&&dbgAIOpts.deadzones&&(dz.roof||dz.band||cur.indexOf(dz.zone)>=0));  // !! — dz.band is an ARRAY
@@ -856,8 +691,7 @@ function updateAIVis(){
     dz.mesh.material=hot?dz.matHot:dz.matDim;
    }}
 
-   // sweetSpot: per-man area follows the live foot (slide offset + dir); hot yellow while
-   // that man's aimSweet fired this frame. Matches physics.js collideRod's fz / relR test.
+   // sweetSpot: follows the live foot; hot yellow when that man's aimSweet fired this frame
    for(const s of dbgSweet){
     const vis=on&&dbgAIOpts.sweetSpot;
     s.group.visible=vis;if(!vis)continue;
@@ -901,8 +735,7 @@ function updateAIVis(){
    mw.mesh.material=mw.rod.act==='lane'?mw.matHot:mw.matDim;
   }
 
-  // dribble: static trigger band (hot violet while carrying) + the live decision — a disc at the
-  // committed carry target r.dribZ, and a line to the pass receiver the rod would pick right now.
+  // dribble: static trigger band (hot violet while carrying), a disc at r.dribZ, a line to the receiver the rod would pick
   for(const dr of dbgDribble){
    const vis=on&&dbgAIOpts.dribble,r=dr.rod,carrying=r.act==='dribble';
    dr.mesh.visible=vis;
@@ -929,8 +762,7 @@ function updateAIVis(){
    ds.mesh.material=r.heldFwd?ds.matHot:ds.matDim;
   }
 
-  // footRange: inFootRange reach box per man, follows the slide; hot white while any live ball
-  // clips THIS man (mirrors inFootRange's per-man x-band + z-footprint test in ai.js).
+  // footRange: follows the slide; hot white while a live ball clips this man (mirrors inFootRange in ai.js)
   {const hz=FOOT_BOX.z+BALL_R+AIC.clearMargin;
   for(const fr of dbgFootRange){
    const vis=on&&dbgAIOpts.footRange;
@@ -989,7 +821,7 @@ function updateAIVis(){
    td.dot.visible=true;
   }
 
-  // shotLanes: per gap-aiming rod, draw its sampled lanes (green open / red blocked) + target disc
+  // shotLanes: per gap-aiming rod, its sampled lanes and target disc
   for(const sl of dbgShotLanes){
    const ev=sl.rod.aimEv,vis=on&&dbgAIOpts.shotLanes&&!!ev;
    if(!vis){for(const ln of sl.lines)ln.visible=false;sl.marker.visible=false;continue;}
@@ -1008,7 +840,7 @@ function updateAIVis(){
     sl.marker.visible=true;
   }
 
-  // sweetSpot flash: a disc blooms at the foot whenever a sweet kick landed there this frame
+  // sweetSpot flash: a disc blooms at the foot when a sweet kick landed this frame
   for(const f of dbgSweetFlash){
    const r=f.rod;
    const fired=r.aimSweet===f.manIdx;
@@ -1024,18 +856,7 @@ function updateAIVis(){
   }
 }
 
-/* PARK the overlay out of the scene graph when it's off.
-   `visible=false` is NOT enough: renderer.render() calls scene.updateMatrixWorld(), which recurses
-   through invisible objects — only projectObject (the render-list build) skips them. So a hidden
-   overlay was still being walked every pass, and with cfg.reflections on updateBallReflect renders
-   the whole scene 6 MORE times every ballReflect.every frames (plus the shadow pass), so that walk
-   happened several times a frame for nothing. The capsules and manHyst rings are the worst of it:
-   they hang off r.pivot, which moves every frame, so their matrices were genuinely RECOMPUTED
-   rather than skipped.
-   Detaching costs nothing on the GPU — geometries, materials and compiled programs all stay
-   resident — so re-entry is instant and there's still no reason for `C` to dispose.
-   Each object remembers its own parent in userData.dbgHome, so this works uniformly for the two
-   scene-level groups and for the pivot-parented proxies. */
+// park the overlay out of the scene graph when off (visible=false still gets walked); the parent is kept in userData.dbgHome
 function dbgPark(o){if(!o||!o.parent)return;o.userData.dbgHome=o.parent;o.parent.remove(o);}
 function dbgUnpark(o){const h=o&&o.userData&&o.userData.dbgHome;if(h&&!o.parent)h.add(o);}
 function dbgAttach(on){
@@ -1054,10 +875,7 @@ function toggleDebug(){
   dbgAIGroup.visible=dbgOn;
  if(dbgAIPanel)dbgAIPanel.style.display=dbgOn?'block':'none';
  if(dbgLogPanel)dbgLogPanel.style.display=(dbgOn&&dbgLogRod)?'block':'none';
- // Drop the AI tracer on the way out. It's guarded by `dbgLogRod===r` at ~40 call sites in ai.js
- // and physics.js, but those run per SIM STEP (up to SIM.maxSteps a frame) and nothing drains the
- // buffer while the overlay is hidden — flushKickLog only runs in debugUpdate's dbgOn branch.
- // L is dbgOn-gated anyway, so you re-pick the rod on re-entry.
+ // drop the AI tracer on the way out: its call sites run per sim step and nothing drains the buffer while hidden
  if(!dbgOn){dbgLogRod=null;dbgLogLast={};dbgLogRepKey='';}
  updateAIVis();
  toast('COLLISION DEBUG',dbgOn?'red=wall · green=goal · yellow=player':'off',1.1);
@@ -1129,9 +947,7 @@ function updateFootBoxes(){
    fr.mesh.rotation.set(0,0,r.angle);
  }
 }
-/* Dev readouts go to the HUD canvas as KEYED sections (hudDev, js/hud.js): each updater owns one
-   block and a null removes it, so none can overwrite another and switching one off really clears it.
-   A row is a line of [label, value, hot] triples. */
+// dev readouts go to the HUD canvas as keyed sections (hudDev, js/hud.js): each updater owns one block, null removes it; rows are [label, value, hot] triples
 function updateCamInfo(){
  const p=camera.position;
  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
@@ -1146,13 +962,7 @@ function updateBallVel(){
  const v=S.balls[0].v;
  hudDev('vel',[[['VEL X',v.x.toFixed(1)],['Z',v.z.toFixed(1)]]]);
 }
-/* DEAD-BALL CLOCK (js/powerups.js deadBallUpdate). Shows the stall timer the whistle is
-   read from, the multiplier being applied to it right now, and how much of the live-zone grace
-   budget this ball has spent — the three numbers you need to tune CONFIG.deadball.live.
-   The trailing figure is a PROJECTION at the current multiplier: how long until the whistle IF
-   nothing changes. The ball moving changes the multiplier, so treat it as a reading, not a promise.
-   Everything here is computed from state the sim already keeps, and only inside debugUpdate's
-   dbgOn branch, so a closed overlay costs nothing. */
+// DEAD-BALL CLOCK (powerups.js deadBallUpdate): the stall timer, the multiplier now, and the live-zone grace spent (tune CONFIG.deadball.live); the trailing figure is a projection
 function updateDeadBall(){
  if(typeof deadzoneMult!=='function'){hudDev('dead',[[['DEAD BALL','n/a']]]);return;}
  if(S.trn&&!S.trn.deadball){hudDev('dead',[[['DEAD BALL','off (sandbox)']]]);return;}
@@ -1161,29 +971,20 @@ function updateDeadBall(){
  for(let i=0;i<S.balls.length&&i<3;i++){
   const b=S.balls[i],p=b.cur,st=b.stuckT||0,gr=b.graceT||0;
   const zm=deadzoneMult(p);
-  // Mirror deadBallUpdate's own gate exactly, or the readout will disagree with the whistle.
+  // mirror deadBallUpdate's gate exactly or the readout disagrees with the whistle
   const live=zm===1&&L&&L.on&&gr<L.graceMax&&typeof liveZone==='function'&&liveZone(p);
   const mult=live?L.mult:zm;
-  let left;
-  if(live&&L.mult<1){
-   const graceReal=(L.graceMax-gr)/(1-L.mult);   // real seconds the remaining budget still buys
-   const gain=graceReal*L.mult;                  // …and the stall time that adds while it lasts
-   left=(st+gain>=DEAD.stallT)?(DEAD.stallT-st)/L.mult:graceReal+(DEAD.stallT-st-gain);
-  }else left=(DEAD.stallT-st)/Math.max(mult,1e-6);
+  const left=deadLeft(b);
   const row=[];
   if(S.balls.length>1)row.push(['B'+i,'']);
   row.push(['STALL',st.toFixed(2)+'/'+DEAD.stallT.toFixed(1)],['x',mult.toFixed(2)]);
   if(L)row.push(['GRACE',gr.toFixed(2)+'/'+L.graceMax.toFixed(1)]);
-  row.push([live?'IN REACH':(zm>1?'DEADZONE':'PLAIN'),(left>99?'99+':left.toFixed(1))+'s',left<1.5]);
+  row.push([live?'IN REACH':(zm>1?'DEADZONE':'PLAIN'),(left>99?'99+':left.toFixed(1))+'s',left<AIC.force.left]);   // hot = the AI push is on
   rows.push(row);
  }
  hudDev('dead',rows);
 }
-/* FPS readout: measured from a private performance.now() clock (not the loop's rdt, which is
-   capped at .05) so a real stall reads as a true dip. dbgFpsEma is a smoothed frame time in ms
-   (heavy smoothing so the number is readable); LOW is the worst frame seen in the last second,
-   republished once/sec — the 1%-low that catches hitches the average hides. dbgFpsLast is reset
-   to 0 while the readout is hidden so the first frame back doesn't log one giant gap as a stall. */
+// FPS readout from a private performance.now() clock; dbgFpsEma = smoothed frame ms, LOW = worst frame in the last second
 let dbgFpsLast=0,dbgFpsEma=0,dbgFpsWorst=0,dbgFpsMinMs=0,dbgFpsWinT=0,dbgFpsDiag=null;
 function updateFps(detail){
   const now=performance.now();
@@ -1203,10 +1004,7 @@ function updateFps(detail){
   if(detail&&dbgFpsDiag)rows.push(dbgFpsDiag);
   hudDev('fps',rows);
 }
-/* Leak-watch line (debug overlay only). These counts should be FLAT during steady play. If NODES /
-   GEO / TEX / DRAW climb over a match, a 59→49-style decline is an accumulation — something spawned
-   and never freed. If they're flat while fps still sags, it's thermal throttling on the chip, not the
-   code. Recomputed once per second (scene.traverse is cheap at this cadence). */
+// leak-watch line: NODES / GEO / TEX / DRAW should be flat in steady play (climbing = something isn't freed); recomputed once a second
 function fpsDiag(){
  let nodes=0;if(typeof scene!=='undefined'&&scene)scene.traverse(()=>nodes++);
  const ri=(typeof renderer!=='undefined'&&renderer)?renderer.info:null;

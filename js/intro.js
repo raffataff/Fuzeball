@@ -1,11 +1,7 @@
 'use strict';
-/* ================= intro cinematic =================
-   Lit-fuse boot splash: a spark snakes across the dark on a bezier, detonates
-   into a shockwave + ember burst, the logo slams in with chromatic ghosts, a
-   specular shine sweeps it, then the logo morphs up into its menu spot while
-   the menu staggers in. Doubles as the loading screen — holds on the settled
-   logo until boot() fires. Pure canvas/CSS, no assets beyond the logo PNG.
-   All knobs in CONFIG.intro. Any key/click skips. */
+// ================= intro cinematic =================
+// a lit-fuse boot splash: a spark snakes across the dark, detonates into a shockwave and embers, the logo slams in, then morphs up into its menu spot; also the loading screen (holds until boot() fires)
+// pure canvas/CSS; knobs in CONFIG.intro; any key/click skips
 let introReady=false;                 // flipped by main.js boot() via introGameReady()
 let introSkipHook=null;               // the skip, for js/padnav.js — a pad button skips like a key does
 function introGameReady(){introReady=true;}
@@ -62,7 +58,7 @@ function introGameReady(){introReady=true;}
  }
  function skip(){
   if((performance.now()-t0)/1000<.3||revealing)return;
-  if(typeof startLoading==='function')startLoading(); // skipping cuts the intro short — start the asset chain NOW instead of waiting on its full-length timer (idempotent)
+  if(typeof startLoading==='function')startLoading(); // skipping cuts the intro short: start the asset chain now instead of waiting on its timer (idempotent)
   ov.classList.add('fast');
   if(!detonated)detonate();
   if(!slammed){slammed=true;lw.classList.add('slam');}

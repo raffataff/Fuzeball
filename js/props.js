@@ -1,40 +1,10 @@
 'use strict';
-/* ===== prop library + instancing =========================================
-   A ROOM is a shell; the things that fill it are PROPS, and a prop is one small
-   GLB in assets/props/ that any room may use.
-
-   WHAT THIS IS AND IS NOT FOR. It is NOT a draw-call fix — that was measured before
-   it was built and the numbers say the opposite. The pub backdrop is 47 meshes, 69
-   draw calls and 5,472 triangles; its five beams and three stools cost 4 draw calls
-   out of 69. Instancing them saves nothing you could detect. What that GLB actually
-   costs is 16 textures: 44.7 MB in the file and ~167 MB uploaded to the GPU (the
-   arcade is ~216 MB). A 2048-square texture is 21 MB of VRAM however small its jpg is.
-   So the wins here are the two that scale:
-     * SHARED ASSETS. A prop is loaded, decoded and uploaded ONCE and every room that
-       places it reuses that upload. Today each room glb re-ships its own copy of
-       everything it contains, which is exactly why they are 45 MB each.
-     * COUNT. Hundreds or thousands of copies — a crowd — is where instancing is the
-       only option. That is FEATURE-IDEAS 4.1 and it is what this is really for.
-   If a room feels heavy, the profiler (M) will say GPU/BROWSER and the fix is texture
-   size, not this file.
-
-   HOW IT WORKS. A prop template is flattened ONCE into parts: one entry per
-   (geometry, material) pair, each carrying its own transform inside the prop. Placing
-   the prop N times builds one THREE.InstancedMesh per PART with N instances, so a
-   3-mesh chair placed 200 times is 3 draw calls, not 600. Instance matrix is
-   place x partLocal, so a prop's internal structure survives instancing.
-
-   THE DISPOSAL TRAP, and it is the same one the power-up pickups have: an
-   InstancedMesh SHARES its geometry and material with the resident template. Freeing a
-   room's props must remove the instanced meshes and NOTHING else — dispose the shared
-   geometry and every future room that places that prop renders nothing. Only
-   disposeProp() (evicting the template itself) may free those.
-
-   LIGHTS ARE STRIPPED FROM PROPS ON PURPOSE. r128 bakes the scene's light COUNT into
-   every material's program, so a prop arriving with a lamp in it would force a
-   whole-scene shader recompile the moment a room is shown. Same rule as the fx light
-   pool — see the 2026-07-24 entry. Use an emissive material, or borrow from fxLightGet.
-   ========================================================================= */
+// ===== prop library + instancing =====
+// a room is a shell filled with props; a prop is one small GLB in assets/props/ that any room may use
+// not a draw-call fix (a room's cost is its textures, ~167 MB uploaded for the pub): the wins are shared assets (a prop is loaded and uploaded once for every room) and count (crowds, FEATURE-IDEAS 4.1)
+// a template is flattened into parts (one per geometry+material pair); N placements build one InstancedMesh per part, matrix = place x partLocal
+// disposal trap: instanced meshes share geometry and material with the resident template, so freeing a room's props removes the meshes only (disposeProp() may free the template)
+// lights are stripped from props (r128 bakes the light count into every program): use an emissive material or fxLightGet
 
 const propTemplates={};   // id -> {parts:[{geo,mat,m}], box} — flattened, resident, shared
 const propLoading={};     // id -> [cbs] while its glb is in flight
@@ -42,9 +12,7 @@ const propFailed={};      // ids whose glb 404'd (latched, session-scoped, like 
 const propGroups={};      // roomId -> THREE.Group of InstancedMeshes (parallel to roomGroups)
 let propManifest=null;    // assets/props/manifest.json, if present
 
-/* The web cannot list a directory over file://, so "any glb in a folder" needs a
-   manifest. tools/build_props_manifest.js writes one; CONFIG.props.lib overrides or
-   adds to it, so a prop can also be declared by hand with no build step. */
+// the web can't list a directory over file://, so tools/build_props_manifest.js writes a manifest; CONFIG.props.lib overrides or adds to it
 function propLib(){
  const P=(typeof CONFIG!=='undefined'&&CONFIG.props)||{};
  return Object.assign({},(propManifest&&propManifest.props)||{},P.lib||{});
@@ -61,13 +29,8 @@ function loadPropManifest(cb){
  }).catch(()=>{if(cb)cb();});   // no manifest is a legal state — CONFIG.props.lib still works
 }
 
-/* --- template load + flatten --------------------------------------------- */
-/* Flatten a loaded prop into (geometry, material) PARTS, each with its transform
-   relative to the prop root. Done once, at load: instancing a prop later is then a
-   pure matrix job with no scene-graph walk. `fit`/`ground` normalise the authored
-   scale so a prop dropped in from Blender arrives usable without hand-tuning —
-   `fit` is a target HEIGHT (what you actually know about a chair), not a bounding
-   radius, and `ground` sits its base on y=0 so placements are floor coordinates. */
+// --- template load + flatten ---
+// flatten a loaded prop into (geometry, material) parts relative to the root, once at load; `fit` is a target height, `ground` sits the base on y=0
 function propFlatten(root,d){
  root.updateMatrixWorld(true);
  const strip=[];
@@ -114,20 +77,14 @@ function ensureProp(id,cb){
  });
 }
 
-/* --- deterministic scatter ------------------------------------------------
-   Every scatter is driven by a SEEDED rng (mulberry32), so a layout is identical on
-   every load and on every machine. That is not a nicety: a crowd that re-rolls each
-   time cannot be art-directed, cannot be screenshotted twice the same way, and turns
-   any "does this look right" judgement into guesswork. Change `seed` to reroll. */
+// --- deterministic scatter ---
+// every scatter uses a seeded rng (mulberry32), so a layout is identical on every load and machine (change `seed` to reroll)
 function propRng(seed){let a=(seed|0)||1;return function(){
  a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;
  return((t^t>>>14)>>>0)/4294967296;};}
 
-/* Turn one placement spec into a flat list of {p,ry,s,tint}. `at` is explicit
-   placement; `scatter` generates. Both may appear — explicit entries come first. */
-// baseSeed, NOT rngSeed: that is now a global function (js/rng.js) and a parameter of the same
-// name would shadow it here - legal, but the next person to reach for it inside this function
-// would get "rngSeed is not a function" with nothing on screen to explain why.
+// one placement spec to a flat list of {p,ry,s,tint}: `at` is explicit, `scatter` generates, explicit entries first
+// baseSeed, not rngSeed: that's a global function (js/rng.js) and the parameter would shadow it
 function propPlacements(spec,baseSeed){
  const out=[],R=propRng(spec.seed===undefined?baseSeed:spec.seed);
  const num=(v,d)=>(typeof v==='number'?v:d);
@@ -182,10 +139,8 @@ function propPlacements(spec,baseSeed){
  return out;
 }
 
-/* --- build / free --------------------------------------------------------- */
-/* One InstancedMesh per PART per spec. Instance matrix = place x partLocal, so a
-   multi-mesh prop keeps its internal structure. Counts are capped: a typo in `n`
-   should cost a console line, not a gigabyte of instance matrices. */
+// --- build / free ---
+// one InstancedMesh per part per spec; counts are capped (a typo in `n` should cost a console line, not a gigabyte)
 function propBuildSpec(group,spec,seed,specIndex){
  const t=propTemplates[spec.prop];if(!t)return 0;
  const P=(typeof CONFIG!=='undefined'&&CONFIG.props)||{};
@@ -217,9 +172,7 @@ function propBuildSpec(group,spec,seed,specIndex){
  });
  return made;
 }
-/* Build (or rebuild) every prop a room declares. Async only where a template still
-   has to download; the common case — templates already resident — completes on the
-   spot, so switching rooms does not pop props in a frame late. */
+// build (or rebuild) every prop a room declares; async only where a template still downloads, so room switches don't pop props in late
 function buildRoomProps(id,rm,cb){
  const P=(typeof CONFIG!=='undefined'&&CONFIG.props)||{};
  const specs=(rm&&rm.props)||[];
@@ -229,9 +182,7 @@ function buildRoomProps(id,rm,cb){
  let left=specs.length;
  const done=()=>{
   if(--left>0)return;
-  // Boot applies the room more than once, so two builds of one room can be in flight together.
-  // The second to finish used to overwrite propGroups[id] and ORPHAN the first — still in the
-  // scene and visible: every prop drawn twice, and the stray copy survived leaving the room.
+  // boot applies the room more than once, so two builds can be in flight; the second would orphan the first (props drawn twice)
   disposeRoomProps(id);
   const g=propGroups[id]=new THREE.Group();g.name='props:'+id;
   g.visible=false;scene.add(g);
@@ -244,9 +195,7 @@ function buildRoomProps(id,rm,cb){
  };
  specs.forEach(s=>ensureProp(s.prop,done));
 }
-/* Remove a room's instanced meshes. Deliberately does NOT dispose geometry or
-   materials — those belong to the resident template and are shared by every other
-   room placing the same prop. See the trap note at the top of this file. */
+// remove a room's instanced meshes; geometry and materials belong to the resident template
 function disposeRoomProps(id){
  const g=propGroups[id];if(!g)return;
  scene.remove(g);
@@ -268,8 +217,7 @@ function disposeProp(id){
  });
  delete propTemplates[id];console.log('prop freed: '+id);
 }
-/* Compile a room's prop materials off-screen, so the first frame a room is shown is
-   not a shader stall. Same discipline as warmPowerupShaders / warmFractureTemplate. */
+// compile a room's prop materials off-screen so the first frame isn't a shader stall
 function warmPropShaders(g){
  if(!renderer||!scene||!camera||!g)return;
  const vis=g.visible;g.visible=true;

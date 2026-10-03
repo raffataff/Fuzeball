@@ -1,21 +1,12 @@
-/* Room sky faces -> KTX2, for CONFIG.rooms.<id>.sky (models.js ensureSky).
-
-   UASTC, NOT ETC1S, and that is the whole reason this is not just ktx2-encode.mjs. A sky is almost
-   entirely smooth dark gradient, which is exactly what ETC1S's shared-endpoint codec turns into
-   visible banding and blocky mud. UASTC transcodes to BC7/ASTC (1 byte/pixel, near-lossless), so a
-   1024² face with mips is ~1.4MB of VRAM and the dither build_nebula_sky.py bakes in survives.
-   Zstd supercompression (basisu's default for UASTC in a .ktx2) keeps the mostly-black files small.
-
-   sRGB (no -linear): the faces are colour, and r128 decodes them in the shader like any sRGB map.
-   Every face is resampled to one size (a multiple of 4 — BC7 refuses anything else, see
-   ktx2-encode.mjs) and gets a full mip chain, because the background samples at a steep minification
-   near the screen edges and aliased stars shimmer.
-
-   USAGE (from the project root; needs `npm i` in tools/ once)
-     node tools/sky-encode.mjs <srcDir> <outPrefix> [--size 1024] [--name nebula] [--level 2]
-     e.g. node tools/sky-encode.mjs tools/build/sky/void assets/rooms/void/sky/nebula
-   reads  <srcDir>/<name>_{px,nx,py,ny,pz,nz}.png
-   writes <outPrefix>_{px,nx,py,ny,pz,nz}.ktx2 */
+// Room sky faces -> KTX2, for CONFIG.rooms.<id>.sky (models.js ensureSky).
+// UASTC, not ETC1S (the reason this isn't just ktx2-encode.mjs): a sky is smooth dark gradient, which ETC1S turns into banding; UASTC transcodes to BC7/ASTC near-losslessly (a 1024² face with mips is ~1.4MB VRAM) and the baked dither survives; Zstd keeps the mostly-black files small
+// sRGB (no -linear); every face is resampled to one size (a multiple of 4, BC7 refuses others) with a full mip chain, or aliased stars shimmer
+//
+// USAGE (from the project root; `npm i` in tools/ once)
+//      node tools/sky-encode.mjs <srcDir> <outPrefix> [--size 1024] [--name nebula] [--level 2]
+//      e.g. node tools/sky-encode.mjs tools/build/sky/void assets/rooms/void/sky/nebula
+//    reads  <srcDir>/<name>_{px,nx,py,ny,pz,nz}.png
+//    writes <outPrefix>_{px,nx,py,ny,pz,nz}.ktx2
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

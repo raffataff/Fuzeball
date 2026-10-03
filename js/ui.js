@@ -1,7 +1,6 @@
 'use strict';
 /* ================= UI wiring ================= */
-// Fill the Skin dropdown from the current table's skins (CONFIG.tables[cfg.table].skins).
-// The row hides itself when a table has only one skin (nothing to choose).
+// fill the Skin dropdown from the current table's skins; the row hides when there's only one
 function refreshSkinSelect(){
  const sel=$('setSkin');if(!sel)return;
  const T=CONFIG.tables[cfg.table]||CONFIG.tables.classic;
@@ -14,8 +13,7 @@ function refreshSkinSelect(){
  if(sel.parentElement)sel.parentElement.style.display=Object.keys(skins).length>1?'':'none';
 }
 function bindUI(){
- // populate the table + location dropdowns from the CONFIG registries (like the pitch select below),
- // so adding an entry to CONFIG.tables / CONFIG.rooms auto-adds its option — no HTML edit needed.
+ // populate the table and location dropdowns from the CONFIG registries (a new entry needs no HTML edit)
  const tableSel=$('setTable');tableSel.innerHTML='';
  for(const [tid,tdef] of Object.entries(CONFIG.tables)){const o=document.createElement('option');o.value=tid;o.textContent=(tdef.name||tid).toUpperCase();tableSel.appendChild(o);}
  const roomSel=$('setRoom');roomSel.innerHTML='';
@@ -31,16 +29,9 @@ function bindUI(){
  $('setDiffBlue').onchange=e=>{cfg.diffBlue=e.target.value;saveCfg();};
  $('setGoals').onchange=e=>{cfg.goals=+e.target.value;saveCfg();};
  $('setGameTime').onchange=e=>{cfg.gameTime=+e.target.value;saveCfg();};
- // Every venue control below hands its work to venueLoad (js/flow.js) instead of running it
- // inline: the swap is the same work, but staged across frames behind the loading veil so the
- // browser can actually paint, and warmed with renderer.compile() before it is revealed.
+ // every venue control hands its work to venueLoad (js/flow.js): staged behind the loading veil and warmed with renderer.compile()
  $('setRoom').onchange=e=>{cfg.room=e.target.value;venueLoad(d=>applyRoom(d),{label:'LOADING ROOM'});saveCfg();};
-  // mirror of the Options→Display 'Reflections' box, so it owes the same bookkeeping: a preset is a
-  // BUNDLE of the four heavy knobs, and moving one of them out from under it makes the label a lie.
-  // syncDisplayUI() repaints the Display tab from cfg on every openOptions, so the checkbox and the
-  // dropdown only need mirroring here for the case where both panels are already on screen.
-  // Reflections re-decides the room's env between the synthetic bake and the real GLB one, so it
-  // pays a fresh PMREM pass — staged for the same reason a room change is.
+  // mirror of the Options > Display 'Reflections' box: moving one of a preset's four heavy knobs flips it to 'custom'; reflections re-decides the room's env (a PMREM pass), so it's staged like a room change
   $('setReflect').onchange=e=>{cfg.reflections=e.target.checked;cfg.gfxPreset='custom';
    venueLoad(d=>{applyRoom(d);refreshBallReflect();},{label:'REFLECTIONS'});
    if($('optReflect2'))$('optReflect2').checked=e.target.checked;if($('optPreset'))$('optPreset').value='custom';saveCfg();};
@@ -54,36 +45,26 @@ function bindUI(){
     const opt=document.createElement('option');opt.value=pid;opt.textContent=pdef.name;pitchSel.appendChild(opt);
   }
   pitchSel.value=cfg.pitch;
-  // A pitch is its own GLB now (CONFIG.pitches[id].glb), so this is a real fetch — drawField takes
-  // an onReady and the veil stays up until the pitch is RESIDENT, then the gate's renderer.compile()
-  // pays its upload before anything is revealed. Synchronous when it is already cached.
+  // a pitch is its own GLB (CONFIG.pitches[id].glb): drawField takes an onReady and the veil stays up until it's resident
   pitchSel.onchange=e=>{cfg.pitch=e.target.value;
    venueLoad(d=>{if(typeof drawField==='function')drawField(d);else d();},{label:'LOADING PITCH'});saveCfg();};
  $('setSpecial').onchange=e=>{cfg.special=e.target.checked;saveCfg();};
  $('setPower').onchange=e=>{cfg.power=e.target.checked;saveCfg();};
  $('setReplay').onchange=e=>{cfg.replay=e.target.checked;saveCfg();};
  $('setAuto').onchange=e=>{cfg.auto=e.target.checked;saveCfg();};
- // the roster header picks the name up on its own next tick (rosSig diff) — no call needed here
+ // the roster header picks the name up on its own next tick (rosSig diff)
  $('nameRed').oninput=e=>{cfg.redName=(e.target.value||'RED').toUpperCase();refreshKitUI();saveCfg();};
  $('nameBlue').oninput=e=>{cfg.blueName=(e.target.value||'BLUE').toUpperCase();refreshKitUI();saveCfg();};
- // landing screen (#home) → the rest of the game. LEAGUE/TRAINING bind themselves in their own
- // files; these two are the routes that have no module of their own. Au.init() rides the FIRST
- // user gesture on this screen — WebAudio needs one, and Kick Off/Options are the two cards that
- // don't already call it (league.js's btnLeague does).
+ // landing screen (#home) to the rest of the game; LEAGUE/TRAINING bind themselves in their own files; Au.init() rides the first gesture here (WebAudio needs one)
  $('btnKickOff').onclick=()=>{Au.init();Au.ui();showScreen('menu');};
  $('btnHomeOptions').onclick=()=>{Au.init();openOptions('home');};
  $('menuBack').onclick=()=>{showScreen('home');Au.ui('back');};
  $('menuTabBtnTeam').onclick=()=>{menuSetTab('team');Au.ui('tab');};
  $('menuTabBtnRules').onclick=()=>{menuSetTab('rules');Au.ui('tab');};
  menuSetTab('team');
- // The three mode cards (PLAY RED / PLAY BLUE / AI SHOWDOWN) and their rod rows are gone —
- // the roster replaces all of them: side, rod and who's AI are now per-seat (js/roster.js).
+ // the old mode cards are gone: side, rod and who's AI are per-seat now (js/roster.js)
  $('btnResume').onclick=()=>togglePause();
- /* A TRIAL RESTARTS THROUGH ITS OWN RESET, not through startMatch. startMatch would rebuild the
-    sandbox with S.trial still pointing at the finished run and nothing armed in TRL.pending, so
-    trialArm would decline and hand back a half-set-up trial: HUD still up, spec no longer applied.
-    trialReset is also the only path that re-seeds from S.seed, which is what makes a retry
-    comparable to the attempt before it. typeof-guarded, so a missing trials.js changes nothing. */
+ // a trial restarts through its own reset, not startMatch (it would leave a half-set-up trial); trialReset also re-seeds from S.seed so a retry is comparable
  $('btnRestart').onclick=()=>{
   if(S.trial&&typeof trialRestart==='function'){togglePause();trialRestart();return;}
   startMatch(S.mode,S.rodLockRole);
@@ -91,22 +72,15 @@ function bindUI(){
  $('btnPauseMenu').onclick=()=>{
   if(S.lg){
    if(S.lg.matchStart&&S.time-S.lg.matchStart<CONFIG.league.graceT){gotoMenu();return;}
-    // goalTarget(), not a hardcoded CUP.goals/league.goals pair: the goal target belongs to the
-    // league SAVE now (LG.goals) and a cup tie plays to the same one, so quoting the config
-    // default would promise a scoreline the record below no longer writes.
+    // goalTarget(), not CUP.goals/league.goals: the goal target belongs to the league save (LG.goals)
     $('lgForfeit').classList.remove('hidden');$('lgForfeitMsg').innerHTML='Recorded as a 0–'+goalTarget()+' loss';Au.ui();
   }
   else gotoMenu();
  };
   $('btnForfeit').onclick=()=>{
-    // #lgForfeit is an OVERLAY, so it isn't in the screen registry and hideScreens() won't take it
-    // down — without this it stayed up over the lobby you just forfeited back to. (League too.)
+    // #lgForfeit is an overlay, so hideScreens() won't take it down
     $('lgForfeit').classList.add('hidden');
-    // gotoMenu is what tears the match down (balls, fractures, replay, HUD) and restores the
-    // player's real kit/table from S.lg.prevKit. The cup branch used to skip it and route straight
-    // to the bracket, leaving a paused match and the cup's kit still overriding the player's.
-    // cupRecord/lgRecord run FIRST — both read S.lg, which gotoMenu clears (and goalTarget() reads
-    // it too, so the forfeit scoreline must be built BEFORE the teardown).
+    // gotoMenu tears the match down and restores the kit/table from S.lg.prevKit; cupRecord/lgRecord run first (both read S.lg, which gotoMenu clears)
     const fl=goalTarget();
     if(S.lg&&S.lg.cup){S.score=[0,fl];cupRecord(1);gotoMenu();openCup();}
     else{S.score=[0,fl];lgRecord(1);gotoMenu();openLeague();}
@@ -119,10 +93,7 @@ function bindUI(){
  refreshKitUI();
  bindOptions();
 }
-/* Kick Off tabs. Each tab owns its own .panelWrap and its own ⊞ button, so the ⊞ for the tab
-   you're NOT looking at is hidden — two edit buttons stacked in the same corner would be a
-   coin toss as to which region you were about to rearrange. layApply is re-run on reveal
-   because a wrap inside a display:none tab measures 0 wide and can't be laid out. */
+// Kick Off tabs: each owns its own .panelWrap and ⊞ button (the hidden tab's is hidden); layApply re-runs on reveal
 function menuSetTab(t){
  const team=t!=='rules';
  $('menuTab_team').classList.toggle('hidden',!team);
@@ -133,10 +104,7 @@ function menuSetTab(t){
  $('menuRulesEditLayout').classList.toggle('hidden',team);
  if(typeof layApply==='function')layApply(team?'menu':'menuRules');
 }
-/* In-game yes/no, in place of the browser's confirm(). That dialog can't be answered with a
-   controller, it blocks the page (the game loop included), and it looks like a web page. Cancel
-   is the default focus and what B / Esc press, so the destructive answer always takes a
-   deliberate move. */
+// in-game yes/no in place of confirm() (no pad, blocks the loop); Cancel is the default focus and what B/Esc press
 let uiConfirmFn=null;
 function uiConfirm(title,msg,ok,fn){
  $('uiConfirmTitle').textContent=title;$('uiConfirmMsg').textContent=msg;$('uiConfirmOk').textContent=ok||'OK';

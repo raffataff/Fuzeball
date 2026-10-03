@@ -1,79 +1,26 @@
 'use strict';
-/* ================= skill trials =================
-   FEATURE-IDEAS 3.2. A trial is TRAINING MODE WITH A RULEBOOK ON TOP, not a new mode — and that
-   is the whole structural decision. training.js already owns everything a trial needs (rod
-   show/hide, per-team AI off, ball placement, no match clock, no power-ups, goals that don't end
-   anything), and five other files already gate on S.trn. So a trial runs as mode 'training' and
-   adds ONE more nullable gate, S.trial, which only this file and a handful of one-line hooks in
-   training.js ever test. A missing trials.js cannot break a match — same discipline as S.photo /
-   S.trn / S.redit.
-
-   WHAT MAKES A TRIAL A CHALLENGE RATHER THAN A COIN TOSS is js/rng.js, which landed first for
-   exactly this reason. The seed is declared per trial, S.seedNext carries it into startMatchNow,
-   and a RETRY re-seeds from S.seed — so attempt 12 replays attempt 1's ball, bounce and AI.
-   Without that, medal times would be comparing different games.
-
-   THE CLOCK IS SIM TIME (S.time), NEVER WALL CLOCK. S.time only advances inside main.js's fixed
-   step, so a dropped frame — or a frame that banks fewer steps than it should — costs the player
-   nothing and cannot flatter them either. It starts on the player's FIRST TOUCH rather than on a
-   count-in: no extra machinery, and nobody loses a second getting their bearings.
-
-   THE OBJECTIVE READS EVENTS THE GAME ALREADY PRODUCES. Goals arrive through trainingGoal (the
-   single hook every training goal passes), and which ROD scored comes off b.mss — matchstats'
-   last-SWING record, which is live in training because msOn() has no training gate. Nothing new
-   is computed on the sim path; trialTick runs once per FRAME off training.js's own tick, which is
-   where FEATURE-IDEAS says to keep new logic (a sim-path check costs ~7x more on a slow frame).
-   moments.js IS read, and it has to be: momOn() carries an explicit S.trial clause, so woodwork
-   and saves fire in a trial and are what a 'stat' and a 'saveRun' objective count. Don't tidy
-   that clause away.
-
-   THERE ARE TWO SCORING DIRECTIONS AND ONLY TWO. Every kind but one is scored on ELAPSED SIM
-   SECONDS, lower is better. A 'saveRun' is scored on SAVES OUT OF N ATTEMPTS, higher is better —
-   the keeper never has to swing, so a clock could not be its metric even in principle. The
-   direction is derived from the objective kind (trialDir) and one comparator flip carries it
-   through medals, personal bests, the list and the HUD.  */
+// ================= skill trials =================
+// training mode (S.trial gate) with a rulebook; retry re-seeds from S.seed; the clock is sim time
+// scored on elapsed seconds (lower wins) or, for saveRun, saves (higher wins); momOn() has an S.trial clause objectives need
 const TRLC=CONFIG.trials;
 const TRL={def:null,pending:null,run:false,t0:0,secs:0,done:false,ok:false,goals:0,
  roles:null,statKey:null,statN:0,medal:null,pb:false,tbl:null,hudBuilt:false,sig:'',
- /* ---- 'saveRun' state (the GK kind). Scored on SAVES OUT OF N ATTEMPTS rather than on elapsed
-    sim seconds, so this is the one kind that reads its medal thresholds the other way up.
-      saveRun  the spec's goal block while this kind is live, else null. Every branch below tests
-               this single flag, so an ordinary trial reads none of the rest.
-      att      attempts SERVED (1..n).    saves  attempts kept out.
-      svSeen   the ledger's saves[0] already consumed. A save is banked from this DELTA and never
-               read as a total, which is what guarantees saves <= attempts even when two land
-               inside one frame.
-      res      this attempt is settled and the next ball is being held back.
-      attT0    sim time this attempt was served - what the attemptT failsafe measures from.
-      serving  true while the table is deliberately empty between attempts. training.js's goal
-               respawn reads S.trial.serving so the sandbox cannot drop a ball into the gap, and
-               redropBall reads S.trial.spawn so a stalled ball goes back on THIS attempt's spot. */
+ // --- 'saveRun' state (the GK kind) ---
+ // att/saves count attempts and saves, svSeen is the ledger delta banked, res = attempt settled
+ // serving = table empty between attempts (training.js reads it), attT0 = serve time
  saveRun:null,att:0,saves:0,svSeen:0,res:false,attT0:0,serveAt:0,serving:false,spawn:null,
- /* wall-clock ms at which the result panel is allowed to appear — set by trialFinish, so the
-    freeze and the panel are two separate moments (CONFIG.trials.resultDelay). 0 = show now. */
+ // wall-clock ms when the result panel may appear (set by trialFinish, CONFIG.trials.resultDelay); 0 = now
  showAt:0,
- /* the DISCIPLINE tab #trials is showing. Lives here rather than in cfg on purpose — see the
-    header above renderTrials. Resolved to a real section on the first render. */
+ // the discipline tab #trials shows; kept here rather than in cfg, resolved on the first render
  cat:null};
-/* HUD wording for a 'stat' objective. Any ledger counter works without an entry here — it falls
-   back to the key uppercased — this is only where that reads badly ('onTarget' -> 'ON TARGET'). */
+// HUD wording for a 'stat' objective; any ledger counter works, this is only for keys that read badly
 const TRL_LABEL={woodwork:'WOODWORK',passes:'PASSES',saves:'SAVES',shots:'SHOTS',onTarget:'ON TARGET',kicks:'KICKS'};
 
 function trialOn(){return !!(TRLC&&TRLC.on!==false&&TRLC.list&&TRLC.list.length);}
 function trialById(id){if(!TRLC||!TRLC.list)return null;for(const t of TRLC.list)if(t.id===id)return t;return null;}
 function trialBest(id){const m=cfg.trials;return (m&&m[id])||null;}
-/* ---- the score, and its DIRECTION -------------------------------------------
-   For every kind but one the metric is ELAPSED SIM SECONDS and lower is better, which is what
-   lets a stopwatch trial and a countdown one share the whole comparison path — a countdown only
-   changes what the HUD displays, not what is scored. It is also why a SURVIVE objective was
-   refused on 2026-08-20: it would complete at exactly its limit every time and hand out nothing
-   but gold.
-
-   A 'saveRun' is the case that earns the second direction honestly. Its metric is SAVES and more
-   is better, so the thresholds are read the other way up. The direction is DERIVED from the
-   objective kind rather than declared beside it, so a spec can never ship a metric and a
-   direction that disagree — and the tests below stay in one order (gold, silver, bronze) for
-   both, so the whole path turns on a single comparator flip. */
+// --- the score and its direction ---
+// saveRun is saves (higher wins), everything else elapsed sim seconds (lower wins); the direction comes from the kind
 function trialDir(d){return (d&&d.goal&&d.goal.kind==='saveRun')?1:-1;}
 function trialMedal(d,v){
  const m=d.medals||{},up=trialDir(d)>0;
@@ -83,30 +30,18 @@ function trialMedal(d,v){
  return null;
 }
 function trialBetter(d,v,prev){return trialDir(d)>0?v>prev:v<prev;}
-/* What a stored best MEANS for this trial. cfg.trials[id].best holds seconds for a stopwatch
-   trial and SAVES for a saveRun — one slot, two units, which is only safe because a trial id may
-   never be renamed OR re-kinded: either would silently turn every stored best into a lie. */
+// cfg.trials[id].best is seconds for a stopwatch trial and saves for a saveRun, so never rename or re-kind a trial id
 function trialScoreText(d,v){
  return (trialDir(d)>0)?(v+' / '+((d.goal&&d.goal.n)||1)+' saved'):(v.toFixed(2)+'s');
 }
 
-/* ---- the daily challenge (FEATURE-IDEAS 3.3) --------------------------------
-   One setup per calendar day, the same for everyone, built from the DATE and nothing else — so
-   two players comparing notes are comparing the same problem, with no server involved. It is a
-   TRIAL with different provenance, not a second mode: dailyBuild returns an ordinary spec and
-   every line of the runner below is unaware it came from here.
-
-   The date stream is seeded from rngHash directly and NOT from the match rng, because it has to
-   resolve while sitting on the list screen, long before startMatchNow seeds anything — and it
-   must give the same answer whatever the last match's seed happened to be. This is the consumer
-   the avalanche in rngHash was kept for (js/rng.js): the input is a run of consecutive date
-   strings and the template pick is a raw `hash % n`, with no PRNG in between to launder it. */
+// --- the daily challenge ---
+// one setup per calendar day built from the date alone, seeded from rngHash (not the match rng)
 function dailyDate(d){
  d=d?(d instanceof Date?d:new Date(d)):new Date();
  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
-// Midday on purpose: stepping a date back from midnight lands on the previous day under some DST
-// shifts, which would silently break a streak once or twice a year.
+// midday on purpose: stepping back from midnight lands on the previous day under some DST shifts
 function dailyPrev(date){const d=new Date(date+'T12:00:00');d.setDate(d.getDate()-1);return dailyDate(d);}
 function dailyOn(){const D=TRLC.daily;return !!(D&&D.on&&D.templates&&D.templates.length);}
 /* Today's spec. Pure: same date in, same spec out, on any machine. */
@@ -118,9 +53,7 @@ function dailyBuild(date){
  if(!src)return null;
  const d=Object.assign({},src);          // shallow: goal/rods/medals are read-only in the runner
  d.id='daily';d.daily=true;d.date=date;d.from=src.id;
- // A daily is NOT filed under a discipline: it has its own screen and never appears in the
- // sectioned list. Explicitly cleared because the shallow copy above inherits the source trial's
- // cat, and leaving it would make playing the daily silently move the tab #trials opens on.
+ // a daily has no discipline; clear cat so playing it doesn't move the tab #trials opens on
  d.cat=null;
  d.name='DAILY · '+src.name;
  d.seed=(rngHash('dailySeed|'+date,0)>>>0)||1;
@@ -130,8 +63,7 @@ function dailyBuild(date){
  if(rb.z)d.ball.z=+(rb.z[0]+R()*(rb.z[1]-rb.z[0])).toFixed(2);
  return d;
 }
-/* The streak is only LIVE if the last completion was today or yesterday — otherwise it is a
-   number from a run that has already ended, and showing it would be a lie. */
+// the streak is live only if the last completion was today or yesterday
 function dailyStreak(date){
  const c=cfg.daily;
  if(!c||!c.date||!c.streak)return 0;
@@ -139,29 +71,21 @@ function dailyStreak(date){
  return (c.date===date||c.date===dailyPrev(date))?c.streak:0;
 }
 function dailyDone(date){const c=cfg.daily;return !!(c&&c.date===(date||dailyDate()));}
-/* Completion. The FIRST finish of a day moves the streak; later attempts can only improve the
-   time, which is why the streak is not touched in that branch. */
+// completion: the first finish of a day moves the streak, later attempts only improve the time
 function dailyRecord(secs,med,date,up){
  const c=cfg.daily||(cfg.daily={});
  secs=+secs.toFixed(2);
  if(c.date!==date){
   c.streak=(c.date&&dailyPrev(date)===c.date)?(c.streak||0)+1:1;
   c.date=date;c.best=secs;c.medal=med;
- // `up` is the trial's scoring direction (trialDir): a saveRun's best is a SAVE COUNT and higher
- // wins. Omitted by every existing caller, which reads as the lower-is-better default.
+ // `up` is the scoring direction (trialDir): a saveRun's best is a save count, higher wins
  }else if(up?secs>c.best:secs<c.best){c.best=secs;c.medal=med;}
  else return false;
  saveCfg();return true;
 }
 
-/* ---- the table pin ---------------------------------------------------------
-   The ONLY venue property that changes the sim is the table, because it picks the collision model
-   (CONFIG.tables[].collision — 'bowl' is a different physics path entirely, and 'circuit' adds
-   solid end walls). Skin/room/pitch are cosmetic and are left as the player chose them.
-   Stashed ONCE and given back on the way out of trials land, the same shape league.js uses for a
-   division venue, and for the same reason: without the parking below, opening a trial silently
-   becomes the player's Kick Off table the next time anything calls saveCfg. saveCfg (config.js)
-   consults trialVenueHeld() and writes the PARKED table rather than the live one. */
+// --- the table pin ---
+// the table is the only venue property that changes the sim (CONFIG.tables[].collision); stashed on entry, restored on exit (saveCfg writes the parked one)
 function trialVenueHeld(){return TRL.tbl?{table:TRL.tbl,room:cfg.room,pitch:cfg.pitch,skins:cfg.skins}:null;}
 function trialTableApply(id,cb){
  if(!TRLC.pinTable||!id||!CONFIG.tables[id]||cfg.table===id){if(cb)cb();return;}
@@ -169,25 +93,19 @@ function trialTableApply(id,cb){
  cfg.table=id;
  if(typeof applyTable==='function')applyTable(cb);else if(cb)cb();
 }
-/* Fires from SCREENS.trials.onHide, i.e. when you leave the trials AREA — not when you start a
-   trial (startMatchNow uses hideScreens, which does not fire onHide) and not when you quit back
-   to the list (showScreen only fires onHide when the screen actually CHANGES). So the table stays
-   put across retries and only comes off when you walk away. */
+// fires from SCREENS.trials.onHide: leaving the trials area, not start or quit-to-list, so the table stays across retries
 function trialTableRestore(){
  if(!TRL.tbl)return;
  const t=TRL.tbl;TRL.tbl=null;cfg.table=t;
  if(typeof applyTable==='function')applyTable();
 }
 
-/* ---- lifecycle ---- */
+// --- lifecycle ---
 function trialStart(id){
- // 'daily' is BUILT rather than looked up — it isn't in CONFIG.trials.list, it is derived from
- // today's date (dailyBuild). Everything downstream takes an ordinary spec and can't tell.
+ // 'daily' is built from today's date (dailyBuild), not looked up in CONFIG.trials.list
  const d=(id==='daily')?dailyBuild():trialById(id);
  if(!d||S.trial)return;
- // Quitting a run returns to #trials (S.fromScreen), and it should return to the SECTION the run
- // was launched from. The daily has no cat — it is not in the sectioned list at all — so it
- // leaves whatever tab was open alone.
+ // quitting returns to the section the run launched from; the daily has no cat and leaves the tab alone
  if(d.cat)TRL.cat=d.cat;
  Au.init();Au.ui();
  trialTableApply(d.table,()=>{
@@ -197,18 +115,12 @@ function trialStart(id){
   startMatch('training',(d.hold||null));
  });
 }
-/* Called at the END of trainingEnter — the sandbox has finished setting itself up (ball at the
-   default spawn, panel shown, phase play) and a queued trial now takes it over. Returns true when
-   it DID take over, so training.js can skip its own sandbox toast with a one-line typeof guard and
-   never has to reference TRL (which would throw if this file were absent). */
+// end of trainingEnter: a queued trial takes over the sandbox; true if it did (training.js skips its toast)
 function trialArm(){
  if(!TRL.pending)return false;
  const d=TRL.pending;TRL.pending=null;
  TRL.def=d;S.trial=TRL;
- // trnSetRodShown writes TRN.hidden[], which is the SANDBOX's persisted hide list and is what
- // trainingEnter re-applies next time. Without stashing it, the rods a trial hid would still be
- // missing the next time the player opened the sandbox — and nothing on that screen would explain
- // why. Put back by trialExit.
+ // trnSetRodShown writes the sandbox's persisted hide list; stash it so trialExit can put it back
  TRL.hidWas=TRN.hidden.slice();
  buildTrialHud();
  const p=$('trnPanel');if(p)p.classList.add('hidden');   // sandbox tools are not trial tools
@@ -218,53 +130,32 @@ function trialArm(){
  trialReset();
  return true;
 }
-/* Apply the setup. This is also RETRY, and it must be byte-identical both times or a personal
-   best means nothing — hence re-seeding from S.seed (the seed this match was started on) rather
-   than from anything that has moved since. */
+// apply the setup; also RETRY, so it must be byte-identical each time (re-seed from S.seed)
 function trialReset(){
  const d=TRL.def;if(!d)return;
  if(typeof rngSeed==='function')rngSeed(S.seed);
  TRL.run=false;TRL.t0=0;TRL.secs=0;TRL.done=false;TRL.ok=false;TRL.goals=0;
  TRL.medal=null;TRL.pb=false;TRL.sig='';TRL.showAt=0;
  TRL.roles=(d.goal.kind==='roleGoals')?d.goal.roles.slice():null;
- // A 'stat' objective is scored off the match ledger (S.stats.<key>[0]) rather than off goals —
- // one evaluator covering woodwork, saves, passes, shots and onTarget. Polled in trialTick.
+ // a 'stat' objective is scored off the match ledger (S.stats.<key>[0]), polled in trialTick
  TRL.statKey=(d.goal.kind==='stat')?d.goal.stat:null;
  TRL.statN=0;
- // A 'saveRun' serves its own balls, one per attempt, and is scored on how many it kept out.
+ // a 'saveRun' serves its own balls, one per attempt
  TRL.saveRun=(d.goal.kind==='saveRun')?d.goal:null;
  TRL.att=0;TRL.saves=0;TRL.svSeen=0;TRL.res=false;TRL.attT0=0;TRL.serveAt=0;TRL.serving=false;TRL.spawn=null;
- // sandbox state a trial must not inherit from a previous sandbox session. `ai` comes from the
- // spec: an opponent rod with its AI OFF is a static obstacle, with it ON it is a real keeper —
- // and CONFIG.trials pins the difficulty too (teamDiff, js/league.js) so the level is the trial's,
- // never whatever the player last chose in Kick Off.
+ // sandbox state a trial must not inherit; `ai` comes from the spec and CONFIG.trials pins the difficulty (teamDiff)
  TRN.freeze=false;TRN.stepQ=0;TRN.score=false;
- // DEAD-BALL RECOVERY IS ON IN A TRIAL, unlike the sandbox it borrows. The sandbox default is
- // off because a ball you placed by hand must stay where you put it; a TIMED run is the exact
- // opposite — a ball that stalls out of reach just burns the limit with nothing the player can
- // do about it. A spec can still opt out with deadball:false if a trial ever wants a dead ball
- // to be the player's problem. redropBall (js/powerups.js) reads S.trial and puts it back on
- // THIS trial's spawn rather than a match face-off spot, which most trials cannot reach.
+ // dead-ball recovery is on in a trial (redropBall uses its spawn); a spec can opt out with deadball:false
  TRN.deadball=(d.deadball!==false);
  TRN.ai=(d.ai&&d.ai.slice())||[false,false];
- /* WHAT AN AI-OFF ROD DOES WITH ITS MEN. The player is always team 0 in training, so YOUR side
-    defaults to LIFTING: an uncontrolled rod of yours holds its lane but raises out of the way
-    exactly as a benched teammate does in a real match (ai.js rodHoldRaise). Flat, they were
-    furniture in your own passing lanes — DISTRIBUTION, ONE-TWO and THE FULL SET all move the ball
-    between two of your rods, and the one you were not holding lay across it.
-    THEIR side defaults to NOT lifting, because a rod with its AI off is the trial's OBSTACLE:
-    "a keeper who never moves" is the whole of KEEPER'S NIGHTMARE and THE LONG BALL, and a keeper
-    that lifts is not that. A spec overrides both sides with lift:[bool,bool]. */
+ // AI-off rod men: your side lifts like a benched rod, theirs stays flat as the obstacle; a spec overrides with lift:[bool,bool]
  TRN.lift=(d.lift&&d.lift.slice())||[true,false];
  TRN.ballType=d.ball.type||'classic';
  trnSetPlacing(false);
  // rods: only what the trial declares stays on the table. Keys are '<team>|<role>'.
  const show=d.rods&&d.rods.show;
  rods.forEach((r,i)=>trnSetRodShown(i,!show||show.indexOf(r.team+'|'+r.role)>=0));
- // A hidden rod is STILL in the seat's switch list — seatBindRods builds that list by TEAM and
- // knows nothing about trnHidden — so a trial that hides some of your own rods without locking
- // you to one would let Q/E hand you an invisible handle. Filter the list to what's on the table.
- // Falls back to leaving it alone if that would empty it, so this can never strand a seat.
+ // a hidden rod is still in the seat's switch list: filter to what's on the table, unless that would empty it
  S.seats.forEach(s=>{
   const vis=s.rods.filter(r=>!r.trnHidden);
   if(vis.length&&vis.length<s.rods.length){s.rods=vis;if(s.ctrl>=vis.length)s.ctrl=0;}
@@ -272,38 +163,23 @@ function trialReset(){
  if(typeof updateChips==='function')updateChips();
  clearBalls();
  if(TRL.saveRun){
-  /* A saveRun puts NO ball down here — it arms the FIRST SERVE instead, so every attempt in the
-     run opens the same way, this one included, and the player gets the same beat to read the
-     setup before the first ball as before the tenth. */
+  // a saveRun puts no ball down here, it arms the first serve so every attempt opens the same way
   TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();
  }else{
   const b=trnSpawnBall(TRN.ballType,d.ball.x,d.ball.z);
   b.v.set(d.ball.vx||0,d.ball.vy||0,d.ball.vz||0);
   syncBall(b);
  }
- // The ledger backs the objective, so a retry starts it clean. Safe against the per-rod stat
- // bucket cache: matchstats keys r.msB on the IDENTITY of S.stats, which is why that check exists.
+ // the ledger backs the objective, so a retry starts it clean
  S.stats=freshStats();
  S.score=[0,0];S.lastTouch=-1;S.phase='play';
  if(typeof updateScoreUI==='function')updateScoreUI();
  trialHudSync();
 }
-/* ---- 'saveRun': N attacks, one keeper ---------------------------------------
-   AN ATTEMPT IS ONE SERVED BALL, and it settles on the FIRST of three things: a SAVE, a GOAL
-   CONCEDED, or attemptT sim seconds. That last one is a FAILSAFE and not the normal exit — it is
-   what covers a shot that misses and rebounds around the end wall, a ball the dead-ball timer
-   re-drops, and an attacker that dawdles, none of which the other two can see.
-
-   SETTLING ON THE FIRST OUTCOME IS WHAT MAKES "7 / 10" LEGIBLE. The ball is taken away the
-   instant the attempt is decided, so one attempt can never bank two saves off a rebound and the
-   score can never outrun the attempts — which is the only reason the medal thresholds can be
-   written as a count out of n at all. */
+// --- 'saveRun': N attacks, one keeper ---
+// an attempt is one served ball, settled by the first of a save, a goal conceded, or attemptT seconds (failsafe)
 function trialServeDelay(){const g=TRL.saveRun;return (g&&g.serveDelay!=null)?g.serveDelay:1.2;}
-/* Which spawn this attempt uses. A spec may declare a LIST and it is walked IN ORDER, wrapping if
-   it is shorter than n. Authored rather than rolled, for the same reason the daily rolls a spawn
-   but never a difficulty: an authored list can be sampled against the live geometry by the
-   harness, and two players' runs face the same balls in the same order. No list = every attempt
-   from `ball`, which is also what the harness's single-spawn checks read. */
+// which spawn this attempt uses: a spec's list walked in order, wrapping
 function trialSpawnFor(i){
  const sp=TRL.saveRun&&TRL.saveRun.spawns;
  return (sp&&sp.length)?sp[i%sp.length]:TRL.def.ball;
@@ -311,39 +187,29 @@ function trialSpawnFor(i){
 function trialServe(){
  const s=trialSpawnFor(TRL.att);
  clearBalls();
- // Every attempt opens from rest: this clears the swing latches, held-forward evades and trap
- // state a previous attempt left on the rack, so attempt 10 starts from the same rod pose as
- // attempt 1. It does NOT touch r.offset, so the keeper stays where the player left it.
+ // every attempt opens from rest: clears swing latches, held-forward evades and trap state
  if(typeof resetRodRotation==='function')resetRodRotation();
  const b=trnSpawnBall(TRN.ballType,s.x,s.z);
  b.v.set(s.vx||0,s.vy||0,s.vz||0);
  syncBall(b);
  TRL.spawn={x:s.x,z:s.z};   // read as DATA by redropBall (js/powerups.js) — a stall goes back HERE
  TRL.att++;TRL.res=false;TRL.serving=false;TRL.attT0=S.time;
- /* THE CLOCK STARTS ON THE FIRST SERVE, not on the player's first swing. A keeper who blocks with
-    a rod he never swings has not swung, which is precisely why a save trial could not be written
-    before — the run would have gone untimed and banked no record. Here the run genuinely begins
-    when the first ball is put down. The clock is NOT what a saveRun is scored on; it is kept
-    running so the record still has an elapsed time behind it. */
+ // the clock starts on the first serve (a keeper may never swing); it isn't what a saveRun is scored on
  if(!TRL.run){TRL.run=true;TRL.t0=S.time;}
  trialHudSync();
 }
-/* Settle the live attempt. Idempotent on purpose: a save and a concede can both land inside one
-   frame (a shot the keeper got a touch to and which went in anyway) and only the first counts. */
+// settle the live attempt; idempotent, a save and a concede can land in one frame and only the first counts
 function trialAttemptEnd(saved){
  if(!TRL.saveRun||TRL.res||TRL.done)return;
  TRL.res=true;
  if(saved)TRL.saves++;
- /* THE BALL IS NOT CLEARED HERE. This is reachable from inside trainingGoal, which frees the ball
-    itself a line later — freeing it here would be a double free. trialTick sweeps it on the frame
-    boundary instead, outside the sim step, where clearing a ball is safe. */
+ // the ball isn't cleared here (trainingGoal frees it); trialTick sweeps it on the frame boundary
  if(TRL.att>=(TRL.saveRun.n||1)){trialFinish(true);return;}
  TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();
  trialHudSync();
 }
 function trialRestart(){if(TRL.def){trialReset();Au.ui();}}
-/* From trainingExit (gotoMenu). The table is NOT restored here — that is the screen's job, so a
-   retry and a quit-to-list both keep the trial's table on. */
+// from trainingExit (gotoMenu); the table is restored by the screen, so retry and quit-to-list keep it
 function trialExit(){
  S.trial=null;TRL.def=null;TRL.pending=null;
  TRL.run=false;TRL.done=false;TRL.serving=false;TRL.res=false;TRL.spawn=null;TRN.freeze=false;TRN.stepQ=0;
@@ -352,25 +218,19 @@ function trialExit(){
  const c=$('trlCard');if(c)c.classList.add('hidden');     // sibling of the HUD, not a child — see buildTrialHud
 }
 
-/* ---- scoring ----
-   Called from trainingGoal BEFORE removeBall, because the records hang off the ball. `team` is the
-   SCORING team; the player is always team 0 in training mode, so a goal at the other end is one
-   the player conceded and never counts toward an objective. */
+// --- scoring ---
+// called from trainingGoal before removeBall; `team` is the scoring team, the player is team 0 (the other end is conceded)
 function trialGoal(team,b){
  if(!TRL.def||TRL.done)return;
- /* A saveRun is scored by ATTEMPTS, not by goals. A goal at YOUR end settles the live attempt
-    with nothing banked; one you somehow put in at the far end is no part of the objective. Both
-    are answered here, ABOVE the team gate below — that gate belongs to the kinds you SCORE. */
+ // a saveRun is scored by attempts: a goal at your end settles the attempt with nothing banked
  if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}
  if(team!==0)return;
  const d=TRL.def;
  TRL.goals++;
- // A 'stat' trial is scored by its counter, never by goals — scoring is often just how you get
- // ANOTHER attempt at the thing being counted (a woodwork trial hands the ball back after a goal).
+ // a 'stat' trial is scored by its counter, never goals
  if(TRL.statKey){/* trialTick owns completion for this kind */}
  else if(TRL.roles){
-  // b.mss is matchstats' last SWING — the rod that STRUCK it, not the last thing it touched, so a
-  // goal that deflected in off a post is still credited to the boot that hit it.
+  // b.mss is matchstats' last swing, so a goal off a post credits the boot that hit it
   const rec=b.mss,i=(rec&&rec.role)?TRL.roles.indexOf(rec.role):-1;
   if(i>=0)TRL.roles.splice(i,1);
   if(!TRL.roles.length)trialFinish(true);
@@ -380,31 +240,18 @@ function trialGoal(team,b){
 function trialFinish(ok){
  if(TRL.done)return;
  TRL.done=true;TRL.ok=!!ok;
- // Recompute here rather than trusting trialTick's value: a goal resolves INSIDE the sim step,
- // and trialTick runs once per FRAME, so the banked figure is up to a frame stale — and at 7
- // banked steps that is most of a tenth of a second on the number the medal is read from.
- // Still clamped to the limit, or the timed-out path would report a hair over its own deadline.
+ // recompute rather than trust trialTick's value (a goal resolves mid-frame); still clamped to the limit
  if(TRL.run){const lim=TRL.def.limit||0;TRL.secs=S.time-TRL.t0;if(lim>0&&TRL.secs>lim)TRL.secs=lim;}
  else TRL.secs=0;
  TRN.freeze=true;   // hold the world on the result — training's own freeze lever, reused
  if(ok){
   const d=TRL.def;
-  /* AN UNTIMED RUN SETS NO RECORD. If the clock never started the player completed this without
-     ever swinging — a rod raise or a slide can nudge a ball, and none of that increments kicks —
-     so TRL.secs is 0 and banking it would write a 0.00s gold that nothing could ever beat.
-     Unreachable in the shipped trials (you cannot walk a ball up the table without kicking it),
-     but a records feature should not have a zero-time hole in it at all. */
-  /* THE METRIC AND THE RECORD GUARD ARE BOTH KIND-DEPENDENT. A saveRun is scored on SAVES and
-     can only complete by playing out every attempt, so its record is always meaningful — the
-     untimed-run hole above cannot exist for it, and a 0-save run is an honest score that the
-     next attempt can beat. Every other kind is scored on elapsed seconds and must still refuse
-     an untimed one. */
+  // an untimed run sets no record (it would write an unbeatable 0.00s gold)
+  // a saveRun always has a meaningful record (0 saves is an honest score); every other kind must refuse an untimed run
   const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;
   TRL.medal=keep?trialMedal(d,val):null;
   if(keep){
-   /* A DAILY KEEPS ITS RECORD IN cfg.daily, NOT in the per-trial cfg.trials map. Its id is
-      'daily' every single day, so storing it there would leave one "best" being overwritten by
-      whichever day happened to be easiest — and there would be nowhere to hang the streak. */
+   // a daily keeps its record in cfg.daily (its id is 'daily' every day, and the streak needs a home)
    if(d.daily)TRL.pb=dailyRecord(val,TRL.medal,d.date,trialDir(d)>0);
    else{
     const prev=trialBest(d.id);
@@ -415,14 +262,11 @@ function trialFinish(ok){
     }
    }
   }
-  /* A saveRun ALWAYS completes, whatever the score, so the celebration is gated on the MEDAL
-     instead of on completion — confetti and the goal horn over 0 of 10 reads as the game not
-     having noticed. Every other kind completes only by doing the thing, so completion IS the
-     moment and this is byte-identical for them. */
+  // a saveRun always completes, so celebrate only on a medal
   if(!sr||TRL.medal){Au.goal('medal');if(typeof confetti==='function')confetti();}
   else Au.whistle();
  }else{TRL.medal=null;Au.whistle();}
- // Start the beat. The world is ALREADY frozen (TRN.freeze above); this delays only the panel.
+ // start the beat: the world is already frozen, this only delays the panel
  TRL.showAt=performance.now()+Math.max(0,(TRLC.resultDelay!=null?TRLC.resultDelay:0.8))*1000;
  TRL.sig='';   // force the card to render
  trialHudSync();
@@ -431,41 +275,22 @@ function trialFinish(ok){
 function trialTick(){
  if(!TRL.def)return;
  if(!TRL.done){
-  /* THE CLOCK STARTS ON YOUR FIRST SWING, AND IT MUST NOT BE S.lastTouch.
-     lastTouch is set by ANY contact, including a passive one — and a trial that spawns the ball
-     at the feet spawns it INSIDE the resting foot's contact radius, so collideRod fires on sim
-     step ONE and the clock started before the player had done anything. That is the bug this
-     line was: SNAP SHOT's timer ran from the moment the trial loaded, so the time you were
-     scored on was however long you spent getting your bearings and no medal was reachable.
-     S.stats.kicks[] is incremented by msKick from kickRod, i.e. once per SWING, and is gated on
-     S.stats alone rather than on msOn() — so it is live in training and cannot be tripped by the
-     ball merely resting against a boot. trialReset's freshStats() zeroes it per attempt.
-     A SAVE ALSO STARTS IT, and that clause is what a GK trial needs to exist at all: a keeper
-     blocks with a rod he never swings, so kicks alone would leave a save trial running untimed
-     and banking no record. S.stats.saves[] is written by momSave (js/moments.js), whose momOn()
-     carries an explicit S.trial clause so the detector is live in a trial. It can never fire
-     EARLIER than the swing clause in the existing trials — a ball only heads at your own goal
-     once somebody has struck it. */
+  // the clock starts on your first swing (S.stats.kicks), not S.lastTouch; a save also starts it (a keeper blocks without swinging)
   if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0)){TRL.run=true;TRL.t0=S.time;}
-  /* ---- 'saveRun': serve, settle, repeat. All of it on the FRAME boundary, never the sim path. */
+  // --- 'saveRun': serve, settle, repeat; all on the frame boundary, never the sim path ---
   if(TRL.saveRun){
    const g=TRL.saveRun;
-   // A SAVE IS READ AS A DELTA, never as a total — at most one banked per attempt, which is what
-   // keeps saves <= attempts even if two land inside one frame.
+   // a save is read as a delta, at most one per attempt, so saves <= attempts
    const sv=(S.stats&&S.stats.saves[0])||0;
    if(sv>TRL.svSeen){TRL.svSeen=sv;trialAttemptEnd(true);}
-   // The sweep trialAttemptEnd deliberately does not do. Skipped once the run is DONE, so the
-   // last attempt freezes on the ball where it settled rather than on an empty table.
+   // the sweep trialAttemptEnd doesn't do; skipped once DONE so the last attempt freezes on the ball
    if(TRL.res&&!TRL.done&&S.balls.length)clearBalls();
    if(!TRL.done){
     if(TRL.serving){if(S.time>=TRL.serveAt)trialServe();}
     else if(TRL.att>0&&g.attemptT>0&&S.time-TRL.attT0>=g.attemptT)trialAttemptEnd(false);
    }
   }
-  /* A 'stat' objective is POLLED here rather than hooked at each detector: the counters already
-     exist in S.stats, matchstats and moments already maintain them, and polling once per frame
-     costs nothing and adds no sim-path work (the FEATURE-IDEAS watch-out). freshStats() in
-     trialReset is what zeroes them per attempt. */
+  // a 'stat' objective is polled here rather than hooked at each detector
   if(TRL.statKey&&S.stats){
    const arr=S.stats[TRL.statKey];
    TRL.statN=(arr&&arr.length)?arr[0]:0;
@@ -480,7 +305,7 @@ function trialTick(){
  trialHudSync();
 }
 
-/* ---- in-match HUD (built via createElement like the debug/training panels) ---- */
+// --- in-match HUD (createElement, like the debug/training panels) ---
 function buildTrialHud(){
  if(!TRL.hudBuilt){
   TRL.hudBuilt=true;
@@ -489,11 +314,7 @@ function buildTrialHud(){
    +'<div class="trlObj" id="trlObj"></div>'
    +'<div class="trlClock" id="trlClock">0.00</div>';
   document.body.appendChild(d);
-  /* THE RESULT PANEL IS A SIBLING OF THE HUD, NOT A CHILD, and that is a CSS constraint rather
-     than a tidiness one: #trlHud carries a transform to centre itself, and a transformed ancestor
-     makes position:fixed DESCENDANTS resolve against it instead of against the viewport — so a
-     card nested inside could never sit in the middle of the screen. It also lets #trlHud keep
-     pointer-events:none (a HUD must not eat clicks) while the panel below takes them. */
+  // the result panel is a sibling of the HUD: #trlHud's transform would make fixed descendants resolve against it
   const c=document.createElement('div');c.id='trlCard';c.className='trlCard hidden';
   c.innerHTML='<div class="trlRes" id="trlRes"></div>'
    +'<div class="trlSecs" id="trlSecs"></div>'
@@ -510,16 +331,12 @@ function buildTrialHud(){
  }
  const h=$('trlHud');if(h)h.classList.remove('hidden');
 }
-/* The clock moves every frame so it is written unconditionally; everything else is signature-gated,
-   because rebuilding the objective line and the result card 60 times a second is the kind of DOM
-   churn that turns up on the M panel as GPU/BROWSER and looks like a render problem. */
+// the clock is written every frame, everything else is signature-gated to avoid DOM churn
 function trialHudSync(){
  if(!TRL.hudBuilt||!TRL.def)return;
  const d=TRL.def,lim=d.limit||0,shown=lim>0?Math.max(0,lim-TRL.secs):TRL.secs;
  const cl=$('trlClock');
- /* A saveRun's big number is the SCORE, not the clock. The clock is running behind it, but it is
-    not what the medal reads, and a stopwatch sitting where the score belongs would say the
-    opposite of what the trial is asking for. */
+ // a saveRun's big number is the score, not the clock
  if(cl){
   if(TRL.saveRun){cl.textContent=String(TRL.saves);cl.classList.remove('warn');}
   else{cl.textContent=shown.toFixed(2);cl.classList.toggle('warn',lim>0&&shown<=5);}
@@ -529,10 +346,7 @@ function trialHudSync(){
   : TRL.roles
   ? d.goal.roles.map(r=>TRL.roles.indexOf(r)<0?'<b>'+r+'</b>':r).join(' &middot; ')
   : ((TRL.statKey?TRL.statN:TRL.goals)+' / '+(d.goal.n||1));
- /* The panel appears a beat AFTER the run ends (CONFIG.trials.resultDelay), so the goal sound
-    and the confetti land before it covers them. `ready` HAS to be part of the signature below:
-    without it the gate would evaluate the card once, on the frame the run finished, find it too
-    early to show, and — the signature never changing again — never look a second time. */
+ // the panel appears a beat after the run ends (CONFIG.trials.resultDelay); `ready` must be in the signature
  const ready=TRL.done&&(!TRL.showAt||performance.now()>=TRL.showAt);
  const sig=prog+'|'+TRL.saves+'|'+TRL.done+'|'+ready+'|'+TRL.ok+'|'+TRL.medal+'|'+TRL.pb;
  if(sig===TRL.sig)return;
@@ -551,24 +365,11 @@ function trialHudSync(){
  md.className='trlMed '+(TRL.medal||'');
 }
 
-/* ---- the list on #trials ----
-   THE CATALOGUE IS BROWSED BY DISCIPLINE (CONFIG.trials.cats): a tab strip above the panel, one
-   section on screen at a time. A single flat column was fine at six trials and stops being fine
-   well before twenty — the question a player actually arrives with is "what can I practise with
-   my keeper", and an undifferentiated list answers that by making them read all of it.
-
-   A SECTION IS A FILTER, NOT A SECOND LIST. Nothing here owns trial data: trialsIn() walks the
-   one flat CONFIG.trials.list and keeps what matches, so re-filing a trial under another tab
-   changes where it is listed and nothing else — same id, same seed, same stored best, and the
-   daily's templates (which name trials by id) never notice.
-
-   TRL.cat SURVIVES THE RUN and is set by trialStart, which is what makes quitting a trial land
-   you back on the tab you launched it from instead of on GK every single time. Deliberately NOT
-   persisted to cfg: it is where you were a moment ago, not a preference worth a save slot. */
+// --- the list on #trials ---
+// browsed by discipline (CONFIG.trials.cats); a section is a filter over the flat list; TRL.cat survives the run so quitting lands on the tab you came from
 function trialCats(){return (TRLC&&TRLC.cats)||[];}
 function trialsIn(cat){const out=[];if(TRLC&&TRLC.list)for(const d of TRLC.list)if(d.cat===cat)out.push(d);return out;}
-/* Cleared / total plus the medal breakdown — the tab counter and the section header read the
-   same numbers off this, so a tab can never disagree with the section it opens. */
+// cleared / total plus the medal breakdown, shared by the tab counter and the section header
 function trialCatStat(cat){
  const st={n:0,done:0,gold:0,silver:0,bronze:0};
  for(const d of trialsIn(cat)){
@@ -580,17 +381,14 @@ function trialCatStat(cat){
  }
  return st;
 }
-/* The tab that opens when there is no live choice: the first section that HAS something in it,
-   so a discipline nobody has written trials for yet can never be the first thing a player meets
-   on the screen. */
+// the tab that opens with no live choice: the first section that has something in it
 function trialCatDefault(){
  const cs=trialCats();
  for(const c of cs)if(trialsIn(c.id).length)return c.id;
  return cs.length?cs[0].id:null;
 }
 function trialCatSet(id){if(id===TRL.cat)return;TRL.cat=id;Au.ui('tab');renderTrials();}
-/* One row. Pulled out of renderTrials so the flat fallback below and the sectioned list render
-   byte-identical rows rather than two copies of the same markup drifting apart. */
+// one row, shared by the flat fallback and the sectioned list
 function trialRowHtml(d){
  const b=trialBest(d.id);
  return '<div class="trlRow'+(b?' done':'')+'" data-trial="'+d.id+'">'
@@ -607,9 +405,7 @@ function renderTrials(){
  const box=$('trialsPanel');
  if(!box||!trialOn())return;   // no list = leave the screen's own empty state in the markup
  const cats=trialCats();
- /* NO cats DECLARED FALLS BACK TO THE OLD FLAT LIST rather than to a blank panel. The tab strip
-    is presentation; the trials are the feature, and a CONFIG that has been stripped down or is
-    mid-edit should still be playable. Same instinct as the rest of this file's typeof guards. */
+ // no cats declared falls back to the flat list rather than a blank panel
  if(!cats.length){
   const tabs=$('trlTabs');if(tabs)tabs.innerHTML='';
   box.innerHTML='<h3>Trials</h3><div class="trlList">'+TRLC.list.map(trialRowHtml).join('')+'</div>';
@@ -619,12 +415,8 @@ function renderTrials(){
  if(!TRL.cat||!cats.some(c=>c.id===TRL.cat))TRL.cat=trialCatDefault();
  let cat=null;for(const c of cats)if(c.id===TRL.cat)cat=c;
  if(!cat)cat=cats[0];
- /* ---- the tab strip ----
-    Rebuilt whole on every show, because every counter on it can have moved since the last one —
-    this screen is re-rendered exactly twice per visit (arriving, and returning from a run), so
-    there is nothing here worth a diff. The COUNTER is cleared/total rather than a medal count:
-    "2 / 4" is the number a player checks a tab for, and a gold tally that reads 0 next to it
-    would be reporting a failure they have not had yet. */
+ // --- the tab strip ---
+ // rebuilt whole on every show; the counter is cleared/total, not a medal count
  const tabs=$('trlTabs');
  if(tabs){
   let t='';
@@ -638,20 +430,18 @@ function renderTrials(){
   tabs.innerHTML=t;
   tabs.querySelectorAll('[data-cat]').forEach(el=>{el.onclick=()=>trialCatSet(el.dataset.cat);});
  }
- /* ---- the section ---- */
+ // --- the section ---
  const list=trialsIn(cat.id),st=trialCatStat(cat.id);
  let h='<div class="trlSecHead"><h3>'+cat.name+'</h3>'
   +'<span class="trlTally">'+(st.done?st.done+' / '+st.n+' cleared':st.n?st.n+' trial'+(st.n===1?'':'s'):'')+'</span></div>'
   +'<div class="trlSecSub">'+(cat.sub||'')+'</div>';
  if(!list.length){
-  /* An empty section says WHAT is missing rather than that something is broken — a player who
-     opens GK before those trials exist should read it as "not written yet", not as a bug. */
+  // an empty section says what is missing rather than looking broken
   h+='<div class="trnEmpty">NOTHING HERE YET<span>No '+cat.name.toLowerCase()
    +' trials have been written. Every trial runs on a fixed seed, so each attempt replays the '
    +'same ball, the same opponent and the same bounce &mdash; these are on their way.</span></div>';
  }else{
-  // The medal strip only appears once there IS a medal to report: three zeroes on a section you
-  // have never played is a scoreboard telling you off before you have started.
+  // the medal strip only appears once there is a medal to report
   if(st.gold||st.silver||st.bronze)
    h+='<div class="trlMedRow">'
     +'<span class="trlMedCt gold">'+st.gold+'<em>gold</em></span>'
@@ -662,9 +452,8 @@ function renderTrials(){
  box.innerHTML=h;
  trialBindRows(box);
 }
-/* ---- the daily's own screen ---- */
-// One human-readable line for any objective kind. Shared by the daily panel and the trials list
-// so the two can never describe the same trial differently.
+// --- the daily's own screen ---
+// one human-readable line for any objective kind, shared by the daily panel and the trials list
 function trialObjText(d){
  const g=d.goal||{};
  if(g.kind==='roleGoals')return 'Score with '+(g.roles||[]).join(' &middot; ');
@@ -672,9 +461,7 @@ function trialObjText(d){
  if(g.kind==='saveRun')return 'Keep out '+(g.n||1)+' attacks';
  return 'Score '+(g.n||1);
 }
-/* Rebuilt on every show, because what it says depends on the date AND on whether today has been
-   cleared — and quitting a run returns here (S.fromScreen), which is exactly when the tick has
-   just changed. */
+// rebuilt on every show: it depends on the date and whether today is cleared
 function renderDaily(){
  const box=$('dailyPanel');if(!box)return;
  const d=dailyBuild();
@@ -688,7 +475,7 @@ function renderDaily(){
   '<h3>'+d.date+'</h3>'
   +'<div class="dlyHead'+(done?' done':'')+'">'
    +'<div class="dlyTick">'+(done?'&#10003;':'&#9679;')+'</div>'
-   // the SOURCE trial's name, off d.from — cleaner than unpicking the 'DAILY · ' prefix back off
+   // the source trial's name, off d.from
    +'<div class="dlyHeadT"><b>'+((trialById(d.from)||d).name)+'</b>'
    +'<span>'+d.blurb+'</span></div>'
   +'</div>'
@@ -708,12 +495,10 @@ if(typeof SCREENS!=='undefined'&&SCREENS.trials){
 }
 if(typeof SCREENS!=='undefined'&&SCREENS.daily){
  SCREENS.daily.onShow=renderDaily;
- // The daily can be started from HERE as well as from the list, so this screen has to give the
- // player's table back too — trialTableRestore is idempotent, so both hooks are safe.
+ // the daily can start from here too, so this screen also gives the table back (idempotent)
  SCREENS.daily.onHide=trialTableRestore;
 }
-/* Home card + back button. The CARD is what CONFIG.trials.daily.on hides; the route stays
-   registered either way (see js/screens.js). */
+// home card and back button; CONFIG.trials.daily.on hides the card, the route stays registered
 (function(){
  const card=$('btnDaily');
  if(card){
@@ -723,18 +508,10 @@ if(typeof SCREENS!=='undefined'&&SCREENS.daily){
  const back=$('dailyBack');
  if(back)back.onclick=()=>{showScreen('home');Au.ui('back');};
 })();
-/* Leave the run for the list. The panel's TRIALS button and Escape both land here; gotoMenu does
-   the rest — trainingExit calls trialExit (gate dropped, sandbox hide list and scoreboard given
-   back) and showScreen(S.fromScreen) returns to #trials, on the tab this run was launched from
-   (TRL.cat outlives trialExit, which is the whole point of it living on TRL). */
+// leave the run for the list (TRIALS button, Escape); gotoMenu returns to the tab the run came from
 function trialQuit(){if(typeof gotoMenu==='function')gotoMenu();}
-/* ESCAPE ON A FINISHED RUN GOES BACK TO THE LIST rather than opening the pause menu: the result
-   panel already IS the end of the run, and pausing a world that is frozen anyway, to hunt for a
-   Main Menu button, is two steps for one intent. CAPTURE phase because input.js loads first and
-   would open #pause on the way up; capture runs before it and stopPropagation keeps it there.
-   Deliberately narrow — only Escape, only while a trial is DONE, and never over an overlay that
-   owns Escape itself — so no other key or screen changes behaviour, and a missing trials.js
-   registers nothing at all. A trial still RUNNING keeps the ordinary Escape-to-pause. */
+// Escape on a finished run goes back to the list instead of pausing a frozen world
+// capture phase (input.js would open #pause first); only Escape, only while DONE, never over an overlay that owns it
 addEventListener('keydown',e=>{
  if(e.code!=='Escape'||S.photo||!S.trial||!TRL.done)return;
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
@@ -744,16 +521,13 @@ addEventListener('keydown',e=>{
  e.preventDefault();e.stopPropagation();
  trialQuit();
 },true);
-/* R retries. Owned here rather than in input.js so a missing trials.js cannot change what any key
-   does; guarded on S.trial, and on S.photo because photo mode binds R for its own recorder. */
+// R retries; owned here so a missing trials.js changes no key; not while S.photo (photo mode binds R)
 addEventListener('keydown',e=>{
  if(S.photo)return;
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
- // The retry key is a binding (js/binds.js) — typeof-guarded so this file still stands alone.
+ // the retry key is a binding (js/binds.js), typeof-guarded so this file stands alone
  if(S.trial){if(typeof bindIs==='function'?bindIs('retry',e.code):e.code==='KeyR'){e.preventDefault();trialRestart();}return;}
- /* Left/Right walk the discipline tabs, and ONLY while #trials is the live screen. Safe against
-    input.js, which binds the same two keys to seatStep but gates them on S.phase 'play'/'count' —
-    a menu screen is 'menu', so nothing else is listening for them here. */
+ // Left/Right walk the discipline tabs, only while #trials is the live screen
  if(typeof screenId!=='function'||screenId()!=='trials')return;
  const dir=e.code==='ArrowLeft'?-1:e.code==='ArrowRight'?1:0;
  if(!dir)return;

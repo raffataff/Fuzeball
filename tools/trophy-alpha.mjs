@@ -1,14 +1,7 @@
-/* trophy-alpha.mjs — give the trophy renders a real alpha channel.
-     cd tools && node trophy-alpha.mjs            (needs `npm i` in tools/ once, for sharp)
-
-   assets/renders/render_trophy_<id>_{cycles,thumb}.jpg are rendered on black. Shown on a panel they're a
-   black square, and a CSS blend can't hide it reliably: anything that isolates the image (the glow's
-   filter, the rise animation) stops mix-blend-mode reaching the page. So this writes a .webp beside
-   each .jpg with the black turned into transparency, and league.js trophyImg() loads those.
-
-   Alpha ramps on brightness (max of r,g,b) from LO to HI: the black background and the JPEG noise in it
-   go fully clear, anything brighter than HI (the whole trophy, dark bronze included) stays solid, and the
-   soft edge in between is un-premultiplied (colour / alpha) so it doesn't come out with a dark fringe. */
+// trophy-alpha.mjs: give the trophy renders a real alpha channel.
+//      cd tools && node trophy-alpha.mjs            (needs `npm i` in tools/ once, for sharp)
+// assets/renders/render_trophy_<id>_{cycles,thumb}.jpg are rendered on black (a black square on a panel; a CSS blend can't hide it once anything isolates the image), so this writes a .webp beside each .jpg with the black turned transparent, and league.js trophyImg() loads those
+// alpha ramps on brightness (max of r,g,b) from LO to HI: black and its JPEG noise go clear, anything brighter than HI (the whole trophy, dark bronze included) stays solid, and the soft edge is un-premultiplied so it has no dark fringe
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';

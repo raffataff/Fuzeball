@@ -1,8 +1,5 @@
-/* Behavioural harness for js/props.js — the scatter + instancing math.
-   No three.js and no browser: the pure functions are string-sliced out and rebuilt
-   with new Function, and the build path runs against minimal Matrix4/InstancedMesh
-   stand-ins that record what was asked of them.
-   Run: node tools/props-harness.js                                              */
+// behavioural harness for js/props.js: the scatter + instancing math. Run: node tools/props-harness.js
+// no three.js or browser: the pure functions are string-sliced and rebuilt with new Function, and the build path runs against minimal Matrix4/InstancedMesh stand-ins that record what was asked
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');

@@ -1,23 +1,11 @@
-/* ===== photo mode: clean view + clip recorder — headless harness =====
-   Companion to tools/photo-harness.js, covering the 2026-08-19 work: the crop-line/clean-view
-   chrome split and the turntable clip recorder.  node tools/photo-record-harness.js  (from repo root)
-
-   Four suites, none of which needs a browser or three.js:
-     1. phRecRect  — the CSS-px -> backing-store mapping. The only new arithmetic that can be
-        silently wrong: invert the ratio and you get a crop of a crop, which still looks plausible.
-     2. phFrameSync / phChromeSync — the class decisions. The reported bug lived exactly here (the
-        crop border was painted by a class whose off-state was unreachable once an aspect was set),
-        so the fix gets an assertion rather than a re-read.
-     3. js/capture.js lifecycle — clipStart(cv,opt) back-compat with replay.js's bare clipStart(),
-        and the stop->start handoff guard that a second caller made necessary.
-     4. container choice — MP4 preferred, WebM fallback, and the FILE EXTENSION following whatever
-        the recorder actually produced rather than what it was asked for.
-     5. phSeqSize / phSeqPlan — the offline render's frame budget, which is what stops someone
-        starting a 10GB job by accident.
-     6. zipStore — parsed back out by an independent reader in here. The byte offsets in a central
-        directory are the classic silent bug: a wrong one still produces a file, and some unzippers
-        forgive it while the one your user has does not. (Also validated out-of-band against
-        python's zipfile module and Windows' Expand-Archive, both of which accept it.) */
+// ===== photo mode: clean view + clip recorder, headless harness =====
+// companion to tools/photo-harness.js: the crop-line/clean-view chrome split and the turntable clip recorder. node tools/photo-record-harness.js (from the repo root); none of it needs a browser or three.js
+//   1. phRecRect: the CSS-px to backing-store mapping (an inverted ratio gives a plausible crop of a crop)
+//   2. phFrameSync / phChromeSync: the class decisions (the crop border was painted by a class whose off-state was unreachable once an aspect was set)
+//   3. js/capture.js lifecycle: clipStart(cv,opt) back-compat with replay.js's bare clipStart(), and the stop-to-start handoff guard
+//   4. container choice: MP4 preferred, WebM fallback, the file extension following what the recorder produced
+//   5. phSeqSize / phSeqPlan: the offline render's frame budget (stops a 10GB job started by accident)
+//   6. zipStore: parsed back by an independent reader (a wrong central-directory offset still produces a file some unzippers forgive); also validated against python's zipfile and Windows' Expand-Archive
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -258,7 +246,7 @@ ok(B(512)==='512 B'&&B(1536)==='1.5 KB'&&B(1048576)==='1 MB','byte formatting re
 head('zipStore — byte layout parsed back out');
 (function(){
  const cap=rd('js/capture.js');
- const a=cap.indexOf('/* ===== zip (STORE) ====='),b=cap.indexOf('function clipDownload(');
+ const a=cap.indexOf('const ZIP_CRC'),b=cap.indexOf('function clipDownload(');
  if(a<0||b<0){ok(false,'zip section found in capture.js');return;}
  const Z=new Function(cap.slice(a,b)+'\nreturn{zipStore:zipStore,zipCrc:zipCrc};')();
 

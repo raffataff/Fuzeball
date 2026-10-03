@@ -1,22 +1,14 @@
 'use strict';
-/* ================= physics (the core — treat carefully) ================= */
+// ================= physics (the core, treat carefully) =================
 function physics(dt){
  if(dt<=0||!S.balls.length)return;
- pinUpdate();   // catch / let go of pinned balls BEFORE the substeps, so a release this step is simulated this step
- // adaptive substepping: keep per-step travel under ~subTravel so fast/heavy balls can't tunnel.
- // floor/air friction are applied per-substep as exp(k*h), so total exp(k*dt) is invariant to sub count.
- // The FOOT counts as a fast mover too: updateRods advances r.angle a whole sim step at once, and at
- // the swing's ~22 rad/s that is ~2.3u of foot travel per step — more than a ball radius — so the ball
- // was finely substepped while the foot teleported straight past it. Feeding foot speed into vmax
- // raises the substep count for a fast swing; the interpolation below then poses the rod at each
- // substep so contacts resolve where the foot actually was.
+ pinUpdate();   // catch / release pinned balls before the substeps so a release this step is simulated this step
+ // adaptive substepping keeps per-step travel under ~subTravel; friction is exp(k*h) per substep; the foot counts as a fast mover (~2.3u a step)
  let vmax=0;for(const b of S.balls){const s=b.v.length();if(s>vmax)vmax=s;}
  for(const r of rods){const fs=Math.abs(r.angVel)*ARM+Math.abs(r.vz);if(fs>vmax)vmax=fs;}
  const sub=clamp(Math.ceil(vmax*dt/PHY.subTravel),PHY.subMin,PHY.subMax),h=dt/sub;
- perfSub(sub);   // frame profiler (perf.js): substeps actually run — pinned at subMax means fast play, not a leak
- // Rod pose at the START of this sim step, reconstructed exactly: updateRods set
- // angVel=(angle-prevAngle)/dt, so angle-angVel*dt IS the previous angle. angVel/vz themselves are
- // left alone — they're the average rate over the step, which is what the contact impulse wants.
+ perfSub(sub);   // profiler (perf.js): substeps actually run
+ // rod pose at the start of this step: angle - angVel*dt (angVel/vz stay the step average the impulse wants)
  for(const r of rods){r.sA0=r.angle-r.angVel*dt;r.sO0=r.offset-r.vz*dt;r.sA1=r.angle;r.sO1=r.offset;}
  for(let s=0;s<sub;s++){
   const f=(s+1)/sub;
@@ -40,20 +32,15 @@ function physics(dt){
  if(S.stats&&S.lastTouch>=0&&S.phase==='play')S.stats.poss[S.lastTouch]+=dt;
  msTick(dt);   // matchstats.js: territory (ball position by third) + the rally clock
 }
-/* ================= THE PIN (CONFIG.shots.pin) ===========================
-   A ball pressed under a tilted man, carried with the rod. It is a CONSTRAINT, not a contact: while
-   pinned, stepBall hands the ball to pinBallStep and it skips the whole solver — a boot pressed onto
-   a ball resolves along the boot's nearest face, which near the toe is horizontal, so the contact
-   solver squirts it out sideways however fine the substeps. The input half (whether this rod may pin,
-   and the pose) is js/shots.js shotPinInput; this file owns the catch, the carry and every release.
-   One ball per rod (r.pinB <-> b.pinR). Nothing here allocates: it runs per substep. */
+// ================= THE PIN (CONFIG.shots.pin) =================
+// a ball pressed under a tilted man is carried with the rod: a constraint, not a contact (stepBall hands it to pinBallStep, skipping the solver)
+// the input half is shots.js shotPinInput; one ball per rod (r.pinB <-> b.pinR); nothing here allocates
 function pinUpdate(){
  const P=SHOT.pin;if(!P||!P.on)return;
  for(const r of rods){
   const pb=r.pinB;
   if(pb){
-   // Let go when the hand does, when a swing starts (kickRod also does this), when the ball has left
-   // play, or when the rod has turned off the pin — a Total Control flick is a release by the stick.
+   // let go when the hand does, a swing starts, the ball leaves play, or the rod turns off the pin
    if(!r.pinOn||r.kickT>=0||pb.scored||S.balls.indexOf(pb)<0||Math.abs(r.angle-r.pinAt)>P.releaseA)pinRelease(r);
    continue;
   }
@@ -71,7 +58,7 @@ function pinUpdate(){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
     const mz=r.baseZ[i]+r.offset;
     if(Math.abs(p.z-mz)>P.zCatch)continue;
-    // touching the LEG (the capsule pivot -> foot), the same measure shots.js shotLegClips uses
+    // touching the leg (capsule pivot to foot), same measure as shots.js shotLegClips
     const wx=p.x-r.x,wy=p.y-ROD_H,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
     const nx=p.x-(r.x+dx*t),ny=p.y-(ROD_H+dy*t),nz=p.z-mz;
     if(nx*nx+ny*ny+nz*nz>reach*reach)continue;
@@ -84,10 +71,8 @@ function pinUpdate(){
   }
  }
 }
-/* One substep of a pinned ball. Returns false when it lets go, and the ball is then stepped normally
-   on the same substep. Two things from OUTSIDE break the pin, both measured against what this function
-   itself last wrote: the velocity (another ball struck it — ballBall runs between substeps) and the
-   position (anything that hard-sets a ball: a dead-ball re-drop, syncBall). */
+// one substep of a pinned ball; false = let go (it's stepped normally this substep)
+// breaks on an outside velocity change (another ball) or position change (re-drop, syncBall), measured against what this wrote
 function pinBallStep(b,h){
  const r=b.pinR,P=SHOT.pin,p=b.m.position,v=b.v;
  if(Math.abs(v.x-b.pinVx)+Math.abs(v.z-b.pinVz)+Math.abs(v.y)>P.breakV){pinRelease(r,true);return false;}
@@ -99,8 +84,7 @@ function pinBallStep(b,h){
  b.pinVx=v.x;b.pinVz=v.z;b.pinPx=p.x;b.pinPz=p.z;
  return true;
 }
-/* Let go. ext = something else already moved it (keep that velocity); otherwise it keeps carryOut of
-   the slide it was being carried at, so a ball let go mid-slide keeps travelling with the rod. */
+// let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide
 function pinRelease(r,ext){
  const b=r.pinB;r.pinB=null;
  if(!b)return;
@@ -108,35 +92,18 @@ function pinRelease(r,ext){
  if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}
 }
 
-/* ================= contact AUDIO gating =================================
-   An impact is an EVENT, a roll is a STATE — the same split every shipped physics game draws
-   (Unity spells it OnCollisionEnter vs OnCollisionStay). Full rationale in js/audio.js.
-
-   hitFresh is the EVENT half. A contact earns a one-shot only if it is genuinely NEW — that
-   surface must have been clear for PHY.contactHold — AND hard enough to clear the surface's
-   threshold. Before this, the side/end wall bounce had no threshold at all and re-fired on
-   every substep, so a ball hugging a wall produced 3-7 noise bursts per rendered frame
-   (~420/s): the buzzsaw. Sustained contact is the roll layer's job now, not the tap's.
-
-   Timestamps, not countdowns: S.time only advances BETWEEN fixed sim steps, so every substep
-   inside one step reads the same clock and only the first contact of that step can be fresh —
-   exactly the wanted behaviour, with no per-frame bookkeeping to keep in sync.
-   k indexes b.cT: 0 = floor/net roof, 1 = wall, 2 = ball-vs-ball. */
+// ================= contact AUDIO gating =================
+// an impact is an event, a roll is a state (js/audio.js); hitFresh is the event half: the surface must have been clear for PHY.contactHold and the hit hard enough
+// timestamps, not countdowns (S.time only advances between sim steps); k indexes b.cT: 0 floor/net roof, 1 wall, 2 ball-vs-ball
 function hitFresh(b,k,imp,min){
- // -1e9, not 0: S.time starts at 0 and (0-0 > contactHold) is FALSE, which would swallow the
- // very first contact of the session. "Never touched" has to read as "touched infinitely long ago".
+ // -1e9, not 0: 'never touched' must read as long ago or the first contact is swallowed
  const t=b.cT||(b.cT=[-1e9,-1e9,-1e9]);   // lazy init covers a ball built before balls.js gained the field
  const fresh=S.time-t[k]>PHY.contactHold;
  t[k]=S.time;                    // stamp on EVERY contact, fired or not — that is what holds the gate shut
  return fresh&&imp>min;
 }
-/* rollProbe is the STATE half. Position-only: it reads the ball AFTER every collision response
-   this frame has applied and asks "is it resting on / against anything, and how fast is it
-   travelling ALONG that surface". It never writes p or v, which is why it is safe to run on the
-   settled state once per frame instead of per substep. Au.rollFeed takes a MAX, so reporting the
-   same contact twice is harmless and the fastest contact in play owns the timbre.
-   The arena bowl's curved walls feed themselves from arenaContact's inelastic branch (arena.js) —
-   that branch IS the rolling case — so only the floor test is shared with it here. */
+// rollProbe is the state half: position-only, runs once per frame on the settled state, never writes p or v
+// Au.rollFeed takes a max; the bowl's curved walls feed from arenaContact (arena.js)
 function rollProbe(b){
  if(b.scored)return;
  const p=b.m.position,v=b.v,eps=PHY.contactEps,aC=b.t.audio;
@@ -146,38 +113,13 @@ function rollProbe(b){
  if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
  else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
 }
-/* IS THE BALL PAST THE LINE SOMEWHERE OTHER THAN THE MOUTH?
-   A goal is the ball coming IN THROUGH THE OPENING — between the posts, under the bar, inside the
-   net box. The old test only asked where the ball WAS (past the line, |z| inside the posts, below
-   the bar), so anything that reached that box by another road counted. On the arena bowl that is
-   an easy accident: the goal box's side walls are only wallH tall while the crossbar sits at
-   goalH, so a ball that runs up the crease beside the goal clears a side wall and drops straight
-   into the net having never gone between the posts — and it was given. The flat tables have the
-   same hole via a ball lofted over an end wall and blown back in over the side of the net.
-   So this reports the illegal shapes, and the caller LATCHES them exactly the way an over-the-bar
-   lob is latched (b.noGoal, cleared the moment the ball is back out in front of the line): wide of
-   a post, over the bar, under the pitch, or out past the back of the net. Kept apart from
-   b.overBar because only overBar drives the net roof in goalFrameCollide. */
+// is the ball past the line somewhere other than the mouth? (wide of a post, over the bar, under the pitch, behind the net)
+// the caller latches it (b.noGoal, cleared once back in front of the line); kept apart from b.overBar, which drives the net roof
 function notMouth(p,gh){
  return Math.abs(p.z)>=gh||p.y>=F.goalH||p.y<=-BALL_R||Math.abs(p.x)>F.L/2+F.goalDepth;
 }
-/* HAS THIS BALL LEFT THE CABINET?
-   Every wall has a top, so a lofted ball can genuinely end up OUTSIDE one — and the wall tests
-   below have no memory, they only ask "is the ball past the plane and low enough". A ball that
-   cleared a rail on the way up therefore re-enters their height band on the way DOWN, outside the
-   table, and is clamped straight back onto the pitch. Measured before this: a ball 17 units past
-   the goal line — well beyond the end of the table — teleported back to the wall and fired down
-   the pitch. Roughly half of all lofted shots that cleared the goal line came back like that,
-   which is why it looked random.
-
-   So latch it, the same way overBar latches a lob over the crossbar: what decides the ball's fate
-   is the CROSSING, not where it happens to be a few frames later. Once out, every wall and the
-   pitch floor stop reaching for it, it falls away, and the out-of-play test in physStep gives it
-   the whistle. Cleared the moment it is back inside both planes, so a ball that merely grazes a
-   rail and drops back in behaves exactly as before.
-
-   The goal mouth is deliberately NOT latched: a lob into the mouth is the overBar / net-roof case
-   and has its own machinery. Set PHY.wallEscape false to restore the old behaviour outright. */
+// has this ball left the cabinet? a lofted ball outside a wall would re-enter its height band and be clamped back onto the pitch
+// latch the crossing: walls and floor stop reaching for it and physStep whistles; cleared when back inside both planes; PHY.wallEscape false restores the old behaviour
 function wallLatch(b){
  if(b.scored||!PHY.wallEscape){b.outWall=0;return;}
  const p=b.m.position,zl=F.W/2-BALL_R,xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
@@ -189,19 +131,18 @@ function wallLatch(b){
 }
 function stepBall(b,h){
  const p=b.m.position,v=b.v;
- // safety: if physics ever produces a non-finite state, re-drop this ball instead of poisoning the sim.
+ // safety: a non-finite state re-drops the ball instead of poisoning the sim
  if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.z)||!isFinite(v.x)||!isFinite(v.y)||!isFinite(v.z)){
   if(b.pinR)pinRelease(b.pinR,true);
   p.set(rngR(RNG.nan,-5,5),PHY.redropY,rngR(RNG.nan,-8,8));v.set(0,0,0);b.spin=0;syncBall(b);return;}
  if(b.pinR&&pinBallStep(b,h))return;   // pinned: carried by its rod, outside the contact solver (see THE PIN)
- // knuckleball: erratic flutter — periodically re-kick the side-spin to a fresh random value so the
- // flight path weaves unpredictably. Energy-safe: spin only rotates the horizontal velocity below.
+ // knuckleball: periodically re-kick the side-spin to a random value (energy-safe)
  if(b.t.knuckle){
   b.knuckT-=h;
   if(b.knuckT<=0){const K=b.t.knuckle,KR=RNG.knuck;b.knuckT=rngR(KR,K.every[0],K.every[1]);
    b.spin=clamp(b.spin+rngR(KR,-K.kick,K.kick),-K.max,K.max);}
  }
- // spin/Magnus curve: rotate the horizontal velocity by a small angle (pure rotation = no energy added = stable).
+ // spin/Magnus: rotate the horizontal velocity by a small angle (no energy added)
  if(b.spin){
   const a=clamp(b.spin*PHY.spinTurn*h,-PHY.spinMax,PHY.spinMax),cs=Math.cos(a),sn=Math.sin(a),vx=v.x,vz=v.z;
   v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
@@ -220,27 +161,19 @@ function stepBall(b,h){
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
-  // The CLAMP is positional; only the BOUNCE is gated on arrival. The old form gated p.z on the ball
-  // moving outward, so a ball already past the line with inward or zero v.z was never pushed back —
-  // which is exactly what a boot pressing it into the wall produces: collideRod resolves by writing p
-  // directly, and its grip lerp then drags v.z toward the foot's own velocity, so the ball is never
-  // "arriving" again. That is the ball-buried-in-the-wall case. See staticClamp for the other half.
+  // the clamp is positional, only the bounce is gated on arrival (a boot pressing a ball into the wall leaves it never 'arriving', see staticClamp)
   if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R&&!b.outWall){
    const sz=p.z>0?1:-1;
-   // gated on FRESH contact + PHY.wallHitSnd: a ball riding the wall re-enters this branch every
-   // substep, and firing a tap each time is what made the buzzsaw. The ride is a roll (rollProbe).
+   // gated on a fresh contact + PHY.wallHitSnd; a ball riding the wall is a roll (rollProbe)
    if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall,b,0);spawnMark(b,0,0,-sz,im);}}   // the tap AND the scuff ride the same fresh-contact gate
    p.z=sz*zl;
   }
   if(!b.scored){
-   // ENDWALL_H>0 (walled tables, e.g. circuit): each end is ONE solid wall up to that height with
-   // the goal mouth INSET into it — an over-the-bar shot slaps the wall face and bounces back in.
-   // 0 (classic): wall only flanks the mouth to wallH; over the bar sails through as before.
-   // The mouth opening itself still tracks goalHalf*bigGoalMult, so Big Goal widens the inset.
+   // ENDWALL_H>0 (walled tables, e.g. circuit): each end is one solid wall with the mouth inset; 0 = classic, the wall only flanks the mouth
    const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
-    if(p.x>F.L/2&&notMouth(p,gh))b.noGoal=1;                                                    // past the line but not in the opening → it did not come through the mouth (see notMouth)
+    if(p.x>F.L/2&&notMouth(p,gh))b.noGoal=1;                                                    // past the line but not in the opening: no goal (see notMouth)
     if(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H)){
      if(p.x>F.L/2&&p.y>=F.goalH)b.overBar=1;                                                    // sailed OVER the bar → a lob, never a goal (net roof below catches it)
      else if(b.overBar!==1&&b.noGoal!==1&&p.y<F.goalH&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}}   // goal ONLY under the bar, whole ball over the line, in through the mouth
@@ -277,12 +210,11 @@ function stepBall(b,h){
   }else{
    const sd=arenaSD(p.x,p.z,gh0,gh1); // pocket is open at all heights → lob over the bar can drop in
    const d=-sd,CR=ARENA.creaseR;
-   // the bowl has the same hole as the flat walls, and worse: its contact pushes the ball out by
-   // the FULL penetration, so a ball caught far outside is thrown back in hard. Same latch.
+   // the bowl has the same hole and throws a far-outside ball back hard; same latch
    if(!PHY.wallEscape||d>=0)b.outWall=0; else if(!b.outWall&&p.y>=F.wallH+BALL_R)b.outWall=1;
    let contacted=!!b.outWall;   // outside and over the rim — nothing below reaches for it
    if(!b.outWall&&CR>0&&d<CR){
-    // ---- curved crease (fillet) zone: quarter-torus wall→floor blend ----
+    // ---- curved crease (fillet) zone: quarter-torus wall to floor blend ----
     const g=arenaGrad(p.x,p.z,gh0,gh1);
     if(p.y<CR){
      const u=CR-d,w=CR-p.y,r=Math.hypot(u,w);
@@ -299,7 +231,7 @@ function stepBall(b,h){
     }
     if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }else{
-    // ---- flat interior; CR=0 adds a SHARP 90° vertical wall (no fillet) ----
+    // ---- flat interior; CR=0 adds a sharp 90° wall ----
     if(CR<=0&&p.y<F.wallH+BALL_R&&d<BALL_R){
      const g=arenaGrad(p.x,p.z,gh0,gh1),nx=-g.x,ny=0,nz=-g.z,pen=BALL_R-d;
      arenaContact(b,pen,nx,ny,nz);contacted=true;
@@ -309,8 +241,7 @@ function stepBall(b,h){
      const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
     }else if(!contacted){const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
    }
-   // goal detection — the mouth latch does the work here (see notMouth); the bowl is the table
-   // that exposed it, because the goal box's side walls are shorter than the crossbar.
+   // goal detection: the mouth latch does the work (see notMouth)
    if(p.x>F.L/2){
     if(notMouth(p,gh0))b.noGoal=1;
     else if(b.noGoal!==1&&b.overBar!==1&&p.x>F.L/2+BALL_R){onGoal(0,b);return;}
@@ -331,24 +262,14 @@ function stepBall(b,h){
  }
  if(!b.scored)staticClamp(b);   // static geometry gets the last word — must run BEFORE the out-of-bounds test below
  if(!b.scored&&(p.y<-8||Math.abs(p.x)>F.L/2+F.goalDepth+8||Math.abs(p.z)>F.W/2+10)){outOfBounds(b);return;}
- /* The hard clamp at maxV — except for a ball a CHARGED shot sent past it (capSpeed sets b.over). That
-    allowance only ever ratchets down to the ball's own speed, so friction and deflections take the
-    overspeed away for good, and it lapses the moment the ball is back under maxV. */
+ // hard clamp at maxV, except a ball a charged shot sent past it (capSpeed sets b.over); it only ratchets down
  const mv=b.t.maxV,sp2=v.x*v.x+v.y*v.y+v.z*v.z;
  let lim=mv;
  if(b.over>mv){const sp=Math.sqrt(sp2);b.over=Math.min(b.over,Math.max(sp,mv));if(b.over>mv)lim=b.over;else b.over=0;}
  if(sp2>lim*lim){const k=lim/Math.sqrt(sp2);v.multiplyScalar(k);}
 }
-/* STATIC GEOMETRY GETS THE LAST WORD — the second half of the wall-wedge fix.
-   collideRod resolves a contact by writing the ball's position DIRECTLY, and it runs AFTER stepBall's
-   wall tests, so on a ball squeezed between a boot and a wall the foot's depenetration is the last
-   thing to touch p in that substep and can shove it clean through the wall plane. Re-asserting the
-   bounds afterwards makes the wall win the squeeze, so the ball pops ALONG it instead of into it.
-   Position-only, and only the INTO-surface velocity component is killed: the bounce belongs to the
-   arrival tests in stepBall, which have already run this substep, and re-bouncing here would let a
-   held ball churn against the boot. Arena is exempt — arenaContact is distance-based with no velocity
-   gate, so a bowl wall already re-resolves a pushed-in ball on the next substep by itself.
-   Scored balls are exempt too: they live behind the line under their own in-net clamps. */
+// static geometry gets the last word: collideRod writes p after the wall tests, so a squeeze could shove the ball through the wall
+// re-assert the bounds here (position only, kill the into-surface velocity); the arena and scored balls are exempt
 function staticClamp(b){
  if(ARENA_ON||b.outWall)return;   // a ball that has cleared a wall is outside; do not drag it back
  const p=b.m.position,v=b.v;
@@ -360,22 +281,17 @@ function staticClamp(b){
  }
  const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
  if(p.y<ew+BALL_R){
-  // mouth test mirrors stepBall's exactly — a ball in the opening is on its way in, not against a wall
+  // mouth test mirrors stepBall's: a ball in the opening is on its way in
   if(p.x>xl){const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
    if(!(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H))){p.x=xl;if(v.x>0)v.x=0;}}
   else if(p.x<-xl){const gh=F.goalHalf*(S.eff[1].big>S.time?PHY.bigGoalMult:1);
    if(!(Math.abs(p.z)<gh&&(p.y<F.goalH||!ENDWALL_H))){p.x=-xl;if(v.x<0)v.x=0;}}
  }
 }
-/* solid round goal posts (vertical) + crossbar (horizontal) + a SOLID net roof, both goals,
-   both tables. Posts/bar sit at the effective goal-mouth edge (scales with the 'big goal'
-   power-up) and deflect with a metallic clang. A ball lobbed over the bar lands on the net
-   roof instead of dropping in — so it can never score over the top; it settles and re-drops. */
+// solid round posts and crossbar plus a solid net roof, both goals; a ball lobbed over the bar lands on the roof and re-drops
 function goalFrameCollide(b,h){
  const p=b.m.position,v=b.v,pr=PHY.postRad+BALL_R,e=1+PHY.postRest,GH=F.goalH,GD=F.goalDepth;
- // Early-out: posts/crossbar sit at x=±L/2 and the net roof only reaches back to ±(L/2+GD), so a ball
- // more than a post-radius inside either line can't touch any of it. Skips the whole per-substep loop
- // for midfield play — pure cost cut, no behaviour change (the guard band ≫ one substep of travel).
+ // early-out: nothing here can touch a ball more than a post-radius inside either line (pure cost cut)
  if(Math.abs(p.x)<F.L/2-pr)return;
  for(let sx=-1;sx<=1;sx+=2){
   const gh=F.goalHalf*(S.eff[sx>0?0:1].big>S.time?PHY.bigGoalMult:1),gx=sx*F.L/2;
@@ -391,9 +307,7 @@ function goalFrameCollide(b,h){
    if(dd<pr&&dd>1e-4){const nx=dx/dd,ny=dy/dd;p.x+=nx*(pr-dd);p.y+=ny*(pr-dd);
     const vn=v.x*nx+v.y*ny;if(vn<0){v.x-=e*vn*nx;v.y-=e*vn*ny;Au.post(-vn,b.t.audio?.post,b);momWood(b,-vn,1);}}
   }
-  // net roof: solid top over the goal box (behind the line). A ball flagged as an over-the-bar lob
-  // (b.overBar for this end) is caught at ANY depth below the roofline so a fast drop can't tunnel
-  // through it into the net; an unflagged ball keeps the thin catch band as before.
+  // net roof: an over-the-bar lob (b.overBar) is caught at any depth below the roofline, others keep the thin band
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
   const roofSolid=sx>0?(b.overBar===1||b.noGoal===1):(b.overBar===-1||b.noGoal===-1);
    if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
@@ -403,45 +317,23 @@ function goalFrameCollide(b,h){
   }
  }
 }
-/* PER-CONTACT SPEED CEILING (CONFIG.kick.cap).
-   The impulse below is a restitution bounce off CLOSING speed, so an ordinary strike routinely
-   produces more than the ball type's maxV: measured on a classic ball against a ball arriving at
-   40, a base-str power swing at mid-boot leaves at ~127 and a str-10 sweet hit at ~245, against a
-   maxV of 150. The hard clamp at the end of stepBall then flattened every one of those onto the
-   SAME 150 - which is why str stopped paying above about 7, the sweet-spot bonus above about 4,
-   and a charge or a POWER HITS boost never showed at all. It is also what the heat glow was
-   reporting: most touches were sitting on the clip, not near a top speed anyone had earned.
-   TWO HALVES, AND BOTH ARE NEEDED. The CEILING is per contact, so a weak rod and a strong one aim
-   at different numbers - that is what makes only a strong, clean or charged strike able to reach
-   the top. The KNEE eases the outgoing speed into that ceiling instead of clipping it: under the
-   knee nothing changes at all (the curve's slope is 1 there, so there is no step to feel), over it
-   the excess compresses and only ever APPROACHES the ceiling, so speeds spread out along the top
-   of the range instead of piling on one line.
-   THE FLOOR AT THE ARRIVING SPEED is what keeps it honest: this bounds what a boot may ADD, it
-   never slows a ball that was already travelling faster. Without it a weak defender grazing a
-   screamer would kill it, which is not what any of this is for. A head-on deflection still sheds
-   speed exactly as it always did - that is the impulse doing it, not this.
-   NOTHING HERE TOUCHES stepBall's OWN maxV CLAMP, which stays as the last word. cap.max sits
-   deliberately over 1 so the best strikes ask for a ceiling past maxV and that clamp is what
-   finishes them: the ease is asymptotic, so a ceiling of exactly maxV could never be reached and
-   the heat glow would never fill. */
+// PER-CONTACT SPEED CEILING (CONFIG.kick.cap)
+// the impulse bounce exceeds maxV and stepBall's clamp flattened every strike to one speed; so each contact has its own ceiling (stronger rods aim higher) with a knee easing into it
+// it only bounds what a boot adds, never slows a faster ball; stepBall's maxV clamp stays the last word (cap.max > 1 so the best strikes reach maxV)
 function capSpeed(b,r,sweet,in2){
  const C=KICK.cap;
  if(!C.on)return;
  const v=b.v,sp2=v.x*v.x+v.y*v.y+v.z*v.z,lo=b.t.maxV*C.min*C.knee;
- if(sp2<=lo*lo)return;              // under the LOWEST knee any contact could have - skips the stat reads on every passive touch and every slide substep
+ if(sp2<=lo*lo)return;              // under the lowest knee any contact could have: skips the stat reads on passive touches
  let f=C.base+C.str*stCapFrac(r),mx=C.max;
  if(sweet)f+=C.sweet;
- if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's OWN power trim: a finesse touch lowers its ceiling, a well-timed charge raises it
- // A CHARGE BEATS THE CAP: it raises the ceiling AND the most any ceiling may be, by what it was worth.
+ if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's own power trim: a finesse touch lowers the ceiling, a timed charge raises it
+ if(r.kickStyle==='trapShot')f+=C.pin||0;   // the pin / trap shot: every contact of the swing, not just the first (which spends the trim)
+ // a charge beats the cap: raises the ceiling and the most any ceiling may be
  const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
  if(w>0){f+=(C.charge||0)*w;mx+=(C.chargeTop||0)*w;}
  if(S.eff[r.team].boost>S.time)f+=C.boost;
- /* …AND FOR THE WHOLE SWING. At strike speed the boot is several times faster than the ball and meets
-    it again on later substeps; those contacts come after the shot is spent (shotConsume), so on their
-    own they would ask for a plain ceiling and drag a 149 back under a 130 maxV — measured live,
-    2026-09-25. So the charged contact records the ceiling it earned (r.swF / r.swMx), and every later
-    contact of the SAME swing (kickRod clears them, r.swOver marks a charged one) keeps it. */
+ // ...and for the whole swing: later contacts of the swing keep the charged ceiling (r.swF / r.swMx, cleared by kickRod)
  if(w>0){r.swF=f;r.swMx=mx;}
  else if(r.kickT>=0&&r.swOver>0&&r.swF>0){if(r.swF>f)f=r.swF;if(r.swMx>mx)mx=r.swMx;}
  const cap=b.t.maxV*clamp(f,C.min,mx),knee=cap*C.knee;
@@ -451,12 +343,12 @@ function capSpeed(b,r,sweet,in2){
  let out=knee+span*(1-Math.exp(-(sp-knee)/span));
  const inSp=Math.sqrt(in2);
  if(out<inSp)out=Math.min(sp,inSp);     // the cap limits what this contact ADDED, never the speed it arrived with
- const k=out/sp;v.x*=k;v.y*=k;v.z*=k;   // components, not multiplyScalar: collideRod writes b.v by hand everywhere and the harnesses stub it as a plain object
+ const k=out/sp;v.x*=k;v.y*=k;v.z*=k;   // components, not multiplyScalar: collideRod writes b.v by hand and the harnesses stub it as a plain object
 }
 function collideRod(b,r){
  if(r.trnHidden)return;                   // training sandbox: hidden rods are ghosts — no contact
  const p=b.m.position;
-/* ---- foot box (priority) ---- */
+// ---- foot box (priority) ----
     const bx=FOOT_BOX.x,by=FOOT_BOX.y,bz=FOOT_BOX.z,offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*r.kickDir;
     const reach=BALL_R*FOOT_BOX_REACH;
     const SW=KICK.sweetSpot;
@@ -483,78 +375,49 @@ function collideRod(b,r){
     p.x+=nx*(reach-d);p.y+=ny*(reach-d);p.z+=nz*(reach-d);
    const cwx=bcx+clx*sa+cly*ca,cwy=bcy-clx*ca+cly*sa,cwz=fz+clz;
    const cvx=-(cwy-ROD_H)*r.angVel,cvy=(cwx-r.x)*r.angVel,cvz=r.vz;
-   // cvz is scaled and cvx/cvy are not: the SWING transfers in full, the SLIDE only pushes.
-   // See CONFIG.kick.slidePush — slidePush 1 is the old expression exactly.
+   // cvz is scaled and cvx/cvy aren't: the swing transfers in full, the slide only pushes (CONFIG.kick.slidePush)
    const vn=(b.v.x-cvx)*nx+(b.v.y-cvy)*ny+(b.v.z-cvz*KICK.slidePush)*nz;
    if(vn<0){
-     // tracer only: the ball's OWN normal speed before the impulse rewrites b.v. vn is exactly
-     // (ball·n − foot·n), so logging both halves shows whether a contact was driven by the swing
-     // or by the ball's own arrival speed. Zero cost when the tracer is off (dbgLogRod is null).
+     // tracer only: the ball's own normal speed before the impulse; free when the tracer is off
      const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
      const ks=kickStyleCfg(r);
      const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-     /* HOLD CONTACT. While ai.js has a ball-holding action live (trap = catch a loose ball,
-        dribble = carry one that's already at the feet) the boot is a dead, sticky surface instead
-        of the normal passive touch (kick.rest 0.01 / kick.grip 0.08). rest→0 kills the ball's speed
-        relative to the foot; the big grip is the CARRY — b.v is lerped hard toward the contact
-        point's own velocity, whose z component is the rod's slide (r.vz), so the ball travels with
-        the man being dribbled sideways. Without this a "trap" is just a soft bounce: the ball parks
-        near the boot and the rod slides out from under it. No sweet-spot bonus and no aim-assist on
-        a held contact either — both exist to make a STRIKE better, and applying them here would
-        re-launch the ball we are trying to hold. holdCfg (rods.js) returns the live action's block,
-        or null when there isn't one / a swing is in flight. */
+     // hold contact: while ai.js has a trap or dribble live, the boot is a dead sticky surface (rest 0, big grip so b.v follows the contact point); no sweet bonus or aim-assist; holdCfg (rods.js) returns the block or null
      const HLD=holdCfg(r),trapping=!!HLD;
      const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
-    // sweet spot: ball struck in the narrow z-centre of the foot AND a tight forward x band
-    //   (dir-relative off the rod, same reference the AI's overFoot zone uses). lz is the ball's
-    //   z offset from the foot; relR is how far ahead of the rod it contacts.
+    // sweet spot: struck in the foot's narrow z-centre and a tight forward x band (dir-relative); lz = z offset from the foot, relR = how far ahead of the rod
     const relR=(p.x-r.x)*r.kickDir;
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     let jm=-(1+rest)*vn/b.t.mass;
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
-    /* PLAYER SHOT (js/shots.js). r.shotOn is the whole cross-module contract — undefined without
-       that file, so a missing shots.js cannot change a single contact. It is what a charged or
-       trigger-modified swing is worth ON TOP of the deeper arc the wind-up already produced, and it
-       is the only way a Total Control STICK swing can carry a charge at all: that path never calls
-       kickRod, so there is no style block for it to have been written into. */
+    // player shot (js/shots.js): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
     if(r.shotOn)jm*=r.shotPow;
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
-    if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling - see the banner above collideRod. A HELD contact is exempt for the same reason it takes no sweet bonus and no aim-assist: those improve a STRIKE, and this bounds one
+    if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling (see the banner above); a held contact is exempt
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
-    // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
+    // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
     // tiny imperfection prevents pixel-perfect side-to-side oscillations
     const jit=Math.abs(jm)*FOOT_JITTER;
-    // seeded (js/rng.js) on its OWN stream: this draws per man per substep, so sharing one with
-    // anything slower would make that consumer's numbers depend on the contact count.
+    // seeded on its own stream: it draws per man per substep, so sharing would tie other consumers to the contact count
     const JR=RNG.jit;
     b.v.x+=(JR()-.5)*jit;b.v.y+=(JR()-.5)*jit*.3;b.v.z+=(JR()-.5)*jit;
-    // aim-assist bends a shot goalward: for the HUMAN only on a clean strike (power window or sweet
-    // hit — a skill reward), but for AI rods on EVERY contact so they reliably aim in all modes.
-    // aimAssist itself only acts on shots already moving goalward within its cone, so a defensive
-    // touch (moving away) is untouched — this can't turn stray clears into shots.
-    // passFaceOK (rods.js) is the CONTACT-TIME half of the strike gate: a pass swing that clips the
-    // SIDE or BACK of a boot (normal not pointing forward) still resolves as a hit here, but it is a
-    // deflection, not a pass, so the pass aim-assist must not bend it at the receiver. The ordinary
-    // goal-ward assist still runs — only r.passTo is suppressed for this contact.
-    // r.shotOn joins the gate because a deliberate shot must be AIMED whatever its timing: a Total
-    // Control stick swing has kickT<0, so `pow` is false for the whole of it. shotSpray then bends
-    // it back by however much control was lost — after the assist, so a wild shot is not first
-    // sprayed and then quietly corrected. One contact spends the shot (shotConsume).
+    // aim-assist bends a shot goalward: humans on a clean strike, AI rods on every contact, only shots already moving goalward
+    // passFaceOK (rods.js): a side/back clip is a deflection, so the pass assist skips it; r.shotOn joins the gate (a Total Control swing has kickT<0); one contact spends the shot
     if(!trapping&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
     if(!trapping)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
-    momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js: per-ball contact record (reads the PREVIOUS one, so it goes first) · matchstats.js keeps its OWN record, so the order of the two is free
+    momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
      {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
@@ -568,7 +431,7 @@ function collideRod(b,r){
     }
    }
   }
- /* ---- rod capsule (fallback) ---- */
+ // ---- rod capsule (fallback) ----
  const R=BALL_R+PRAD;
  for(let i=0;i<r.baseZ.length;i++){
   if(footHit.has(i))continue;
@@ -603,16 +466,13 @@ function collideRod(b,r){
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
-    if(!trapping)capSpeed(b,r,false,in2);   // per-contact speed ceiling - a leg graze is no more entitled to a top-speed ball than a boot
+    if(!trapping)capSpeed(b,r,false,in2);   // per-contact speed ceiling; a leg graze is no more entitled to a top-speed ball than a boot
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
-    // Total Control mode: the user rod's right-stick swerve line (r.tcSpin) bends the shot on contact
+    // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    // human: power window only; AI: every contact (goalward-only, see foot-box note). The pass assist
-    // is ALWAYS suppressed here: this is the rod capsule — the leg — not the boot. A ball that reaches
-    // the capsule fallback has slipped past the foot box entirely, so it is a graze off the side of
-    // the player by definition, and bending it toward a receiver is precisely the phantom pass.
+    // human: power window only; AI: every contact; the pass assist is always suppressed (the capsule is the leg, not a pass)
     if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);
     if(!trapping)wallAssist(b,r,true);                 // …and off the leg too — see the foot-box pass
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
@@ -620,7 +480,7 @@ function collideRod(b,r){
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
-    {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact (capsule graze) of this swing — capsule can't be a sweet hit
+    {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: first contact (capsule graze) of this swing; a capsule can't be a sweet hit
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;
@@ -649,9 +509,7 @@ function ballBall(a,b){
  const vbn2=((mb-e*ma)*vbn+(1+e)*ma*van)/(ma+mb);
  a.v.x+=(van2-van)*dx;a.v.y+=(van2-van)*dy;a.v.z+=(van2-van)*dz;
  b.v.x+=(vbn2-vbn)*dx;b.v.y+=(vbn2-vbn)*dy;b.v.z+=(vbn2-vbn)*dz;
- // BOTH balls must be fresh, and both timers are stamped either way — two balls jostling in a
- // pile resolve every substep, and the old ungated call turned that into the same machine-gun
- // the walls had. The heavier ball owns the timbre, as before.
+ // both balls must be fresh and both timers are stamped either way (a pile would machine-gun); the heavier ball owns the timbre
  const cl=van-vbn,fa=hitFresh(a,2,cl,PHY.ballHitSnd),fb=hitFresh(b,2,cl,PHY.ballHitSnd);
  if(fa&&fb)Au.wall(cl*2,(ma>=mb?a:b).t.audio?.wall,ma>=mb?a:b,2);
 }

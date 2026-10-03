@@ -1,8 +1,5 @@
-/* Behavioural harness for the GLB light + emissive transfer (js/models.js).
-   No three.js, no browser: the two functions are string-sliced out of models.js and
-   rebuilt with new Function, then run against the REAL numbers read out of the room
-   GLBs' JSON chunks. Every fixture below is measured, not invented.
-   Run: node tools/roomlight-harness.js                                          */
+// behavioural harness for the GLB light + emissive transfer (js/models.js). Run: node tools/roomlight-harness.js
+// no three.js or browser: the two functions are string-sliced from models.js and rebuilt with new Function, then run against the real numbers read from the room GLBs' JSON chunks (every fixture is measured, not invented)
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -231,9 +228,8 @@ report('saucer',SAUCER(),{gain:3.2});
 report('pub',PUB(),{gain:16});
 
 
-/* === 10. TEETH: each mutation below must BREAK something ==================
-   A harness that passes against a broken implementation is decoration. Each entry
-   reverts one specific decision and names the assertion that must then fail.     */
+// === 10. TEETH: each mutation below must BREAK something ===
+// reverts one decision and names the assertion that must then fail
 function buildFrom(srcL,srcE,CONFIG){
  return new Function('CONFIG','THREE','console',
   srcL+'\n'+srcE+'\nreturn {applyRoomLights,applyEmissiveStrength};')(CONFIG,THREE,{log(){}});

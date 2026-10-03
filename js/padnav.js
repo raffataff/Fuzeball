@@ -1,37 +1,13 @@
 'use strict';
-/* ===== padnav — controller navigation for every menu ===== */
-/* The pad used to exist only inside a match (input.js gamepadUpdate). Every screen outside one was
-   mouse-only, which is the whole Steam Deck / couch problem. This file drives ALL of them, and it
-   does it without a per-screen focus order:
-
-   SPATIAL, NOT DECLARED. The candidates are read off the live DOM each time the cursor moves —
-   buttons, selects, inputs, and anything carrying an `onclick` PROPERTY (which is how nearly every
-   card, swatch and row in this codebase is wired) — and the D-pad picks the nearest one in that
-   direction. So a screen added later, a panel the layout editor has moved, a roster that just
-   re-rendered: all navigable with nothing registered. A screen only ever DECLARES its default
-   focus and, optionally, a Start-button action (NAV_SCREENS) and pad hooks on its SCREENS entry:
-     onPad(padIdx,btn) → true   — the screen consumed an A/B press (the Kick Off lobby's join/leave)
-     onPadStick(rx,ry,dt) → true — the screen used the right stick (the customize turntable)
-
-   THE FOCUS IS VIRTUAL. `.navFocus` is a class, never DOM focus — a focused <button> would also take
-   Space/Enter, and the roster reads Space as "keyboard joins a side". Text inputs are the exception:
-   A focuses one for real so it can be typed into, and B/A/any direction blurs it again.
-
-   ONE POLLER IN MENUS. js/roster.js used to read the pads itself for press-to-join, and two pollers
-   on one A press means it both joins a side AND presses whatever the cursor is on. The lobby's rule
-   now runs as its onPad hook, first, and only a press it declines reaches the cursor.
-
-   A PRESS THE MENU USED IS EATEN until the button comes back up (padNavFilter, called from
-   gamepadUpdate). Resuming from pause with A, or starting a match with it, would otherwise hand the
-   same press to the rod as a kick — a fresh match seat has no edge history to tell it the button was
-   already down.
-
-   Layers are checked top-down (NAV_LAYERS): a confirm dialog beats Options, Options beats the pause
-   menu it was opened over, and only with no overlay up does the router's current screen get the pad.
-   In a live match with nothing on top, this file does nothing at all — the pad is gameplay's. */
+// ===== padnav: controller navigation for every menu =====
+// drives every screen outside a match with no per-screen focus order: candidates are read off the live DOM (buttons, selects, inputs, anything with an `onclick` property) and the D-pad picks the nearest
+// a screen only declares its default focus and optionally a Start action (NAV_SCREENS) and hooks on its SCREENS entry: onPad(padIdx,btn) > true if it consumed an A/B press, onPadStick(rx,ry,dt) > true if it used the right stick
+// the focus is virtual (`.navFocus`, never DOM focus, which would also take Space/Enter); text inputs are the exception
+// a press the menu used is eaten until the button comes up (padNavFilter), or it would reach the rod as a kick
+// layers are checked top-down (NAV_LAYERS); in a live match with nothing on top this file does nothing
 const NAV={t:0,root:null,el:null,rect:null,show:false,mem:{},prev:{},eat:{},dir:'',rep:0,miss:0,
  fam:'xbox',kind:'kbm',edit:null,adj:null,adjWas:null,drop:null,hint:null,hintSig:'',hintT:0};
-// Overlays, top-most first. def = default focus, back = what B presses, backLbl = its hint label.
+// overlays, top-most first; def = default focus, back = what B presses, backLbl = its hint label
 const NAV_LAYERS=[
  {id:'uiConfirm',def:['uiConfirmCancel'],back:'uiConfirmCancel'},
  {id:'lgWipe',def:['btnWipeCancel'],back:'btnWipeCancel'},
@@ -44,8 +20,7 @@ const NAV_LAYERS=[
  {id:'trlCard',def:['trlRetry'],back:'trlQuit',backLbl:'Trials'},
  {id:'tutCard',def:['tutCardGo'],back:'tutCardRedo',backLbl:'Redo'}
 ];
-// Router screens. B always presses the screen's own visible `.backBtn`, so it runs exactly the
-// teardown the mouse would (cupReturn, closeCustomize…) rather than a bare backScreen().
+// router screens: B presses the screen's own `.backBtn` so it runs the same teardown as the mouse
 const NAV_SCREENS={
  home:{def:['btnKickOff']},
  menu:{def:['btnStart'],start:'btnStart'},
@@ -59,15 +34,9 @@ const NAV_SCREENS={
  league:{def:['lgPlay','lgNext','lgCup'],start:'lgPlay'},
  championsCup:{def:['cupPlay','cupDone'],start:'cupPlay'}
 };
-/* ===== button glyphs =====
-   One table for every prompt in the game — this strip, the in-match hint (js/hud.js `{A}` markup)
-   and the Options reference card (`data-pad`). Keyed by the XBOX name of the standard-mapping SLOT:
-   'A' is always button 0, the bottom face button, whatever the pad prints on it — so a Switch pad's
-   'A' slot reads B. `c` is the hardware's own colour for a face button, which is what a player
-   recognises before they have read anything.
-   Shapes (`s`) are SVG path data in a 16-unit box, STROKED: the menu draws them as inline SVG and
-   the HUD as Path2D off the same string. PlayStation's face buttons are shapes, not letters — no face
-   this game ships carries ✕ ○ □ △, and a fallback font drew them in whatever it happened to have. */
+// ===== button glyphs =====
+// one table for every prompt (this strip, the HUD's `{A}` markup, the Options card `data-pad`), keyed by the Xbox name of the standard-mapping slot ('A' is always button 0)
+// `c` = the hardware's own colour for a face button; shapes (`s`) are stroked SVG path data in a 16-unit box, drawn inline by the menu and via Path2D by the HUD
 const PAD_PATH={
  cross:'M4.6 4.6L11.4 11.4M11.4 4.6L4.6 11.4',circle:'M3.9 8a4.1 4.1 0 1 0 8.2 0a4.1 4.1 0 1 0 -8.2 0',
  square:'M4.5 4.5H11.5V11.5H4.5Z',tri:'M8 3.7L12.5 11.4H3.5Z',
@@ -83,29 +52,23 @@ const PAD_GLYPH={
  nin:{A:{t:'B'},B:{t:'A'},X:{t:'Y'},Y:{t:'X'},LB:{t:'L'},RB:{t:'R'},LT:{t:'ZL'},RT:{t:'ZR'},START:{s:'plus'},VIEW:{s:'minus'}}
 };
 const PAD_ANY={LS:{t:'L',stick:1},RS:{t:'R',stick:1},DPAD:{s:'dpad'},DLR:{s:'dlr'},DUD:{s:'dud'}};
-/* {t,s,c,round} for a slot in the family of the pad that last did something. `round` = a face
-   button, a stick or a one-symbol button: drawn as a disc. Everything else (shoulders, triggers,
-   a worded OPTIONS) is a pill — both deliberately NOT the square keycap a keyboard key is. */
+// {t,s,c,round} for a slot in the family of the pad last used; `round` = face button, stick or one-symbol button (a disc), the rest are pills
 function padGlyph(k){
  const g=(PAD_GLYPH[NAV.fam]||PAD_GLYPH.xbox)[k]||PAD_ANY[k]||{t:k};
  return{t:g.t||'',s:g.s||'',c:g.c||'',stick:!!g.stick,round:!!(g.s||g.stick||/^[ABXY]$/.test(k))};
 }
-// The same glyph as markup. <kbd>, not <b>: the Options reference card styles every `.ctl b` as a
-// keyboard keycap, and a pad button nested in one would have come out as a keycap inside a keycap.
+// the same glyph as markup; <kbd> not <b>, since the Options card styles every `.ctl b` as a keycap
 function padSvg(s){return'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="'+PAD_PATH[s]+'"/></svg>';}
 function padKeyHTML(k){const g=padGlyph(k);
  return'<kbd class="nhK'+(g.round?' f':'')+(g.stick?' st':'')+'"'+(g.c?' style="color:'+g.c+'"':'')+'>'+(g.s?padSvg(g.s):g.t)+'</kbd>';}
-// Anything in the page marked data-pad re-labels itself when the family changes: "LT+A" is a chord,
-// "LS/DPAD" is either one.
+// anything marked data-pad re-labels itself when the family changes
 function padLabels(){for(const el of document.querySelectorAll('[data-pad]'))
  el.innerHTML=el.dataset.pad.split(/([+\/])/).map(s=>s==='+'||s==='/'?'<i class="nhSep">'+s+'</i>':s?padKeyHTML(s):'').join('');}
-// The last device anything came from — 'pad' or 'kbm'. A solo seat holds keyboard, mouse AND pad,
-// so the in-match hint asks this rather than the seat which prompts to draw (js/hud.js).
+// the last device anything came from, 'pad' or 'kbm' (the in-match hint asks this, js/hud.js)
 function inputKind(){return NAV.kind;}
 const NAV_TABS='.scrTabs,.optTabs,.trlTabs,.czTeamTgl';
 
-// Xbox is tested FIRST: its pads report "Xbox Wireless Controller", and a bare "wireless controller"
-// is how a DualShock 4 names itself — the other order labels an Xbox pad's A as ✕.
+// Xbox is tested first: its pads report "Xbox Wireless Controller" and a bare "wireless controller" is a DualShock 4
 function navFamily(gp){const id=(gp.id||'').toLowerCase();
  if(/xbox|045e|xinput/.test(id))return'xbox';
  if(/054c|playstation|dualshock|dualsense|wireless controller/.test(id))return'ps';
@@ -121,10 +84,7 @@ function navable(el){
  if(t==='INPUT')return!el.disabled&&!/^(hidden|color|file)$/.test(el.type);
  return typeof el.onclick==='function';
 }
-/* Everything the cursor can land on inside `root`. A clickable CONTAINER that holds clickable
-   children loses to them (a league slot card with Continue/Delete in it), and nothing inside a
-   `data-nav="capture"` region is a candidate — that region is one stop, and the pad is its own
-   while it's focused (the Options live tester reads A and the sticks). */
+// everything the cursor can land on inside `root`; a clickable container holding clickable children loses to them, a `data-nav="capture"` region is one stop that owns the pad
 function navCands(root){
  const c=[];if(navable(root)&&navVis(root))c.push(root);
  const all=root.querySelectorAll('*');
@@ -133,8 +93,7 @@ function navCands(root){
  const c1=caps.length?c.filter(a=>!caps.some(b=>b!==a&&b.contains(a))):c;
  return c1.filter(a=>a.dataset.nav==='capture'||!c1.some(b=>b!==a&&a.contains(b)));
 }
-// What the cursor can land on under a root: its own list if it declares one (the layout editor
-// offers whole panels), else whatever the DOM says is clickable.
+// what the cursor can land on under a root: its own list if it declares one (the layout editor's panels), else the DOM's clickables
 function navList(R){return R.cands?R.cands():navCands(R.el);}
 // The layout editor's held panel (js/layout.js LAY_PAD), or null.
 function navGrab(){return typeof LAY_PAD!=='undefined'&&LAY_PAD.el?LAY_PAD:null;}
@@ -144,7 +103,7 @@ function navFind(root,list){
   if(el&&(el===root||root.contains(el))&&navVis(el))return el;}
  return null;
 }
-// Both axes: Customize's figurine strip scrolls sideways once the cast outgrows its rows.
+// both axes: Customize's figurine strip scrolls sideways
 function navScrollTo(el){
  for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement){
   const cs=getComputedStyle(p),sc=v=>v==='auto'||v==='scroll',m=28;
@@ -172,7 +131,7 @@ function navDefault(){
  if(d){if(c.indexOf(d)>=0){navSet(d);return;}const inn=c.filter(x=>d.contains(x));if(inn.length){navSet(navFirst(inn));return;}}
  navSet(navFirst(c));
 }
-// The focused element went away (re-render, tab switch): land on whatever sits nearest where it was.
+// the focused element went away (re-render, tab switch): land nearest where it was
 function navRefocus(){
  const R=NAV.root;if(!R)return;const c=navList(R);if(!c.length){navSet(null);return;}
  if(!NAV.rect){navDefault();return;}
@@ -180,13 +139,8 @@ function navRefocus(){
  for(const el of c){const r=el.getBoundingClientRect(),x=(r.left+r.right)/2-ax,y=(r.top+r.bottom)/2-ay,s=x*x+y*y;if(s<bs){bs=s;b=el;}}
  navSet(b);
 }
-/* Nearest candidate in a direction. A candidate must sit at least half the smaller element's size
-   further along than the current one, so a checkbox a few pixels lower in the SAME row never reads
-   as "down". Among those: edge distance, plus the sideways gap at 1.2x. Measured, not picked: at 3x a
-   WIDE element two rows down beat the narrow one directly next (Kick Off's tab bar → "Game time",
-   skipping both AI rows and Goals); much under 1x and down drifts into the neighbouring panel. */
-// The column a control belongs to for ◀▶: its panel, or a roster column inside one (Kick Off holds
-// two teams' columns in a single panel, and ◀▶ between them is a move across, not along).
+// nearest candidate in a direction: at least half the smaller element's size further along, then edge distance plus the sideways gap at 1.2x (measured: 3x let a wide element two rows down win)
+// the column a control belongs to for ◀▶: its panel, or a roster column inside one
 function navCol(el){return el.closest?(el.closest('.rosCol')||el.closest('.panel')):null;}
 function navMove(dx,dy){
  const R=NAV.root;if(!R)return;const c=navList(R);if(!c.length)return;
@@ -200,27 +154,19 @@ function navMove(dx,dy){
   else{const m=Math.min(a.width,q.width)*.5;
    if(dx>0?(q.left<a.left+m||bx<=ax):(q.right>a.right-m||bx>=ax))continue;
    edge=dx>0?q.left-a.right:a.left-q.right;gap=Math.max(0,q.top-a.bottom,a.top-q.bottom);off=Math.abs(by-ay);
-   /* SIDEWAYS MEANS ANOTHER COLUMN unless it is the same row. A right-aligned checkbox three rows
-      under a right-aligned dropdown has its centre further right and overlaps it in x, and it used to
-      win "right" over the next panel entirely — so ◀▶ wandered down a column instead of across. */
+   // sideways means another column unless it's the same row
    if(edge<-2&&gap>0)continue;}
   let s=Math.max(0,edge)+gap*1.2+off*.1;
-  /* …AND ◀▶ GO TO THE NEXT PANEL, or nowhere. Inside a panel the controls are rows, so a sideways
-     press that only finds another row of the SAME panel — or a control in no panel at all, like the
-     tab strip or the corner gears — is really a diagonal, and is not a candidate. At the last panel
-     ◀▶ simply stop; the first version fell back to them, and ◀ off the leftmost Options panel landed
-     on Reset Controls, one A away from wiping every setting. */
+  // ◀▶ go to the next panel, or nowhere; at the last panel they stop (falling back landed on Reset Controls)
   if(dx&&gap>0&&cc){const ec=navCol(el);if(!ec||ec===cc)continue;}
   if(s<bs){bs=s;b=el;}
  }
  if(b){navSet(b);Au.ui('move');}
 }
-// A select wrapped as a ◀ VALUE ▶ selector (js/vsel.js). It adjusts in place like a slider; a bare
-// dropdown (dev panels) still opens as a list.
+// a select wrapped as ◀ VALUE ▶ (js/vsel.js) adjusts in place like a slider; a bare dropdown (dev panels) opens as a list
 function navVsel(el){return!!(el.parentElement&&el.parentElement.classList.contains('vsel'));}
 function navFire(el){el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}
-// ◀▶ on a value being EDITED. A slider moves a twentieth of its range, snapped to its own step. A
-// selector steps one option, WRAPPING and skipping disabled/hidden ones (the same step as vselStep).
+// ◀▶ on a value being edited: a slider moves a twentieth of its range, a selector steps one option (wrapping, skipping disabled/hidden)
 function navNudge(el,d){
  if(el.tagName==='SELECT'){const o=el.options||[],n=o.length;if(!n)return;let i=el.selectedIndex;
   for(let k=0;k<n;k++){i=(i+d+n)%n;if(!o[i].disabled&&!o[i].hidden)break;}
@@ -230,10 +176,7 @@ function navNudge(el,d){
  let v=clamp(+el.value+d*k,mn,mx);v=+clamp(mn+Math.round((v-mn)/st)*st,mn,mx).toFixed(dp);
  if(v===+el.value)return;el.value=v;Au.ui('value');navFire(el);
 }
-/* EDITING A VALUE. ◀▶ used to change a dropdown or slider the moment the cursor was on it, so the
-   only way sideways out of a column of them was round them — ◀▶ could never mean "the next panel".
-   Now ◀▶ always MOVES, and A opens the value: ◀▶ change it, A keeps it, B puts back what it was when A
-   was pressed, and ▲▼ keep it and move on. The same rule as a text field, which A also has to open. */
+// editing a value: ◀▶ always move; A opens it, ◀▶ change it, A keeps, B restores, ▲▼ keep it and move on
 function navAdjStart(el){
  Au.ui('open');NAV.adj=el;NAV.adjWas=el.tagName==='SELECT'?el.selectedIndex:el.value;
  el.classList.add('navAdj');NAV.hintT=0;
@@ -248,10 +191,7 @@ function navAdjEnd(keep){
  }
  NAV.adjWas=null;return true;
 }
-/* A DROPDOWN OPENS AS A LIST, the way it does under the mouse — ▲▼ walk it, A picks, B closes it
-   untouched. It has to be our own list: the browser's native picker (showPicker) takes only the real
-   keyboard, so a pad could open it and then not move in it. Built fresh per open, positioned over the
-   select (flipped above it when there is no room below), and the mouse can click it too. */
+// a dropdown opens as our own list (the native picker takes only the real keyboard): ▲▼ walk it, A picks, B closes untouched
 function navDropOpen(el){
  navDropEnd(false);
  const L=document.createElement('div');L.id='navDrop';L.classList.add('navDrop');L.setAttribute('role','listbox');
@@ -276,7 +216,7 @@ function navDropMark(){const D=NAV.drop;if(!D)return;
 function navDropStep(d){const D=NAV.drop;if(!D)return;
  let i=D.i;for(let k=0;k<D.items.length;k++){i+=d;if(i<0||i>=D.items.length)return;if(!D.items[i].classList.contains('off'))break;}
  D.i=i;navDropMark();Au.ui('move');}
-// pick=true takes the highlighted option (firing input/change only if it moved); false leaves it.
+// pick=true takes the highlighted option (firing input/change only if it moved); false leaves it
 function navDropEnd(pick){
  const D=NAV.drop;if(!D)return false;NAV.drop=null;NAV.hintT=0;
  D.L.remove();
@@ -299,7 +239,7 @@ function navBack(){
  const b=navFind(R.el,[R.back]);if(b)b.click();
 }
 function navStrip(root){if(NAV.root&&NAV.root.lay)return null;for(const s of root.querySelectorAll(NAV_TABS))if(navVis(s))return s;return null;}
-// LB/RB: the first visible tab strip on the layer, wrapping. The cursor follows onto the new tab.
+// LB/RB: the first visible tab strip on the layer, wrapping; the cursor follows onto the new tab
 function navTab(d){
  const R=NAV.root;if(!R)return;const s=navStrip(R.el);if(!s)return;
  const bs=[...s.children].filter(x=>navable(x)&&navVis(x));if(bs.length<2)return;
@@ -323,8 +263,7 @@ function navRoot(){
  const d=NAV_SCREENS[id]||{};
  return{key:id,el:el,def:d.def,start:d.start,back:'.backBtn',scr:SCREENS[id]};
 }
-// Show the cursor. Returns false when it was hidden, so a first press only REVEALS it —
-// a stray A from the sofa never presses a button nobody could see was selected.
+// show the cursor; false when it was hidden, so a first press only reveals it
 function navReveal(){
  if(NAV.show)return true;
  NAV.show=true;document.body.classList.add('padNav');
@@ -344,9 +283,7 @@ function navDir(dx,dy){
  }
  navMove(dx,dy);
 }
-/* The prompt strip, bottom-right. Speaks to what's under the cursor (a select says Change, a
-   checkbox Toggle) and to the family of the pad that last pressed something. Rebuilt only when its
-   signature changes. */
+// the prompt strip, bottom-right: speaks to what's under the cursor and the pad family; rebuilt only when its signature changes
 function navHints(R){
  let h=NAV.hint;
  if(!R||!NAV.show){if(h)h.classList.add('hidden');NAV.hintSig='';return;}
@@ -377,7 +314,7 @@ function navHints(R){
  h.classList.remove('hidden');
 }
 function padNavOwns(){return!!NAV.root;}
-// gamepadUpdate calls this on its fresh edges: a press the menu used never reaches a rod.
+// gamepadUpdate calls this on its fresh edges: a press the menu used never reaches a rod
 function padNavFilter(idx,just){const e=NAV.eat[idx];if(!e)return;for(const k in just)if(just[k]&&e[k])just[k]=false;}
 
 function navTick(t){
@@ -405,9 +342,7 @@ function navTick(t){
  if(NAV.drop&&(!NAV.drop.el.isConnected||!navVis(NAV.drop.el)))navDropEnd(false);   // re-rendered or hidden under it
  if(!R){if(NAV.root){navClear();NAV.root=null;}navHints(null);return;}
  if(!NAV.root||NAV.root.key!==R.key||NAV.root.el!==R.el){
-  // The remembered cursor is for coming BACK (out of a sub-screen, or an overlay closing on top);
-  // entering a screen fresh starts on its default — Kick Off opens on START MATCH, not on whatever
-  // was touched there last time.
+  // the remembered cursor is for coming back (from a sub-screen or closing overlay); entering a screen fresh starts on its default
   const P=NAV.root,back=!!P&&(P.key==='lay'||NAV_LAYERS.some(L=>L.id===P.key)||(SCREENS[P.key]||{}).back===R.key);
   if(!back)delete NAV.mem[R.key];
   NAV.root=R;navClear();NAV.dir='';if(NAV.show)navDefault();
@@ -418,7 +353,7 @@ function navTick(t){
   else if(!NAV.el.classList.contains('navFocus'))NAV.el.classList.add('navFocus');   // a className rewrite dropped it
  }
  const cap=!!(NAV.el&&NAV.el.dataset.nav==='capture');
- // D-pad, else the left stick (not while the cursor is on a capture region — the tester owns it).
+ // D-pad, else the left stick (not on a capture region, the tester owns it)
  if(!dx&&!dy&&!cap&&(Math.abs(lx)>.55||Math.abs(ly)>.55)){if(Math.abs(lx)>Math.abs(ly))dx=Math.sign(lx);else dy=Math.sign(ly);}
  if(dx&&dy)dx=0;
  const dk=dx||dy?dx+','+dy:'';
@@ -426,11 +361,11 @@ function navTick(t){
  else NAV.dir='';
  for(const[i,b]of ev){
   const ea=NAV.eat[i];
-  // A/B on an OPEN value (list, slider, selector) are that value's; the lobby's join/leave waits.
+  // A/B on an open value (list, slider, selector) are that value's; the lobby's join/leave waits
   if((b===0||b===1)&&!NAV.adj&&!NAV.drop&&R.scr&&R.scr.onPad&&R.scr.onPad(i,b)){ea[b]=true;continue;}
-  // a held panel owns A (drop), B (put it back) and Y (move ⇄ resize); nothing else fires under it
+  // a held panel owns A (drop), B (put it back) and Y (move/resize); nothing else fires under it
   if(navGrab()){ea[b]=true;if(b===0)layPadDrop(true);else if(b===1)layPadDrop(false);else if(b===3)layPadMode();NAV.hintT=0;continue;}
-  // not holding one: X puts the panel under the cursor back where the stock layout has it, Y undoes a step
+  // not holding one: X puts the panel under the cursor back to the stock layout, Y undoes a step
   if(R.lay&&!NAV.adj&&!NAV.edit&&(b===2||b===3)){ea[b]=true;if(!navReveal())continue;if(b===2){if(layPadIs(NAV.el))layResetPanel(NAV.el);}else layUndo();NAV.hintT=0;continue;}
   if(b===0){if(cap)continue;ea[0]=true;if(!navReveal())continue;if(navBlur()||navDropEnd(true)||navAdjEnd(true))continue;
    if(NAV.el){if(!(R.lay&&layPadGrab(NAV.el)))navActivate(NAV.el);NAV.hintT=0;}}
@@ -446,7 +381,7 @@ function navTick(t){
 }
 requestAnimationFrame(navTick);
 padLabels();
-// The mouse takes over again the moment it moves: the cursor ring goes, the pointer comes back.
+// the mouse takes over again the moment it moves: the cursor ring goes
 addEventListener('mousemove',e=>{if(Math.abs(e.movementX)+Math.abs(e.movementY)>3){NAV.kind='kbm';navHide();}},{passive:true});
 addEventListener('mousedown',()=>{NAV.kind='kbm';navHide();},{passive:true});
 addEventListener('keydown',()=>{NAV.kind='kbm';},{passive:true});

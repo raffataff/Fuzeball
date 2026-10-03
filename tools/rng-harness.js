@@ -1,30 +1,11 @@
 'use strict';
-/* ================= rng harness =================
-   Boots core.js + config.js + rng.js in ONE vm context (rng.js is self-contained, so nothing
-   has to be string-sliced out of a bigger file) and asserts the properties the whole seeding
-   scheme rests on. Run: node tools/rng-harness.js
-
-   NOTE, and it cost a run the first time this pattern was used in this repo: top-level const
-   is LEXICAL, not a property of the context, so `sandbox.RNG` reads back undefined and every
-   assertion silently becomes a comparison against undefined that LOOKS like it passed. The
-   API is handed out through an explicit globalThis.__api line appended to the source.
-
-   The suite has TEETH: five mutations of rng.js are booted at the end and each must break at
-   least one assertion. A harness that passes against a broken generator is worse than none,
-   because it is the thing you will trust later instead of re-reading the code. */
+// ================= rng harness =================
+// boots core.js + config.js + rng.js in one vm and asserts the properties the seeding scheme rests on. Run: node tools/rng-harness.js
+// top-level const is lexical (not a context property), so the API is handed out through an explicit globalThis.__api line or every assertion compares against undefined
+// teeth: five mutations of rng.js must each break at least one assertion
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-/* NEWLINES ARE NORMALISED ON READ, and this is load-bearing rather than tidy. A multi-line
-   TEMPLATE LITERAL has its line terminators normalised to LF by the ECMAScript lexer itself
-   (both CRLF and a bare CR become LF in the template's VALUE) — so a needle written as a
-   template literal can NEVER match a CRLF source file, however this harness is itself saved.
-   js/ has mixed endings (see the CRLF trap in CLAUDE.md) and js/rng.js is CRLF, which is
-   exactly how the 'rngFor does not cache' mutation went stale: both files were CRLF, so
-   everything LOOKED consistent, and the replace silently matched nothing while the harness
-   went on reporting 4/5. Note the avalanche mutation survived only because it is a REGEX
-   whose \s* happens to match the CR.
-   Normalising here immunises every mutation, present and future. Safe both ways: the source
-   is only string-matched and run in a vm, and newline style is semantically irrelevant. */
+// newlines are normalised on read (load-bearing): a template-literal needle can never match a CRLF file, and js/rng.js is CRLF; this is how the 'rngFor does not cache' mutation went stale unnoticed
 const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
 
 function boot(mutate){
@@ -91,9 +72,7 @@ function suite(A){
  rngSeed(4242);
  const sA=seq(RNG.serve,30),sB=seq(RNG.drop,30);
  R.ok(!same(sA,sB),'C1 two tags at one seed differ');
- // INTERLEAVING MUST NOT MATTER. On one shared stream, drawing A,B,A,B gives A a different
- // sequence than drawing A,A,...,B,B — which is precisely how a retuned power-up timer would
- // silently change every AI roll after it.
+ // interleaving must not matter: on one shared stream, A,B,A,B and A,A,B,B give A different sequences (a retuned power-up timer would change every AI roll after it)
  rngSeed(4242);
  const iA=[],iB=[];
  for(let i=0;i<30;i++){iA.push(RNG.serve());iB.push(RNG.drop());}
@@ -117,9 +96,7 @@ function suite(A){
  R.eq(new Set(all8).size,8,'D3 eight rods, eight distinct streams');
 
  /* ---------- E. tag correlation (the avalanche in rngHash) ---------- */
- // Two tags one character apart must not track each other across seeds. Without the final
- // mix in rngHash their first draws visibly correlate, which is the exact thing per-stream
- // seeding is supposed to remove — so this is tested across seeds, not within one.
+ // two tags one character apart must not track each other across seeds (tested across seeds, not within one)
  const xs=[],ys=[],zs=[];
  for(let s=1;s<=600;s++){rngSeed(s);xs.push(RNG.pu());ys.push(RNG.nan());zs.push(rngAi(0)());}
  R.ok(Math.abs(corr(xs,ys))<.15,'E1 pu/nan uncorrelated across seeds','r='+corr(xs,ys).toFixed(4));
@@ -128,15 +105,9 @@ function suite(A){
  const consec=[];for(let s=100;s<160;s++){rngSeed(s);consec.push(RNG.serve());}
  let tight=0;for(let i=1;i<consec.length;i++)if(Math.abs(consec[i]-consec[i-1])<.01)tight++;
  R.ok(tight<8,'E3 consecutive seeds do not produce near-identical draws','tight='+tight);
- // E4/E5 pin rngHash's output avalanche, and it took two measurements to find the property it
- // actually provides — the obvious one is wrong twice over. It does NOT decorrelate tags (E1/E2
- // pass with it removed), and it does nothing measurable for tags of 3+ characters. What it
- // protects is SHORT tags: every tag character is one FNV round, so a 1-2 character tag never
- // gets enough mixing to launder the seed and the raw hash inherits the seed's own structure.
- // Mean |hash(s)-hash(s-1)| normalised to [0,1) is 1/3 when uncorrelated. Drop the avalanche and
- // 'pu' — a LIVE tag — falls to 0.267, and a 1-character tag to 0.170, i.e. half of uniform.
- // Tested here rather than on 'serve' (5 chars, 0.332 either way), which is what let the first
- // cut of this assertion pass against the mutant and look like the avalanche was dead code.
+ // E4/E5 pin rngHash's avalanche: it doesn't decorrelate tags (E1/E2 pass without it) and does nothing for 3+ character tags; it protects short tags, which get too few FNV rounds to launder the seed
+ // mean |hash(s)-hash(s-1)| in [0,1) is 1/3 uncorrelated; without the avalanche 'pu' falls to 0.267 and a 1-character tag to 0.170
+ // tested on a short tag, not 'serve' (0.332 either way)
  const hstep=t=>{let a=0,prev=A.rngHash(t,0)/4294967296;
   for(let s=1;s<=4000;s++){const h=A.rngHash(t,s)/4294967296;a+=Math.abs(h-prev);prev=h;}
   return a/4000;};

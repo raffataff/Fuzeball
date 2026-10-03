@@ -1,70 +1,28 @@
 'use strict';
-/* ===== room editor (dev tool, F2) =========================================
-   Gated on CONFIG.debug.roomEditor. Off by default and self-contained: the cross-
-   module gate is S.redit (null when off), tested by input.js and nothing else, so a
-   missing roomedit.js cannot break the game. Same discipline as S.photo / S.trn.
-
-   WHAT IT EDITS. One room's PROP SPECS (CONFIG.rooms[id].props), its AUTHORED LIGHTS
-   (CONFIG.rooms[id].lights) and its room-level look — in memory, live. There is
-   deliberately no hidden save: edits do not persist to localStorage and are NOT
-   reloaded behind your back, because a shadow layer that silently overrides config.js
-   is the thing that makes a level editor untrustworthy. EXPORT emits the WHOLE room
-   block in config.js's own shape and key order, so authoring is: edit, copy, replace
-   the block. (A crash-backup is written each change and is only ever restored by
-   clicking Restore — never automatically.)
-
-   WHY IT EDITS SPECS AND REBUILDS, rather than nudging matrices or light objects in
-   place: the authored thing IS the spec list. Editing the scene would leave the spec
-   and the scene disagreeing the moment a scatter is involved, and then the export
-   would be a lie. Rebuilding is a handful of milliseconds at these counts.
-
-   SELECTION RULE, which falls out of the same reasoning: clicking an instance that
-   came from an explicit `at` entry selects THAT placement and you move it. Clicking
-   one that came from a `scatter` selects the SPEC — individual scatter instances are
-   generated, so there is nothing meaningful to drag; you edit the generator instead.
-
-   TWO KINDS OF LIGHT, and the difference is the whole of the lighting UI.
-     BAKED    KHR_lights_punctual inside the room GLB. Its position lives in the model,
-              so the editor cannot move it and pretend that survives a reload. What it
-              CAN do is switch one off (rooms.<id>.lightsOff) or DETACH it — copy it
-              into an authored light at the same place, which then moves freely.
-     AUTHORED rooms.<id>.lights. Plain three.js units, no candela transfer (see the
-              note in CONFIG.rooms), drawn from CONFIG.render.roomLightPool so adding
-              or moving one never changes the scene's light count and therefore never
-              recompiles every material in the game. That pool is the only reason a
-              light gizmo is usable here at all.
-
-   THE CAMERA is free roam (fx.js), which reads S.camYaw/S.camPitch. input.js only
-   requests pointer lock during a MATCH, and this tool deliberately runs with none —
-   so mouse-look is wired here as a right-button DRAG instead. That also leaves the
-   left button free for click-to-select and drag-to-move, which is the convention
-   every other 3D editor uses and the reason it is worth the twelve lines.
-   ========================================================================= */
+// ===== room editor (dev tool, F2) =====
+// gated on CONFIG.debug.roomEditor; S.redit (null when off) is tested by input.js only
+// edits one room's props, authored lights and room-level look, in memory; no hidden save: EXPORT emits the whole room block in config.js's shape for pasting (the crash backup is only restored by Restore)
+// it edits specs and rebuilds, so spec and scene can't disagree; an `at` instance selects that placement, a scatter instance selects the spec
+// lights: BAKED (in the room GLB: switch off via lightsOff or DETACH into an authored copy) and AUTHORED (rooms.<id>.lights, from CONFIG.render.roomLightPool so the light count never changes)
+// the camera is free roam (fx.js); with no pointer lock, mouse-look is a right-button drag
 const RE={on:false,room:null,sel:null,panel:null,css:false,ray:null,prev:null,box:null,
  tab:'props',snap:0,mk:null,mkGrp:null,pick:[],drag:null,look:null,showMk:true,geo:null};
 
 const RE_TABS=[['props','props'],['lights','lights'],['world','world'],['out','export']];
-/* Marker size is driven by DISTANCE TO CAMERA, not a fixed world size: a room's fixtures
-   hang 100-400 units up while its props sit on the floor, so one constant is either a
-   speck on the ceiling or a boulder on the rug. Clamped so it stays grabbable either way. */
+// marker size follows distance to the camera (fixtures hang 100-400 up), clamped to stay grabbable
 const RE_MK={scale:0.022,min:2.4,max:16,
- /* Below this |camera-forward.y| the ground plane is too edge-on to drag on — see the note
-    in reditDragStart. 0.25 is about 14 degrees above horizontal. */
+ // below this |camera-forward.y| the ground plane is too edge-on to drag on (see reditDragStart); 0.25 is ~14 degrees
  grazeDot:0.25};
 
 function reditEnabled(){return !!(typeof CONFIG!=='undefined'&&CONFIG.debug&&CONFIG.debug.roomEditor);}
 function reditRoomId(){return (typeof cfg!=='undefined'&&CONFIG.rooms[cfg.room])?cfg.room:'open';}
 function reditRoom(){return CONFIG.rooms[reditRoomId()];}
-/* The live lists. Created on the room object the first time it is edited, so a room that
-   declares neither props nor lights is still editable. */
+// the live lists, created on the room the first time it is edited
 function reditSpecs(){const rm=reditRoom();if(!rm.props)rm.props=[];return rm.props;}
 function reditLights(){const rm=reditRoom();if(!rm.lights)rm.lights=[];return rm.lights;}
 function reditOff(){const rm=reditRoom();if(!rm.lightsOff)rm.lightsOff=[];return rm.lightsOff;}
 
-/* F2 / the home card. The editor deliberately runs with NO match: it opens the picker
-   screen rather than the editor itself, so you choose a room instead of editing
-   whichever one the last match happened to use. Refused during play — the sim moving
-   under you while you place furniture is exactly what this is meant to avoid. */
+// F2 / the home card: opens the picker screen so you choose a room; refused during play
 function reditToggle(){
  if(!reditEnabled()){if(typeof toast==='function')toast('ROOM EDITOR','set CONFIG.debug.roomEditor = true',2.2);return;}
  if(RE.on){reditExit();return;}
@@ -82,12 +40,7 @@ function reditEnter(){
  if(typeof toast==='function')toast('ROOM EDITOR','LMB select/drag · RMB look · WASD+QE fly · F2 exits',2.6);
  if(typeof Au!=='undefined')Au.ui();
 }
-/* Leaving the editor returns to the PICKER, not to the game — the venue stays applied so
-   the scene behind the picker is still the room you were working on. The player's own
-   room/table are put back by SCREENS.roomEdit.onHide, i.e. only when you leave the editor
-   area entirely. Same stash-and-restore rule league.js uses for a division's venue, and
-   for the same reason: without it, editing a room silently becomes the player's Kick Off
-   setting the next time anything calls saveCfg. */
+// leaving returns to the picker with the venue applied; SCREENS.roomEdit.onHide puts the player's own room/table back (same stash-and-restore as league.js)
 function reditExit(){
  if(!RE.on)return;
  RE.on=false;S.redit=null;RE.sel=null;RE.drag=null;RE.look=null;
@@ -98,10 +51,8 @@ function reditExit(){
  if(typeof Au!=='undefined')Au.ui();
 }
 
-/* --- apply -----------------------------------------------------------------
-   Everything that mutates a spec funnels through one of these, so the scene can never
-   drift from the data. Props need a rebuild (instanced meshes); lights are a re-drive
-   of the resident pool, which is cheap enough to run on every slider tick. */
+// --- apply ---
+// every spec mutation funnels through here so the scene can't drift from the data; props rebuild, lights re-drive the pool
 function reditApply(){
  const id=reditRoomId();
  if(typeof buildRoomProps==='function')buildRoomProps(id,CONFIG.rooms[id],()=>{
@@ -115,28 +66,27 @@ function reditApplyLights(){
  reditMarkers();reditHilite(RE.sel);reditLightReadout();reditBackup();
 }
 
-/* --- panel ---------------------------------------------------------------
-   Built with createElement + one injected <style>, like buildAIPanel — so the tool
-   needs no markup in index.html and no rule in styles.css to maintain. */
+// --- panel ---
+// createElement plus one injected <style>, so no markup in index.html or rule in styles.css
 function reditCSS(){
  if(RE.css)return;RE.css=true;
  const s=document.createElement('style');
  s.textContent=[
  '#reditPanel{position:fixed;top:12px;left:12px;width:342px;max-height:calc(100vh - 24px);display:none;',
  ' flex-direction:column;background:rgba(10,12,18,.94);border:1px solid #4d7fff55;border-radius:8px;',
- ' padding:9px 10px;z-index:60;font:11px/1.45 Rajdhani,system-ui,sans-serif;color:#cfe0ff;letter-spacing:.02em}',
+ ' padding:9px 10px;z-index:60;font:11px/1.45 "Space Grotesk",system-ui,sans-serif;color:#cfe0ff;letter-spacing:.02em}',
  '#reditPanel h4{margin:9px 0 5px;font:12px/1 "Russo One",sans-serif;color:#7fb0ff;letter-spacing:.09em;',
  ' text-transform:uppercase;border-top:1px solid #4d7fff33;padding-top:8px}',
  '#reditPanel h4:first-child{border-top:0;margin-top:0;padding-top:0}',
  '#reditPanel .reRow{display:flex;align-items:center;gap:5px;margin:3px 0}',
  '#reditPanel .reRow label{flex:0 0 58px;color:#8fa4c8}',
  '#reditPanel input[type=number],#reditPanel select,#reditPanel input[type=text]{flex:1;min-width:0;',
- ' background:#0c1220;border:1px solid #35507f;color:#dce9ff;border-radius:4px;padding:2px 5px;font:11px Rajdhani,sans-serif}',
+ ' background:#0c1220;border:1px solid #35507f;color:#dce9ff;border-radius:4px;padding:2px 5px;font:11px "Space Grotesk",sans-serif}',
  '#reditPanel input[type=range]{flex:1;min-width:0}',
  '#reditPanel input[type=color]{flex:0 0 30px;height:19px;padding:0;background:#0c1220;',
  ' border:1px solid #35507f;border-radius:4px;cursor:pointer}',
  '#reditPanel button{background:#16233c;border:1px solid #3d67b5;color:#cfe0ff;border-radius:4px;',
- ' padding:3px 7px;cursor:pointer;font:11px Rajdhani,sans-serif}',
+ ' padding:3px 7px;cursor:pointer;font:11px "Space Grotesk",sans-serif}',
  '#reditPanel button:hover{background:#20335a}',
  '#reditPanel button.reDanger{border-color:#b5433d;color:#ffd0cc}',
  '#reditPanel button.reOn{background:#24406e;border-color:#7fb0ff;color:#fff}',
@@ -181,9 +131,7 @@ function reColor(lab,val,cb){
  i.addEventListener('input',()=>{const n=parseInt(i.value.slice(1),16);t.textContent=reHex(n);cb(n);});
  r.appendChild(i);r.appendChild(t);return r;
 }
-/* Checkbox row. `hint` becomes the title, because every switch built on this one costs a
-   whole-scene shader recompile the first time a configuration is seen and the user deserves
-   to know which clicks are the expensive ones. */
+// checkbox row; `hint` is the title since these switches cost a whole-scene recompile the first time a configuration is seen
 function reChk(lab,val,cb,hint){
  const r=reEl('div','reRow');const l=reEl('label',null,lab);r.appendChild(l);
  const i=document.createElement('input');i.type='checkbox';i.checked=!!val;
@@ -208,7 +156,7 @@ function buildREPanel(){
  document.body.appendChild(p);
 }
 
-/* --- panel contents (rebuilt on every change; it is a dev tool, not a hot path) -- */
+// --- panel contents (rebuilt on every change; a dev tool, not a hot path) ---
 function reditSync(){
  if(!RE.panel)return;
  const lab=document.getElementById('reRoomLab');
@@ -223,7 +171,7 @@ function reditSync(){
  reditSyncSel();
 }
 
-/* --- PROPS tab ------------------------------------------------------------ */
+// --- PROPS tab ---
 function reditTabProps(w){
  const specs=reditSpecs();
  w.appendChild(reEl('h4',null,'library'));
@@ -256,12 +204,8 @@ function reditTabProps(w){
  w.appendChild(pList);
 }
 
-/* --- LIGHTS tab -----------------------------------------------------------
-   Authored lights first (they are the ones you can move), then the room GLB's baked
-   fixtures with a switch and a DETACH. Detaching is exact rather than approximate: the
-   candela transfer has already run by the time we read the light, so its live intensity
-   IS the delivered screen value, and an authored copy carrying that number looks
-   identical the frame it appears. That is what makes the swap safe to offer. */
+// --- LIGHTS tab ---
+// authored lights first (movable), then the GLB's baked fixtures with a switch and DETACH; detaching is exact (the live intensity is the delivered value)
 function reditTabLights(w){
  const list=reditLights();
  w.appendChild(reEl('h4',null,'add'));
@@ -329,9 +273,7 @@ function reditBaked(){
  const out=[];if(g)g.traverse(c=>{if(c.isLight)out.push(c);});
  return out;
 }
-/* Switch a baked fixture off by NAME, which is what lightsOff exports. intensity 0 rather
-   than visible=false on purpose: hiding a light changes the scene's light count and
-   recompiles every material, and flicking a lamp on and off should not cost that. */
+// switch a baked fixture off by name (what lightsOff exports); intensity 0, not visible=false (that changes the light count)
 function reditBakedToggle(l){
  const nm=l.name||'',off=reditOff();
  if(!nm){if(typeof toast==='function')toast('ROOM EDITOR','that fixture has no name in the glb — nothing to export',2.4);return;}
@@ -370,10 +312,8 @@ function reditAddLight(type){
  if(typeof Au!=='undefined')Au.ui();
 }
 
-/* --- WORLD tab ------------------------------------------------------------
-   Room-level look. Everything writes the SAME config the loader reads, so what you tune
-   is what ships. `gain` is linear in delivered light (see CONFIG.render.roomLight), which
-   is exactly what makes a slider worth having on it. */
+// --- WORLD tab ---
+// room-level look, written to the config the loader reads; `gain` is linear in delivered light (CONFIG.render.roomLight)
 function reditTabWorld(w){
  const rm=reditRoom(),id=reditRoomId();
  if(!rm.light)rm.light={};
@@ -390,8 +330,7 @@ function reditTabWorld(w){
  w.appendChild(reEl('h4',null,'ambient + key'));
  if(!rm.hemi)rm.hemi={sky:0xffffff,ground:0x101010,int:0.8};
  if(!rm.dir)rm.dir={color:0xffffff,int:0.8,pos:[45,100,35]};
- // A REAL off: these three leave the scene's light count rather than sitting at intensity 0,
- // so they stop costing every material a per-fragment evaluation. See applyRoomKeyLights.
+ // a real off: these three leave the scene's light count (see applyRoomKeyLights)
  const keys=()=>{if(typeof applyRoomKeyLights==='function')applyRoomKeyLights(rm);reditBackup();};
  w.appendChild(reChk('hemi on',rm.hemi.on!==false,v=>{rm.hemi.on=v;keys();},
   'Off removes it from the light count entirely (one recompile, then cached)'));
@@ -424,8 +363,7 @@ function reditTabWorld(w){
  const setFog=()=>{if(typeof scene!=='undefined'&&scene.fog){scene.fog.near=fg[0];scene.fog.far=fg[1];}reditBackup();};
  w.appendChild(reNum('fog near',fg[0],5,v=>{fg[0]=v;setFog();}));
  w.appendChild(reNum('fog far',fg[1],5,v=>{fg[1]=v;setFog();}));
- // These still write the ROOM (so the export is right) but cannot preview with fog switched
- // off in Options — a live control that silently does nothing is worth one line of explanation.
+ // these write the room but can't preview with fog off in Options
  if(typeof cfg!=='undefined'&&cfg.fog===false)
   w.appendChild(reEl('div','reMuted','fog is OFF in Options → Display — these still export'));
  w.appendChild(reEl('h4',null,'renderer (global)'));
@@ -441,14 +379,7 @@ function reditTabWorld(w){
  w.appendChild(reEl('div','reMuted','exposure + tone are CONFIG.render, not this room'));
  reditLightReadout();
 }
-/* Re-run the candela transfer for this room. applyRoomLights (models.js) stashes each
-   fixture's authored candela in userData.rlCandela on its first pass and always derives
-   from that, so it is IDEMPOTENT — this can fire on every 'input' event of the gain/reach
-   sliders without compounding. (It did not always: the transfer overwrites intensity, and
-   re-deriving from an already-transferred value divides by d0^2 twice, which is what used
-   to black the room out on the first drag and pin a gain:0 room at zero forever.)
-   Readout only, deliberately — rebuilding the whole section here would destroy the slider
-   the user is still holding, since these fire on every 'input' event. */
+// re-run the candela transfer for this room; idempotent (derives from userData.rlCandela), so it can fire on every slider 'input'; readout only, a rebuild would destroy the slider being held
 function reditRelight(group,rm){
  if(typeof applyRoomLights==='function')applyRoomLights(group,rm);
  reditLightReadout();
@@ -466,10 +397,8 @@ function reditLightReadout(){
  if(!n)box.appendChild(reEl('div','reItem reMuted','no baked lights in this glb'));
 }
 
-/* --- selection -----------------------------------------------------------
-   Always on screen under the tabs, whatever tab is up: the thing you just clicked in the
-   world is the thing you want a slider for, and hunting for the right tab first is the
-   friction this tool exists to remove. */
+// --- selection ---
+// always on screen under the tabs, whatever tab is up
 function reditSyncSel(){
  const w=document.getElementById('reSel');w.innerHTML='';
  w.appendChild(reEl('h4',null,'selection'));
@@ -497,9 +426,7 @@ function reditSelLight(w){
   w.appendChild(reSlider('angle',L.angle===undefined?0.6:L.angle,0.05,1.5,0.01,v=>{L.angle=v;set();}));
   w.appendChild(reSlider('penumbra',L.penumbra===undefined?0.4:L.penumbra,0,1,0.02,v=>{L.penumbra=v;set();}));
  }
- // Casting is not a property we can flip on THIS light — castShadow is a shader parameter, so
- // the light is re-borrowed from the fixed shadow sub-pool instead (see world.js rlpGet). Hence
- // the full re-drive rather than a live poke, and hence the budget in the title.
+ // casting can't flip on a live light (castShadow is a shader parameter), so it's re-borrowed from the shadow sub-pool (world.js rlpGet): a full re-drive
  w.appendChild(reChk('casts shadow',!!L.shadow,v=>{L.shadow=v;
   if(typeof applyAuthoredLights==='function')applyAuthoredLights(reditRoom());
   if(typeof shadowDirty==='function')shadowDirty();
@@ -594,19 +521,9 @@ function reditSelProp(w){
  }
 }
 
-/* --- markers -------------------------------------------------------------
-   A light is invisible; a light you cannot see is a light you cannot place. Every fixture
-   in the room gets a bulb marker in its own colour, plus a wire cone for a spot's throw
-   and a line to its aim point. AUTHORED markers are built from the SPECS (which is what
-   makes them draggable — the marker and the data are the same thing); BAKED ones from the
-   live glb, dimmer, because they are read-only until detached.
-
-   They draw with depthTest off and a high renderOrder on purpose: a bulb hanging inside a
-   lampshade prop is occluded from most angles, and a light you can only click by flying
-   inside the fixture is a light you stop using. What you see is what you can click.
-
-   The whole group is torn down on exit — editor chrome that outlives its editor is a bug
-   you find later, in a screenshot. */
+// --- markers ---
+// every fixture gets a bulb marker in its colour, a wire cone for a spot's throw and a line to its aim point; authored ones are built from the specs (so they drag), baked ones from the glb (dimmer, read-only)
+// depthTest off and a high renderOrder so a bulb inside a lampshade is clickable; torn down on exit
 function reditGeo(){
  if(RE.geo)return RE.geo;
  RE.geo={bulb:new THREE.SphereGeometry(1,12,8),
@@ -660,8 +577,7 @@ function reditMarkers(){
     c.lookAt(end);c.rotateX(Math.PI/2);          // ConeGeometry points +y; aim it down the throw
    }
   }
-  // The reach ring is SELECTION-ONLY: a 260-unit wire circle around every lamp at once is
-  // a room you cannot see past, and reach only matters for the one you are tuning.
+  // the reach ring is selection-only (a ring on every lamp would block the view)
   if(RE.sel&&RE.sel.kind==='light'&&RE.sel.i===i&&t!=='dir'&&L.dist>0){
    const r=wire(g.ring,0xffffff,0.28);
    r.scale.set(L.dist,L.dist,L.dist);r.position.copy(P);r.rotation.x=Math.PI/2;
@@ -674,12 +590,7 @@ function reditMarkers(){
    if(T.distanceTo(P)>0.5)line(P,T,l.color.getHex());}
  });
 }
-/* How long to draw a spot's cone, and it is NOT the distance to its aim point. A GLB pendant
-   aims at a target hanging a metre under the bulb, so drawing pos->target gives a cone about
-   one unit long — invisible, and useless for the one thing the cone is for, which is seeing
-   where the light actually lands. So: run the beam down to the FLOOR when it points downward
-   (that circle is the pool of light you are placing), else fall back to the light's own reach.
-   Clamped either way, because a cone you cannot see answers no question. */
+// cone length: a pendant's aim point is a metre under the bulb, so run the beam to the floor when it points down, else its own reach; clamped
 function reditConeLen(P,K,L){
  const d=K.clone().sub(P);
  if(d.lengthSq()<1e-6)return 60;
@@ -697,8 +608,7 @@ function reditScaleMarkers(){
   o.scale.setScalar(clamp(o.position.distanceTo(c)*RE_MK.scale,RE_MK.min,RE_MK.max)*o.userData.reBase);
  });
 }
-/* A wire box around the current selection. Cheap and unambiguous — a tint would fight
-   the per-instance colours a prop scatter already uses. */
+// a wire box around the selection (a tint would fight scatter's per-instance colours)
 function reditHilite(sel){
  if(RE.box){scene.remove(RE.box);RE.box.geometry.dispose();RE.box.material.dispose();RE.box=null;}
  if(!sel||!RE.on)return;
@@ -710,9 +620,7 @@ function reditHilite(sel){
  if(sel.kind==='prop')RE.box.position.y+=s/2;
  RE.box.renderOrder=1000;RE.box.frustumCulled=false;scene.add(RE.box);
 }
-/* World position of whatever is selected. The ONE place that knows how each kind is
-   addressed, so the hilite, focus, nudge and drag all ask the same question and cannot
-   disagree about where the thing is. */
+// world position of the selection; the one place that knows how each kind is addressed
 function reditSelPos(sel){
  if(!sel)return null;
  if(sel.kind==='light'){
@@ -730,9 +638,7 @@ function reditSelPos(sel){
  if(sp.scatter&&sp.scatter.at)return new THREE.Vector3(sp.scatter.at[0],sp.scatter.at[1]||0,sp.scatter.at[2]);
  return null;
 }
-/* How to WRITE a position back, per kind. A baked light has no setter — its position is
-   in the glb — which is exactly why it returns null and therefore cannot be dragged or
-   nudged. One function decides that, rather than a guard at each call site. */
+// how to write a position back, per kind; a baked light has no setter (null), so it can't be dragged or nudged
 function reditSetter(sel){
  if(sel.kind==='light'){
   const L=reditLights()[sel.i];if(!L)return null;
@@ -749,17 +655,15 @@ function reditSetter(sel){
  }
  return null;
 }
-/* Fly to the selection keeping the direction already faced — snapping to a canned angle
-   instead throws away the shot you were composing to get there. */
+// fly to the selection keeping the direction already faced
 function reditFocus(){
  const p=reditSelPos(RE.sel);if(!p)return;
  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
  camera.position.copy(p).addScaledVector(dir,-60);
 }
 
-/* --- picking + placing ----------------------------------------------------
-   Where the camera is looking, on the floor. New things land there rather than at the
-   origin, so "fly somewhere, press +" puts the thing in front of you. */
+// --- picking + placing ---
+// where the camera looks on the floor, so new things land in front of you
 function reditAimPoint(){
  if(!RE.ray)RE.ray=new THREE.Raycaster();
  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
@@ -782,14 +686,7 @@ function reditRay(ev){
  RE.ray.setFromCamera({x:((ev.clientX-r.left)/r.width)*2-1,y:-((ev.clientY-r.top)/r.height)*2+1},camera);
  return RE.ray;
 }
-/* MARKERS ARE TESTED FIRST, and that ordering is the feature: the light markers sit on top
-   of the room visually, so they must sit on top of it for picking too, or clicking a bulb
-   would select the lampshade behind it.
-
-   Then the props. An InstancedMesh reports instanceId, and instances are built in placement
-   order — explicit `at` entries first, then the scatter (see propPlacements) — so an id
-   below at.length maps straight back to a placement. Above it, the instance came from the
-   generator and the SPEC is what to select. */
+// markers are tested first (they sit on top visually, so also for picking), then props: an InstancedMesh instanceId below at.length is a placement, above it the scatter spec (see propPlacements)
 function reditPick(ev){
  if(!RE.on)return null;
  const ray=reditRay(ev);
@@ -809,12 +706,8 @@ function reditPick(ev){
  return {kind:'prop',spec:si,idx:(iid<nAt)?iid:null};
 }
 
-/* --- drag ----------------------------------------------------------------
-   Grab and move. Both modes are a ray against a PLANE, and the MODE is captured at
-   mousedown rather than read live: the plane has to be anchored where the grab started,
-   so re-picking it mid-gesture would make the thing jump the moment you touched shift.
-   Plain drag slides on the ground plane through the object; shift-drag moves it up and
-   down on a plane facing the camera. */
+// --- drag ---
+// a ray against a plane, the mode captured at mousedown so the plane stays anchored; plain drag slides on the ground plane, shift-drag moves up and down on a camera-facing plane
 function reditDragStart(ev,sel){
  const pos=reditSelPos(sel);if(!pos)return false;
  const setter=reditSetter(sel);if(!setter)return false;    // baked lights have none, by design
@@ -823,14 +716,7 @@ function reditDragStart(ev,sel){
  let n;
  if(yMode){n=fwd.clone();n.y=0;if(n.lengthSq()<1e-6)n.set(0,0,1);n.normalize();}
  else{
-  /* A GRAZING GROUND PLANE IS THE ONE THING THAT MAKES PLANE-DRAGGING UNUSABLE, and lights
-     are exactly where you meet it: they hang high, so you fly up to eye level with one and
-     then the floor is nearly edge-on. Measured: at 8 degrees above horizontal a 140px drag
-     threw a light 170 units, because the ray meets the plane hundreds of units away and one
-     pixel is worth metres. So when the view is that shallow, drag on the CAMERA-FACING plane
-     instead — never edge-on by construction — and keep only its x/z. Above the threshold the
-     ground plane is both well-conditioned and more intuitive (the thing follows the cursor
-     across the floor), so it stays. Top-down, the two planes coincide anyway. */
+  // a grazing ground plane makes dragging unusable (8 degrees: a 140px drag threw a light 170 units): below the threshold use the camera-facing plane and keep only x/z
   n=(Math.abs(fwd.y)>=RE_MK.grazeDot)?new THREE.Vector3(0,1,0):fwd.clone().normalize();
  }
  const hit=new THREE.Vector3();
@@ -854,22 +740,10 @@ function reditDragEnd(){
  if(d&&d.moved){reditSyncSel();if(typeof Au!=='undefined')Au.ui();}
 }
 
-/* --- export --------------------------------------------------------------
-   Emits the WHOLE room block in config.js's own shape and key order, so pasting it over
-   the entry there is the entire save step. That is also why the entries in config.js
-   carry no inline comments any more: a paste would destroy them, and a format that only
-   ALMOST matches its destination is a format nobody trusts twice.
-
-   Two rules earn their keep. Numbers are ROUNDED (an editor that writes
-   17.000000000000004 into a source file is a bad citizen), and colour-valued keys are
-   emitted as 0x HEX — a colour written as 16750899 is one nobody can read, compare or
-   nudge by hand afterwards, which is most of what you do to a colour in a config file. */
+// --- export ---
+// the whole room block in config.js's shape and key order (room entries carry no inline comments, a paste would destroy them); numbers rounded, colour keys as 0x hex
 const RE_HEXKEY={color:1,sky:1,ground:1,bg:1,shell:1};
-/* 3dp is right for a coordinate and wrong for a dim light. A detached fixture's intensity IS
-   its delivered value, and the pub's fire lands at 0.032 with a low-gain room able to go an
-   order of magnitude below that — rounded to 3dp such a light exports as 0, i.e. the paste
-   silently switches it off and the room comes back darker than the one you tuned. So small
-   magnitudes keep more places. It only widens the numbers that would otherwise be destroyed. */
+// 3dp suits a coordinate but would round a dim detached light (the pub's fire is 0.032) to 0, so small magnitudes keep more places
 function reFmtNum(n){
  if(typeof n!=='number'||!isFinite(n))return '0';
  let r=Math.round(n*1000)/1000;
@@ -879,14 +753,12 @@ function reFmtNum(n){
 function reFmt(k,v){
  if(v===null||v===undefined)return 'null';
  if(typeof v==='boolean')return v?'true':'false';
- // Built without a literal backslash in the source on purpose: this string is itself an
- // escaper, and writing it with escapes makes it the one line nobody can read correctly.
+ // built without a literal backslash in the source on purpose: this string is itself an escaper
  if(typeof v==='string'){const bs=String.fromCharCode(92);
   return "'"+v.split(bs).join(bs+bs).split("'").join(bs+"'")+"'";}
  if(typeof v==='number')return RE_HEXKEY[k]?reHex(v):reFmtNum(v);
  if(Array.isArray(v)){
-  // env.panels and tint carry colours in positions a key name cannot describe, so they
-  // are the two arrays that need naming here rather than a generic rule.
+  // env.panels and tint carry colours in positions a key name can't describe, so they're named here
   if(k==='panels')return '['+v.map(p=>'['+reHex(p[0])+','+p.slice(1).map(reFmtNum).join(',')+']').join(',')+']';
   if(k==='tint')return '['+v.map(reHex).join(',')+']';
   return '['+v.map(x=>reFmt(k,x)).join(',')+']';
@@ -898,8 +770,7 @@ function reFmtKV(o,keys){
  keys.forEach(k=>{if(o[k]!==undefined)out.push(k+':'+reFmt(k,o[k]));});
  return out;
 }
-/* One `at` placement per line past a couple of them: a wall of coordinates on one line is
-   unreviewable in a diff, and a diff is where these end up. */
+// one `at` placement per line past a couple of them, so a diff is reviewable
 function reditPropsBlock(specs,ind){
  if(!specs.length)return ind+'props:[],';
  const L=[ind+'props:['];
@@ -928,8 +799,7 @@ function reditLightsBlock(list,ind){
  L.push(ind+'],');
  return L.join('\n');
 }
-/* The paste-ready block. Key order and indentation match CONFIG.rooms exactly — see the
-   banner there, which names this file as the thing those entries are shaped for. */
+// the paste-ready block; key order and indentation match CONFIG.rooms (see the banner there)
 function reditBlock(){
  const id=reditRoomId(),rm=reditRoom(),ind='      ',L=[];
  L.push('   '+id+':{');
@@ -1004,8 +874,7 @@ function reditTabOut(w){
    const r=reEl('div','reRow');const a=reEl('span','reTag',k[0]);a.style.cssText='flex:0 0 76px';
    r.appendChild(a);r.appendChild(reEl('span','reMuted',k[1]));w.appendChild(r);});
 }
-/* Crash backup. Written on every change, restored ONLY by the button — an editor that
-   silently resurrects old state over what config.js says is an editor you stop trusting. */
+// crash backup: written on every change, restored only by the button
 function reditBackup(){
  try{
   const all=JSON.parse(localStorage.getItem('fuzeball_roomedit')||'{}');
@@ -1015,25 +884,18 @@ function reditBackup(){
   localStorage.setItem('fuzeball_roomedit',JSON.stringify(all));
  }catch(e){}
 }
-/* --- per-frame ------------------------------------------------------------
-   Self-heals like phTick: if the room changed under the panel (venue switch), retarget
-   rather than editing a room that is no longer on screen. */
+// --- per-frame ---
+// self-heals like phTick: if the room changed under the panel, retarget
 function reditTick(){
  if(!RE.on)return;
  if(RE.room!==reditRoomId()){RE.room=reditRoomId();RE.sel=null;reditMarkers();reditSync();}
- /* THE ROOM GLB ARRIVES LATE. reditEnter runs the moment the venue is applied, but ensureRoom
-    is async, so the first reditMarkers() sees no baked fixtures and you land in the editor with
-    no light visuals at all — which reads as the markers being broken rather than as a race.
-    Watching the GROUP IDENTITY is an O(1) test per frame (a traverse here would not be), and it
-    covers the two ways the set can change: the backdrop finishing its download, and a room swap. */
+ // the room GLB arrives late (reditEnter runs before ensureRoom finishes): watch the group identity (O(1) per frame) for the download finishing and a room swap
  else if(typeof roomGroups!=='undefined'&&roomGroups[reditRoomId()]!==RE.mkGrp){reditMarkers();reditSync();}
  reditScaleMarkers();
 }
 
-/* --- bindings ------------------------------------------------------------
-   Self-contained, like photo.js: this file owns its own listeners so a missing
-   roomedit.js cannot break input. Capture phase on the pointer handlers so a pick
-   lands before input.js's canvas mousedown (which kicks a rod). */
+// --- bindings ---
+// self-contained like photo.js; pointer handlers run in the capture phase so a pick lands before input.js's canvas mousedown
 addEventListener('keydown',e=>{
  const t=e.target,tn=t&&t.tagName;
  if(tn==='INPUT'||tn==='SELECT'||tn==='TEXTAREA')return;   // typing in the panel is not a shortcut
@@ -1050,8 +912,7 @@ addEventListener('keydown',e=>{
    if(sp&&sel.idx!==null&&sp.at&&sp.at[sel.idx]){sp.at.splice(sel.idx,1);RE.sel=null;reditApply();reditSync();}}
   return;
  }
- // Yaw is a PROP-only nudge (a point light has no facing), so it is handled before the
- // shared position nudge rather than inside it.
+ // yaw is a prop-only nudge (a point light has no facing), handled before the shared position nudge
  if(e.code==='BracketLeft'||e.code==='BracketRight'){
   const sp=(sel.kind==='prop')?reditSpecs()[sel.spec]:null;
   if(sp&&sel.idx!==null&&sp.at&&sp.at[sel.idx]){
@@ -1083,8 +944,7 @@ addEventListener('mousedown',e=>{
  if(sel&&typeof Au!=='undefined')Au.ui();
  e.preventDefault();e.stopPropagation();                    // beat input.js's kick handler
 },true);
-/* Mouse-look without pointer lock: movementX/Y is still reported by a plain drag, so the
-   maths is the same as input.js's locked path — only the gate differs. */
+// mouse-look without pointer lock: a plain drag still reports movementX/Y, same maths as input.js's locked path
 addEventListener('mousemove',e=>{
  if(!RE.on)return;
  if(RE.look){
@@ -1101,10 +961,8 @@ addEventListener('mouseup',e=>{
  if(e.button===0&&RE.drag)reditDragEnd();
 },true);
 
-/* --- the picker screen (#roomEdit) ---------------------------------------
-   Reached from the home card (revealed only when CONFIG.debug.roomEditor is on) or F2.
-   Its whole job is to answer "which room am I editing" BEFORE anything is applied, so
-   the editor never inherits whichever venue the last match happened to leave behind. */
+// --- the picker screen (#roomEdit) ---
+// reached from the home card (only with CONFIG.debug.roomEditor) or F2; it answers 'which room' before anything is applied
 function reditRoomCount(id){
  const rm=CONFIG.rooms[id],n=(rm.props||[]).length;
  let inst=0;(rm.props||[]).forEach(sp=>{inst+=(sp.at?sp.at.length:0)+(sp.scatter?(sp.scatter.n|0):0);});
@@ -1140,9 +998,7 @@ function openRoomEdit(){
  reditRoomList();
  if(typeof showScreen==='function')showScreen('roomEdit');
 }
-/* Apply a room and drop straight into the editor. hideScreens() (not showScreen) is what
-   clears the menu off the canvas — the same call startMatchNow uses — and it deliberately
-   does NOT fire onHide, so scrCur stays 'roomEdit' and the venue restore stays armed. */
+// apply a room and drop into the editor; hideScreens() (not showScreen) doesn't fire onHide, so the venue restore stays armed
 function reditOpenRoom(id){
  if(!CONFIG.rooms[id])return;
  if(!RE.prev)RE.prev={room:cfg.room,table:cfg.table};    // stash ONCE; picking again just re-applies
@@ -1151,8 +1007,7 @@ function reditOpenRoom(id){
  if(typeof hideScreens==='function')hideScreens();
  reditEnter();
 }
-/* Put the player's own venue back. Fires only when the roomEdit SCREEN is replaced by a
-   different one — leaving the editor back to the picker keeps the room applied. */
+// put the player's own venue back; fires only when the roomEdit screen is replaced by a different one
 if(typeof SCREENS!=='undefined'&&SCREENS.roomEdit)SCREENS.roomEdit.onHide=function(){
  if(RE.on)reditExit();
  if(!RE.prev)return;
@@ -1163,17 +1018,13 @@ if(typeof SCREENS!=='undefined'&&SCREENS.roomEdit)SCREENS.roomEdit.onHide=functi
  if(roomChanged&&typeof applyRoom==='function')applyRoom();
 };
 
-/* --- boot wiring ---------------------------------------------------------
-   The ROUTE is always registered; only the way IN is gated, so a stale saved layout or a
-   hand-typed showScreen('roomEdit') can never leave the user on an unreachable screen. */
+// --- boot wiring ---
+// the route is always registered, only the way in is gated, so a stale layout can't strand the user
 (function reditInit(){
  const go=()=>{
   const on=reditEnabled();
   const row=$('homeDevRow');
-  /* Say so at boot, both ways. A dev tool you cannot tell is loaded is a dev tool you end up
-     debugging by guesswork — and the two failure modes look identical from the menu (flag off
-     vs. a browser still serving a cached index.html). The missing-element case names itself,
-     because index.html is the ONE file that cannot cache-bust itself. */
+  // say so at boot, both ways (flag off and a cached index.html look identical from the menu); index.html can't cache-bust itself
   if(!row)console.warn('room editor: #homeDevRow is not in the DOM — index.html looks stale. Hard-reload (Ctrl+F5).');
   else if(on){row.classList.remove('hidden');
    console.log('%croom editor: ON — F2, or the ROOM EDITOR card on the home screen','color:#7fb0ff');}

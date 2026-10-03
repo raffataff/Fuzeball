@@ -1,81 +1,43 @@
 'use strict';
-/* ===== seats — who is holding which rod =====
-   A SEAT is one human at the table: a team, a set of input devices, and the rod they're
-   currently holding. Replaces the old singleton (`S.userTeam` + `S.ctrl` + `S.ctrlRods`),
-   which could only ever describe ONE person and is why local co-op wasn't possible without
-   this layer. Everything that used to ask "is this the player's rod?" now asks `seatOf(r)`.
+// ===== seats: who is holding which rod =====
+// a seat is one human: a team, input devices and the rod they hold; S.seats is the source of truth (empty = AI showdown / spectate); a one-seat match plays as before (the default seat claims every device)
+// devices are a set per seat: 'kbd', 'mouse', 'pad0'..'pad3', 'pad*' (any pad, the solo default); seatForDev(tok) resolves exact match then a 'pad*' holder; an unclaimed device does nothing
+// setSeatCtrl skips rods another seat holds; a `lockRole` seat has a one-rod list and can't switch
 
-   `S.seats` is the source of truth. Empty = nobody is playing (AI showdown / spectate).
-   A one-seat match plays EXACTLY as it did before this existed — that's the design constraint,
-   not a coincidence: the default seat claims every device (see `devs` below).
-
-   DEVICES ARE A SET PER SEAT, NOT ONE PER SEAT. This is the subtle part. Solo play is one
-   seat holding keyboard AND mouse AND any pad at once — take that away and a solo player
-   slides with the mouse on one rod and the arrow keys on another. So a seat carries a `devs`
-   list of tokens:
-     'kbd'            the keyboard
-     'mouse'          mouse move/click
-     'pad0'…'pad3'    a SPECIFIC gamepad index — what the lobby hands out when several pads join
-     'pad*'           ANY connected pad; the solo default, and exactly what the old code did
-                      (it took the first non-null entry from navigator.getGamepads()).
-   `seatForDev(tok)` resolves a device to its seat: exact match wins, then a 'pad*' holder.
-   A device nobody claims does nothing — which is what makes a second pad inert until someone
-   presses to join.
-
-   ROD OWNERSHIP: seats switch rods as before (Q/E, LB/RB, wheel, 1-4), but `setSeatCtrl`
-   SKIPS rods another seat is already holding, so two players on one team can't fight over a
-   rod. A seat with `lockRole` set has a one-rod list and simply can't switch. */
-
-/* Every device token a seat can claim. Order matters for the lobby's join order. The pad tokens
-   are GENERATED from CONFIG.seats.maxPads rather than hand-listed: the pad count also bounds
-   rosPads() and gamepadUpdate's poll loop, and three hand-written 4s is three places to forget.
-   NOTE this is the hard ceiling on player count — there is exactly one keyboard and one mouse,
-   so a match of N players needs N-2 pads at best. */
+// every device token a seat can claim, in the lobby's join order; pad tokens come from CONFIG.seats.maxPads (one keyboard and one mouse, so N players needs N-2 pads at best)
 const SEAT_DEVS=['kbd','mouse'];
 const SEAT_DEV_NAME={kbd:'Keyboard',mouse:'Mouse','pad*':'Controller'};
 for(let i=0;i<CONFIG.seats.maxPads;i++){SEAT_DEVS.push('pad'+i);SEAT_DEV_NAME['pad'+i]='Controller '+(i+1);}
 
-/* Make one seat. `rods` is filled by seatBindRods once the rods exist (a match can be started
-   before boot() has built them — see startMatchNow's force-boot). */
+// make one seat; `rods` is filled by seatBindRods once the rods exist
 function makeSeat(team,devs,lockRole){
  return{team:team,devs:devs.slice(),lockRole:lockRole||null,
   rods:[],ctrl:0,
   tcMult:1,        // live Total-Control slide multiplier for THIS seat's pad (was the global S.tcMult)
   padRaise:false,  // pad raise is a hold — per seat, or two pads would clobber each other's raise
   padAngleArm:true,// right-stick angle authority; a rod switch drops it until the stick re-centres (js/input.js)
-  shotRod:null,    // rod this seat drove LAST frame, so js/shots.js can clear a wind-up left on a rod it let go of
+  shotRod:null,    // rod this seat drove last frame, so js/shots.js can clear a wind-up left on a rod it let go of
   holdRod:null,    // rod the auto-switch is currently withholding mid-save (js/ai.js autoHoldRod)
   holdT:0,         // …and when that started, so handover.maxHold can expire it
-  slideArm:0,      // slide input is ignored until this time — a hand-over must not inherit the swipe you were already making
+  slideArm:0,      // slide input is ignored until this time (a hand-over must not inherit the swipe in progress)
   padPrev:{}};     // per-seat button edge state (was the global gpPrev)
 }
-/* The default solo seat: one human, every device. Keeps a plain quick match byte-identical. */
+// the default solo seat: one human, every device (keeps a plain quick match identical)
 function soloSeat(team,lockRole){return makeSeat(team,['kbd','mouse','pad*'],lockRole);}
 
-/* Give every seat its switchable rod list. A seat gets its team's rods ordered goal→goal; a
-   lockRole seat gets exactly one. Called from startMatchNow AFTER the rods exist. */
+// give every seat its switchable rod list (its team's rods goal to goal; a lockRole seat gets one); after the rods exist
 function seatBindRods(){
  const claimed=[];                            // rods already handed to an EARLIER lockRole seat
  S.seats.forEach(s=>{
   const mine=rods.filter(r=>r.team===s.team).sort((a,b)=>a.x-b.x);
-  // A lockRole seat gets exactly one rod and therefore cannot switch — so if a teammate already
-  // locked the same role, honouring the lock would weld two players to one handle and both would
-  // drive its target. The lobby refuses a duplicate lock (rosSetRole), so this is a backstop for
-  // any other caller: drop the lock rather than the player, and let the push-off loop below place
-  // them. At 4-a-side there are only 4 roles per side, so the collision is one mis-click away.
+  // a lockRole seat has one rod, so if a teammate already locked the same role drop the lock rather than weld two players to one handle (rosSetRole is the first guard)
   const lock=s.lockRole?mine.find(r=>r.role===s.lockRole):null;
   if(lock&&claimed.indexOf(lock)<0){s.rods=[lock];claimed.push(lock);}
   else s.rods=mine;
   s.ctrl=0;
  });
- // Opening rod: MID if this seat can reach it (the old default), then push each seat off any rod
- // that's already spoken for so two players never start on the same handle. Done by hand rather
- // than via setSeatCtrl because that stamps S.lastSwitch, repaints the chips and plays a click —
- // none of which belong in match setup. With one seat neither loop does anything.
- // A seat YIELDS to an earlier seat (j<i, arbitrary but stable) OR to any single-rod lockRole
- // seat whatever its order — a locked seat physically cannot move, so it can't be the one to give
- // way. Without that second clause an unlocked P1 could take MID before a locked-to-MID P2 was
- // placed, and P2 (n<2) would return early on top of them.
+ // opening rod: MID if reachable, then push each seat off a rod already spoken for, by hand (setSeatCtrl would stamp S.lastSwitch and click)
+ // a seat yields to an earlier seat or to any single-rod lockRole seat
  S.seats.forEach(s=>{const mi=s.rods.findIndex(r=>r.role==='MID');if(mi>=0)s.ctrl=mi;});
  S.seats.forEach((s,i)=>{
   const n=s.rods.length;if(n<2)return;
@@ -86,7 +48,7 @@ function seatBindRods(){
   }
  });
 }
-/* The rod a seat is holding, or null (no rods bound yet / empty list). Self-heals a stale index. */
+// the rod a seat is holding, or null; self-heals a stale index
 function seatRod(s){
  if(!s||!s.rods.length)return null;
  if(s.ctrl<0||s.ctrl>=s.rods.length)s.ctrl=0;
@@ -102,37 +64,20 @@ function rodTaken(r,not){
  for(let i=0;i<S.seats.length;i++){const s=S.seats[i];if(s!==not&&seatRod(s)===r)return true;}
  return false;
 }
-/* Resolve a device token to the seat that claimed it. Exact match first so a lobby-assigned
-   'pad1' beats a solo seat's catch-all; then any 'pad*' holder for a pad token. */
+// resolve a device token to its seat: exact match first, then any 'pad*' holder
 function seatForDev(tok){
  for(let i=0;i<S.seats.length;i++)if(S.seats[i].devs.indexOf(tok)>=0)return S.seats[i];
  if(/^pad\d+$/.test(tok))for(let i=0;i<S.seats.length;i++)if(S.seats[i].devs.indexOf('pad*')>=0)return S.seats[i];
  return null;
 }
-/* Clear AI-driven state from a rod when a player takes control. The AI skips user rods each
-   frame (ai.js:isUserRod), but any state it set before the switch persists — active actions
-   (trap/dribble/safeRaise/lane/evade), hold-evade timers, man selection, etc. Without clearing
-   these the rod carries on with AI angle overrides, or sits mid-action when the player expects a
-   clean handoff.
-
-   THE RAISE IS THE ONE THING WE KEEP, and that is a change. Wiping it dropped the men the instant
-   you took the rod — including on an AUTO switch, which fires precisely when the ball is arriving
-   from behind that rod and is therefore exactly when the AI had it lifted. The rod you were handed
-   then sat down in front of the very ball you were handed it for. So the raise carries across as
-   an INHERITED LATCH (r.raiseKeep): userControlUpdate runs the same rodHoldRaise rule on it every
-   frame and lets it drop when the ball reaches the feet — the same frame the AI would have dropped
-   it, and the frame you want the men down. Any raise input, or a kick, ends it on the spot
-   (rodRaiseRelease). */
+// clear AI-driven state from a rod when a player takes control (actions, hold-evade timers, man selection)
+// the raise is kept as an inherited latch (r.raiseKeep): an auto switch fires when the ball arrives from behind, when the AI had it lifted; userControlUpdate drops it when the ball reaches the feet, any raise input or kick ends it
 function clearRodAI(r){
  if(!r)return;
  r.raiseKeep=!!r.raise;                     // inherited raise — released by rodRaiseRelease / userControlUpdate
  if(!r.raiseKeep)r.behindFlag=false;
  r.act=null;r.heldFwd=false;
- /* AND THE ROD HOLDS ITS GROUND. r.target was left wherever the AI last wanted the rod, so a rod
-    you took over set off for the AI's destination before you had touched anything — and on
-    keyboard or pad, which add to r.target rather than setting it, your first nudge was added to
-    that stale destination instead of to where the rod actually is. Pinning it to the live offset
-    means "you now have it, exactly here". */
+ // the rod holds its ground: r.target was left at the AI's destination and keyboard/pad add to it, so pin it to the live offset
  r.target=r.offset;r.slideV=0;
  rodInputRelease(r);                        // a stale stick angle or held kick from an earlier stint would pin this rod
  if(r.hold)r.hold.on=false;                 // …and any L2 grip: the AI drives this rod now
@@ -143,31 +88,15 @@ function clearRodAI(r){
  r.laneDir=0;
  r.passTo=null;r.aimEv=null;
 }
-/* The player has put their own hand on the raise — button down, button up, right stick, or a kick
-   — so the inherited latch is done and their input is the only thing driving the men from here.
-   Harmless on a rod that never had one. */
+// the player has taken the raise themselves (button, stick or kick): the inherited latch is done
 function rodRaiseRelease(r){if(r)r.raiseKeep=false;}
-/* A rod a seat has just let GO of — drop every HELD input still sitting on it. Each of these is
-   written only for the rod a device is currently driving, so the release event (stick re-centre,
-   button up) lands on the NEW rod and the abandoned one would keep the hold for ever:
-     padAngleOn/Target  the last right-stick angle. In updateRods that branch outranks both the
-                        raise latch and the rest-drop, so the AI could never lower it again —
-                        in training, with the AI off, nothing could.
-     kickHold           a held kick button, which pins the swing at full stretch (js/rods.js). */
+// a rod a seat just let go of: drop every held input still on it (the release lands on the new rod)
+//   padAngleOn/Target: the last stick angle (outranks the raise latch and rest-drop in updateRods); kickHold: a held kick that pins the swing
 function rodInputRelease(r){if(r){r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;}}
-/* THE SLIDE FREEZE. `false` = this seat's slide input does nothing this frame. Set for a beat by an
-   AUTO hand-over only (CONFIG.control.handover.settle), and for the same reason padAngleArm exists:
-   every slide device is RELATIVE — mouse movementY, a held W/S, a deflected stick — so whatever you
-   were already doing to the old rod carries straight onto the new one. On the switch you cared about
-   least (the keeper, arriving mid-save) that inherited swipe was throwing the rod off the ball before
-   you had even seen the handle change. It gates the slide ONLY: kick, raise and angle are untouched,
-   because those are things you press deliberately and a frozen kick button would just feel broken.
-   A manual switch is deliberate and stays byte-identical — set slideArm in setSeatCtrl too if you
-   ever want the same courtesy there. */
+// the slide freeze: false = this seat's slide does nothing this frame; set briefly by an auto hand-over (CONFIG.control.handover.settle), since every slide device is relative and the swipe would carry onto the new rod
+// kick, raise and angle are untouched; a manual switch is unchanged
 function seatSlideOK(s){return !s||S.time>=(s.slideArm||0);}
-/* Absolute rod select, skipping rods other seats hold. `dir` is the direction to keep searching
-   when the requested rod is taken (so a wheel/Q/E press lands on the next FREE rod rather than
-   silently doing nothing). Returns true if the held rod actually changed. */
+// absolute rod select, skipping rods other seats hold; `dir` = which way to keep searching when taken; true if the held rod changed
 function setSeatCtrl(s,i,dir){
  if(!s||!s.rods.length)return false;
  const n=s.rods.length,d=dir||1,was=s.ctrl;
@@ -185,12 +114,8 @@ function setSeatCtrl(s,i,dir){
 }
 function seatStep(s,d){return setSeatCtrl(s,s.ctrl+d,d);}
 
-/* ---- seat colour --------------------------------------------------------------------------
-   The kit colour identifies the TEAM; it cannot identify a PLAYER, and with two humans on one
-   side that's the thing you actually need at a glance. So each seat past the first on a team is
-   offset in HSL from its kit colour (CONFIG.seats.tint) — same family, obviously a different
-   person. `seatTintHex(team,i)` is the raw form so the lobby can colour its cards from plain
-   specs, before any live seat exists. */
+// ---- seat colour ----
+// the kit colour identifies the team, not the player, so each seat past the first on a team is offset in HSL (CONFIG.seats.tint); seatTintHex(team,i) lets the lobby colour cards from plain specs
 const _seatCol=new THREE.Color();
 function seatTintHex(team,i){
  const T=CONFIG.seats.tint,t=T[Math.min(i,T.length-1)];
@@ -205,9 +130,7 @@ function seatIdxInTeam(s){
 }
 function seatCol(s){return s?seatTintHex(s.team,seatIdxInTeam(s)):'#ffffff';}
 
-/* ---- compatibility shims -----------------------------------------------------------------
-   isUserRod is read all over physics/rods/ai; userRod() is "the primary seat's rod" and is only
-   right where a SINGLE holder is meant (the training panel's readout, the debug tracer). Anything
-   per-player must go through seatOf/seatRod instead — userRod is not a stand-in for them. */
+// ---- compatibility shims ----
+// userRod() = the primary seat's rod, right only where one holder is meant (training readout, debug tracer); per-player code uses seatOf/seatRod
 function isUserRod(r){return!!seatOf(r);}
 function userRod(){return seatRod(S.seats[0]);}

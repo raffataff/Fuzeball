@@ -1,11 +1,7 @@
 'use strict';
-/* ================= training mode (sandbox practice) =================
-   Entered via the TRAINING card → startMatch('training') → trainingEnter(). While live,
-   S.trn points at TRN and other modules read ONLY S.trn + r.trnHidden (ai gate, physics
-   skip, powerup/deadball guards, main-loop freeze), so a missing training.js can never
-   break the game. All defaults in CONFIG.training. Keys: T panel · P freeze · O step ·
-   G click-place. Saved spots persist in cfg.trnSpots — a PLAYER key, so they follow the
-   person between machines rather than sitting on one (see the PLAYER/MACHINE block in config.js). */
+// ================= training mode (sandbox practice) =================
+// TRAINING card > startMatch('training') > trainingEnter(); while live S.trn points at TRN and other modules read only S.trn + r.trnHidden (ai gate, physics skip, powerup/deadball guards, main-loop freeze)
+// defaults in CONFIG.training; keys: T panel, P freeze, O step, G click-place; saved spots in cfg.trnSpots (a PLAYER key)
 const TRNC=CONFIG.training;
 const TRN={on:false,ai:[false,false],lift:[false,false],freeze:false,stepQ:0,placing:false,deadball:false,score:false,
  ballType:'classic',hidden:[],spots:null,lastSpot:null};
@@ -23,8 +19,7 @@ function trnSpawnBall(key,x,z){
   TRN.lastSpot={x:b.m.position.x,z:b.m.position.z};
  return b;
 }
-/* Teleport the first live ball (spawning one if none) to x,z at rest. The ONE place a
-   training ball is hard-set — always syncBall'd so the interp/AI-history can't streak. */
+// teleport the first live ball (spawning one if none) to x,z at rest; the one place a training ball is hard-set, always syncBall'd
 function trnPlace(x,z){
  x=trnClampX(x);z=trnClampZ(z);
  let b=trnBall();
@@ -38,8 +33,7 @@ function trnPlace(x,z){
  if(trnBuilt){$('trnX').value=b.m.position.x.toFixed(1);$('trnZ').value=b.m.position.z.toFixed(1);}
  return b;
 }
-/* Launcher: fire the ball from where it sits with the panel's speed/angle/loft.
-   0° = toward the RIGHT goal (+x), 90° = toward the near side (+z). */
+// launcher: fire the ball from where it sits with the panel's speed, angle and loft; 0° = toward +x, 90° = toward +z
 function trnLaunch(){
  const sp=clamp(+$('trnSpeed').value||0,0,TRNC.speedMax),
        an=(+$('trnAngle').value||0)*Math.PI/180,
@@ -49,7 +43,7 @@ function trnLaunch(){
  Au.ui();
 }
 function trnResetLaunch(){const s=trnSpot();trnPlace(s.x,s.z);trnLaunch();}
-/* ---- saved spots (position + launcher settings, 4 slots, persisted) ---- */
+// ---- saved spots (position + launcher settings, 4 slots, persisted) ----
 function trnSaveSpot(i){
  const b=trnBall(),p=b?b.cur:trnSpot();
  TRN.spots[i]={x:p.x,z:p.z,sp:+$('trnSpeed').value||TRNC.launch.speed,an:+$('trnAngle').value||0,lo:+$('trnLoft').value||0};
@@ -65,7 +59,7 @@ function trnRefreshSpots(){
   b.classList.toggle('on',!!s);
   b.title=s?('x '+s.x.toFixed(0)+' · z '+s.z.toFixed(0)+' · '+s.sp+'u/s @ '+s.an+'°'):'empty — save first';}
 }
-/* ---- click-to-place: raycast the mouse onto the y=BALL_R plane ---- */
+// ---- click-to-place: raycast the mouse onto the y=BALL_R plane ----
 function trnRayPoint(e){
  trnRay.setFromCamera({x:(e.clientX/innerWidth)*2-1,y:-(e.clientY/innerHeight)*2+1},camera);
  const o=trnRay.ray.origin,d=trnRay.ray.direction;
@@ -86,8 +80,7 @@ function trnSetPlacing(v){
  cvs.style.cursor=v?'crosshair':'';
  trnRingVis(false);
 }
-/* Window-CAPTURE listeners so they beat input.js's canvas handlers (which would kick/
-   slide the rod): while placing, a canvas click drops the ball instead. R-click cancels. */
+// window-capture listeners so they beat input.js's canvas handlers; while placing, a click drops the ball and R-click cancels
 addEventListener('mousedown',e=>{
  if(!TRN.on||!TRN.placing||S.photo||e.target!==cvs)return;
  e.stopPropagation();e.preventDefault();
@@ -106,7 +99,7 @@ addEventListener('wheel',e=>{if(TRN.on&&e.target&&e.target.closest&&e.target.clo
 addEventListener('keydown',e=>{
  if(!TRN.on||S.phase==='menu')return;
  if(S.photo)return;   // photo mode owns P/O/G/T — its panel is up and this one is hidden (js/photo.js)
- if(S.trial)return;   // a Skill Trial hides this panel and owns the run — freeze/step/place would trivialise it
+ if(S.trial)return;   // a Skill Trial hides this panel and owns the run (freeze/step/place would trivialise it)
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  if(e.code==='KeyT'){$('trnPanel').classList.toggle('hidden');Au.ui();}
  if(e.code==='KeyP')trnToggleFreeze();
@@ -122,8 +115,7 @@ function trnSetRodShown(i,v){
  const r=rods[i];if(!r)return;
  r.trnHidden=!v;r.pivot.visible=v;TRN.hidden[i]=!v;
 }
-/* Rod show/hide checkboxes. Rebuilt on demand (NOT once with the panel) — the panel can be
-   built before the rods exist, and a 0-row list would then stay empty for the whole session. */
+// rod show/hide checkboxes, rebuilt on demand (the panel can be built before the rods exist)
 function trnRodRows(){
  const box=$('trnRods');if(!box||box.childElementCount===rods.length)return;
  let h='';
@@ -131,15 +123,13 @@ function trnRodRows(){
  box.innerHTML=h;
  rods.forEach((r,i)=>{const c=$('trnRod'+i);if(c)c.onchange=e=>trnSetRodShown(i,e.target.checked);});
 }
-/* ---- panel (built once, gold-panel chrome like the debug AI panel) ---- */
+// ---- panel (built once, gold-panel chrome like the debug AI panel) ----
 function buildTrnPanel(){
  if(trnBuilt)return;trnBuilt=true;
  const p=document.createElement('div');p.id='trnPanel';p.className='hidden';
  let typeOpts='';for(const k in BALL_TYPES)typeOpts+='<option value="'+k+'">'+BALL_TYPES[k].name+'</option>';
  p.innerHTML=
-  // emoji dropped throughout this panel — ⏸/⏭/📍/🚀/🎯 all have EMOJI presentation by default on
-  // Windows, so they came out full-colour against a monochrome gold dev panel. ✕/↻/— are
-  // text-presentation glyphs and render monochrome everywhere, so they stay.
+  // no emoji in this panel: they render full-colour on Windows against a monochrome dev panel
   '<h3>TRAINING <button class="trnMin" id="trnMin" title="collapse (T hides the panel)">—</button></h3>'+
   '<div class="trnBody">'+
   '<div class="trnSect">Sim</div>'+
@@ -160,10 +150,7 @@ function buildTrnPanel(){
   '<div class="trnSect">AI</div>'+
   '<div class="trnRow"><label><span class="lblR">Team 1</span> AI</label><input type="checkbox" id="trnAiR"></div>'+
   '<div class="trnRow"><label><span class="lblB">Team 2</span> AI</label><input type="checkbox" id="trnAiB"></div>'+
-  // LIFT is what an AI-OFF rod does with its MEN. Off = the dead-flat obstacle this sandbox has
-  // always given you, which is what you want when a rod is there to block something. On = the
-  // passive raise a benched rod runs in a real match (ai.js rodHoldRaise), so idle rods get out of
-  // the ball's way. Ignored while that team's AI is on — the full AI picks its own angles.
+  // LIFT is what an AI-off rod does with its men: off = a dead-flat obstacle, on = the passive raise a benched rod runs (ai.js rodHoldRaise); ignored while that team's AI is on
   '<div class="trnRow"><label><span class="lblR">Team 1</span> lift when idle</label><input type="checkbox" id="trnLiftR"></div>'+
   '<div class="trnRow"><label><span class="lblB">Team 2</span> lift when idle</label><input type="checkbox" id="trnLiftB"></div>'+
   '<div class="trnSect">Rods · show / hide</div>'+
@@ -172,8 +159,7 @@ function buildTrnPanel(){
   '<div class="trnRow"><label>Count goals</label><input type="checkbox" id="trnScore"></div>'+
   '<div class="trnRow"><label>Auto dead-ball re-drop</label><input type="checkbox" id="trnDead"></div>'+
   '<div class="trnInfo" id="trnInfo"></div>'+
-  // held-rod angle, under the ball metrics: text + a dial that hangs down at 0 and swings
-  // toward +x (screen-right) with the rod, so it reads like the table does.
+  // held-rod angle under the ball metrics: text plus a dial that swings toward +x with the rod
   '<div class="trnAng"><div class="trnAngT" id="trnAngT"></div>'+
    '<svg viewBox="-32 -30 64 62" width="58" height="54">'+
     '<path d="M -24 0 A 24 24 0 0 0 24 0" fill="none" stroke="rgba(255,207,77,.16)"/>'+
@@ -184,8 +170,7 @@ function buildTrnPanel(){
    '</svg></div>'+
   '</div>';
  document.body.appendChild(p);
- // Ball type is a ◀ VALUE ▶ selector like every menu's. vsel.js loads AFTER this file, but the panel is
- // built at the first training start, long after boot.
+ // ball type is a ◀ VALUE ▶ selector (vsel.js loads later, but the panel is built at the first training start)
  if(typeof vselWrap==='function')vselWrap($('trnType'));
  trnAngT=$('trnAngT');trnNeedle=$('trnNeedle');
  // blur any clicked button so SPACE (kick) can't re-fire it
@@ -214,9 +199,7 @@ function buildTrnPanel(){
  $('trnScore').onchange=e=>{TRN.score=e.target.checked;};
  $('trnDead').onchange=e=>{TRN.deadball=e.target.checked;};
 }
-/* Called by startMatch('training') AFTER the normal reset — skips the countdown, drops a
-   ball at the spawn point and takes over the phase. Re-entrant (pause→Restart reuses it),
-   keeping the last panel setup (AI toggles, hidden rods, launcher fields). */
+// called by startMatch('training') after the normal reset: skips the countdown, drops a ball and takes over the phase; re-entrant (pause > Restart), keeping the last panel setup
 function trainingEnter(){
  TRN.on=true;S.trn=TRN;
  TRN.freeze=false;TRN.stepQ=0;TRN.placing=false;
@@ -236,37 +219,25 @@ function trainingEnter(){
   '{START} pause · {Y} camera\n{A} kick · {X} raise · {LB} {RB} switch rod');
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
- // A queued Skill Trial (js/trials.js) takes the sandbox over from here — it re-places the ball,
- // hides this panel and applies its own rod/AI setup, so the sandbox toast isn't wanted. trialArm
- // returns true only when it actually armed one, which is what keeps this a one-line typeof guard
- // with no reference to trials.js state: a missing trials.js leaves the sandbox exactly as it was.
+ // a queued Skill Trial (js/trials.js) takes the sandbox over from here; trialArm returns true only when it armed one, keeping this a one-line typeof guard
  if(typeof tutArm==='function'&&tutArm())return;     // a queued tutorial takes it over the same way (js/tutorial.js)
  if(typeof trialArm==='function'&&trialArm())return;
  toast('TRAINING','place · launch · tune — no scoring',2.2);   // tier 3: sandbox chrome, not a match event
 }
-/* Goal in training (routed from onGoal): fx + optional score tick, then the ball resets
-   to the last placed spot so a shot is instantly repeatable. Never ends the match. */
+// goal in training (from onGoal): fx and an optional score tick, then the ball resets to the last placed spot; never ends the match
 function trainingGoal(team,b){
  b.scored=true;
- // BEFORE removeBall — the trial reads b.mss (matchstats' last SWING) to credit the rod that
- // struck it, and the mesh plus its records are freed a few lines down.
+ // before removeBall: the trial reads b.mss (matchstats' last swing) to credit the rod that struck it
  if(S.trial&&typeof trialGoal==='function')trialGoal(team,b);
  if(S.tut&&typeof tutGoal==='function')tutGoal(team);
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
  goalFx(team,b,msScorer(b,team));   // same scorer record the trial credit reads, so the ring agrees with it
  removeBall(b);
  notice(teamName(team)+' GOAL',1.1,teamCol(team));
- // A FINISHED trial keeps the table as it was: dropping a fresh ball behind the result card reads
- // as the run still going. Any other case (sandbox, or a trial still in progress) respawns so the
- // next shot is instantly repeatable.
- // A 'saveRun' trial serves its own balls, one per attempt, and holds the table empty for a beat
- // between them (S.trial.serving) — the sandbox dropping a fresh ball into that gap would restart
- // play before the next attempt was served. Read as DATA off S.trial, like every other hook here,
- // so a missing trials.js leaves the clause harmlessly false.
+ // a finished trial keeps the table as it was; a 'saveRun' trial holds it empty between attempts (S.trial.serving); read as data off S.trial so a missing trials.js leaves this false
  if(!S.balls.length&&!(S.trial&&(S.trial.done||S.trial.serving))){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}
 }
-/* The last live ball left play without a goal (cannonball detonation etc) — respawn at the
-   last placed spot so the sandbox never drops into the match goal-hold/serve flow. */
+// the last live ball left play without a goal (cannonball etc): respawn at the last placed spot, never into the match goal-hold/serve flow
 function trainingBallGone(){
  if(S.trial&&(S.trial.done||S.trial.serving))return;   // a saveRun is between attempts — see trainingGoal
  const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);
@@ -283,8 +254,7 @@ function trainingExit(){
 }
 /* Per-frame readout (main loop, only while S.trn is live). */
 function trainingTick(){
- // Trial first, and ABOVE the panel guard: the trial owns its own HUD, so it must tick even
- // though the sandbox panel it sits behind is hidden.
+ // trial first, above the panel guard: the trial owns its HUD, so it ticks even with the sandbox panel hidden
  if(S.trial&&typeof trialTick==='function')trialTick();
  if(S.tut&&typeof tutTick==='function')tutTick();
  if(!trnBuilt)return;
@@ -292,22 +262,15 @@ function trainingTick(){
  el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  · FROZEN':'')):'no ball';
  trnAngTick();
 }
-/* Held-rod angle, under the ball metrics. ANG is the world rotation (what you see on the
-   table); SWING is the same angle rod-local (÷kickDir) so both teams read alike and it lines
-   up with CONFIG.kick's windupA / raiseA / trap.angle. Both are the SIM angle, not the
-   interpolated pivot — the value the swing curve and the contact impulse actually use, so an
-   ω spike here (≈80 against a swing's 21.8) is a step where the angle JUMPED, not swept.
-   Shows the rod the human holds; when every rod is on AI it traces the kick-logged rod (L). */
+// held-rod angle: ANG is the world rotation, SWING the same angle rod-local (divided by kickDir), matching CONFIG.kick's windupA / raiseA / trap.angle
+// both are the SIM angle, so an ω spike (~80 vs a swing's 21.8) is a jump, not a sweep; shows the human's rod, or the kick-logged rod (L) when all are AI
 function trnAngTick(){
  if(!trnAngT)return;
  const r=(typeof userRod==='function'?userRod():null)||(typeof dbgLogRod!=='undefined'?dbgLogRod:null);
  if(!r){trnAngT.innerHTML='<span>rod</span>none held';trnNeedle.setAttribute('transform','rotate(0)');return;}
  const D=180/Math.PI,a=r.angle,
        st=r.kickT>=0?'KICK '+r.kickT.toFixed(3):r.act?r.act.toUpperCase():r.raise?'RAISE':'REST';
- // Stamina is otherwise INVISIBLE — it only shows up as a rod that feels a bit slower than it did
- // twenty swings ago. stam is the live stFat multiplier actually being applied to this rod's speed/
- // reaction/aim; exert is its raw banked swing count against kickFat.full. Watch exert climb per
- // swing and bleed back down between them; a held rod stays at 0 unless kickFat.userDrain is on.
+ // stamina is otherwise invisible: stam = the live stFat multiplier on this rod, exert = its banked swing count against kickFat.full (held rods stay 0 unless kickFat.userDrain)
  const KF=CONFIG.stats.kickFat,
        fat=(typeof stFat==='function')?stFat(r):1;
  trnAngT.innerHTML='<span>rod</span><b>'+(r.team===0?'T1 ':'T2 ')+r.role+'</b><b class="st">'+st+'</b><br>'+
@@ -316,11 +279,7 @@ function trnAngTick(){
   '<span>stam</span><b>'+(fat*100).toFixed(1)+'%</b><span>exert</span><b>'+(r.exert||0).toFixed(1)+'</b>/'+KF.full;
  trnNeedle.setAttribute('transform','rotate('+(-a*D).toFixed(2)+')');
 }
-/* The #home TRAINING card opens the SECTION now (js/screens.js) rather than launching straight
-   into the sandbox — the sandbox is one of two routes under it. Au.init() rides these gestures
-   because WebAudio needs a user gesture and this card no longer reaches startMatch's own Au.init()
-   on the way past. The #trials CONTENT belongs to a later step, but its NAVIGATION lives here
-   because the Training screen owns both its cards. */
+// the #home TRAINING card opens the section (js/screens.js), not the sandbox; Au.init() rides these gestures (WebAudio needs one); #trials navigation lives here since this screen owns both cards
 (function(){
  const nav=(id,to)=>{const b=$(id);if(b)b.onclick=()=>{Au.init();Au.ui();showScreen(to);};};
  nav('btnTraining','training');

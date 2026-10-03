@@ -1,17 +1,8 @@
-/* build_deck_pitch.mjs  --  the DECK PLATE pitch: Void's steel tread plate, painted -> GLB
-
-     node tools/build_deck_pitch.mjs            (from the repo root or tools/; after `npm i` in tools/)
-     node tools/ktx2-encode.mjs assets/pitches/pitch_deck.glb
-
-   The same steel as the deck the Void table is bolted to (build_void_asteroid.py deck_textures),
-   ported rather than reused: that texture is baked for the deck (the table's contact shadow, the
-   legs, its own seams), so a pitch gets the RECIPE at the same world scale instead. Diamond tread on
-   a 2.8-unit lattice, 12 bolted plates, a rolled rim, rust bleeding out of the seams, tread tops
-   polished where the ball runs. Then somebody painted a pitch on it: worn white markings, and the
-   goal boxes in Federation blue (the deck's own border paint).
-
-   Layout, markings and the GLB writer are shared with the other generated pitches (pitchlib.mjs).
-   Masters are not kept: this script IS the master, it is deterministic. */
+// build_deck_pitch.mjs: the DECK PLATE pitch (Void's steel tread plate, painted) -> GLB
+//      node tools/build_deck_pitch.mjs            (from the repo root or tools/; after `npm i` in tools/)
+//      node tools/ktx2-encode.mjs assets/pitches/pitch_deck.glb
+// the same steel as the Void deck (build_void_asteroid.py deck_textures), ported at the same world scale (that texture carries the deck's own contact shadow and seams): diamond tread on a 2.8-unit lattice, 12 bolted plates, a rolled rim, rust from the seams, polished tread tops, worn white markings, goal boxes in Federation blue
+// layout, markings and the GLB writer are shared (pitchlib.mjs); deterministic, so this script is the master
 import { L, WD, W, H, PPU, clamp, sstep, hash, fbm, lineDist, spot, writePitch } from './pitchlib.mjs';
 
 // ---- the numbers that matter (game units, 1 = 1 cm) --------------------------------------------
@@ -83,7 +74,7 @@ for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
   for (let c = 0; c < 3; c++) col[c] = col[c] * (1 - 0.7 * rust) + cR[c] * 0.7 * rust;
   rough = rough * (1 - rust) + 0.85 * rust; metal *= 1 - 0.8 * rust;
   for (let c = 0; c < 3; c++) A[k3 + c] = clamp(Math.round(col[c] * (1 - 0.35 * groove) * 255), 0, 255);
-  // normal from the height field: +x = +u; +y = up the image (glTF/OpenGL), i.e. toward -z, so n.y = +dh/dz
+  // normal from the height field: +x = +u; +y = up the image (glTF/OpenGL), toward -z, so n.y = +dh/dz
   const hx = (Hh[j * W + Math.min(W - 1, i + 1)] - Hh[j * W + Math.max(0, i - 1)]) * PPU / 2;
   const hz = (Hh[Math.min(H - 1, j + 1) * W + i] - Hh[Math.max(0, j - 1) * W + i]) * PPU / 2;
   const nl = Math.hypot(hx, hz, 1);

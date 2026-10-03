@@ -9,8 +9,7 @@ let LGV=null;      // the player's own venue while a league/cup one is on the ta
 let lgVenueT=0;    // pending restore timer (see lgVenueExit)
 function lgVenueHeld(){return LGV;}
 function venueSnap(){return{table:cfg.table,room:cfg.room,pitch:cfg.pitch,skins:Object.assign({},cfg.skins)};}
-// Apply a venue: a SPEC (one `skin`) edits only that table's livery; a SNAPSHOT (a `skins` map)
-// restores the lot. `opts.silent` skips the loading veil — #lgTape is already up for the two play paths.
+// apply a venue: a SPEC (one `skin`) edits only that table's livery, a SNAPSHOT (a `skins` map) restores the lot; `opts.silent` skips the veil
 function venueApply(v,onReady,opts){
  cfg.table=CONFIG.tables[v.table]?v.table:'classic';
  cfg.room=roomIdOf(v.room);
@@ -31,15 +30,14 @@ function lgVenueEnter(v,onReady,opts){
  if(!LGV)LGV=venueSnap();
  venueApply(v,onReady,opts);
 }
-// Restore deferred one tick so a return-to-lobby path's lgVenueEnter cancels it (see SCREENS.league.onHide).
+// restore deferred one tick so a return-to-lobby path's lgVenueEnter cancels it (see SCREENS.league.onHide)
 function lgVenueExit(){
  if(!LGV||lgVenueT)return;
  lgVenueT=setTimeout(()=>{lgVenueT=0;const v=LGV;LGV=null;if(v)venueApply(v,null,{silent:true});},0);
 }
 // Hide hook: leaving the lobby or bracket for any other screen hands the venue back.
 if(typeof SCREENS!=='undefined'){SCREENS.league.onHide=lgVenueExit;SCREENS.championsCup.onHide=lgVenueExit;}
-/* Venue a division plays at. The SAVE's frozen copy (LG.divs) wins over the config default so
-   retuning CONFIG.league.divisions[] can't move a league mid-season. `theme` is the legacy key. */
+// venue a division plays at: the save's frozen copy (LG.divs) wins over the config default; `theme` is the legacy key
 function lgDivVenue(t){
  const d=(LG&&LG.divs&&LG.divs[t])||{},c=LGC.divisions[t]||{};
  return{table:d.table||c.table||'classic',
@@ -126,7 +124,7 @@ function loadLG(slot){
    if(t.div==null)t.div=1;
    if(t.up==null)t.up=0;
    if(t.w==null)t.w=0;if(t.l==null)t.l=0;if(t.gf==null)t.gf=0;if(t.ga==null)t.ga=0;if(t.p==null)t.p=0;
-   // Backfill stat keys added after this save was written (e.g. 'iq') → base so old builds don't render empty pips or read NaN.
+   // backfill stat keys added after this save (e.g. 'iq') to base so old saves don't render empty pips or read NaN
    if(t.bld)for(const role of LG_ROLES){const blk=t.bld[role];if(blk)for(const k of LG_KEYS)if(blk[k]==null){blk[k]=STC.base;migrated=true;}}
   });
   if(!LG.hist)LG.hist=[];
@@ -180,7 +178,7 @@ if(keep&&LG){
    }
    const pPromoted=oldPd<2&&promotedIds[oldPd].includes(LG.playerId);
    const pRelegated=oldPd>0&&relegatedIds[oldPd-1].includes(LG.playerId);
-   // History row uses the OLD division; `cup` is stamped here because hist[N] is only pushed at the rollover OUT of N.
+   // history row uses the OLD division; `cup` is stamped here because hist[N] is pushed only at the rollover out of N
    const porder=orders[oldPd];
    LG.hist.push({season:LG.season,
    divChamps:[orders[0][0]?orders[0][0].t.name:'',orders[1][0]?orders[1][0].t.name:'',orders[2][0]?orders[2][0].t.name:''],
@@ -261,10 +259,8 @@ function lgSim(a,b){ // league fixture
  const A=LG.teams[a].bld,B=LG.teams[b].bld;
  return lgSimBlds(A,B,lgMins());
 }
-// Sim two builds directly (cup entrants aren't LG.teams). `mins` is the league's game-time limit
-// (0/omitted = unlimited race-to-goals). Timed: pick a total-goal count from a triangular
-// distribution over [simMinGoals, simMaxGoals], split by strength `p` (capped at the save's goal
-// target), then settle a tie with sudden-death. Spread is length-agnostic for variety.
+// sim two builds directly (cup entrants aren't LG.teams); `mins` = game-time limit (0 = race to goals)
+// timed: a goal total from a triangular distribution over [simMinGoals, simMaxGoals], split by strength `p`, a tie settled by sudden death
 function lgSimBlds(A,B,mins){
   const p=1/(1+Math.exp(-((lgOff(A)-lgDef(B))-(lgOff(B)-lgDef(A)))*LGC.simK)),cap=lgGoalCap();
   let ga=0,gb=0;
@@ -304,31 +300,29 @@ function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round]
 /* ---- figurine render image map ---- */
 const RENDER_STEM={
  cyborg:'cyborg',deltaborg:'deltaborg',irnman:'irnman',mechaMan:'mechaman',stormer:'stormer',
- rocko:'rocko',manJerry:'jerry',manrichie:'richie',womanMaria:'maria',womanKimi:'kimi',
+ rocko:'rocko',manJerry:'jerry',manrichie:'richie',manDeano:'deano',womanMaria:'maria',womanKimi:'kimi',
  womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanAndroid:'jennyBot',
  womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
  alienKodus:'kodus',alienZargon:'zargon',animalAzlar:'azlar'};
 function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
 
 const MASK_STEMS=new Set([
- 'cyborg','deltaborg','irnman','mechaman','stormer','rocko','jerry','richie','maria','kimi',
- 'talia','tanya','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
+ 'cyborg','deltaborg','irnman','mechaman','stormer','rocko','jerry','richie','deano','maria','kimi',
+ 'talia','tanya','sasha','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
 
 
 function modelRenderMask(id){
  const s=RENDER_STEM[id];
  return (s&&MASK_STEMS.has(s))?'assets/renders/render_'+s+'_teammask.png':null;
 }
-/* ---- silverware ----
-   Every division has a trophy and so does the cup. The definition lives on the division in
-   CONFIG and is looked up by TIER, so a save only stores the tier a title was won in and the
-   art can be retuned without touching old leagues. Art is found by convention off the trophy id. */
+// ---- silverware ----
+// every division and the cup has a trophy, defined on the division and looked up by tier; art is found off the trophy id
 function trophyDef(tier){
  if(tier==='cup')return (CUP&&CUP.trophy)||null;
  const d=LGC.divisions[tier];
  return (d&&d.trophy)||null;
 }
-// .webp with alpha, made from the .jpg renders by tools/trophy-alpha.mjs (the .jpg are on black: a black square on a panel).
+// .webp with alpha, made from the .jpg renders by tools/trophy-alpha.mjs (the .jpg are on black)
 function trophyImg(id,big){return 'assets/renders/render_trophy_'+id+(big?'_cycles':'_thumb')+'.webp';}
 function trophyFig(tier,cls,big){
  const d=trophyDef(tier);if(!d)return '';
@@ -336,7 +330,7 @@ function trophyFig(tier,cls,big){
   '<img class="troImg" src="'+trophyImg(d.id,big)+'" alt="'+d.name+'" '+
   'onload="this.parentNode.classList.add(\'on\')" onerror="this.remove()"></span>';
 }
-/* THE HONOURS RECORD. LG.trophies is the one source of truth for what the player has won. */
+// the honours record: LG.trophies is the one source of truth for what the player has won
 function trophyList(){return (LG&&LG.trophies)||[];}
 function trophyCount(id){let n=0;for(const t of trophyList())if(t.id===id)n++;return n;}
 // Idempotent on (season,tier): lgFinalize is already guarded, but re-entry must never double-stamp.
@@ -346,9 +340,7 @@ function trophyAward(tier,season){
  if(LG.trophies.some(t=>t.season===season&&t.tier===tier))return;
  LG.trophies.push({season:season,tier:tier,id:d.id});
 }
-/* Backfill honours for records written before LG.trophies existed: a hist row whose champion
-   carries the player's name counts. LG.cupTitles was a bare counter (no seasons), so any
-   pre-existing cup title is stamped as season 0 (the count is right, the year is lost). */
+// backfill honours for older records: a hist row whose champion carries the player's name counts; an old cup title is stamped season 0
 function trophyBackfill(){
  if(!LG||LG.trophies)return false;
  LG.trophies=[];
@@ -393,11 +385,7 @@ function teamDiff(t){
  if(S.trial&&S.trial.def&&S.trial.def.diff)return S.trial.def.diff;
  return S.lg?(S.lg.diff||LGC.baseDiff):(t===0?(cfg.diffRed||cfg.diff):(cfg.diffBlue||cfg.diff));
 }
-/* Pre-warm shatter GLBs for the two figurines in the next league/cup match while the player is
-   still in the lobby — no disk-load or shader-compile stall on the first cannonball kill. Quick/AI
-   matches are already covered by main.js/startMatch primes; league opponents are not. Pass figurine
-   model IDs (t.model / cupEnt().model), not team indices — cfg.modelRed/Blue aren't swapped to the
-   league teams until lgPlayMatch. */
+// pre-warm shatter GLBs for the next league/cup match's two figurines while in the lobby; takes model IDs (t.model / cupEnt().model), since cfg.modelRed/Blue aren't swapped until lgPlayMatch
 function primeMatchExplosions(idA,idB){
  if(typeof ensureExplosionModel!=='function')return;
  for(const id of [idA,idB])if(id)ensureExplosionModel(id);
@@ -573,12 +561,9 @@ function lgSeasonEarn(){
   return {w,l,gf,ga,cs,earned,promoteBonus,champBonus,avail:LG.teams[pid2].up,
    titles:trophyCount((trophyDef(2)||{}).id)};
 }
-/* ---- the season-end screen ----
-   One screen at 1280x800, no scrolling: the league's name over "Season N · complete", then three columns:
-   the result (trophy when you won the division, and the fate plate), YOUR division's final table, and the
-   rewards with what promotion or relegation did to the squad. Under them, "Around the league": the other
-   two divisions as one line each for the champion, who went up and who went down. Before this it was one
-   long page (all three tables, then every stat of every rod) that ran to ~1900px. */
+// ---- the season-end screen ----
+// one screen at 1280x800, no scrolling: result (trophy, fate plate) | your division's table | rewards with what promotion or relegation did to the squad
+// under them 'Around the league': the other two divisions, one line each
 function lgSEName(e){return '<span class="lgSENm'+(e.i===LG.playerId?' me':'')+'"><i class="dot" style="background:'+e.col+'"></i>'+e.name+'</span>';}
 function lgSEDivCard(d){
   let rows='';
@@ -617,8 +602,7 @@ function lgSEFate(se){
    relegated:['rel','▼ RELEGATED','#ff4d5a'],
    stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
   };
-  // FINISHING TOP (not `playerFate`) lifts the silverware — 'champion' is set for PREMIER ONLY,
-  // so a Sunday/Pro title lands here labelled 'promoted'. Tier decides which trophy is shown.
+  // finishing top (not `playerFate`) lifts the silverware: 'champion' is Premier only, so a lower title is labelled 'promoted'; tier picks the trophy
   const won=se.playerPos===1, d=won?trophyDef(se.playerDiv):null;
   const m=map[se.playerFate].slice();
   // Won a lower division: champions AND promoted, on two lines rather than one that wraps at the dot.
@@ -643,9 +627,7 @@ function lgSERewards(r,se){
        '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">Enter Champions Cup</button>';
   return '<div class="lgSEPanel">'+h+'</div>';
 }
-/* What promotion or relegation did to the squad, one line per position: the change and which stats it hit
-   ("All stats" when it hit every one). Promotion raises only the stats still at the old division's floor;
-   relegation takes a point off every stat above the floor. */
+// what promotion or relegation did to the squad, one line per position: promotion raises stats still at the old floor, relegation takes a point off every stat above it
 function lgSEChanges(se){
   const rel=se.playerFate==='relegated',list=rel?se.playerLosses:se.playerFate==='promoted'?se.playerGains:null;
   if(!list||!list.length)return '';
@@ -691,11 +673,8 @@ function lgWinContinue(){
     showSeasonEnd();
   }else lgReturn();
 }
-/* ---- the Opponent panel (league lobby + cup) ----
-   Head: the club's name and its record down the left, its figurine's portrait with the figurine's name
-   under it in the top right; then the DEF/OFF bars and the rod stats. It opens on your next opponent
-   ("Opponent"); a club clicked in the table or bracket shows as "Scout", your own as "Your club".
-   pre = 'lg' | 'cup' picks the panel. */
+// ---- the Opponent panel (league lobby + cup) ----
+// head: club name, record, figurine portrait; then DEF/OFF bars and rod stats; opens on your next opponent, a clicked club shows as 'Scout', your own as 'Your club'; pre = 'lg' | 'cup'
 function lgOrd(n){return n+({1:'st',2:'nd',3:'rd'}[n>10&&n<14?0:n%10]||'th');}
 function lgScoutFill(pre,t,rec,title){
  $(pre+'ScoutTitle').textContent=title;
@@ -733,9 +712,8 @@ function renderLgHist(){
    }
  $('lgHist').innerHTML=h;
 }
-/* ---- trophy cabinet ----
-   Reads LG.trophies (never the standings): a title won three seasons ago is still yours after
-   the relegation that followed it. Cup first, then top division down. */
+// ---- trophy cabinet ----
+// reads LG.trophies, never the standings (a title survives a later relegation); cup first, then top division down
 function renderLgCabinet(){
   const all=trophyList();
   $('lgCabinetPanel').classList.toggle('hidden',!all.length);
@@ -809,8 +787,7 @@ function renderLgTable(){
  $('lgTable').innerHTML=h;
  $('lgTable').querySelectorAll('.nm').forEach(n=>{n.onclick=()=>{renderLgScout(+n.dataset.i);};});
 }
-/* The head-to-head, one side each: name in club colour, table standing under it. The opponent's side
-   is clickable (and a pad stop) and puts them back in the Opponent panel after you've scouted others. */
+// the head-to-head, one side each: club colour and standing; the opponent's side is clickable (and a pad stop) to return to the Opponent panel
 function lgMatchHTML(a,b){
  const side=(x,c)=>'<div class="lgMs '+c+'"><span class="lgMsName" style="color:'+x.col+'">'+x.name+'</span><span class="lgMsMeta">'+x.meta+'</span></div>';
  return '<div class="lgMatch">'+side(a,'me')+'<span class="lgVs">VS</span>'+side(b,'op')+'</div>';
@@ -1102,13 +1079,13 @@ function cupCreate(){ // draw a fresh cup for this season's qualifier
   const ids=pool.map(e=>e.id);
   for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=ids[i];ids[i]=ids[j];ids[j]=t;}
   const drawn=['player'].concat(ids.slice(0,CUP.drawSize)); // player + 7 of 12 (5 spares)
-  // WHO you get is random; WHERE (cupSeedOrder over the ranked field) is not, and that's the bracket's stakes.
+  // WHO you get is random; WHERE (cupSeedOrder over the ranked field) is not
   if(CUP.seeded===false)for(let i=drawn.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)),t=drawn[i];drawn[i]=drawn[j];drawn[j]=t;}
   else drawn.sort((a,b)=>cupRate(cupEnt(b,pool))-cupRate(cupEnt(a,pool)));
   const seeds={};drawn.forEach((id,i)=>{seeds[id]=i+1;});   // rendered beside each name
   const slots=cupSeedOrder(drawn.length).map(s=>drawn[s]);
   const ties=[];for(let i=0;i<slots.length;i+=2)ties.push({a:slots[i],b:slots[i+1],res:null,played:false});
-  // LG.cup assigned LAST, whole: a throw above leaves the previous state intact instead of stranding a bracket-less cup.
+  // LG.cup assigned last, whole, so a throw above leaves the previous state intact
   LG.cup={season:LG.season,round:0,playerOut:false,done:false,champion:null,celeb:false,pool,seeds,roundsTies:[ties]};
   LG.teams[pid].up+=CUP.enterParts; // participation bonus
   if(LG.seasonEnd)LG.seasonEnd.shown=true; // don't re-pop the season summary on return
@@ -1124,8 +1101,7 @@ function cupPlayTie(){
   const oppId=tie.a==='player'?tie.b:tie.a;
   const pa=cupEnt('player'),pb=cupEnt(oppId);
   S.teamStats=[pa.bld,pb.bld];
-  // prevKit is KIT ONLY (the venue is the cup SESSION's). Carried through consecutive ties: after
-  // tie 1 cfg already holds the cup kit, so re-snapshotting loses the player's real one.
+  // prevKit is kit only (the venue is the cup session's); carried through consecutive ties
   const pk=(S.lg&&S.lg.prevKit)||{redColor:cfg.redColor,blueColor:cfg.blueColor,modelRed:cfg.modelRed,modelBlue:cfg.modelBlue,
             special:cfg.special,power:cfg.power};
   S.lg={cup:true,diff:CUP.diff||LGC.baseDiff,res:tie,names:[pa.name,pb.name],cols:[pa.col,pb.col],
@@ -1133,14 +1109,12 @@ function cupPlayTie(){
   const sel=$('cupControl').value;
   $('league').classList.add('hidden');$('championsCup').classList.add('hidden');
   cfg.redColor=pa.col;cfg.modelRed=pa.model;cfg.blueColor=pb.col;cfg.modelBlue=pb.model;
-  // MATCH RULES come from the LEAGUE (not CUP.*): the cup is this save's post-season, so a tie
-  // plays to the same goal target/clock/special balls/power-ups as the season that qualified.
+  // match rules come from the league (not CUP.*): a tie plays to the qualifying season's goal target, clock, special balls and power-ups
   cfg.special=LG.special;cfg.power=LG.power;
   document.documentElement.style.setProperty('--c0',cfg.redColor);
   document.documentElement.style.setProperty('--c1',cfg.blueColor);
   const start=()=>{S.lg.matchStart=S.time;rebuildRodMen();applyColors();startMatch(sel==='watch'?'ai':'red',sel&&sel!=='watch'?sel:null);};
-  // Same gate as lgPlayMatch, normally synchronous — openCup already put the venue on. cupVenue
-  // returns the pitch PINNED TO THIS TIE so the bracket and the match agree.
+  // same gate as lgPlayMatch, normally synchronous; cupVenue pins the pitch to this tie
   let tapeDone=!LGC.tape,modelDone=false,venueDone=false;
   const check=()=>{if(!(tapeDone&&modelDone&&venueDone))return;$('lgTape').classList.add('hidden');start();};
   lgVenueEnter(cupVenue(),()=>{venueDone=true;check();},{silent:true});   // #lgTape is the loading screen
@@ -1171,8 +1145,7 @@ function renderCupTape(oppId){ // mirror renderLgTape but read cup entrants (not
   $('lgTapeRound').textContent=CUP.rounds[LG.cup.round];
 }
 function cupWinnerOf(t){return t.res[0]>t.res[1]?t.a:t.b;}
-// Tie's res is indexed by a/b. The player is ALWAYS team 0 in the live match (cupPlayTie seats them
-// red) but the draw puts them on either side of the tie, so the scoreline must be oriented here.
+// a tie's res is indexed by a/b, but the player is always team 0 in the live match, so orient the scoreline here
 function cupTieRes(tie,pGoals,oGoals){return tie.a==='player'?[pGoals,oGoals]:[oGoals,pGoals];}
 // Tree pairing shared by live play and the sim-ahead: winner of tie 2j meets winner of 2j+1.
 function cupNextRound(ties){
@@ -1197,8 +1170,7 @@ function awardCupWin(){
   // The cup is played in the gap between seasons, so the season it belongs to is the one on the cup itself.
   trophyAward('cup',(LG.cup&&LG.cup.season)||LG.season);
 }
-// `w` is accepted so flow.js can call cupRecord and lgRecord through one expression, but is
-// IGNORED — S.score is the authoritative result. The forfeit path sets S.score itself.
+// `w` is accepted so flow.js can call cupRecord and lgRecord alike, but ignored: S.score is authoritative
 function cupRecord(w){ // called by endMatch while S.lg.cup is live
   if(!LG||!LG.cup||!S.lg||!S.lg.cup||S.lg.rec)return;S.lg.rec=true;
   const cup=LG.cup,round=cup.round,ties=cup.roundsTies[round],tie=S.lg.res,pid=LG.playerId;
@@ -1219,8 +1191,7 @@ function cupRecord(w){ // called by endMatch while S.lg.cup is live
   }
   // Read by endMatch's win screen.
   S.lg.parts=parts;S.lg.champ=cup.done&&cup.champion==='player';
-  // Trophy is stamped into LG.hist by lgNewSeason, NOT here — hist[N] is only pushed at the
-  // rollover INTO N+1, and the cup is played before that.
+  // the trophy is stamped into LG.hist by lgNewSeason, not here (hist[N] is pushed at the rollover into N+1)
   saveLG();
 }
 /* ---- cup lobby UI (mirrors the league lobby panel-for-panel) ---- */
@@ -1256,8 +1227,7 @@ function renderCupBracket(){
   $('cupBracket').innerHTML=h;
   $('cupBracket').querySelectorAll('.cupTeam').forEach(n=>{n.onclick=()=>renderCupScout(n.dataset.ent);});
 }
-/* Next Tie + Match Settings, the cup's twin of renderLgFix. Both panels drop out once there's no
-   tie left to play. */
+// Next Tie + Match Settings, the cup's twin of renderLgFix; both panels drop out once there's no tie left
 function renderCupFix(){
   const sd=(LG.cup.seeds)||{},tie=cupPlayerTie(),me=cupEnt('player');
   $('cupFixturePanel').classList.toggle('hidden',!tie);
@@ -1275,8 +1245,7 @@ function renderCupFix(){
   primeMatchExplosions(me.model,opp.model); // warm both shatters now, while in the lobby
   primeMatchTape(me.model,opp.model);       // and both tape portraits, so the splash paints whole
 }
-/* Cup scout. Entrants are NOT LG.teams — no table, no W/L, no GF/GA, no form. The record line
-   is the seed + cup rating (the same `cupRate` the draw is ordered by). */
+// cup scout: entrants aren't LG.teams (no table, W/L, GF/GA, form); the record line is the seed + cup rating (`cupRate`)
 function renderCupScout(id){
   if(!id)return;
   const e=cupEnt(id),sd=(LG.cup&&LG.cup.seeds)||{},tie=cupPlayerTie(),opp=tie&&(tie.a==='player'?tie.b:tie.a);
@@ -1285,9 +1254,7 @@ function renderCupScout(id){
     '<span class="lgScoutLine">Rating <b>'+((cupRate(e)*10|0)/10)+'</b></span>',
     id==='player'?'Your club':id===opp?'Opponent':'Scout');
 }
-/* Cup honours. THIS season's trophy is read off LG.cup directly and prepended — the hist row
-   for season N is only pushed at the rollover OUT of it and the cup is played in the gap between,
-   so lgNewSeason stamps hist[].cup. Gated on cupCurrent() so a finished bracket doesn't render twice. */
+// cup honours: this season's trophy is read off LG.cup and prepended (hist[N] is pushed after the cup); gated on cupCurrent() so a finished bracket isn't drawn twice
 function renderCupHist(){
   const playerName=LG.teams[LG.playerId].name,rows=[];
   if(cupCurrent()&&LG.cup.done&&LG.cup.champion)rows.push({season:LG.cup.season,champ:cupChampName()});
@@ -1340,8 +1307,7 @@ function lgRestart(keep){
  Au.ui();
 }
 SCREENS.league.onHide=()=>{$('lgWipe').classList.add('hidden');};   // overlay — hideScreens() walks past it; covers Esc and the corner arrow
-/* Lobby tabs. The ⊞ button belongs to the tab it arranges (Squad has none: one panel), and layApply
-   re-runs on reveal because a wrap inside a display:none tab measures 0 wide. */
+// lobby tabs: the ⊞ belongs to the tab it arranges (Squad has none); layApply re-runs on reveal (a hidden tab's wrap measures 0 wide)
 const LG_TABS=['season','squad','club'];
 function lgSetTab(t){
  if(LG_TABS.indexOf(t)<0)t='season';
@@ -1350,8 +1316,7 @@ function lgSetTab(t){
  $('lgClubEditLayout').classList.toggle('hidden',t!=='club');
  if(typeof layApply==='function'){if(t==='season')layApply('league');else if(t==='club')layApply('leagueClub');}
 }
-/* The cup's tabs, the same shape: Cup (bracket, the tie, the opponent), Squad, Club (rules + honours).
-   Before the tabs all six panels shared one page and it ran ~700px past the bottom of a 1280x800 window. */
+// the cup's tabs, same shape: Cup (bracket, tie, opponent), Squad, Club (rules + honours)
 const CUP_TABS=['cup','squad','club'];
 function cupSetTab(t){
  if(CUP_TABS.indexOf(t)<0)t='cup';

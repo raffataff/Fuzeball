@@ -1,105 +1,37 @@
 'use strict';
-/* ================= shots — the player's kick VERBS =================
-   The player's whole move set was slide / kick / raise: ONE kick, the same every time, while
-   ai.js has had `trapShot`, `passShot`, a dribble and an aimed pass since 2026-07-28. This file
-   is the human half of that — a modifier AXIS that colours a kick, and a CHARGE that powers it.
-
-   TWO THINGS MAKE IT CHEAP, and both are reuse rather than new machinery:
-
-   · POWER ALREADY FALLS OUT OF THE ARC. kickRod captures r.kickA0 (the angle the swing STARTS
-     from) and updateRods ramps kickA0 -> strikeA over a FIXED `strike` window. So a deeper
-     pull-back is a bigger arc in the same time, i.e. a higher angVel, i.e. a bigger vn at contact
-     and a harder hit. A charge is a pull-back. Nothing had to be invented for that.
-   · THE WIND-UP HAZARD IS ALREADY SOLVED. Pulling a boot back over a ball at the feet drags it
-     toward our own goal — that is exactly the trap knock-back of 2026-08-15, and sweepClips (ai.js)
-     already answers "does rotating from a0 to a1 shove this ball backward". shotPullCap walks the
-     same ladder trapAngle does, so a charge can NEVER wind up through the ball.
-
-   THE AXIS IS ONE NUMBER: mod = RT depth - LT depth, in -1 (finesse) .. +1 (power). Holding both
-   cancels toward 0, which is what a two-trigger chord ought to mean given each trigger's own
-   meaning — so the chord needs no special case anywhere, and in Total Control the same two
-   triggers already bend the SLIDE the same way round. One meaning per trigger, both modes.
-
-   WHAT IS DIFFERENT BETWEEN THE MODES IS ONLY WHERE THE WIND-UP LIVES, and that follows from what
-   the right stick is:
-     · TOTAL CONTROL — the stick IS the rod, so the pull-back is something the player already does
-       with their thumb. The two triggers held TOGETHER arm it: stick back + both triggers = the
-       charge builds, and the player's own forward flick is the release. The triggers otherwise
-       scale how fast the rod TRACKS the stick (heavy under LT, snappy under RT) rather than
-       blending a curve, because in that mode there is no curve — the stick is the swing.
-     · CLASSIC — RT is the POWER and the pull-back is the player's own: RT + X (the rod authored back
-       to charge.pullA) or RT + the right stick pulled back (the stick IS the wind-up). Only a KICK
-       (A, or the stick's forward flick) fires it; letting go cancels (charge.needRaise). The axis
-       blends the swing CURVE between CONFIG.shots.mod.soft and .hard. Keyboard/mouse is the same
-       rule: power + raise, then kick. needRaise:false is the older rule — RT alone winds up and
-       letting go fires, with cfg.padChargeBtn choosing what holds it.
-
-   THE ONE THING THAT MUST NOT REGRESS: a tapped kick button with no trigger held is byte-identical
-   to the kick that shipped — it fires on PRESS, on CONFIG.kick's own curve, with shotOn false. Any
-   scheme that charges on the plain kick button has to defer the swing to RELEASE, which puts the
-   tap's own duration (~60ms) in front of a contact that currently lands at ~17ms. That is offered
-   as cfg.padChargeBtn 'kick'/'both' and is deliberately NOT the default.
-
-   WHAT PHYSICS READS is three flat fields and nothing else: r.shotOn / r.shotPow / r.shotCtl —
-   "what is this rod's NEXT contact worth". Flat because collideRod reads them per man per substep.
-   That indirection is also what lets a Total Control stick swing carry a charge at all: there is no
-   kickRod call in that path, so a swing-time style block could never have described it.
-
-   TREMBLE IS DISPLAY ONLY (r.trem, added on the render pivot in main.js). The loss of control is
-   already modelled — it is shotCtl, which scales the aim assist and opens shotSpray. Putting the
-   shake in r.angle would feed angVel = (angle-prevAngle)/dt and a trembling boot would kick the
-   ball it is resting against: an own-goal generator dressed as a readout.
-
-   CONFIG.shots.on:false restores the pre-shots pad exactly — RT kicks, LT raises, no charge, no
-   pass, no spray, shotOn never set. This file is INERT then, not merely quiet.
-
-   THIS IS CORE, not an optional module. It loads between ai.js (whose sweepClips and passPick it
-   reads) and input.js (whose whole pad path now runs through it), and it is deliberately NOT
-   typeof-guarded the way S.trn / S.photo / S.redit are: those are features whose absence must not
-   break a match, whereas a missing shots.js is a missing controller, and a guard would only move
-   the failure one line later. physics.js is the exception and reads r.shotOn — a plain field that
-   is simply undefined without this file — so a contact can never depend on it having loaded. */
+// ================= shots: the player's kick verbs =================
+// a modifier axis (power - finesse, -1..+1) colours a kick, and a charge (a pull-back) powers it
+// physics reads only r.shotOn / r.shotPow / r.shotCtl; a tapped kick with no trigger must stay the original kick; CONFIG.shots.on:false restores the pre-shots pad
+// core, not optional: not typeof-guarded
 
 const SHOTC=CONFIG.shots;
 function shotsOn(){return !!(SHOTC&&SHOTC.on);}
 
-/* ---- the modifier axis ------------------------------------------------------------------- */
-// One analog trigger, rescaled past its deadzone. Triggers rest noisy, and an axis built from raw
-// values would mean the rod never sits at a true neutral.
+// --- the modifier axis ---
+// one analog trigger rescaled past its deadzone (triggers rest noisy)
 function shotTrigD(gp,i){
  const b=gp&&gp.buttons&&gp.buttons[i];if(!b)return 0;
  const v=(b.value!=null?b.value:(b.pressed?1:0)),d=SHOTC.mod.dead;
  return v>d?clamp((v-d)/(1-d),0,1):0;
 }
 function shotAxis(lt,rt){return clamp(rt-lt,-1,1);}
-// The axis straight off a pad — what input.js hands shotFire on an ordinary button press so the
-// triggers colour that swing too. 0 with shots off, i.e. the plain kick that always shipped.
+// the axis off a pad, handed to shotFire on a button press; 0 with shots off
 function shotPadAxis(gp){return shotsOn()?shotAxis(shotTrigD(gp,6),shotTrigD(gp,7)):0;}
-// Both triggers meaningfully down — the Total Control charge chord. Tested on DEPTH, not on
-// `pressed`: a trigger reports pressed from a few percent of travel on some pads, which would arm
-// a charge off a resting finger.
+// both triggers down, the Total Control chord; tested on depth, not `pressed`
 function shotChord(lt,rt){return lt>SHOTC.mod.dead&&rt>SHOTC.mod.dead;}
 
-/* ---- what the axis is worth -------------------------------------------------------------- */
-// Every one of these is EXACTLY 1 (or CONFIG.kick untouched) at m=0, which is what makes an
-// unmodified kick indistinguishable from the one that shipped.
+// --- what the axis is worth ---
+// everything here is exactly 1 (or CONFIG.kick untouched) at m=0
 function shotAxisPow(m){const M=SHOTC.mod;return m<0?lerp(1,M.softPow,-m):lerp(1,M.hardPow,m);}
 function shotAxisCtl(m){const M=SHOTC.mod;return m<0?lerp(1,M.softCtl,-m):lerp(1,M.hardCtl,m);}
 function shotAxisTrack(m){const M=SHOTC.mod;return m<0?lerp(1,M.softTrack,-m):lerp(1,M.hardTrack,m);}
 function shotAxisExert(m){const M=SHOTC.mod;return m>0?lerp(1,M.hardExert,m):1;}
-/* ---- the HOLD (L2) ----------------------------------------------------------------------- */
-/* The finesse trigger makes the boot sticky, which is the player's counterpart to holdCfg's
-   trap/dribble blocks — see CONFIG.shots.hold for why there was no way to trap by hand at all.
-   Written into the ROD'S OWN block rather than returning a config object: the values are blended
-   by squeeze depth, two seats can be holding two rods at different depths in the same frame, and
-   collideRod reads the result per man per substep, so nothing here may allocate.
-   NEUTRAL BASE. At the engage threshold it is exactly kick.rest / stGrip / full slide speed, i.e.
-   the same contact as no trigger at all, so the grip eases in rather than stepping. */
+// --- the HOLD (L2) ---
+// the finesse trigger makes the boot sticky (CONFIG.shots.hold); written into the rod's own block, nothing may allocate (read per man per substep)
 function shotHoldUpdate(r,lt){
  const H=SHOTC&&SHOTC.hold,h=r.hold;
  if(!h)return;
- // A live wind-up cancels it: you are charging to strike, not to dribble — and a sticky boot
- // would fight shotPullCap, which is busy deciding how far back the rod may legally pull.
+ // a live wind-up cancels the hold
  if(!(shotsOn()&&H&&H.on)||r.chg>=0||lt<=H.from){h.on=false;return;}
  const t=clamp((lt-H.from)/(1-H.from),0,1);
  h.on=true;
@@ -108,58 +40,47 @@ function shotHoldUpdate(r,lt){
  h.carryMult=lerp(1,H.carry,t);
 }
 
-/* ---- the PIN (finesse + raise) ------------------------------------------------------------ */
-/* The hold makes the boot sticky, but a boot pressed onto a ball still resolves as a contact and the
-   ball squirts out — see CONFIG.shots.pin. This is the INPUT half: it says whether this rod may pin
-   (finesse held, no wind-up) and whether it is being posed (raise pressed while finesse is held,
-   latched until finesse lets go, so the raise can come up again). The CATCH, the carry and every
-   release are physics.js pinUpdate / pinBallStep. r.pinA is the pose target, capped by the same
-   sweep ladder as a wind-up so easing back over a ball never shoves it goalward; frozen while a
-   ball is pinned, because the guard would read the pinned ball itself as something to refuse. */
+// --- the PIN (finesse + raise) ---
+// the input half (CONFIG.shots.pin): may this rod pin, and is it being posed; physics.js pinUpdate / pinBallStep do the catch, carry and releases
+// r.pinA is sweep-capped like a wind-up and frozen while a ball is pinned
 function shotPinInput(r,I){
  const P=SHOTC.pin;
  if(!P||!P.on){r.pinOn=false;r.pinPose=false;return;}
- /* FINESSE HELD, not finesse's GRIP. The keyboard grip eases in over kbm.holdRamp, and gating on it
-    meant finesse + raise pressed together — the natural way to play a chord — landed the raise while
-    the grip was still under hold.from and the pose never latched. I.fin is the input being down. */
+ // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
  const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
  r.pinOn=fin&&r.chg<0&&r.kickT<0;
  if(!r.pinOn)r.pinPose=false;
  else if(I.rz)r.pinPose=true;
  if(r.pinPose&&!r.pinB)r.pinA=shotPullCap(r,r.angle,P.angle*r.kickDir);
 }
-/* A kick from the pin is the PIN SHOT: the AI's trapShot curve (a shallow pull-back off the pin
-   angle, then the strike), a clean power trim and no spray. It ignores the finesse axis on purpose —
-   finesse is being HELD to keep the pin, so reading it would turn every pin shot into a pass. kickRod
-   lets the ball go, keeping carryOut of the slide it was being carried at: slide, then kick, and it
-   leaves at an angle, which is what a push or pull shot is. */
+// a kick from the pin is the pin shot: the AI's trapShot curve, no spray, ignores the finesse axis; kickRod keeps carryOut of the slide
 function shotPinFire(r){
  const P=SHOTC.pin;
  r.shotOn=true;r.shotPow=P.pow;r.shotCtl=P.ctl;r.shotExert=1;r.shotOver=0;   // clean, not charged: no overspeed
  r.pinPose=false;
  kickRod(r,'trapShot');
 }
+// what the pin shows the player: the ring under the caught ball (fx.js pinMarkUpdate) and the kick plate (hud.js hudPinHint) both ask these
+function shotPinBall(s){const r=s&&seatRod(s),b=r&&r.pinB;return b&&!b.scored?b:null;}
+function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i]))return S.seats[i];return null;}
+// the plate is live play only, off for a player who switched it off, and off in the tutorial (its own prompt says it)
+function shotPinHintOn(){const P=SHOTC.pin,H=P&&P.hint;return !!(shotsOn()&&P&&P.on&&H&&H.on&&cfg.pinHint!==false&&S.phase==='play'&&!S.tut);}
 
-/* The swing CURVE for a button kick at axis m. Blends CONFIG.kick toward mod.soft / mod.hard key by
-   key, so only the keys those anchors name are touched and everything else (raiseA, grip, spin…)
-   still comes from CONFIG.kick. Returns null at m~0 so kickStyleCfg falls back to the shared block
-   and an unmodified swing allocates nothing. */
+// swing curve for a button kick at axis m: blends CONFIG.kick toward mod.soft / mod.hard key by key; null at m~0
 const SHOT_CURVE_KEYS=['windup','windupA','strike','strikeA','hold','drop','powFrom','powTo','rest','restPower'];
 function shotBlend(m){
  if(Math.abs(m)<1e-3)return null;
  const M=SHOTC.mod,anc=m<0?M.soft:M.hard,t=Math.abs(m),out={};
  for(const k of SHOT_CURVE_KEYS){const base=KICK[k];out[k]=(anc[k]!=null)?lerp(base,anc[k],t):base;}
- // The ramp keyframes have to stay ordered or updateRods' if-chain skips a phase outright.
+ // keep the ramp keyframes ordered or updateRods' if-chain skips a phase
  out.strike=Math.max(out.windup+1e-3,out.strike);
  out.hold=Math.max(out.strike,out.hold);
  out.drop=Math.max(out.hold+1e-3,out.drop);
  return out;
 }
 
-/* ---- what the charge is worth ------------------------------------------------------------- */
-/* Power RISES to the sweet band, sits flat across it, then FALLS — held too long is worse than a
-   clean quick shot, which is what makes the band a target rather than a floor. Control does the
-   same, so an overcooked shot is both weaker and wilder. */
+// --- what the charge is worth ---
+// power rises to the sweet band, is flat across it, then falls; control does the same
 function shotChgPow(k){
  const C=SHOTC.charge,s0=C.sweetFrom,s1=C.sweetTo;
  if(k<=s0)return lerp(C.powMin,C.powMax,s0>0?k/s0:1);
@@ -172,14 +93,10 @@ function shotChgCtl(k){
  if(k<=s1||s1>=1)return 1;
  return lerp(1,C.overCtl,(k-s1)/(1-s1));
 }
-// 0 below the band, 1 inside it, 2 past it — what fx.js tints from and the tone edges off.
+// 0 below the band, 1 inside it, 2 past it (fx.js tints from this)
 function shotChgBand(k){const C=SHOTC.charge;return k<C.sweetFrom?0:(k<=C.sweetTo?1:2);}
 function shotOver(k){const C=SHOTC.charge;return C.sweetTo>=1?0:clamp((k-C.sweetTo)/(1-C.sweetTo),0,1);}
-/* WHAT THAT WIND-UP WAS WORTH, stamped on the rod the instant it ends so the readout can outlive
-   it. The marker's colour IS the verdict, and it used to vanish on the frame you most wanted to
-   read it — by then you are watching the ball, not the marker. 0 too early, 1 clean, 2 overcooked,
-   3 no room. BLOCKED OUTRANKS THE BAND: a sweet-band charge that never got its pull-back is a dud
-   whatever the number said, and calling that one clean is the same lie the live readout told. */
+// what the wind-up was worth, stamped when it ends: 0 too early, 1 clean, 2 overcooked, 3 no room (blocked outranks the band)
 function shotVerdict(r,k){
  const C=SHOTC.charge;
  r.chgEndT=S.time;
@@ -187,10 +104,8 @@ function shotVerdict(r,k){
  r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));
 }
 
-/* ---- arming ------------------------------------------------------------------------------- */
-// r.shotOn is the ONLY thing physics.js tests. Armed while a charge is live and for as long as the
-// swing it produced is in flight; consumed by the first contact (shotConsume), exactly like the
-// one-attempt-per-swing latch matchstats already keeps.
+// --- arming ---
+// r.shotOn is all physics.js tests: armed while a charge is live and its swing in flight, consumed by the first contact (shotConsume)
 function shotArm(r,m,k){
  r.shotOn=true;
  r.shotPow=shotAxisPow(m)*(k>=0?shotChgPow(k):1);
@@ -199,33 +114,17 @@ function shotArm(r,m,k){
  r.shotOver=k>=0?shotChgOver(k):0;
 }
 function shotDisarm(r){r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.shotExert=1;r.shotOver=0;}
-/* What a charge is worth against the SPEED CAP (physics.js capSpeed, CONFIG.kick.cap.charge): 0 with no
-   charge, 1 across the sweet band, and back to 0 as it overcooks — read off the same power curve, so
-   the only way past maxV is the timing the band exists to test. */
+// what a charge is worth against the speed cap (physics.js capSpeed, CONFIG.kick.cap.charge): 0 none, 1 across the band, 0 overcooked
 function shotChgOver(k){const C=SHOTC.charge;return clamp((shotChgPow(k)-1)/Math.max(1e-6,C.powMax-1),0,1);}
-// Called by collideRod the moment a contact has taken its power. One contact, one shot — a swing
-// that grazes and then strikes cleanly spends its charge on the graze, the same rule r.kickHit and
-// msSw already run on, and the only rule that is well defined for a stick swing with no kickT.
-/* AND THAT RULE HAD A HOLE THE SIZE OF TOTAL CONTROL. Disarming is enough for a classic shot,
-   whose charge is already spent by the time the swing lands (the release sets r.chg to -1). Total
-   Control has no discrete fire: dropping the chord only BANKS what the wind-up was worth and lets
-   it decay, so the decay branch in shotPadUpdate re-armed r.shotOn on the very next frame and one
-   banked charge powered EVERY contact until it bled out — a second and third free shot off one
-   wind-up. Spending the bank here closes it. Gated on r.chgRel because that is the one field only
-   the stick path ever sets: it is 0 through a live wind-up, so a charge still being HELD survives
-   an incidental graze (you have not shot yet), and 0 on a classic shot, which is already spent. */
+// called by collideRod when a contact takes its power: one contact, one shot
+// Total Control has no discrete fire (the chord drop only banks the worth), so spend the bank here; gated on r.chgRel, which only the stick path sets
 function shotConsume(r){
  if(!r.shotOn)return;
- /* …and THIS is where Total Control's verdict belongs, for the same reason. Classic stamps at the
-    release because the release is the swing; here the contact is, so the stamp waits for it.
-    Stamped on r.chgRel — WHAT THE PLAYER RELEASED AT, not what the faded charge finally delivered.
-    The band exists to test the timing of the release, so both modes report the same thing; how
-    long you then dithered before flicking is a different skill and the decay already prices it. */
+ // Total Control's verdict belongs to the contact; stamped on r.chgRel (what the player released at)
  if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}
  shotDisarm(r);
 }
-// Full teardown: charge, arming, tremble, blended curve. Called from resetRodRotation (every goal,
-// dead ball and out) and whenever a seat lets go of a rod, so a charge can never outlive its owner.
+// full teardown (charge, arming, tremble, blended curve); from resetRodRotation and whenever a seat lets go of a rod
 function shotReset(r){
  if(!r)return;
  r.chg=-1;r.chgRel=0;r.chgGrace=0;r.chgMod=null;r.chgSrc=null;r.chgA=null;r.chgHeld=0;r.chgSweet=false;r.trem=0;
@@ -236,19 +135,9 @@ function shotReset(r){
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
-/* ---- the wind-up angle (classic) ---------------------------------------------------------- */
-/* The deepest pull-back on the way to `aTo` whose swept boot does not shove a ball toward our own
-   goal. Same ladder trapAngle walks, minus its footHolds test — a trap must END on the ball, a
-   wind-up must merely not maul it on the way back. With the guard off it returns the raw target,
-   which is the honest "restore old behaviour" answer rather than a silent refusal. */
-/* THE FOOT IS NOT THE ONLY THING THAT MOVES, and this cost a live measurement to find. collideRod
-   resolves a ball against the rod CAPSULE — the leg — whenever the foot box misses it, and
-   sweepClips only ever tests the foot box. A ball 2.6 behind a rod measures 2.26 from the boot
-   (clear of its 1.9 reach) and sits well inside BALL_R+PRAD of the shin, so a wind-up the foot-box
-   guard happily passes still drags the LEG through it: measured at ~8 u/s of backward drift over a
-   third of a second, with footBoxDist reporting no contact the whole way. Same question as
-   sweepClips asks, put to the other collider — and deliberately kept HERE rather than folded into
-   sweepClips, which the trap shares and which is not what this change is for. */
+// --- the wind-up angle (classic) ---
+// the deepest pull-back toward aTo whose swept boot doesn't shove a ball goalward (trapAngle's ladder minus footHolds); guard off = the raw target
+// the leg moves too (collideRod resolves against the capsule when the foot box misses, sweepClips only tests the box), so shotLegClips asks the same of the capsule
 function shotLegClips(r,b,a){
  const SW=AIC.trap.sweep,R=BALL_R+PRAD+SW.pad,p=b.m.position;
  const sa=Math.sin(a),ca=Math.cos(a),dx=sa*ARM,dy=-ca*ARM;
@@ -265,9 +154,7 @@ function shotLegClips(r,b,a){
  }
  return false;
 }
-/* How much of the requested pull-back the guard allowed on the last call: 1 = a free swing, 0 =
-   refused outright. A module field rather than a second return value because this runs once per
-   frame per seat and must not allocate — the one caller reads it on the very next line. */
+// how much of the requested pull-back the guard allowed: 1 free, 0 refused (a module field, so it doesn't allocate)
 let shotPullOk=1;
 function shotPullCap(r,aFrom,aTo){
  const SW=AIC.trap.sweep;
@@ -285,27 +172,14 @@ function shotPullCap(r,aFrom,aTo){
  shotPullOk=ok;
  return best;
 }
-// updateRods asks for this once per sim step. null = no authored wind-up (not charging, or the
-// stick owns the angle in Total Control).
+// updateRods asks once per sim step; null = no authored wind-up
 function shotPullAngle(r){return (shotsOn()&&r.chgSrc&&r.chgSrc!=='stick')?r.chgA:null;}
-// Tracking-rate multiplier for the right-stick angle path. 1 when nothing is held, so the Total
-// Control feel is untouched until a trigger is squeezed.
+// tracking-rate multiplier for the right-stick angle path; 1 when nothing is held
 function shotTrackMult(r){return shotsOn()?(r.shotTrack||1):1;}
 
-/* ---- firing ------------------------------------------------------------------------------- */
-/* A deep finesse kick is not a soft kick, it is a PASS — aimed by the SAME passEval the AI has
-   used since 2026-07-28, so the player finally plays through the two-hands rule instead of around
-   it. passPick is cached per rod on its own cadence, so asking here costs nothing most frames. */
-/* WHO THE PLAYER CAN ACTUALLY PASS TO — and this is NOT passEval's answer, which was the first cut.
-   passEval picks the best receiver on the table and that is right for the AI, because the AI dribbles
-   onto the line before it passes, so "best" is reachable by the time it swings. A human presses the
-   button NOW, and the aim assist can only bend a pass by CONFIG.ai.dribble.pass.assist — 0.16 rad,
-   about 9 degrees. Measured live: a receiver 28 units square of the ball needs 43 degrees, so the
-   ball left with a PASS label on it, turned nine degrees, and ran straight out for a goal kick.
-   So the player's chooser scores the SAME lanes (laneObs / lineClr, one definition of "is this lane
-   clear") but by whether the bend is DELIVERABLE, and returns null when none is. LT+kick is then a
-   plain soft touch — honest — instead of a pass to nobody. What it asks of the player is to line the
-   rod up with a teammate first, which is what passing a foosball actually is. */
+// --- firing ---
+// a deep finesse kick is a pass, aimed by the AI's passEval (cached per rod)
+// shotPassPick: not passEval's answer; a human presses now and the assist only bends a pass ~9 degrees (CONFIG.ai.dribble.pass.assist), so score the same lanes by whether the bend is deliverable; null = LT+kick is a plain soft touch
 function shotPassPick(r,bx,bz){
  const P=AIC.dribble.pass,dir=r.team===0?1:-1,maxBend=P.assist*SHOTC.pass.bendMult;
  let best=null;
@@ -334,27 +208,20 @@ function shotPassTarget(r,m){
  if(!best)return null;
  return shotPassPick(r,best.m.position.x,best.m.position.z);
 }
-/* One entry point for every button swing the player takes, charged or not. m~0 with no charge
-   resolves to kickRod(r) with a null curve and shotOn false — literally the old call.
-   It OWNS the flinch rule, rather than the release path owning it, because there are two ways to
-   let a classic charge go — the trigger, or the kick button — and a rule about what a charge is
-   worth that lives on only one of them is a rule the other can contradict. */
+// one entry point for every button swing, charged or not; m~0 with no charge is literally the old kickRod(r)
+// owns the flinch rule (a charge can be let go by the trigger or the kick button)
 function shotFire(r,m,k){
  if(!shotsOn()){kickRod(r);return;}
- // A swing already in flight cannot be re-fired, and arming for one that never starts would leave
- // the charge sitting on the rod for whatever contact happened to come next.
+ // a swing in flight can't be re-fired
  if(r.kickT>=0)return;
  if(k>=0&&k<SHOTC.charge.minFire)k=-1;        // a flinch is an ordinary swing, not a feeble charged one
  const pt=shotPassTarget(r,m);
  if(k>=0)shotArm(r,m,k);else if(Math.abs(m)>=1e-3)shotArm(r,m,-1);else shotDisarm(r);
- // A PASS takes no blended curve: it swings on CONFIG.ai.passShot, the same block the AI passes
- // with, so a human pass and an AI pass are the same action rather than two things that look alike.
+ // a pass takes no blended curve: it swings on CONFIG.ai.passShot like the AI's
  kickRod(r,pt?'pass':(r.shotOn?'shot':null),pt||null,pt?null:shotBlend(m));
  r.swOver=r.shotOn?(r.shotOver||0):0;         // a charge beats the speed cap for the WHOLE swing (physics.js capSpeed)
 }
-/* Horizontal-only rotation of the outgoing velocity, so it adds no energy — the same discipline
-   the Magnus curve and aimAssist are written under. Seeded on its own stream (rng.js): it changes
-   an OUTCOME, so it does not belong on Math.random. */
+// horizontal-only rotation of the outgoing velocity (no energy); own rng stream since it changes an outcome
 function shotSpray(b,r){
  const a=SHOTC.charge.spray*(1-clamp(r.shotCtl,0,1));
  if(a<=0)return;
@@ -362,26 +229,13 @@ function shotSpray(b,r){
  b.v.x=vx*cs-vz*sn;b.v.z=vx*sn+vz*cs;
 }
 
-/* ---- what each DEVICE says ---------------------------------------------------------------
-   A solo seat holds keyboard, mouse AND pad at once, and the first cut of this file was pad-only:
-   one state machine per pad, fed by the pad. Give the keyboard its own and the two fight over the
-   same rod every frame — an idle pad reads "no source held", which is exactly the RELEASE of the
-   keyboard's charge, so a keyboard wind-up fired the frame it began. So every device writes a
-   record of what it is doing (a SOURCE and its depth, its half of the axis, its hold depth) and
-   ONE step per seat per frame reads the merge. Records are allocated once per seat, never per frame.
-
-   The sources, in the order a fresh wind-up picks them. A source that is ALREADY holding always
-   keeps it, so another input going down mid-wind-up cannot steal the charge — and stealing it would
-   read as an unrequested shot, since losing the source is exactly what fires one.
-     stick  Total Control: both triggers held AND the right stick pulled back. The chord is what
-            separates "I am winding up to hit it" from "I am lifting the men".
-     rt     classic pad, cfg.padChargeBtn 'rt'/'both'
-     kick   classic pad, cfg.padChargeBtn 'kick'/'both' — the kick button held
-     key    keyboard / mouse: the POWER binding held (js/binds.js). Digital, so always full depth. */
+// --- what each device says ---
+// every device writes a record (source, depth, its half of the axis, hold depth) and one step per seat per frame reads the merge
+// a source already holding keeps it; sources: stick (Total Control chord + stick back), rt, kick (cfg.padChargeBtn), key (power binding)
 const SHOT_SRCS=['stick','rt','kick','key'];
 function shotInNew(){return {live:false,m:0,lt:0,TC:false,stick:0,rt:0,kick:false,key:0,rz:false,fin:false};}   // rz: raise held (the pin pose) · fin: finesse DOWN (not its eased grip)
 function shotSrcDepth(I,k){return k==='stick'?I.stick:k==='rt'?I.rt:k==='kick'?(I.kick?1:0):k==='key'?I.key:0;}
-// One pad, read into o. stickD: the right-stick value the angle path resolved, -1 fully back .. +1.
+// one pad read into o; stickD = the right-stick value, -1 fully back .. +1
 function shotPadRead(o,gp,TC,stickD){
  const lt=shotTrigD(gp,6),rt=shotTrigD(gp,7);
  o.live=true;o.m=shotAxis(lt,rt);o.lt=lt;o.TC=TC;o.stick=0;o.rt=0;o.kick=false;o.key=0;
@@ -389,9 +243,7 @@ function shotPadRead(o,gp,TC,stickD){
  o.fin=lt>SHOTC.hold.from;                       // LT squeezed past where its grip starts
  if(TC){const back=Math.max(0,-stickD);if(shotChord(lt,rt)&&back>=SHOTC.charge.stickBack)o.stick=back;}
  else if(SHOTC.charge.needRaise){
-  /* RT IS ONLY THE POWER; the pull-back has to be the player's own. X held → the classic authored
-     wind-up ('rt'); the right stick pulled back → the stick IS the wind-up ('stick', as in Total
-     Control) and its forward flick is a release like A. RT alone winds up nothing. */
+  // RT is only the power: X held = classic wind-up ('rt'), stick pulled back = 'stick' wind-up; RT alone winds up nothing
   if(rt>0){
    const back=Math.max(0,-stickD);
    if(back>=SHOTC.charge.stickBack)o.stick=back;
@@ -404,19 +256,13 @@ function shotPadRead(o,gp,TC,stickD){
  }
  return o;
 }
-/* The keyboard/mouse half of the AXIS, for a kick pressed right now: POWER is RT at full squeeze,
-   FINESSE is LT at full squeeze, both cancel — the same arithmetic as the triggers, so finesse+kick
-   is the pass and a plain kick is the plain swing. 0 with shots off. */
+// the keyboard/mouse half of the axis for a kick pressed now (power - finesse); 0 with shots off
 function shotKbmAxis(s){
  if(!shotsOn()||!(SHOTC.kbm&&SHOTC.kbm.on)||typeof bindHeld!=='function')return 0;
  return shotAxis(bindHeld('finesse',s)?1:0,bindHeld('power',s)?1:0);
 }
 const SHOT_TMP=shotInNew(),SHOT_IN=shotInNew();
-/* EVERY SEAT, ONCE PER FRAME, after the pads have been polled (main.js, right after gamepadUpdate).
-   Merges the seat's pad record with its keyboard/mouse modifiers and runs the step. Also owns the
-   hand-off rule for every device: a rod this seat has let go of (switched away, match over) must not
-   keep a live wind-up, or the charge sits armed on a rod the AI now drives and turns up on its next
-   contact. That lived in the pad path until the keyboard could charge too. */
+// every seat, once per frame after the pads are polled (main.js): merge the pad record with kbm modifiers and step; also drops the wind-up on a rod the seat let go of
 function shotSeatsUpdate(dt){
  if(S.photo||!S.seats)return;                  // photo mode freezes everything, a held wind-up included
  const K=SHOTC&&SHOTC.kbm,kOn=!!(K&&K.on)&&typeof bindHeld==='function';
@@ -427,34 +273,27 @@ function shotSeatsUpdate(dt){
   const P=s.shotPad;
   if(!r||!shotsOn()){if(r)shotReset(r);if(P)P.live=false;s.kbmFin=0;s.rzEdge=false;continue;}
   const pw=kOn&&bindHeld('power',s),fn=kOn&&bindHeld('finesse',s),rz=kOn&&bindHeld('raise',s);
-  // A button has no squeeze, so the grip is eased in over holdRamp instead of stepping to full.
+  // a button has no squeeze, so the grip eases in over holdRamp
   s.kbmFin=fn?Math.min(1,(s.kbmFin||0)+dt/Math.max(1e-3,K.holdRamp)):0;
   const I=SHOT_IN,pl=!!(P&&P.live);
   I.live=true;
   I.m=clamp((pl?P.m:0)+shotAxis(fn?1:0,pw?1:0),-1,1);
   I.lt=Math.max(pl?P.lt:0,s.kbmFin);
   I.TC=pl&&P.TC;
-  // POWER winds up only WITH raise held (needRaise) — the same pull-back a pad needs X or the stick for.
+  // power winds up only with raise held (needRaise)
   I.stick=pl?P.stick:0;I.rt=pl?P.rt:0;I.kick=pl&&P.kick;
   I.key=(pw&&(!SHOTC.charge.needRaise||rz))?1:0;
-  /* Raise from any device — with finesse, the pin pose. s.rzEdge is a raise PRESS latched by input.js
-     bindPress: a tap that goes down and up between two frames is invisible to bindHeld, which is read
-     once a frame, so "tap raise" would only work if the tap happened to straddle a frame. */
+  // raise from any device (with finesse, the pin pose); s.rzEdge latches a press so a sub-frame tap isn't missed
   I.rz=rz||(pl&&P.rz)||!!s.rzEdge;s.rzEdge=false;
   I.fin=fn||(pl&&P.fin);
   shotStep(dt,r,I);
   if(P)P.live=false;                             // a pad that stops reporting (unplugged) stops counting
  }
 }
-/* A KICK PRESS from any device. A plain press is shotFire on the live axis — with nothing held,
-   literally the old swing. With a wind-up live it RELEASES it: two ways to let a charge go (the
-   power input, or kick) is the ergonomics you reach for without being told. The release is stamped
-   and sounded here as well; the first cut only did that when the power input itself came up, so a
-   kick-released charge fired in silence and left no verdict on the marker. Total Control's stick
-   charge is the exception — its verdict belongs to the CONTACT (shotConsume). */
+// a kick press from any device: plain = shotFire on the live axis, with a wind-up live it releases it; Total Control's stick charge is judged at contact
 function shotKickEdge(r,m){
  const k=shotCharge(r),C=SHOTC.charge;
- // A ball on the pin: the kick is the PIN SHOT, whatever the axis says (finesse is held to keep it).
+ // a ball on the pin: the kick is the pin shot whatever the axis says
  if(r.pinB&&r.kickT<0){shotPinFire(r);return;}
  if(k>=0&&r.chgSrc&&r.chgSrc!=='stick'&&r.kickT<0){
   shotVerdict(r,k);
@@ -462,8 +301,7 @@ function shotKickEdge(r,m){
   if(C.tone.on)Au.chargeFire(k,shotChgBand(k)===1);
   return;
  }
- /* …or a wind-up let go a beat ago. Power, raise and kick are three inputs, and fingers lift a frame
-    apart: without the grace, releasing Shift a hair before pressing Space would cancel the shot. */
+ // ...or a wind-up let go a beat ago (fingers lift a frame apart)
  if(k<0&&r.chgGrace>0&&r.chgRel>0&&r.kickT<0){
   const kk=r.chgRel,mm=(r.chgMod!=null?r.chgMod:m);
   r.chgGrace=0;r.chgRel=0;r.chgMod=null;
@@ -475,12 +313,8 @@ function shotKickEdge(r,m){
  shotFire(r,m,k);
 }
 
-/* ---- the per-frame state machine ---------------------------------------------------------- */
-/* One pad, stepped on its own. This is the single-device entry point tools/shots-harness.js drives;
-   the live game reads the pad into the seat's record instead (padSeatUpdate) and steps the MERGE in
-   shotSeatsUpdate, so a keyboard held beside the pad counts too. Same machine either way.
-   Charge runs on FRAME time, not sim time — it is an input, and a dropped frame must not bank
-   charge the player never held. Returns true when it fired a swing. */
+// --- the per-frame state machine ---
+// one pad stepped on its own (what tools/shots-harness.js drives; the game steps the merge in shotSeatsUpdate); frame time, not sim time; true when it fired
 function shotPadUpdate(dt,gp,s,r,TC,stickD){
  if(!shotsOn()){shotReset(r);return false;}
  return shotStep(dt,r,shotPadRead(SHOT_TMP,gp,TC,stickD));
@@ -488,7 +322,7 @@ function shotPadUpdate(dt,gp,s,r,TC,stickD){
 function shotStep(dt,r,I){
  const C=SHOTC.charge,lt=I.lt,m=I.m;
  r.shotTrack=I.TC?shotAxisTrack(m):1;
- // the window a let-go wind-up can still be fired in (shotKickEdge) — frame time, like the charge
+ // the window a let-go wind-up can still be fired in (shotKickEdge)
  if(r.chgGrace>0){r.chgGrace-=dt;if(r.chgGrace<=0){r.chgGrace=0;if(r.chg<0){r.chgRel=0;r.chgMod=null;}}}
 
  // WHO IS HOLDING THE WIND-UP — see SHOT_SRCS above.
@@ -499,39 +333,26 @@ function shotStep(dt,r,I){
   else for(let i=0;i<SHOT_SRCS.length;i++){const d=shotSrcDepth(I,SHOT_SRCS[i]);if(d>0){src=SHOT_SRCS[i];depth=d;break;}}
  }
 
- // RELEASE. Classic fires a swing; Total Control has no discrete fire — the player's own forward
- // flick is it — so the charge is left BANKED and decaying, and the next contact spends it.
+ // release: classic fires a swing; Total Control leaves the charge banked and decaying for the next contact
  let fired=false;
  if(r.chgSrc&&src!==r.chgSrc){
   const k=r.chg,was=r.chgSrc;
   r.chgSrc=null;r.chgA=null;
   if(was!=='stick'&&C.needRaise){
-   /* LETTING GO IS NOT A SHOT (needRaise). Only a kick fires a wind-up, so dropping the power or the
-      raise cancels it — disarmed at once, because the rod now eases forward out of its pull-back and
-      that drop must not carry a charge into the ball as if it were a strike. What it was worth is
-      kept for `grace` so a kick pressed a frame late still fires it (shotKickEdge). */
+   // letting go is not a shot (needRaise): disarm at once, keep what it was worth for `grace` so a late kick still fires
    r.chgRel=k;r.chgGrace=C.grace;r.chg=-1;
    shotDisarm(r);
   }else if(was!=='stick'){
    const tap=(was==='kick'&&r.chgHeld<C.tapMax);
-   /* Stamp the verdict HERE and not at the top of this branch: Total Control's chord release is
-      not the shot — the charge stays live and decaying and the forward flick spends it later — so
-      a verdict there would be judging a shot that has not happened. Stamped on the EFFECTIVE
-      charge, so a tap that fired an ordinary swing is stamped as one rather than as whatever the
-      number happened to read. Before shotFire, which clears the state it is read from. */
+   // stamp the verdict here (a Total Control chord release isn't the shot); before shotFire, which clears the state
    shotVerdict(r,tap?-1:k);
-   /* FIRE ON THE AXIS THE WIND-UP WAS HELD AT, not the one live on the release frame — and this is
-      the whole reason r.chgMod exists. In classic the charge is held on RT, so at the instant of
-      release RT is on its way UP: reading the axis then gives 0, and a charged shot came out on a
-      neutral curve with none of the power trim, i.e. the power trigger did nothing to the shot it
-      had just spent half a second charging. Found live, not by reading. */
+   // fire on the axis the wind-up was held at (r.chgMod), not the live one (RT is on its way up at release)
    shotFire(r,(r.chgMod!=null?r.chgMod:m),tap?-1:k);
    r.chg=-1;fired=true;
    if(C.tone.on)Au.chargeFire(k,shotChgBand(k)===1);
   }else{
    r.chgRel=k;                                  // Total Control: bank WHAT IT WAS WORTH at the release
-   // …and discharge THERE. The strike itself is the player's forward flick and may land later, but
-   // letting the chord go IS the release gesture, so that is where the sound belongs.
+   // ...and discharge there: letting the chord go is the release gesture, so the sound belongs here
    if(C.tone.on)Au.chargeFire(k,shotChgBand(k)===1);
   }
  }
@@ -543,37 +364,17 @@ function shotStep(dt,r,I){
   r.chg=clamp(r.chg+C.rate*depth*dt,0,1);
   r.chgMod=m;                                    // what the triggers said WHILE winding up (see the release)
   shotArm(r,m,r.chg);
-  /* The pull-back DEEPENS with the charge and is fully back by the band's LOWER edge — sweetFrom,
-     not sweetTo, and that one word is the difference between a band and a knife edge. The arc is
-     the real power (see CONFIG.shots.mod), so saturating it at the TOP of the band means power
-     keeps climbing ACROSS the band and peaks one frame before the overcook: measured live at 2.16x
-     a plain tap mid-band against 2.73x fully overcooked, i.e. holding too long was the strongest
-     shot in the game. Saturating at the lower edge makes the whole band a flat maximum, which is
-     what a sweet spot is, and leaves the overcook paying only the penalty.
-     Total Control authors no angle: the stick is already where the player put it. */
+  // the pull-back deepens with the charge and is fully back by the band's lower edge, so the band is a flat maximum; Total Control authors no angle
   if(src!=='stick'){
    const full=C.pullA*r.kickDir,ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1);
    r.chgA=shotPullCap(r,r.angle,full*ask);
-   /* IS THE SWING ACTUALLY THERE? Needs BOTH tests, and neither alone survives a live match. The
-      angle on its own — how far back we are against how far back this charge asked for — reads as
-      blocked for the few frames the rod is still easing back, which is only the lerp. shotPullOk on
-      its own fires once the rod is fully back and resting against the ball, which is a FINISHED
-      wind-up, not a refused one. Blocked is the two together: the guard is saying no AND we never
-      got the pull-back. Without it the number climbs, the tone rises and the marker goes gold over
-      a swing that is not happening — and the arc is where the power is, so that readout was
-      promising a rocket and handing over a tap. */
+   // is the swing actually there? both tests: the angle alone reads blocked while the rod eases back, shotPullOk alone fires once it rests on the ball
    const got=Math.abs(full)>1e-4?clamp(r.angle/full,0,1):1;
    const deny=(shotPullOk>=1)?0:clamp(ask-got,0,1);
    r.chgBlock=lerp(r.chgBlock||0,deny,Math.min(1,C.blockLerp*dt));
   }else{r.chgA=null;r.chgBlock=0;}               // Total Control authors no angle: nothing to refuse
  }else if(r.chg>0&&!fired){
-  /* AN ABANDONED WIND-UP ONLY EVER FADES — and it has to be written this way rather than by
-     re-deriving from the shrinking charge, which is what the first cut did. Power is FLAT across
-     the sweet band and falls off ABOVE it, so a charge decaying down from an overcook passes back
-     THROUGH the band: overcook deliberately, let go, wait a fifth of a second, and the shot came
-     back to full power. That hands the player a way to skip the timing the band exists to test.
-     So the release banks what the charge was worth (chgRel) and everything after is a fade from
-     that toward an ordinary swing. Caught by the harness, not by eye. */
+  // an abandoned wind-up only fades: the release banks the worth (chgRel) and fades toward an ordinary swing (re-deriving would restore full power on the way down)
   r.chg=Math.max(0,r.chg-C.decay*dt);
   if(r.chg<=0){r.chg=-1;r.chgRel=0;r.chgMod=null;shotDisarm(r);}
   else{
@@ -586,49 +387,35 @@ function shotStep(dt,r,I){
   }
  }
 
- // Readout. The audio is the half that actually teaches the band — a tick rate you can feel for,
- // and one distinct mark on the way in. Tremble amplitude is the overcharge, and nothing reads
- // r.trem but the render pivot.
+ // readout: the audio teaches the band (a tick rate, one mark on the way in); tremble amplitude is the overcharge
  if(r.chg>=0){
   const band=shotChgBand(r.chg),blk=r.chgBlock||0,good=(band===1&&blk<C.blockAt);
   if(C.tone.on){
-   // FED, not ticked. audio.js owns a held voice that sweeps with this value and fades itself out
-   // the moment we stop feeding it — so there is nothing to stop on release, on a quit, or on a
-   // match that ends mid-wind-up, and the build-up is continuous instead of a train of blips.
-   // DRAINED while the swing is refused, so the tone stops climbing at the moment the rod does and
-   // "there is no room here" becomes something you hear without looking up at the marker.
+   // fed, not ticked (audio.js owns a held voice that fades itself); drained while the swing is refused so the tone stops with the rod
    Au.chargeFeed(r.chg*(1-blk),band);
-   // The band mark is the reward for good timing, so a blocked wind-up must not earn it — and
-   // being blocked mid-band plays the DULL mark, the same "you just lost it" the overcook already
-   // uses. One meaning per sound.
+   // a blocked wind-up must not earn the band mark; blocked mid-band plays the dull mark
    if(good!==r.chgSweet){r.chgSweet=good;if(good)Au.chargeMark(true);else if(band===2||blk>=C.blockAt)Au.chargeMark(false);}
   }
   const T=C.trem,ov=shotOver(r.chg);
   r.trem=ov>0?T.amp*ov*Math.sin(r.chgHeld*T.hz):0;
  }else r.trem=0;
 
- // LT also makes the boot STICKY (CONFIG.shots.hold). Last, so it reads THIS frame's charge: a
- // wind-up cancels the hold, and a swing that just fired frees it again on the same frame.
+ // LT also makes the boot sticky (CONFIG.shots.hold); last so it reads this frame's charge
  shotHoldUpdate(r,lt);
- // …and finesse + raise poses the PIN. After the hold for the same reason: it reads this frame's charge.
+ // ...and finesse + raise poses the pin, after the hold for the same reason
  shotPinInput(r,I);
 
  return fired;
 }
-/* Does the kick BUTTON still fire on press? Only false where the player has deliberately moved the
-   charge onto it (cfg.padChargeBtn), because holding a wind-up and firing instantly are the same
-   press and cannot both be honoured. Everywhere else — the default, Total Control, shots off — the
-   button fires the frame it goes down, exactly as it always has. */
+// does the kick button still fire on press? false only where the charge was moved onto it (cfg.padChargeBtn)
 function shotKickPress(TC){
  if(!shotsOn()||TC||!SHOTC.charge.on||SHOTC.charge.needRaise)return true;   // needRaise: kick is the release, never the hold
  const cb=cfg.padChargeBtn||'rt';
  return cb!=='kick'&&cb!=='both';
 }
-/* Live charge for the readouts (fx.js's held-rod marker, and anything added later). Returns -1 when
-   nothing is winding up, so a caller tests one value rather than three fields. */
+// live charge for the readouts (fx.js held-rod marker); -1 when nothing is winding up
 function shotCharge(r){return (r&&shotsOn()&&r.chg>=0)?r.chg:-1;}
-/* Band of the live charge for a readout: -1 none, 0 building, 1 in the sweet band, 2 overcooked. */
+// band of the live charge: -1 none, 0 building, 1 sweet, 2 overcooked
 function shotChargeBand(r){const k=shotCharge(r);return k<0?-1:shotChgBand(k);}
-/* How much of this rod's wind-up the sweep guard is refusing, 0..1 and smoothed. Non-zero means the
-   charge is buying nothing: the number climbs but the boot is not going anywhere. */
+// how much of the wind-up the sweep guard is refusing, 0..1 smoothed
 function shotChargeBlock(r){return (r&&shotsOn()&&r.chg>=0)?(r.chgBlock||0):0;}

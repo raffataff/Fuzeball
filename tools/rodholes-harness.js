@@ -1,28 +1,13 @@
 'use strict';
-/* ================= rod-hole stamina rings — harness =================
-   node tools/rodholes-harness.js
-
-   Slices the REAL registerRodHoles + rodHoleShader (js/models.js) and the REAL rodHoles block
-   (js/fx.js) out of their files and drives them in one vm context on top of the LIVE core.js +
-   config.js + stats.js, against a minimal THREE stub. Nothing here restates the code it is
-   testing, so a retune of CONFIG.fx.rodHoles or CONFIG.stats moves the expectations with it.
-
-   THE FOUR THINGS THAT ARE INVISIBLE TO READING, and why each has a mutation below:
-
-   · WORLD-X CLASSIFICATION. A ring that matches no rod must be refused, not snapped to the
-     nearest — snapping fails as "the wrong ring lights all match", which nobody looks for.
-   · THE LEVEL IS STAT-INDEPENDENT. rodHoleFill runs off stFatRamp, so every rod drains its ring
-     over the same 0..1 no matter its stamina; the COLOUR is what varies. Wire the fill to stFat by
-     mistake and a stamina-10 rod's ring never moves — which reads as "the feature is broken on
-     good rods" rather than as an error.
-   · THE COST CURVE. stFat's output is a narrow band (1.000..0.875 for a default rod) that has to
-     be normalised before it can drive anything. A stray divide reads as "nothing happens".
-   · THE SHADER INJECTION. onBeforeCompile edits someone else's GLSL by string match. If a chunk
-     name ever moves the ring must keep its authored look and say so, not render black.
-
-   rd() strips CRLF at the READ: js/models.js and js/fx.js are CRLF files and a multi-line needle
-   written as a template literal has its terminators normalised to LF by the lexer itself, so it
-   could never match. Fixed once here rather than per-needle. */
+// ================= rod-hole stamina rings: harness =================
+// node tools/rodholes-harness.js
+// slices the real registerRodHoles + rodHoleShader (js/models.js) and the real rodHoles block (js/fx.js) into one vm on the live core.js + config.js + stats.js against a THREE stub
+// four things invisible to reading, each with a mutation:
+//   world-x classification: a ring matching no rod must be refused, not snapped to the nearest
+//   the level is stat-independent: rodHoleFill runs off stFatRamp, only the colour varies (wiring it to stFat would freeze a stamina-10 rod's ring)
+//   the cost curve: stFat's output is a narrow band (1.000..0.875) that must be normalised
+//   the shader injection: onBeforeCompile edits GLSL by string match; if a chunk name moves the ring must keep its authored look
+// rd() strips CRLF at the read (js/models.js and js/fx.js are CRLF and a template-literal needle is normalised to LF)
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
@@ -58,6 +43,7 @@ THREE.Color.prototype.clone=function(){return new THREE.Color().copy(this);};
 THREE.Color.prototype.copy=function(o){this.r=o.r;this.g=o.g;this.b=o.b;return this;};
 THREE.Color.prototype.lerp=function(o,t){this.r+=(o.r-this.r)*t;this.g+=(o.g-this.g)*t;this.b+=(o.b-this.b)*t;return this;};
 THREE.Color.prototype.multiplyScalar=function(s){this.r*=s;this.g*=s;this.b*=s;return this;};
+THREE.Color.prototype.convertSRGBToLinear=function(){var f=function(c){return c<0.04045?c*0.0773993808:Math.pow(c*0.9478672986+0.0521327014,2.4);};this.r=f(this.r);this.g=f(this.g);this.b=f(this.b);return this;};
 THREE.Color.prototype.getHex=function(){return (Math.round(this.r*255)<<16)|(Math.round(this.g*255)<<8)|Math.round(this.b*255);};
 THREE.Box3.prototype.setFromObject=function(o){this.min=o.__bb.min;this.max=o.__bb.max;return this;};
 // the two chunk names the injection matches on, in context
@@ -92,6 +78,7 @@ const src=[
  THREE_STUB,
  STUBS,
  rd('js/stats.js'),
+ slice(rd('js/world.js'),'kitLin'),
  'const SHOTC=CONFIG.shots;',
  ['shotsOn','shotChgBand','shotCharge','shotChargeBand','shotChargeBlock'].map(n=>slice(rd('js/shots.js'),n)).join('\n'),
  slice(rd('js/matchstats.js'),'msScorer'),
@@ -130,9 +117,7 @@ function rig(c,sta){
  c.__set('rods',DEFS.map((d,i)=>{const r=c.__get('mkRod')(0,sta==null?5:sta);r.idx=i;return r;}));
  return list;
 }
-/* Drive stFatRamp to exactly `x`. Setting BOTH channels to x is what makes the blend land on x
-   whatever kickFat.weight is — nudging only the clock caps the ramp at (1-weight), which is the
-   mistake that made this harness's first pass assert the wrong numbers. */
+// drive stFatRamp to exactly `x`: set both channels to x so the blend lands on x whatever kickFat.weight is
 const spend=(c,x)=>{const ST=c.__x.CONFIG.stats;
  c.__get('rods').forEach(r=>{r.exert=ST.kickFat.full*x;});
  c.__set('S',{...c.__get('S'),matchTime:ST.fatStart+x*(ST.fatEnd-ST.fatStart),time:1});};
@@ -149,6 +134,8 @@ ok(RH.fillMin>=0&&RH.fillMin<0.5,'A3 fillMin leaves most of the travel to the ga
 ok(RH.fillSoft>0,'A4 fillSoft positive (0 would alias the waterline at 30px)');
 ok(RH.lerp>0,'A5 lerp positive');
 ok(X.RH_BAND.length===CFG.shots.charge.bandCol.length,'A6 band colours come from CONFIG.shots.charge');
+const sLin=c=>c<0.04045?c*0.0773993808:Math.pow(c*0.9478672986+0.0521327014,2.4);
+near(X.RH_IDLE.g,sLin(((RH.idle>>8)&255)/255),1e-6,'A7 the idle green is read as sRGB (kitLin), or the tone mapper washes it to mint');
 
 /* ---------- B · classification ---------- */
 const listB=rig(boot());
@@ -213,9 +200,7 @@ ok(X.stTire(C.__get('mkRod')(0,CFG.stats.max))<=Math.max(CFG.stats.tireFloor,1e-
    'D7 ...and bottoms out at tireFloor');
 
 /* ---------- E · the physics did NOT change ---------- */
-/* Moving the stat from the penalty onto the ramp is only safe because it is the same product. This
-   asserts that against the OLD formula directly, at every stat value and several ramp depths — if
-   anyone ever re-tunes stTire into a shape that is not (1 - sta/max), this is what will say so. */
+// moving the stat from the penalty onto the ramp is only safe because it's the same product; asserted against the old formula at every stat value and several ramp depths
 {
  const c=boot(),ST=c.__x.CONFIG.stats,K=ST.kickFat;
  let worst=0,checked=0;
@@ -355,6 +340,9 @@ const MUT=[
   c=>{rig(c,0);spend(c,0.3);run(c,600);
       const e=c.__get('rodHoleMeshes')[0],dr=1-(e.fill-c.__x.RH.fillMin)/(1-c.__x.RH.fillMin);
       return e.v<=dr+0.05;}],
+ ['the idle green is read as a raw linear colour, so it renders washed-out mint',
+  s=>s.replace('const RH_IDLE=kitLin(RH.idle),','const RH_IDLE=new THREE.Color(RH.idle),'),
+  c=>Math.abs(c.__x.RH_IDLE.g-((c.__x.RH.idle>>8)&255)/255)<1e-6],
  ['the colour ramp stops at amber',
   s=>s.replace(':_rhA.copy(RH_WARM).lerp(RH_HOT,RH.mid<1?(sp-RH.mid)/(1-RH.mid):1);',':_rhA.copy(RH_WARM);'),
   c=>{rig(c,0);spend(c,1);run(c,600);
@@ -406,9 +394,7 @@ for(const [name,mut,test] of MUT){
  let broke=false,stale=false;
  try{ broke=test(boot(mut)); }
  catch(e){ if(/MUTATION DID NOT APPLY/.test(e.message))stale=true; else broke=true; }
- /* A mutation whose needle has drifted out of the source must NOT be scored as caught — the
-    catch-all above would happily do that, and the suite would then rot one silent entry at a
-    time while still reporting a perfect score. */
+ // a mutation whose needle drifted out of the source must not score as caught (the catch-all would, and the suite would rot silently)
  if(stale){fail++;console.log('  STALE:  '+name+'  <- the needle no longer matches the source');}
  else if(broke){caught++;console.log('  caught: '+name);}
  else console.log('  MISSED: '+name);

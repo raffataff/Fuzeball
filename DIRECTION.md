@@ -99,8 +99,8 @@ Type:
 - **Display: Soccer League College** (italic), the notched collegiate cut that matches "TOTAL CONTROL"
   in the logo. Titles and the home menu only (`--font-display`). **Licensed for commercial use**
   (2026-09-24, Vladimir Nikolic). The plain Soccer League cut (`--font-ui`) does labels, buttons and numbers.
-- **Body:** Rajdhani 600 (`--font-body`). Soccer League is capitals only, so anything read as a sentence
-  stays in Rajdhani.
+- **Body:** Space Grotesk 600 (`--font-body`; was Rajdhani until 2026-10-03). Soccer League is capitals only, so anything read as a sentence
+  stays in Space Grotesk.
 
 **Applied (2026-09-24 UI pass):** the palette is the `:root` tokens in `css/styles.css`. Buttons, tabs and
 menu items are plates cut at the HUD board's 20°, the pad cursor fills a plate with gold, panels are

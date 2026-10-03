@@ -26,7 +26,13 @@ order. It must feel hand-made — **do not let it look AI-generated**.
 - **Element ids share that namespace too**: `#lgGoals` is `window.lgGoals`, so don't name a function
   after an element id.
 - Dense, terse style, `'use strict'` per file, short names, packed statements. New code should look
-  like the code around it. `config.js` is the exception: human-tuned, commented, spaced.
+  like the code around it. `config.js` is the exception: human-tuned, spaced, one-line comments per value.
+- **Comments are sparse, and written like a human dev would.** Only two kinds: a short title to split a file
+  into sections (`// --- reaction latency ---`), and a one-line note on a non-obvious line or on what a
+  higher/lower value does (`warnT:5, // clock turns red in the last N seconds`). Never write multi-line
+  paragraphs, change-log or "this used to…" diary text, bug post-mortems, or a comment that restates the code.
+  The *why* behind a decision belongs in `docs/CLAUDE-history.md`, not in the source. When you touch a
+  function, trim its comments to this rule rather than adding to them.
 - Global helpers: `$` = getElementById, `clamp`, `lerp`, `rand` (core.js). **`rand()` is NOT seeded.**
 - **When updating a function, rewrite the WHOLE function** (owner preference), then re-read it in context.
 - **New tunable numbers go in CONFIG** (`js/config.js`), never inline. The short aliases at the bottom of
@@ -49,11 +55,22 @@ Node (v24) is available locally. The browser is only needed for WebGL, rAF or th
    ```
 3. **Harnesses** — `node tools/<name>-harness.js`. Each asserts behaviour AND carries mutations that
    must each break it. `mutate()` refuses a no-op, so a drifted anchor reports itself. **Update a
-   mutation's anchor when you change the line it targets.** When harnesses boot files in a `vm`,
+   mutation's anchor when you change the line it targets.** Slice anchors (`slice(src,'function x(',…)`)
+   must be code, never comment text, so editing a comment can't break a harness. When harnesses boot files in a `vm`,
    top-level `const`s are lexical, so export them via an explicit `globalThis.__x={…}` line.
-   - `audio` (sample player, routing, room reverb, crowd, stand-in DSP), `shots` (charge machine), `pin` (catch / carry / every release / the pin shot), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
+   - `audio` (sample player, routing, room reverb, crowd, stand-in DSP), `shots` (charge machine), `pin` (catch / carry / every release / the pin shot), `pinhint` (the pinned-ball ring and the kick plate), `binds` (keyboard/mouse verbs + rebinding + the pad/keyboard merge),
      `padnav` (menu navigation), `layout` (stored form), `trials`, `rng`, `matchstats`, `moments`, `wallplay`, `slidepush`,
-     `chargeverdict`, `savesplit`, `venueload`, `roomenv`, `sky`, `roomlights`, `props`, `pitch`, `ktx2`, `offline`…
+     `chargeverdict`, `savesplit`, `venueload`, `roomenv`, `sky`, `saucer` (the saucer GLB/sky ship and the giant sits in its window bay), `roomlights`, `props`, `pitch`, `ktx2`, `offline`, `backguard` (AI back-lift / slide guard), `retrieve` (the retrieve action's sequence), `deadforce` (`deadLeft`, the dead-ball projection)…
+   - **`tools/backswing-soak.js`** is the browser-side companion (load it in the `fuzeball` preview): `bsSoak` runs
+     whole AI-vs-AI matches and tallies goalward knocks, `bsKeeper` drops slow balls behind the keeper. It silences
+     audio itself (stubs `Au.init`, leaves `cfg.sound` alone). One call of the preview JS tool is capped at 45 s, so
+     run one configuration per call (40 × 180 s of sim is ~14 s). **`tools/deadforce-soak.js`** (`dfSoak`) tallies the
+     whistles by where the ball died and, for a ball a rod could play, what that rod was doing the step before. Both
+     soaks must copy `b.cur` after each step like main.js does, or the dead-ball clock reads a frozen ball.
+     **`tools/keeper-soak.js`** (`gkSoak({fam:'lat'|'lg'|'pocket'|'ang'})`, `gkCheck()`) throws seeded balls at the red keeper on the real sim and
+     tallies goal / dead / played; `gkCheck()` is the pass/fail (shipped keeper settings against the old behaviour on the same trials, ~15 s, one call).
+     **`tools/pinshot-soak.js`** (`psSweep`, `psScene`, `psAim`, `psTry` = a sweep with CONFIG paths overridden and restored)
+     catches a ball on a posed rod, fires the real pin shot and reports the exit speed against plain/hard/charged-kick yardsticks.
    - **Failing before 2026-09-24 and still failing (not regressions):** photo-record, rodholes,
      roomlight, roomlights, slidepush; shots has 3 failing assertions (the working tree's soft-curve
      retune, plus `kick.strike` 0.055 → 0.025, which makes "hard anchor is FASTER" fail).
@@ -79,7 +96,7 @@ canvas) · `ui` · `roster` (Kick Off lobby) · `options` · `league` (league + 
 (F1) · `roomedit` (F2) · **`vsel`** (◀ value ▶ selectors) · **`padnav`** (controller menus) · `main` (loop).
 
 Tools: `tools/*-harness.js`, `tools/menu-shots.js` (every menu screen at 1280×800, flags overflow), `tools/build_props_manifest.js`, `tools/build_audio_manifest.js` (index assets/audio/, prints every sound's state), `tools/audio-preview.js` (renders the synthesized crowd to WAV in tools/build/), `tools/ktx2-encode.mjs` (run from
-`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, `tools/trophy-alpha.mjs`, `tools/ktx2-decode.mjs` (the inverse of ktx2-encode: a KTX2 GLB to a PNG GLB that Blender can open; the Shardsmith importer runs it), Blender scripts `tools/build_nebula_sky.py`, `build_moon_sky.py` (both on `skylib.py`), `build_void_asteroid.py`, `build_moon_base.py`, `tools/build_moon_pitch.mjs` / `build_deck_pitch.mjs` (Node, on `pitchlib.mjs`: generated pitches, then ktx2-encode), `tools/build_table.py` / `export_table.py` /
+`tools/` after `npm i`; `--dry` first), `tools/sky-encode.mjs`, `tools/trophy-alpha.mjs`, `tools/ktx2-decode.mjs` (the inverse of ktx2-encode: a KTX2 GLB to a PNG GLB that Blender can open; the Shardsmith importer runs it), Blender scripts `tools/build_nebula_sky.py`, `build_moon_sky.py`, `build_saucer_sky.py` (all on `skylib.py`), `build_saucer_room.py`, `build_void_asteroid.py`, `build_moon_base.py`, `tools/build_moon_pitch.mjs` / `build_deck_pitch.mjs` (Node, on `pitchlib.mjs`: generated pitches, then ktx2-encode), `tools/build_table.py` / `export_table.py` /
 `build_pub_room.py`. **`tools/blender/shardsmith/`** is the Blender add-on that makes the player/ball explosion GLBs (robust fracture, rigid-body blast, bake, glTF export); its README covers install, the game workflow and how it works; test with `blender -b --factory-startup --python tools/blender/shardsmith_test.py`. It replaces `tools/fracture_script.py`. Its **Export GLB** bakes if needed and then runs `tools/ktx2-encode.mjs` itself, so an export is game-ready; an explosion GLB whose clip is short or missing (unbaked or never set up) freezes the debris in mid-air, because `spawnFracture` plays LoopOnce and clamps on the last frame.
 
 ## Coordinates, table, rods
@@ -121,11 +138,53 @@ the AI's trap/dribble and the player's hold. `aimAssist` / `wallAssist` bend str
 align a man (with hysteresis, deadzone, drifting error), then choose an action: `lane` (make way for the
 keeper), `safeRaise`, `trap`, `dribble` (+ passing), `evade`, or a kick. **Two hands per team**
 (`CONFIG.ai.hands`): only that many rods move; the rest hold. Every human-held rod is forced into its
-team's active set. Two lessons that keep coming back:
+team's active set. Three lessons that keep coming back:
 - **Static vs swept reach.** `inFootRange` is a static rectangle. Any action that ROTATES the rod needs
   the swept test (`sweepClips` for the foot, plus the leg), or the rotating boot drags the ball goalward.
 - **The kick gate is a snapshot**, so aimed/slow swings are re-checked by `strikeOn` (predicted
   contact) before committing.
+- **The back guard** (`CONFIG.ai.backGuard`; `backLimit` / `slideBlocked` in ai.js, called from
+  `updateRods`) is the last word on an AI rod's back-lift and z-slide, so it covers every path at once
+  (raise latch, safeRaise, evade's follow-through, bench raise). Measured 2026-09-30: a slow ball in the
+  pocket behind the keeper was being knocked goalward in ~9% of trials (57 knocks / 7 own goals per 600);
+  now 3 / 0. Three things it encodes: any boot contact hands the ball the boot's velocity (a lifting tip
+  is 100+ u/s); a lift is only safe when the man is z-clear AND stays so until the boot is over the ball
+  (safeRaise's old -0.8 parks the boot IN the ball: a ball resting 1.5-5.6 behind is touched until ~-1.2,
+  hence `safeRaise.angleBehind`); the contact band for a far ball is thin, so the lift arc is sampled by
+  ANGLE (`arcStep`), not by count. A held lift stamps `r.lhT`, which drops the raise latch so `evade` can
+  clear the lane. Kick swings, trap, dribble, the pin and human rods are exempt. `tools/backswing-soak.js`
+  (browser) measures it; `backguard-harness` pins the rules. The lift is timed by the ease the rod really runs
+  (exponential, `-ln(1-f)/rate`), not linearly, and a ball INSIDE the box reads as "ahead" (footBoxDist's
+  normal is degenerate there), hence `deepD`.
+- **Retrieve** (`CONFIG.ai.retrieve`; `retrieveStep` in ai.js, runs before safeRaise/evade) owns a slow ball
+  (<18 u/s) BEHIND the heel, 0.8-6 back, which used to sit in a dead band (evade needs 1.6 behind, the kick zone
+  starts 0.8 behind) while the rod half-lifted and gave up. Sequence: **side** (slide AWAY from the man on the
+  ball until every man is z-clear; it never crosses a ball closer than `crossRel`, because the slide guard would
+  stall it) -> **lift** (boot behind and over) -> **over** (slide onto the ball's z, boot up; `backHit` says when
+  it is free) -> **pin** (the player's own pin, `r.pinOn/pinPose/pinA`, then the `trapShot` pin shot) or **drop**
+  (boot sweeps forward through the ball). Keeper and smart rods pin; others drop. The pin pose must LEAD the boot
+  by less than `shots.pin.capA` (`pinLead`) or the catch is never armed and the leg knocks the ball forward. Every
+  exit goes through `retrieveEnd`. `tools/retrieve-harness.js` pins the sequence; soak tallies are `BGS.ret*`.
+- **Dead-ball push** (`CONFIG.ai.force`; `deadLeft(b)` in powerups.js is the real-seconds projection to the whistle,
+  the same one the `C` overlay shows). When a ball is in a rod's own strike window (`deadball.live` ahead/back), not in
+  a dead zone, and `deadLeft` is under `force.left`, `r.force` is set and that rod stops deliberating: it squares up on
+  the ball (no aim bend or drifting error), a swing counts as lined up out to `force.align` (a ball resting against the
+  boot is just past its reach), and cooldown, shot hold and sweet-spot wait are skipped, so it kicks or passes. It also
+  skips starting a retrieve, keeps the post-kick held-forward escape going until the boot is off the ball (otherwise the
+  rod sits frozen forward on it), and a non-keeper may slide through a ball beside its heel (`slideBlocked`). Gated per
+  rod: a ball-wide flag made every rod abandon its line whenever a ball sat in a pocket. Measured with the soaks:
+  whistles on a playable ball 39 -> 12 over 40 matches, keeper stalls gone, and over 120 matches goalward knocks
+  (109 -> 100) and own goals (1 -> 2) were unchanged within noise.
+  What is left: outfield balls behind the heel after a kick. `deadforce-harness` pins `deadLeft`.
+- **Keeper safe-raise** (`CONFIG.ai.safeRaise` `gkAlways` / `gkLerp`; `srLerp` in ai.js, read by `updateRods`). A ball rolling across the
+  keeper's front or heel meets the SIDE of a lowered boot and stops flush against it (z gap ≈ 3.25), out of the kick window; to roll
+  under, the boot must be over the ball's top (about −1.1) before it arrives. The entry used to need `r.aiIQ` (a re-rolled 40-80 % coin
+  flip) and the lift eased at 4/s, so most of those never got a lift in time. The keeper now skips the roll and lifts at `gkLerp`; the
+  other rods keep both. Measured 2026-10-03, `tools/keeper-soak.js` (300 seeded trials per family, `gkCheck()` asserts the lot): sideways
+  roll goals 21 → 0, dead balls 70 → 8; the same roll drifting goalward (rolls past the man into the mouth) goals 93 → 6, dead 45 → 6;
+  40 whole matches (`bsSoak`) goals 57 → 38, own goals 4 → 0, goalward knocks 35 → 17 (keeper 8 → 0). The depth that BLOCKS a ball in the
+  pocket is −1.0 (the leg across it); −1.3 is over it. A ball that starts inside the pocket ~0.2 s from the line can't be saved by
+  reacting (a lift that waits for the AI's view concedes more than none); that needs a lift before it slips past the man. Not built.
 
 **Difficulty & stats.** `DIFFS` (rookie/pro/legend) per team (`cfg.diffRed`/`diffBlue`; `teamDiff` reads
 a trial's or league's pin first). Seven rod stats (`CONFIG.stats`, base 5 = neutral) scale speed, hit,
@@ -160,6 +219,16 @@ a comment inside a room entry is lost when the room editor's export is pasted ov
 Its sun is the real `dir` light WITH shadows, and `dir.pos` must point along the sky script's `SUN_DIR`
 (sky-harness checks). Every stock menu shot looks 35°+ down, so a sky above the horizon is never on screen; a room
 can override single shots (`rooms.<id>.shots`, fx.js `menuShot`) and the Moon's home shot sits low for Earth.
+**Saucer bar** is the rim deck of a saucer hanging over a ringed gas giant (1 unit = 1 cm, 4.2 m across): `tools/build_saucer_room.py` (textures, props and the
+neon sign are all generated; windows and portholes are real openings cut with a boolean) → `ktx2-encode.mjs` from `tools/build/saucer/`, sky `build_saucer_sky.py` (Cycles: ring shadow on the
+planet is real) → `sky-encode.mjs --size 1536`. The wall is only seen up to about y=+30 from the stock cameras, so detail lives low; the giant sits just under the horizon at azimuth −73° and
+shows through the low-sill bay panes (saucer-harness keeps the two scripts agreeing). `bakeGlbEnv` hides ANY transparent mesh: glass with a textured alpha has opacity 1 and used to bake as a white blob.
+Props are baked into the GLB on purpose, not placed through `props.js`: a baked room is one draw per material and `castShadow=false`, an instanced prop is a draw per part, casts by default (`shadowDirty` fires every sim step, so
+2 shadow spots + the shadow point = 8 passes) and can't vary per piece (every stool is its own colour and angle). The look of a flat-colour prop comes from `flat_mat`: colour x ONE shared 512 wear map (box-projected UVs, `prop_attrs`) x baked
+vertex colour (floor contact, undersides, drips). Soft glows (neon halo, sconces, lamps) and floor paint (hazard stripes, stencil, stains, polished path) are two blended decal sheets, `glow` and `paint`, built by `glow_texture` / `paint_texture`;
+with the glass that makes exactly three blended materials. Every opaque material is single-sided: that is the culling saving, and it also shows a wrongly wound face (`arc_prism` was inside-out for a pass and double-sided hid it; profiles
+for `p_lathe` / `arc_sweep` are travelled counter-clockwise, r right and y up). The build prints a triangle table per section (`sec()`), 70k now; the ceiling and upper wall are seen by nobody but photo mode, keep them cheap. Iterate by
+loading `tools/build/saucer/fuzeball_room_saucer.raw.glb` over `CONFIG.rooms.saucer.folder/glb` (--tex 1024 builds in 6 s), then encode at full size.
 **Blade grass** (`grass.js`): a pitch opts in with `grass:true`/`grass:{…}` in `CONFIG.pitches` (defaults in
 `CONFIG.grass.blade`). One instanced draw of real blades (~106k) rooted on the pitch's top face, coloured from the
 pitch texture at the root; visual only (physics stays flat). `cfg.grass` off/low/high is a machine setting (Options →
@@ -226,6 +295,20 @@ Ctrl+W/T/N can't be blocked in a browser (the Electron shell must block them).
   the pin. Slide then kick = push/pull. A pad also pins off the right stick (finesse + rod inside
   `pin.band`). The pin gates on finesse being DOWN (`I.fin`), not on its eased grip. Released by letting finesse go, any swing, the rod turning off the pin, a knock from
   another ball, a hard set, or a side wall. One ball per rod: `r.pinB` <-> `b.pinR`.
+  **A caught ball shows itself.** Kick is the shot only while `r.pinB` is set; with nothing caught, finesse + kick is a pass,
+  and the player cannot otherwise tell which they have. So: a ring on the pitch under the ball in the holding seat's colour
+  (`fx.js` `pinMarkUpdate`, resident meshes `pinRings` in world.js, `shots.pin.mark`), and in live play a plate "[kick] pin shot"
+  sitting on the rod chips (`hud.js` `hudPinHint`, `shots.pin.hint`; keys come from the bindings, the pad shows A; off in the
+  tutorial, which says it itself). Both ask `shotPinBall(seat)`. The plate has a player switch, `cfg.pinHint` (Options → Display
+  → Effects, PLAYER bucket, a missing key reads as on); the ring has none. `pinhint-harness` pins all of it.
+  **Its weight is the speed ceiling, not the swing.** The boot meets the ball ~40 times in one trapShot swing (the ball starts
+  3 units off the boot, so it is pushed, not struck), and `shotConsume` spends the shot's trim on the first touch, so every later
+  contact fell back to the plain-kick ceiling: measured 2026-10-03, pin shot ~78 u/s vs a plain kick ~87 and a charged kick ~121,
+  identical for human and AI. `cap.pin` (`kick.cap`, `capSpeed` keyed on `kickStyle==='trapShot'`) adds to EVERY contact of the swing:
+  0.30 gives ~106 (human and AI share it; AI difficulty scales it through its `str` stat). Swing speed, `windupA` and `pin.pow`/`ctl`
+  barely move it (`ctl` is invisible: later contacts re-impose the boot's heading, so the first-touch spray is overwritten). Hop
+  height stays under ~2 even at 0.4 (~113). Measure with `tools/pinshot-soak.js` (`psSweep` / `psTry`, multi-seed: the contact
+  jitter random-walks the speed, so one seed is not a measurement); `ballcap-harness` C3 pins it.
 - **One step per seat per frame** (`shotSeatsUpdate`, after `gamepadUpdate`): each device READS into a
   record and the step runs on the merge. A second state machine per device would release the other
   device's charge.
@@ -273,7 +356,7 @@ beyond a default focus in `NAV_SCREENS`; screens can add `onPad`/`onPadStick` ho
   lists there. Never put `background`/`border`/`clip-path` on the element itself (clip-path would clip the
   pad focus). `.btn` is the gold primary, `.btn.ghost` the blue secondary.
 - **Type.** `--font-display` (Soccer League College italic) for titles and the home menu, `--font-ui`
-  (Soccer League) for labels, `--font-body` (Rajdhani 600) for anything read as a sentence.
+  (Soccer League) for labels, `--font-body` (Space Grotesk 600) for anything read as a sentence.
   Sized for 1280×800 (Steam Deck) and a sofa: nothing in a menu under 11px, the `--fs-*` tokens start at
   11.5px. Check a screen at 1280×800 after adding to it (`node tools/menu-shots.js [names]`: headless Chrome, a PNG per
   screen + a contact sheet in tools/build/menu-shots/, exit 1 if anything scrolls); since 2026-09-28 no menu screen

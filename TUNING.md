@@ -461,6 +461,23 @@ rod would otherwise sit *down* behind it. If raising won't clip the ball (it's n
 man-selection slides a man in behind it. When the ball rolls forward to the rod line,
 speeds up, or lifts, the action exits and the normal drop+kick clears it.
 
+**Keeper only: `gkAlways` and `gkLerp`.** A ball rolling across the keeper's front or heel meets
+the SIDE of a lowered boot and stops flush against it (z gap = `footBox.z + BALL_R` ≈ 3.25),
+which is out of the kick window. To roll under, the boot has to be over the ball's top
+(about −1.1 rad) before it arrives, and a ball at 20-50 u/s covers the last 10 units in
+0.2-0.5 s. Two things made that miss: the entry needed `r.aiIQ` (a coin flip re-rolled every
+1.7-6 s, 40-80 % by difficulty) and the lift eased at `lerp` 4 (only −0.5 rad after 0.2 s).
+`gkAlways` skips the roll for the keeper, `gkLerp` (30; the plain raise is 18) speeds its lift; the
+other rods keep `lerp` and the roll. The back guard still holds a lift short of a ball it would hit,
+at the same rate (`srLerp` in ai.js hands both the same number). Sideways roll with a goalward drift,
+goals per 300 trials: 93 before, then 66 / 40 / 19 / 6 / 3 at `gkLerp` 8 / 12 / 18 / 30 / 60, so a
+lower value gives goals back; the whole-match soak (goals, own goals, goalward knocks) was best at 30.
+−1.0 is the depth that BLOCKS a ball heading into the mouth from the pocket, −1.3 (`angleBehind`) is
+over it, but shallowing `angleBehind` to "block" makes the sideways case worse (62 goals against 20).
+A ball already inside the pocket within ~0.2 s of the line can't be saved by reacting (a lift
+that waits for the AI's view concedes MORE than none); that would need a lift before the ball
+slips past the man. `tools/keeper-soak.js` (`gkCheck()`) holds the numbers.
+
 ### `evade`
 
 A slow ball is stuck directly behind a man (`inFootRange`) and we're not trapping or

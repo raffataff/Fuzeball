@@ -1,23 +1,10 @@
 'use strict';
-/* ================= skill trials harness =================
-   Boots core + config + rng + state + trials.js in ONE vm context against stubs for the sandbox
-   functions trials.js drives (training.js, balls, audio, DOM), then asserts both halves of the
-   feature: the OBJECTIVE EVALUATOR, and the trial DATA itself.
-
-   The data assertions matter as much as the code ones. A trial whose bronze threshold sits past
-   its own time limit, or that asks you to score with a rod it has hidden, is unwinnable — and
-   nothing in the game would tell you, because it fails as "I couldn't do it" rather than as an
-   error. Those are config bugs a harness can catch and a playtest can only suspect.
-
-   Run: node tools/trials-harness.js                                                            */
+// ================= skill trials harness =================
+// boots core + config + rng + state + trials.js in one vm against stubs for the sandbox (training.js, balls, audio, DOM) and asserts the objective evaluator and the trial data itself (an unwinnable trial fails as 'I couldn't do it', not an error)
+// Run: node tools/trials-harness.js
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-/* CRLF IS STRIPPED AT THE READ, and it has to be here rather than per-anchor: js/trials.js is a
-   CRLF file, and a mutation needle written as a multi-line string or template literal can never
-   match one — the ECMAScript lexer normalises a template's own line terminators to LF, so writing
-   it "correctly" is impossible (see the 2026-08-23 rng-harness entry). Stripping at the read makes
-   every mutation, present and future, immune. Safe both ways: the source is only string-matched
-   and run in a vm, where newline style is semantically irrelevant. */
+// CRLF is stripped at the read (js/trials.js is CRLF and a multi-line needle can never match one; see the rng-harness entry)
 const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
 
 function boot(mutate){
@@ -92,10 +79,7 @@ function Run(){this.pass=0;this.failed=[];}
 Run.prototype.ok=function(c,n,d){c?this.pass++:this.failed.push(n+(d?'  ['+d+']':''));};
 Run.prototype.eq=function(a,b,n){this.ok(a===b,n,'got '+JSON.stringify(a)+', want '+JSON.stringify(b));};
 
-/* Distance from a ball at (bx,bz) to the nearest of a rod's resting foot boxes. Mirrors the
-   analytic box collideRod builds: at rest (angle 0) the along-leg axis points DOWN, so the
-   rod-local footBoxOff.x lands in world Y and footBoxOff.y in world X (team-relative), and the
-   box half-extents swap with it. Contact when the gap is under BALL_R*footBoxReach. */
+// distance from a ball at (bx,bz) to the nearest of a rod's resting foot boxes (mirrors collideRod's analytic box: at rest the along-leg axis points down, so footBoxOff.x lands in world Y); contact under BALL_R*footBoxReach
 function footGap(r,bx,bz){
  const P=API.PHY,dir=r.team===0?1:-1;
  const footY=P.rodH-P.arm*P.footT;
@@ -111,12 +95,7 @@ function footGap(r,bx,bz){
  return best;
 }
 function footClear(r,bx,bz){return footGap(r,bx,bz)>=API.PHY.ballR*API.PHY.footBoxReach;}
-/* WHOSE reach a spawn has to be inside depends on who is meant to STRIKE it. For every kind but
-   one that is you: the locked rod, else every visible rod of team 0. In a 'saveRun' the ball is
-   served to the OPPONENT and the player never touches it until it arrives, so the same band is
-   tested against the shooting side instead — the keeper is checked for something else entirely
-   (that it can cover the mouth). Without this split a save trial fails A-reach by construction:
-   its ball is 25 units in front of a keeper whose strike window is 6.3. */
+// whose reach a spawn has to be inside: you (the locked rod, else every visible team-0 rod), except in a 'saveRun' where the ball is served to the opponent, so the shooting side is tested and the keeper is checked for covering the mouth
 function strikers(A,d){
  const show=(d.rods&&d.rods.show)||[],t=(d.goal&&d.goal.kind==='saveRun')?1:0;
  return A.rods.filter(r=>r.team===t&&show.includes(t+'|'+r.role)&&(t===1||!d.hold||r.role===d.hold));
@@ -158,9 +137,7 @@ function arm(A,id,seed){
  A.S.seed=(seed===undefined?A.trialById(id).seed:seed)>>>0;
  A.trialArm();
 }
-/* Play a 'saveRun' out to its end, keeping every attempt out or conceding every one. The guard is
-   what keeps a broken mutant a FAILED assertion rather than a hung harness — a mutation that stops
-   attempts settling would otherwise spin here forever instead of reporting itself. */
+// play a 'saveRun' out, keeping every attempt out or conceding every one; the guard keeps a broken mutant a failed assertion rather than a hang
 function drain(A,saved){
  let guard=0;
  while(!A.TRL.done&&guard++<400){
@@ -182,23 +159,16 @@ function suite(A){
   R.ok(!!CONFIG.tables[d.table],'A-table "'+d.id+'" table exists','table='+d.table);
   R.ok(d.goal&&['goals','roleGoals','stat','saveRun'].includes(d.goal.kind),'A-kind "'+d.id+'" objective kind is supported',
    'kind='+(d.goal&&d.goal.kind));
-  /* A 'stat' objective names a MATCH LEDGER counter. A typo there would silently never complete —
-     the trial would just be impossible, with nothing on screen saying why — so the key is checked
-     against a real freshStats() rather than against a hand-kept list that could drift from it. */
+  // a 'stat' objective names a match ledger counter; check it against a real freshStats(), not a hand-kept list
   if(d.goal.kind==='stat'){
    const led=A.freshStats(),arr=led[d.goal.stat];
    R.ok(Array.isArray(arr)&&arr.length===2,'A-stat "'+d.id+'" "'+d.goal.stat+'" is a real per-team ledger counter');
    R.ok(d.goal.n>0,'A-stat "'+d.id+'" needs a positive target');
   }
-  /* A LIVE OPPONENT MUST PIN ITS DIFFICULTY. Without diff, teamDiff falls through to cfg.diffRed/
-     diffBlue — so the trial would play at whatever the player last chose in Kick Off and two
-     players' medal times would not be comparable. */
+  // a live opponent must pin its difficulty, or teamDiff falls through to cfg.diffRed/diffBlue and medal times aren't comparable
   if(d.ai&&d.ai.some(Boolean))
    R.ok(!!d.diff,'A-diff "'+d.id+'" pins a difficulty because it enables an AI');
-  /* Ordered in the trial's OWN direction. A saveRun is scored on SAVES and higher is better, so
-     its block reads downward and gold is the biggest number. Read through trialDir rather than
-     off the kind again, so this check and the runner can never disagree about which way a trial
-     is scored. */
+  // medals are ordered in the trial's own direction (saveRun: higher is better); read through trialDir so check and runner agree
   const m=d.medals||{},up=A.trialDir(d)>0;
   R.ok(up?(m.gold>m.silver&&m.silver>m.bronze):(m.gold<m.silver&&m.silver<m.bronze),
    'A-medal "'+d.id+'" thresholds run in the trial\'s own scoring direction',JSON.stringify(m)+' up='+up);
@@ -210,30 +180,19 @@ function suite(A){
   const SPW=trialSpawns(d);
   for(const s of SPW)
    R.ok(Math.abs(s.x)<F.L/2&&Math.abs(s.z)<F.W/2,'A-ball "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside the walls');
-  /* A TRIAL MUST NOT SPAWN THE BALL INSIDE A VISIBLE FOOT. This is the check the shipped SNAP
-     SHOT failed: at x=25 the ball sat 0.8u inside the resting ATT foot box, so collideRod fired
-     on sim step one — which nudged the ball and (with the old lastTouch clock) started the timer
-     before the player had done anything. Nothing on screen says "your ball is inside a boot";
-     it just reads as the trial being broken. Computed from the live CONFIG so retuning footBox
-     or the rod geometry fails HERE rather than in play. */
+  // a trial must not spawn the ball inside a visible foot (the shipped SNAP SHOT did: collideRod fired on sim step one and started the old lastTouch clock); computed from live CONFIG so retuning fails here
   for(const s of SPW)for(const r of rods){
    if(!(d.rods&&d.rods.show||[]).includes(r.team+'|'+r.role))continue;   // hidden rods can't touch it
    R.ok(footClear(r,s.x,s.z),'A-spawn "'+d.id+'" spawn '+s.x+'/'+s.z+' is clear of the '+r.team+'|'+r.role+' foot box',
     'gap '+footGap(r,s.x,s.z).toFixed(2)+' < BALL_R '+PHY.ballR);
   }
-  /* AND IT MUST BE WITHIN REACH OF A ROD YOU CONTROL. The band that makes a spawn playable is
-     bounded at BOTH ends: too close and it is inside the boot (above), too far and the player
-     simply cannot get a foot to it. CONFIG.ai.inFrontMax (the AI's own forward swing window) is
-     the conservative, config-derived stand-in for a human's reach — so retuning it re-checks
-     every trial rather than leaving a stale literal here. */
+  // ...and it must be within reach of a rod you control: too close is inside the boot, too far can't be reached; CONFIG.ai.inFrontMax is the config-derived stand-in for a human's reach
   for(const s of SPW)
    R.ok(reachOK(A,d,s),'A-reach "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside a striking rod\'s window',
     'rel='+relOf(A,d,s).toFixed(2)+' max='+A.AIC.inFrontMax);
   const show=d.rods&&d.rods.show;
   R.ok(!!show&&show.length>0,'A-rods "'+d.id+'" declares which rods are on the table');
-  /* A 'saveRun' is only playable if the keeper is on the table, something is there to shoot at
-     it, and the run can end. Each of these fails as "I couldn't do it" rather than as an error,
-     which is exactly the class of config bug this section exists for. */
+  // a 'saveRun' is only playable if the keeper is on the table, something can shoot at it, and the run can end
   if(d.goal.kind==='saveRun'){
    R.ok(d.goal.n>0,'A-save "'+d.id+'" needs a positive attempt count');
    R.ok(d.goal.attemptT>0,'A-save "'+d.id+'" declares an attempt failsafe, or a stall hangs the run');
@@ -242,9 +201,7 @@ function suite(A){
     'gold='+(d.medals||{}).gold+' n='+d.goal.n);
    R.ok((show||[]).indexOf('0|GK')>=0,'A-save "'+d.id+'" your keeper is on the table');
    R.ok(!!(d.ai&&d.ai[1]),'A-save "'+d.id+'" the opponent AI is on, or nothing ever shoots');
-   /* AND THE KEEPER MUST BE ABLE TO COVER THE MOUTH, or attempts are lost to geometry rather than
-      to the player. gkSlide (11) against goalHalf (11) means it reaches both posts exactly; this
-      fails loudly if either is ever retuned without the other. */
+   // ...and the keeper must be able to cover the mouth: gkSlide (11) vs goalHalf (11) reaches both posts exactly; fails loudly if either is retuned alone
    R.ok(CONFIG.rods.gkSlide+PHY.footBox.z+PHY.ballR>=F.goalHalf,
     'A-save "'+d.id+'" the keeper can reach both posts',
     'slide '+CONFIG.rods.gkSlide+' + foot '+(PHY.footBox.z+PHY.ballR).toFixed(2)+' vs goalHalf '+F.goalHalf);
@@ -308,12 +265,7 @@ function suite(A){
  S.time=100;A.trialTick();
  R.eq(TRL.run,false,'D1 clock does not run before you play the ball');
  R.eq(TRL.secs,0,'D2 elapsed stays 0');
- /* D3/D4 ARE THE REGRESSION THIS BUG WAS. A trial spawns the ball at the feet, which puts it
-    INSIDE the resting foot's contact radius — so collideRod fires on sim step ONE and sets
-    S.lastTouch. A clock keyed off that starts the moment the trial loads, and the player is
-    scored on however long they spent getting their bearings. It has to key off a SWING
-    (S.stats.kicks, incremented by msKick from kickRod), which a ball merely resting against a
-    boot can never produce. */
+ // D3/D4 are the regression for the clock: a trial spawns the ball at the feet, inside the resting foot's contact radius, so S.lastTouch fires on step one; the clock must key off a swing (S.stats.kicks, via msKick)
  S.lastTouch=0;A.trialTick();
  R.eq(TRL.run,false,'D3 a PASSIVE contact does not start the clock');
  R.eq(TRL.secs,0,'D4 ...and banks no time');
@@ -421,11 +373,8 @@ function suite(A){
   R.ok(!!A.trialObjText(d),'O7 "'+d.id+'" renders an objective line');
  R.ok(!!A.trialObjText(A.dailyBuild('2026-07-04')),'O8 a daily renders one too');
 
- /* ================= Q. the discipline sections =================
-    #trials is browsed by discipline (CONFIG.trials.cats): a tab strip, one section at a time.
-    The section is a FILTER over the one flat list, so the failure mode worth catching is a trial
-    that belongs to no section — it does not error, it simply never appears anywhere in the game,
-    and nothing on screen says a trial is missing. Hence the coverage check runs BOTH ways. */
+ // ================= Q. the discipline sections =================
+ // #trials is browsed by discipline (CONFIG.trials.cats); a section is a filter, so the failure worth catching is a trial in no section (it just never appears); the coverage check runs both ways
  const CATS=A.trialCats();
  R.ok(CATS.length>0,'Q1 the discipline registry is populated');
  const cids={};
@@ -445,9 +394,7 @@ function suite(A){
  R.eq(att.join(','),TRLC.list.filter(d=>d.cat==='ATT').map(d=>d.id).join(','),
   'Q7 a section keeps the list order');
  R.eq(A.trialsIn('nope').length,0,'Q8 an unknown discipline is empty, not everything');
- /* THE FIVE THE PLAYER WAS PROMISED. Named explicitly rather than derived from the registry:
-    the point of the check is that a section cannot quietly go missing, and a loop over whatever
-    happens to be in `cats` could never notice one being deleted. */
+ // the five the player was promised, named explicitly (a loop over `cats` couldn't notice one being deleted)
  for(const id of ['GK','DEF','MID','ATT','TEAM']){
   R.ok(!!cids[id],'Q9 "'+id+'" is one of the sections');
   R.ok(A.trialsIn(id).length>0,'Q10 "'+id+'" has at least one trial');
@@ -471,9 +418,7 @@ function suite(A){
  /* The tab that opens by default must never be an EMPTY section — a player landing on a blank
     panel reads it as the feature being broken rather than as one discipline being unwritten. */
  R.ok(A.trialsIn(A.trialCatDefault()).length>0,'Q18 the default tab has trials in it');
- /* Proved against a section that IS empty rather than against the shipped catalogue — today the
-    first tab happens to have trials in it, so shipped data alone would pass this even if the
-    skipping were deleted. An unwritten discipline is exactly the case this guards. */
+ // proved against a section that is empty, not the shipped catalogue (the first tab has trials, so shipped data alone would pass even if the skipping were deleted)
  TRLC.cats.unshift({id:'ZZZ',name:'UNWRITTEN',sub:'nothing here'});
  R.eq(A.trialCatDefault(),'GK','Q18b an empty leading section is skipped');
  R.eq(A.trialsIn('ZZZ').length,0,'Q18c ...because it really is empty');
@@ -514,9 +459,7 @@ function suite(A){
   R.eq(d.limit,src.limit,'P12 '+d.from+' limit not rolled');
   R.eq(JSON.stringify(d.medals),JSON.stringify(src.medals),'P13 '+d.from+' medals not rolled');
  }
- /* EVERY ROLLABLE SPAWN MUST BE PLAYABLE. Sampling the corners is not enough — the band is
-    validated across its whole area, because a daily that lands on an unplayable spot is a day
-    the player simply cannot win, with nothing on screen saying why. */
+ // every rollable spawn must be playable: the whole band is validated, not the corners (an unplayable daily is a day the player can't win)
  for(const t of TRLC.daily.templates){
   const src=A.trialById(t.from);
   R.ok(!!src,'P14 template "'+t.from+'" names a real trial');
@@ -563,11 +506,7 @@ function suite(A){
  R.eq(A.dailyStreak('2026-05-15'),1,'P31 ...and the day after, so it can still be continued');
  R.eq(A.dailyStreak('2026-05-16'),0,'P32 ...but reads 0 once it can no longer be continued');
  R.eq(A.dailyDone('2026-05-16'),false,'P34 a new day is not done');
- /* END TO END, because P20-P33 exercise dailyRecord directly and would pass even if the runner
-    never called it: a daily completion has to land in cfg.daily and NOT in the per-trial best
-    map, whose 'daily' key would otherwise be one "best" overwritten by whichever day was easiest.
-    Finished through trialFinish rather than by satisfying the objective, because which template
-    a given date rolls (goals / roleGoals / stat) is not the thing under test here. */
+ // end to end: a daily completion must land in cfg.daily and not the per-trial best map; finished through trialFinish rather than the objective, since the rolled template isn't under test
  cfg.daily=null;cfg.trials=null;
  const dsp=A.dailyBuild('2026-06-01');
  TRL.pending=dsp;S.seed=dsp.seed;A.trialArm();
@@ -587,10 +526,7 @@ function suite(A){
  S.stats.woodwork[0]=2;S.time=5;A.trialTick();
  R.eq(TRL.done,false,'M3 2 of 3 does not complete');
  R.eq(TRL.statN,2,'M4 progress tracks the ledger counter');
- // SCORING MUST NOT COMPLETE A STAT TRIAL — in a woodwork trial a goal is just how you get the
- // ball back for another attempt.
- // enough goals to reach the target IF the code wrongly counted them — otherwise this passes
- // against a broken build and the assertion is decoration
+ // scoring must not complete a stat trial (a goal is just how you get the ball back); enough goals to reach the target if wrongly counted, so it fails against a broken build
  A.trialGoal(0,{mss:{role:'ATT'}});A.trialGoal(0,{mss:{role:'ATT'}});A.trialGoal(0,{mss:{role:'ATT'}});
  R.eq(TRL.goals,3,'M5 the goals were counted');
  R.eq(TRL.done,false,'M6 goals do not complete a stat trial, however many');
@@ -607,12 +543,8 @@ function suite(A){
  R.eq(TRL.done,true,'M11 the limit still applies');
  R.eq(TRL.ok,false,'M12 ...as a failure');
 
- /* ================= SR. the 'saveRun' objective (the GK kind) =================
-    The behaviour the score rests on, in the order it happens: the beat before the FIRST ball,
-    the authored spawn list walking forward, a save settling the attempt, a rebound NOT banking a
-    second one, a concede settling it for nothing, the attemptT failsafe, and the run ending on
-    attempts rather than on a clock — then the record, which is a SAVE COUNT and is beaten by a
-    BIGGER number. */
+ // ================= SR. the 'saveRun' objective (the GK kind) =================
+ // in order: the beat before the first ball, the spawn list walking forward, a save settling the attempt, a rebound not banking a second, a concede settling it for nothing, the attemptT failsafe, the run ending on attempts, then the record (a save count, beaten by a bigger number)
  const SRG=A.trialById('lastline').goal;
  S.time=0;cfg.trials={};
  arm(A,'lastline');
@@ -675,9 +607,7 @@ function suite(A){
  S.time=0;arm(A,'lastline');drain(A,false);
  R.eq(best(cfg,'lastline'),SRG.n,'SR34 a WORSE score does not overwrite it');
  R.eq(TRL.pb,false,'SR35 ...and is not flagged');
- /* A 0-SAVE RUN IS AN HONEST RECORD, not the untimed-run hole. The clock guard that refuses a
-    0.00s gold cannot apply here: a saveRun completes only by playing out its attempts, so a
-    keeper who stood still finishes on 0 and the next attempt beats it. */
+ // a 0-save run is an honest record, not the untimed-run hole (a saveRun completes only by playing out its attempts)
  cfg.trials={};
  S.time=0;arm(A,'lastline');drain(A,false);
  R.eq(TRL.saves,0,'SR36 standing still saves nothing');
@@ -752,9 +682,7 @@ function suite(A){
 }
 /* ---- main ---- */
 const A=boot();API=A;
-/* SELF-TEST on the geometry above, because a check that cannot fail is worse than no check: the
-   spawn that shipped (x=25, dead in front of the ATT rod's middle man) MUST read as in contact,
-   and the one that replaced it MUST read as clear. */
+// self-test on the geometry above: the shipped spawn (x=25, dead in front of the ATT rod's middle man) must read as in contact and its replacement as clear
 {
  const att=A.rods.find(r=>r.team===0&&r.role==='ATT');
  const bad=footGap(att,25,0),good=footGap(att,26.5,0),lim=A.PHY.ballR*A.PHY.footBoxReach;
@@ -767,9 +695,7 @@ console.log('trials-harness: '+R.pass+' passed, '+R.failed.length+' failed');
 R.failed.forEach(f=>console.log('  FAIL  '+f));
 
 const MUTANTS=[
- /* THE SECTION IS A FILTER. A section that ignores `cat` shows the whole catalogue under every
-    tab — which looks like it works, and is the exact bug this file exists to catch: nothing
-    errors, the screen just stops meaning anything. */
+ // the section is a filter: a section that ignores `cat` shows the whole catalogue under every tab
  ['every discipline lists every trial',
   s=>s.replace("for(const d of TRLC.list)if(d.cat===cat)out.push(d);","for(const d of TRLC.list)out.push(d);")],
  // ...and the mirror: a filter that matches nothing empties every section instead.
@@ -847,9 +773,7 @@ const MUTANTS=[
  ['the next ball is served the instant the attempt settles',
   s=>s.replace('TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();\n trialHudSync();',
                'TRL.serving=true;TRL.serveAt=S.time;\n trialHudSync();')]
- // NOT mutated, deliberately: trialFinish's own `if(TRL.done)return;`. Both callers already gate
- // on TRL.done, so that guard is defence-in-depth and unreachable — a mutation of it changes
- // nothing observable, which would look like a harness gap rather than the no-op it is.
+ // not mutated: trialFinish's own `if(TRL.done)return;` (both callers gate on TRL.done, so it's unreachable and a mutation changes nothing observable)
 ];
 console.log('\nmutation checks (each must FAIL something):');
 let teeth=0;

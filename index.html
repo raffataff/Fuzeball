@@ -37,8 +37,7 @@
   <div id="introSkip">Press any key to skip</div>
 </div>
 
-<!-- HOME: the Federation's broadcast opening. A menu down the left, the live table on the right.
-     The mode plates are .modeCard so padnav, the intro reveal and the home hooks all find them. -->
+<!-- HOME: a menu down the left, the live table on the right; the mode plates are .modeCard (padnav, intro and home hooks find them) -->
 <div id="home" class="screen introHide">
   <div class="homeCol">
     <img class="logo" src="assets/fuzeball_render_tc_cycles_2K.png" alt="FUZEBALL">
@@ -53,7 +52,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.36</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.37</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -297,9 +296,7 @@
   </div>
 </div>
 
-<!-- LEAGUE LOBBY: three tabs, a few panels each (ui-scale). Season holds everything about the NEXT
-     match; Squad the upgrades; Club the save's rules and its history. The layout-editor key 'league'
-     stays on Season, so arrangements saved before the tabs still apply there. -->
+<!-- LEAGUE LOBBY: three tabs: Season (the next match), Squad (upgrades), Club (rules and history); layout key 'league' stays on Season -->
 <div id="league" class="screen hidden">
   <button id="lgBack" class="optGear backBtn" title="Main menu">&#9664;</button>
   <button id="lgReset" class="optGear resetBtn" title="Reset league">&#10226;</button>
@@ -384,8 +381,7 @@
   </div>
 </div>
 
-<!-- OPTIONS: centred boxed panels like every other menu. Four tabs: Display, Audio, then one per
-     input device. Every control is found by id in js/options.js, so the grouping is free to move. -->
+<!-- OPTIONS: centred boxed panels, four tabs (Display, Audio, one per input device); js/options.js finds every control by id -->
 <div id="options" class="screen hidden">
   <button id="optDone" class="optGear backBtn" title="Done">&#9664;</button>
   <button id="optReset" class="optGear resetBtn" title="Reset to defaults">&#10226;</button>
@@ -417,7 +413,8 @@
         <div class="row"><label>Wall marks</label><input type="checkbox" id="optMarks"></div>
         <div class="row"><label>Rod stamina rings</label><input type="checkbox" id="optRodHoles"></div>
         <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
-        <div class="optHint">Cosmetic only. Turn them off if the frame rate drops.</div>
+        <div class="row"><label>Pin shot hint</label><input type="checkbox" id="optPinHint"></div>
+        <div class="optHint">Cosmetic only. Turn them off if the frame rate drops. The pin shot hint is the key prompt shown while you hold a pinned ball; the ring under the ball stays.</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
@@ -570,8 +567,7 @@
   </div>
 </div>
 
-<!-- Generic in-game confirm (js/ui.js uiConfirm). Stands in for the browser's confirm(), which a
-     controller can't answer and which looks like a web page inside a game. -->
+<!-- Generic in-game confirm (js/ui.js uiConfirm), in place of the browser confirm() -->
 <div id="uiConfirm" class="screen hidden">
   <h2 id="uiConfirmTitle"></h2>
   <div id="uiConfirmMsg"></div>

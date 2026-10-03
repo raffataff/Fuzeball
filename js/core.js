@@ -2,13 +2,8 @@
 /* ================= FUZEBALL — global helpers ================= */
 const $=i=>document.getElementById(i);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
-/* ---- inline icon set --------------------------------------------------------
-   Shared SVG marks for the menus, replacing the OS colour emoji this UI used to lean on
-   (🔴 🤖 🏆 🎯 ⚙ 📷 🎲 🔒 🏃). Colour emoji render differently on every platform, ignore the
-   palette, can't be tinted, and are the loudest generated-UI tell there is. These draw on
-   `currentColor`, so a card tints its mark by setting `color`, and they're SIZED BY CSS
-   (`.ico svg{width:…}`) rather than by a font-size on a glyph.
-   Lives in core.js so every later file can reach it; only ever used at runtime. */
+// ---- inline icon set ----
+// shared SVG marks for the menus (replacing OS colour emoji); they draw on `currentColor` and are sized by CSS (`.ico svg{width:...}`)
 const ICO={
  // a foosball rod: bar, three hangers, three men. The play cards' mark.
  rod:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 5.5h21" stroke-linecap="round"/><path d="M6 5.5v3M12 5.5v3M18 5.5v3"/><rect x="4" y="8.5" width="4" height="9" rx="1"/><rect x="10" y="8.5" width="4" height="9" rx="1"/><rect x="16" y="8.5" width="4" height="9" rx="1"/></svg>',
@@ -21,15 +16,8 @@ const ICO={
  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>'
 };
 const ico=(k,cls)=>'<span class="ico'+(cls?' '+cls:'')+'">'+(ICO[k]||'')+'</span>';
-/* ---- figurine portrait ------------------------------------------------------
-   Attaches a model's mugshot (CONFIG.playerModel.models[].mug) to `host`, over the top of
-   whatever fallback mark is already in there. The roster is being illustrated incrementally, so
-   this is built around the render NOT existing yet:
-     • no `mug` field, or the file 404s  → the <img> is dropped and the fallback shows through,
-     • the image decodes                → `onCls` goes on the host and the portrait takes over.
-   Adding the class on LOAD rather than up-front means no flash of a broken/empty portrait frame
-   and no layout jump on a miss — the card simply stays in its icon state.
-   Returns the <img> (or null) so a caller can hold on to it. */
+// ---- figurine portrait ----
+// attaches a model's mugshot (CONFIG.playerModel.models[].mug) to `host` over the fallback mark; with no `mug` or a 404 the <img> is dropped, once it decodes `onCls` goes on the host; returns the <img> (or null)
 function mugImg(m,host,cls,onCls){
  if(!m||!m.mug||!host)return null;
  const im=document.createElement('img');

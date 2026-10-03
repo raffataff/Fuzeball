@@ -1,14 +1,6 @@
-/* Behavioural harness for BAKED-ENV RESIDENCY (js/world.js setRoomEnv / touchEnv / pruneEnvs,
-   js/models.js disposeRoom). No three.js, no browser: the functions are string-sliced out of the
-   real sources and rebuilt with new Function against counting stubs, so what is tested is the
-   code that ships.
-
-   The thing under test is a TRADE, not a feature: a room GLB is 20-45MB and its PMREM bake is
-   ~6MB, and disposeRoom used to free both — so the assertions are mostly about what must NOT
-   happen (a second bake, a synthetic flash on re-entry, an unbounded cache, a tex.dispose on a
-   render target).
-
-   Run: node tools/roomenv-harness.js                                                          */
+// behavioural harness for BAKED-ENV RESIDENCY (js/world.js setRoomEnv / touchEnv / pruneEnvs, js/models.js disposeRoom). Run: node tools/roomenv-harness.js
+// no three.js or browser: the functions are string-sliced from the real sources and rebuilt with new Function against counting stubs
+// the thing under test is a trade (a room GLB is 20-45MB, its PMREM bake ~6MB, and disposeRoom used to free both), so most assertions are about what must not happen: a second bake, a synthetic flash on re-entry, an unbounded cache, a tex.dispose on a render target
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -190,9 +182,7 @@ const ok=(c,m,x)=>{if(c)pass++;else{fail++;fails.push(m+(x===undefined?'':'  ['+
             console:{log(){},warn(){}},matchMedia:()=>({matches:false}),addEventListener(){}};
  ctx.globalThis=ctx;ctx.self=ctx;
  let CONFIG=null,cfgErr='';
- // core.js first: config.js reads its helpers (clamp) at load time. Same chain trials-harness uses.
- // `const CONFIG` is a LEXICAL binding, so it never lands on the context object — read the
- // script's completion value instead of ctx.CONFIG.
+ // core.js first (config.js reads clamp at load); `const CONFIG` is lexical, so read the script's completion value instead of ctx.CONFIG
  try{vm.createContext(ctx);
      CONFIG=vm.runInContext(rd('js/core.js')+'\n'+rd('js/config.js')+'\nCONFIG;',ctx,{timeout:5000});
     }catch(e){cfgErr=e.message;}
@@ -205,10 +195,7 @@ const ok=(c,m,x)=>{if(c)pass++;else{fail++;fails.push(m+(x===undefined?'':'  ['+
   ok(CONFIG.tableAssets.cacheRooms===1,
      'config: cacheRooms stays at 1 — a second resident room is ~337MB of texture, not ~20MB',
      'cacheRooms '+CONFIG.tableAssets.cacheRooms);
-  /* ONE REAL VISIT, which is where the two-entries-per-room comes from: applyRoom calls
-     setRoomEnv once with the GLB still downloading (synthetic stand-in) and ensureRoom's callback
-     calls it again once it lands (real bake). Then leaving the room evicts the GLB. Modelling only
-     the second call is what made an undersized cap look fine in review. */
+  // one real visit is where two entries per room come from: applyRoom calls setRoomEnv once with the GLB downloading (synthetic stand-in) and again when it lands (real bake), then leaving evicts the GLB; modelling only the second call let an undersized cap look fine
   const visit=(w,id)=>{const rm=w.def(id);
    w.api.setRoomEnv(id,rm);          // applyRoom, GLB in flight  -> syn:id
    w.land(id);w.api.setRoomEnv(id,rm);// ensureRoom cb            -> glb:id

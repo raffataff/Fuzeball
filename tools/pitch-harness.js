@@ -1,11 +1,6 @@
-/* Behavioural harness for PITCH RESIDENCY (js/models.js ensurePitch/disposePitch/prunePitches,
-   js/world.js drawField) plus a static check that CONFIG.pitches actually points at files.
-
-   The interesting failure here is not a crash — it is a pitch that quietly falls back to its JPEG
-   and looks nearly right, which is exactly what `champions_purple` and `pub_classic` did for
-   months. So most of these assertions are about the FALLBACK not being taken.
-
-   Run: node tools/pitch-harness.js                                                             */
+// behavioural harness for PITCH RESIDENCY (js/models.js ensurePitch/disposePitch/prunePitches, js/world.js drawField) plus a static check that CONFIG.pitches points at files
+// the failure to catch is a pitch quietly falling back to its JPEG (champions_purple and pub_classic did for months), so most assertions are about the fallback not being taken
+// Run: node tools/pitch-harness.js
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
@@ -35,11 +30,7 @@ function build(over){
  ].join('\n');
  const st={loads:[],disposed:[],fail:new Set((over&&over.fail)||[])};
  const pending=[];
- // a GLTFLoader that never resolves until the test says so — residency is all about WHEN
- // The stub scene needs traverse() and visible: ensurePitch walks it to fix texture ENCODINGS
- // (sRGB for colour, linear for data) and that walk is inside a try/catch — a scene without
- // traverse throws, the catch swallows it, and the pitch is silently never registered. Which is
- // exactly the shape of bug this harness exists to catch, so the stub has to be honest.
+ // a GLTFLoader that never resolves until the test says so (residency is about when); the stub scene needs traverse() and visible, or ensurePitch's try/catch swallows the throw and the pitch is silently never registered
  const mkScene=url=>{const s={children:[1],name:url,__id:url,visible:true,parent:null,
    traverse(f){f(s);}, isMesh:false};return s;};
  const newGLTF=()=>({load(url,onLoad,_p,onErr){st.loads.push(url.split('/').pop());
@@ -144,10 +135,7 @@ function build(over){
  if(CONFIG&&CONFIG.pitches){
   const ids=Object.keys(CONFIG.pitches);
   const files=ids.map(id=>CONFIG.pitches[id].glb).filter(Boolean);
-  /* THE REGRESSION THAT STARTED THIS. `glb` used to be a MESH NAME in a shared atlas, and
-     ballKey() collapsed `x.001` onto `x` — so champions_purple and pub_classic pointed at meshes
-     that no longer had a distinct key and fell through to their JPEGs, silently, for months. One
-     file each makes that impossible; this assertion is what keeps it impossible. */
+  // the regression that started this: `glb` was a mesh name in a shared atlas and ballKey() collapsed `x.001` onto `x`, so two pitches fell through to JPEGs; one file each makes that impossible
   ok(new Set(files).size===files.length,
      'config: every pitch has its OWN glb — two sharing one is how champions_purple and pub_classic '+
      'silently fell back to JPEGs',JSON.stringify(files.filter((f,i)=>files.indexOf(f)!==i)));

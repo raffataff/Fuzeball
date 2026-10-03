@@ -16,34 +16,23 @@ function makeBall(key){
     m=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,24,16),
      new THREE.MeshStandardMaterial({color:t.col,emissive:t.em,emissiveIntensity:t.em?0.7:0,
       roughness:t.metal?.25:.4,metalness:t.metal||.05}));
-    m.castShadow=true;scene.add(m);owned=true; // fallback sphere owns its geo/mat (GLB clones share the cache — never dispose those)
+    m.castShadow=true;scene.add(m);owned=true; // fallback sphere owns its geo/mat (GLB clones share the cache, never dispose those)
   }
-  // prev/cur = the true sim position one fixed-step ago / now. The renderer draws
-  // m.position lerped between them (see loop); physics only ever writes 'cur'.
-  // cT = last-contact sim time per surface [floor/roof, wall, ball] for the audio impact gate
-  // (physics.js hitFresh). A one-shot only fires on a surface that was clear for PHY.contactHold;
-  // sustained contact becomes a roll instead. -1e9 = "never touched" — NOT 0, which would read as
-  // "touched at kick-off" and swallow the first contact of the session (S.time also starts at 0).
+  // prev/cur = the true sim position one fixed step ago / now (the renderer lerps m.position between them, physics writes 'cur')
+  // cT = last-contact sim time per surface [floor/roof, wall, ball] for the audio gate (physics.js hitFresh); -1e9 = never touched (0 would swallow the first contact)
   const b={m,owned,v:new THREE.Vector3(),t,key,scored:false,didSplit:false,trailT:0,light:null,spin:0,stuckT:0,graceT:0,knuckT:0,overBar:0,noGoal:0,outWall:0,cT:[-1e9,-1e9,-1e9],
    cannonTimer:key==='cannon'?CONFIG.cannonball.timer:-1,
    warnShell:null,warnLight:null,
    prev:new THREE.Vector3(),cur:new THREE.Vector3(),
-   // moments (js/moments.js): live on-target projection, a pending save verdict, the last
-   // contact + last SWING records, and the woodwork/save latches. momReset clears the lot.
+   // moments (js/moments.js): on-target projection, pending save verdict, last contact and last swing, woodwork/save latches; momReset clears them
    onT:null,savePend:null,tc:null,shot:null,wood:0,woodCd:0,saveCd:0,curl:0,
-   // match stats (js/matchstats.js): its OWN last-contact / last-SWING records, kept separate from
-   // tc/shot above so the ledger doesn't inherit moments' momOn() gate. msReset clears them.
+   // match stats (js/matchstats.js): its own last-contact / last-swing records, separate from tc/shot; msReset clears them
    msc:null,mss:null};
-  // Glow lights (fire/knuckle) BORROW from the resident fx light pool (world.js) rather than
-  // scene.add-ing a fresh light — a new light would change the scene's light count and force a
-  // whole-scene shader recompile (the hitch on "a different ball type is served"). b.light may be
-  // null if the pool is exhausted; every reader is already null-guarded. Constant 1.1 intensity.
+  // glow lights (fire/knuckle) borrow from the resident fx light pool (world.js): a new light would change the count and recompile; b.light is null if the pool is exhausted
   if(t.light){b.light=fxLightGet(t.light,34);if(b.light)b.light.intensity=1.1;}
-  applyBallEnv(b);   // local cube-map reflection envMap (no-op when cfg.reflections off) — set at birth so the null→tex shader recompile is here, not mid-rally
+  applyBallEnv(b);   // local cube-map reflection envMap (no-op when cfg.reflections is off), set at birth so the shader recompile isn't mid-rally
   if(key==='cannon'){
-   // per-instance outline shell (own geo/mat — never shared with other ball
-   // instances, unlike the GLB clone's base material) that pulses red as the
-   // fuse burns down, plus a matching point light for a bit of scene bleed.
+   // per-instance outline shell (own geo/mat) that pulses red as the fuse burns down, plus a point light
    const shellGeo=new THREE.SphereGeometry(BALL_R*CONFIG.cannonball.warnShellScale,20,14);
    const shellMat=new THREE.MeshBasicMaterial({color:CONFIG.cannonball.warnColor,transparent:true,
     opacity:0,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false});
@@ -53,16 +42,9 @@ function makeBall(key){
   }
   S.balls.push(b);return b;
 }
-// call after ANY hard set of m.position outside physics (serve, redrop, split, NaN redrop):
-// snaps the interp buffers to the mesh so the ball appears at the new spot without streaking there.
+// call after any hard set of m.position outside physics (serve, redrop, split, NaN redrop): snaps the interp buffers so it doesn't streak
 function syncBall(b){b.overBar=0;b.noGoal=0;b.over=0;b.cur.copy(b.m.position);b.prev.copy(b.m.position);if(b.light)b.light.position.copy(b.m.position);primeBallHist(b);momReset(b);msReset(b);}
-// Per-frame visual warning for a live cannonball: while the detonation timer is
-// inside the warn window, pulse the ball's outline shell + a bleed light red,
-// snapping to a sharp flash right on each countdown beep and decaying until the
-// next one. Driven from the render loop (uses wall-clock S.time, not the fixed
-// sim step, so the pulse is smooth regardless of frame rate). Only touches the
-// ball's own per-instance shell/light — never the shared base ball material —
-// so nothing lingers once the ball is gone.
+// per-frame cannonball warning: inside the warn window the outline shell and a bleed light pulse red, snapping on each countdown beep; wall-clock S.time, own shell/light only
 function cannonballWarn(b){
   if(!b.warnShell)return;                      // non-cannon balls carry no shell at all
   if(b.cannonTimer<0||b.cannonTimer>CONFIG.cannonball.warn){
@@ -82,47 +64,31 @@ function cannonballWarn(b){
     b.warnLight.intensity=(0.3+CB.warnLightMax*k)*flash+0.2*k;
    }
 }
-/* ================= ball heat =================
-   A ball glows red as it closes on its own top speed — the maxV of its ball type, which physics
-   already clamps it to — so a screamer reads as one at a glance. Knobs in CONFIG.fx.heat.
-   Render-side only: this is called from the interpolation pass in main.js and never writes the sim.
-
-   Every GLB ball of one type SHARES its material (the model is clone()d, and a clone shares
-   materials), so a type is written ONCE per frame, at whichever of its balls is hottest. That is
-   what stops two split balls fighting over one material, and it means the glow can never claim a
-   speed nothing actually reached. Trails are per-sprite, so they stay honest to the ball that
-   spawned them (b.hot, read in fx.js spawnTrail).
-
-   Feed every ball on screen between heatOpen() and heatClose() — live balls from the main loop,
-   replay ghosts from replay.js, which share those same materials. */
+// ================= ball heat =================
+// a ball glows red as it nears its type's maxV (knobs in CONFIG.fx.heat); render-side only, from main.js's interpolation pass
+// balls of one GLB type share a material, so a type is written once a frame at its hottest ball; trails are per-sprite (b.hot, fx.js spawnTrail)
+// feed every ball on screen between heatOpen() and heatClose() (live balls and replay ghosts)
 const _heatCol=new THREE.Color();          // scratch, reused; never held between calls
 const _heatFeed=[];let _heatN=0;const _heatPeak={};
 function ballHeatColor(){return _heatCol.setHex(CONFIG.fx.heat.col);}
 function heatOpen(){_heatN=0;for(const k in _heatPeak)_heatPeak[k]=0;}
-// obj = the mesh actually on screen, key = ball type, sp = its speed, owner = whatever carries
-// .hot for the trail (the ball itself live, the ghost's shim in a replay). Pooled slots, no alloc.
+// obj = the mesh on screen, key = ball type, sp = speed, owner = whatever carries .hot for the trail (the ball, or a replay ghost's shim); pooled, no alloc
 function heatFeed(obj,key,sp,owner){
  const H=CONFIG.fx.heat,mv=BALL_TYPES[key]?BALL_TYPES[key].maxV:0;
  const k=(H&&H.on&&mv>0)?clamp((sp/mv-H.from)/Math.max(1e-4,H.full-H.from),0,1):0;
  if(owner)owner.hot=k;
  const s=_heatFeed[_heatN]||(_heatFeed[_heatN]={});
  s.obj=obj;s.key=key;_heatN++;
- _heatPeak[key]=Math.max(k,_heatPeak[key]||0);   // Math.max, not a >, so the key always EXISTS: heatClose would otherwise hand ballHeatSet an undefined for a type whose every ball is cold
+ _heatPeak[key]=Math.max(k,_heatPeak[key]||0);   // Math.max, not a >, so the key always exists (heatClose would hand ballHeatSet an undefined)
 }
 function heatClose(){for(let i=0;i<_heatN;i++)ballHeatSet(_heatFeed[i].obj,_heatPeak[_heatFeed[i].key]);}
-// Drop the stash: call this whenever a material has been RE-AUTHORED under the heat system (the
-// replay's fallback spheres are recoloured per ball type), so the next cool-down restores what the
-// material looks like now rather than what it looked like two ball types ago.
+// drop the stash when a material is re-authored under the heat system (replay's fallback spheres are recoloured per type)
 function ballHeatForget(obj){
  obj.traverse(o=>{if(!o.isMesh)return;
   const ms=Array.isArray(o.material)?o.material:[o.material];
   for(const m of ms){if(!m)continue;delete m.userData.heatEm;m.userData.heatOn=false;}});
 }
-/* Write heat k (0..1) onto every lit material under obj. The authored emissive/colour are stashed
-   on the material the first time it heats and put straight back at k=0 — same stash-and-restore
-   shape as setBallEnv's envMapIntensity in world.js, and the reason this is safe to call on a ball
-   that is about to be thrown away. Colours and intensities are uniforms, not shader switches, so
-   none of this recompiles anything. */
+// write heat k (0..1) onto every lit material under obj; the authored emissive/colour are stashed on first heat and restored at k=0; uniforms only, no recompile
 function ballHeatSet(obj,k){
  const H=CONFIG.fx.heat;
  const hot=ballHeatColor();
@@ -146,12 +112,11 @@ function ballHeatSet(obj,k){
   }
  });
 }
-function removeBall(b){ballHeatSet(b.m,0);   // hand the shared material back cold, or the next ball of this type (and the goal replay, which clones the same materials) opens red
+function removeBall(b){ballHeatSet(b.m,0);   // hand the shared material back cold, or the next ball of this type (and the goal replay) opens red
  scene.remove(b.m);if(b.light)fxLightPut(b.light);   // release the pooled glow (NOT scene.remove — that would change the light count)
  if(b.warnLight)fxLightPut(b.warnLight);
  if(b.warnShell){b.warnShell.geometry.dispose();b.warnShell.material.dispose();}
- // only the generated-sphere fallback owns its geo/mat; GLB-clone balls share the cached
- // template resources, so disposing them would break every future ball of that type.
+ // only the generated-sphere fallback owns its geo/mat; GLB-clone balls share the cached template
  if(b.owned)b.m.traverse(c=>{if(c.isMesh){c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();}});
  const i=S.balls.indexOf(b);if(i>=0)S.balls.splice(i,1);}
 function clearBalls(){while(S.balls.length)removeBall(S.balls[0]);}
@@ -167,12 +132,8 @@ function serve(){
  replayCut();   // fresh rally = fresh footage (a replay must never show the drop-in teleport)
  const key=pickType();
  const b=makeBall(key);
- // A KICKOFF (match start, after a goal) drops centre, as it always has. A RESTART after the ball
- // left play — out of bounds, or a cannonball detonating — instead comes back in the third it ended
- // in, via the same zone table the dead-ball re-drop uses. Without it, clearing the ball off the
- // table from your own corner is the dead-ball exploit by another route, and the better one: no
- // whistle to wait out. S.serveAt is set by outOfBounds/cannonballUpdate and CONSUMED here, so a
- // restart can't leak into the next kickoff.
+ // a kickoff drops centre; a restart after the ball left play (out of bounds, a cannonball) comes back in the third it ended in via the dead-ball zone table, or clearing from your corner would be the dead-ball exploit
+ // S.serveAt is set by outOfBounds/cannonballUpdate and consumed here
  const sz=(typeof S.serveAt==='number')?redropZone(S.serveAt):null;S.serveAt=null;
  const SR=RNG.serve;   // seeded (js/rng.js): the drop is the FIRST thing a trial has to reproduce
  b.m.position.set(sz?sz.x+rngR(SR,-sz.spread,sz.spread):rngR(SR,-SRV.spread,SRV.spread),SRV.dropY,rngR(SR,-SRV.zSpread,SRV.zSpread));
@@ -181,8 +142,7 @@ function serve(){
   Au.drop(b);   // the ball fed in and rattling onto the pitch (recorded only)
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
- // tier 2: the ball drops in front of you — the old 'SPECIAL BALL DROPPING' subtitle under a
- // 66px centre banner narrated something already on screen, and blocked the table while doing it.
+ // tier 2: the ball drops in front of you (the old subtitle under a centre banner blocked the table)
   if(key!=='classic')notice(BALL_TYPES[key].name,1.5,BALL_TYPES[key].trail);
   S.phase='play';S.lastTouch=-1;
  msRallyReset();   // matchstats.js: a serve starts a new rally (the longest-rally clock)
@@ -223,9 +183,7 @@ function cannonballUpdate(dt){
     }
     if(!S.balls.length&&S.phase==='play'){
      if(S.trn){trainingBallGone();}      // training sandbox: respawn at the last spot, never enter the goal-hold
-     // Restart in the third it blew up in, same rule as an out-of-play (S.serveAt → serve()). Sitting
-     // on a cannonball in your own corner until the fuse runs out would otherwise be the dead-ball
-     // exploit with a timer attached: hold it, lose nothing, get a centre drop.
+     // restart in the third it blew up in, like an out-of-play (S.serveAt > serve()); else sitting on a cannonball is the dead-ball exploit with a timer
      else{S.serveAt=bp.x;resetRodRotation();notice('BALL DESTROYED',1.2,'#ff8c3a');S.phase='goal';S.goalT=MATCH.outHold;}
     }
     break;

@@ -1,36 +1,10 @@
 'use strict';
-/* ================= HUD =================
-   The in-match chrome is ONE Canvas2D layer (<canvas id="hud">) drawn over the WebGL scene once per
-   frame by hudRender(), which main.js calls after renderer.render. It replaced a stack of DOM nodes
-   (#sb, #matchTime, the fx rails, #chips, #notice, #banner, #toast, #count, #hint, #replayUI and the
-   dev readouts), and those nodes are GONE — not hidden — so nothing can write to a copy nobody sees.
-
-   THE CANVAS NEVER TAKES POINTER EVENTS. input.js, photo.js and roomedit.js all listen on the GAME
-   canvas underneath, so a full-screen layer with pointer-events on sits between the player and every
-   mouse control in the game (the first cut of this did exactly that: no mouse slide, no click-kick,
-   no photo drag). The rod chips are hit-tested from a window CAPTURE listener instead, which only
-   swallows a click that actually lands on a chip, and only when the click was aimed at the table.
-
-   POLLED, NOT PUSHED. Score, clock, sudden death, power-up expiry, trial/training state and the seat
-   list are read off S every frame. The only writes into here are EVENTS — banner / notice / toast, a
-   count value, a hint, replay on/off, a score change to animate, dev readouts. A mirrored copy of
-   state is a second copy that can disagree, and the first cut had four of them (one of which was
-   the team colours, hardcoded, so no custom kit or league side ever reached the scoreboard).
-
-   The rules that kept the DOM HUD from looking generated, still in force (CLAUDE.md 2026-07-25):
-   angled slabs, not rounded glass; hard offset shadows and NEVER shadowBlur (it is also the one
-   canvas op that costs real CPU per draw); motion on enter / exit / change only — no idle sine
-   pulses; colour belongs to whoever the thing concerns. The face is --font-ui (SoccerLeague, a
-   varsity slab that ships ONE weight): no weight in any ctx.font here, or the browser smears a
-   synthetic bold exactly as it did in CSS. Numbers are set in FIXED CELLS — the face is
-   proportional, and a clock whose 1s are narrower than its 0s shuffles sideways every second.
-
-   Palette (2026-09-25): the menus' Federation tokens (css/styles.css :root, DIRECTION.md §3), written as
-   literals here because canvas can't read var() per draw. Steel-blue greys, gold #f0b24a for focus and
-   trophies, warnings #ef6a4a. Change a colour there and here together.
-
-   Draw order, back to front: board (score + beads + clock) · power-up tabs · rod chips · controls
-   hint · dev readouts · replay letterbox · notice · banner · countdown · toasts. */
+// ================= HUD =================
+// one Canvas2D layer (<canvas id="hud">) drawn by hudRender() each frame after renderer.render; it never takes pointer events (chips are hit-tested from a window capture listener)
+// polled, not pushed: score, clock, power-ups, trial/training state and seats are read off S; only events are pushed in (banner / notice / toast, a count, a hint, replay on/off, a score change, dev readouts)
+// style: angled slabs, hard offset shadows (never shadowBlur), motion on enter/exit/change only, --font-ui with no weight in ctx.font, numbers in fixed cells
+// palette: the menus' Federation tokens (css/styles.css :root, DIRECTION.md section 3) as literals; change a colour there and here together
+// draw order, back to front: board, power-up tabs, rod chips, hint, dev readouts, replay letterbox, notice, banner, countdown, toasts
 const HUD={
  c:null,x:null,g:null,dpr:0,W:0,H:0,u:1,ls:false,fam:'sans-serif',famI:'sans-serif',
  mono:'ui-monospace,Consolas,"Cascadia Mono",monospace',
@@ -40,10 +14,11 @@ const HUD={
  tabs:null,ord:null,
  chips:[],chipSig:NaN,chipU:0,chipY:0,chipK:0,hov:-1,hl:new Map(),cur:false,hp:null,
  hint:null,hintP:null,hintUse:null,hintT:-9,skipP:null,
+ pin:{a:0,on:false,t:-9,s:null,tok:null,tokP:null},
  rep:{on:false,t:-99,team:0,save:'off',tok:null,tokP:null},
  dev:Object.create(null)
 };
-/* The icons are the old FX_ICO marks verbatim — same 24-unit viewBox — just parsed by Path2D. */
+// the icons are the old FX_ICO marks (same 24-unit viewBox) parsed by Path2D
 const HUD_FX=[
  {k:'boost', pu:'boost', lab:'POWER HITS',fill:true, d:'M13.4 2 5 13.6h5.1L9.2 22l8.6-11.9h-5.3L13.4 2z'},
  {k:'frozen',pu:'freeze',lab:'FROZEN',    fill:false,d:'M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9'},
@@ -54,15 +29,14 @@ const CHIP_FULL_MAX=2;   // past this many seats each player collapses to ONE ch
 const INK='#07111c';
 const hC=v=>v<0?0:v>1?1:v, hO3=t=>1-(1-t)*(1-t)*(1-t), hBk=t=>{const q=t-1;return 1+2.2*q*q*q+1.2*q*q;};
 
-/* ===== setup ===== */
+// ===== setup =====
 function hudInit(){
  const c=$('hud');if(!c||!c.getContext)return false;
  HUD.c=c;HUD.x=c.getContext('2d');HUD.ls='letterSpacing' in HUD.x;
  const cs=getComputedStyle(document.documentElement);
  HUD.fam=cs.getPropertyValue('--font-ui').trim()||'sans-serif';
  HUD.famI=cs.getPropertyValue('--font-italic').trim()||HUD.fam;
- // Canvas text never triggers a webfont load on its own. Without this the italic sub chips draw in a
- // fallback serif until something in the DOM happens to use the italic face.
+ // canvas text never triggers a webfont load, so load the italic face here
  if(document.fonts&&document.fonts.load){
   const f=HUD.fam.split(',')[0],fi=HUD.famI.split(',')[0];
   Promise.all([document.fonts.load('20px '+f),document.fonts.load('italic 20px '+fi)])
@@ -73,8 +47,7 @@ function hudInit(){
  HUD.ord=[HUD.tabs[0].slice(),HUD.tabs[1].slice()];
  return true;
 }
-// Checked every frame rather than on 'resize' — a window dragged to a monitor with another pixel
-// ratio fires no resize, and three comparisons a frame is nothing.
+// checked every frame rather than on 'resize' (a window dragged to another-DPR monitor fires none)
 function hudFit(){
  const d=Math.min(devicePixelRatio||1,2),W=innerWidth,H=innerHeight;
  if(d===HUD.dpr&&W===HUD.W&&H===HUD.H)return;
@@ -83,10 +56,8 @@ function hudFit(){
  HUD.nmc=[{},{}];HUD.chipSig=NaN;HUD.dirty=true;
 }
 
-/* ===== colour ===== */
-// Callers pass anything: '#hex', a 0xRRGGBB number (ball trails, charge bands), 'var(--gold)',
-// rgb(). A throwaway 2D context normalises it; the var() read is why the cache is dropped at
-// every kickoff — league.js repaints --c0/--c1 per match.
+// ===== colour =====
+// callers pass '#hex', 0xRRGGBB, 'var(--gold)' or rgb(); a throwaway 2D context normalises it; the cache is dropped each kickoff (league.js repaints --c0/--c1)
 const hudColC=new Map(),hudRGBC=new Map();let hudColX=null;
 function hudCol(c){
  if(c==null||c==='')return'#ffffff';
@@ -109,8 +80,7 @@ function hudMix(c,k){   // k>0 toward white, k<0 toward black
  const r=hudRGB(c),f=k>0?v=>v+(255-v)*k:v=>v*(1+k);
  return'rgb('+(f(r[0])|0)+','+(f(r[1])|0)+','+(f(r[2])|0)+')';
 }
-// ink on a colour fill. The threshold is the caller's: a name slab wants white on anything short of
-// pale, a sub chip wants the dark ink the DOM banner always used unless the fill is itself dark.
+// ink on a colour fill; the threshold is the caller's (white unless the fill is pale for a name slab, dark for a sub chip unless the fill is dark)
 function hudInk(c,th){const r=hudRGB(c);return(.2126*r[0]+.7152*r[1]+.0722*r[2])/255>th?INK:'#ffffff';}
 const hudTC=[{k:null},{k:null}];
 function hudTeam(t){
@@ -119,11 +89,10 @@ function hudTeam(t){
  return o;
 }
 
-/* ===== type ===== */
+// ===== type =====
 const hudF=(px,it)=>(it?'italic ':'')+(Math.round(px*2)/2)+'px '+(it?HUD.famI:HUD.fam);
 function hudTrack(tr){if(HUD.ls)HUD.x.letterSpacing=(tr||0)+'px';}
-// letterSpacing is appended after EVERY glyph, the last one included, so a measured width is one
-// tracking too wide and centred text sits half a tracking left of true. Both are paid back here.
+// letterSpacing is appended after every glyph including the last, so measured widths are one tracking too wide; paid back here
 function hudW(s,tr){hudTrack(tr);return HUD.x.measureText(s).width-(HUD.ls&&tr?tr:0);}
 function hudT(s,x,y,al,tr,stroke){   // al: -1 left · 0 centre · 1 right
  const X=HUD.x;hudTrack(tr);X.textAlign=al<0?'left':al>0?'right':'center';
@@ -151,7 +120,7 @@ function hudName(t,f,tr,max){
  c.raw=raw;c.f=f;c.s=s;c.w=hudW(s,tr);return c;
 }
 
-/* ===== shapes ===== */
+// ===== shapes =====
 function hudPar(x,y,w,h,k){   // parallelogram, top edge pushed +k: leans like italic
  const X=HUD.x;X.beginPath();X.moveTo(x+k,y);X.lineTo(x+w+k,y);X.lineTo(x+w,y+h);X.lineTo(x,y+h);X.closePath();
 }
@@ -159,7 +128,7 @@ function hudTrap(xl,y,xr,h,tn){   // wide at the top, both ends cut inward at sl
  const X=HUD.x,k=h*tn;X.beginPath();X.moveTo(xl,y);X.lineTo(xr,y);X.lineTo(xr-k,y+h);X.lineTo(xl+k,y+h);X.closePath();
 }
 function hudDot(x,y,r){const X=HUD.x;X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();}
-// dark varsity lettering: hard drop, keyline, then a cool top-lit face. Shared by banner and count.
+// dark varsity lettering: hard drop, keyline, cool top-lit face; shared by banner and count
 function hudHeavy(s,x,y,fs,tr){
  const X=HUD.x;X.lineWidth=fs*.1;
  X.fillStyle=X.strokeStyle='rgba(0,0,0,.45)';hudT(s,x,y+fs*.07,0,tr,1);hudT(s,x,y+fs*.07,0,tr);
@@ -176,12 +145,8 @@ function hudHatch(){
  return HUD.hp=HUD.x.createPattern(c,'repeat');
 }
 
-/* ===== markup: keycaps =====
-   Hints are written as markup, not prose: [Q] is a keycap, [←] [→] [↑] [↓] are arrow caps (the face
-   has no arrow glyphs — a fallback font drew them), [LMB] [RMB] [MOUSE] are a drawn mouse, · splits
-   groups, \n breaks lines. The caps are the Options reference card's .ctl b keycap, so a key looks
-   the same on the HUD as it does where you look it up.
-   {A} is a PAD button, named by its Xbox slot whatever pad is in use — see hudPad. */
+// ===== markup: keycaps =====
+// hints are markup: [Q] a keycap, [←][→][↑][↓] arrow caps, [LMB] [RMB] [MOUSE] a drawn mouse, · splits groups, \n breaks lines; {A} is a pad button by its Xbox slot name (see hudPad)
 function hudTok(src){
  return String(src).split('\n').map(l=>l.split(/(\[[^\]]+\]|\{[^}]+\}|·)/).map(s=>s.trim()).filter(Boolean)
   .map(s=>s==='·'?{sep:1}:s[0]==='['?{cap:s.slice(1,-1).toUpperCase()}:s[0]==='{'?{pad:s.slice(1,-1).toUpperCase()}
@@ -209,11 +174,7 @@ function hudCap(cap,x,cy,u){
  else{X.font=hudF(Math.max(9,10*u));hudT(cap,x+w/2,cy+.5*u,0,.6*u);}
  return w;
 }
-/* A pad button, drawn in the family of whichever pad last did anything (js/padnav.js padGlyph): a
-   DISC for a face button or a stick, a PILL for a shoulder or a trigger — never the square keycap,
-   so which device a prompt means reads before its label does. A face button's rim and glyph are the
-   hardware's own colour; PlayStation's shapes are the same SVG path the menu strip draws, parsed by
-   Path2D. Guarded, so a missing padnav.js draws Xbox names rather than throwing. */
+// a pad button in the family of the pad last used (js/padnav.js padGlyph): a disc for a face button or stick, a pill for a shoulder or trigger; guarded so a missing padnav.js draws Xbox names
 const hudP2D={};
 function hudPadG(k){return typeof padGlyph==='function'?padGlyph(k):{t:k,s:'',c:'',stick:false,round:/^[ABXY]$/.test(k)};}
 function hudPadNow(){return typeof inputKind==='function'&&inputKind()==='pad';}
@@ -230,7 +191,7 @@ function hudPad(k,x,cy,u){
  else{X.font=hudF(Math.max(8,(g.stick?8:10)*u));X.fillStyle=fg;hudT(g.t,x+w/2,cy+.5*u,0,.6*u);}
  return w;
 }
-// one tokenised line: width, then draw. `col` tints the words; caps keep their own face.
+// one tokenised line: width, then draw; `col` tints the words, caps keep their own face
 function hudLineW(line,u){
  let w=0,prev=null;for(const k of line){
   w+=prev?(k.sep||prev.sep?10*u:(k.cap||k.pad)&&(prev.cap||prev.pad)?3*u:6*u):0;
@@ -250,11 +211,8 @@ function hudLine(line,x,cy,u,col){
   prev=k;}
 }
 
-/* ===== the board =====
-   One trapezoid: team slabs top-left and top-right, the two score windows in the middle, and under
-   each slab the BEAD RAIL — a real table keeps score by sliding beads along a wire, and a race to N
-   is exactly what a row of N beads shows at a glance. The ends are cut at 20°, and the power-up tabs
-   below lean off those same cuts, so the whole top of the screen reads as one piece. */
+// ===== the board =====
+// one trapezoid: team slabs, two score windows, and under each slab the bead rail (a race to N is a row of N beads); ends cut at 20°, the power-up tabs lean off the same cuts
 function hudBoard(a){
  const X=HUD.x,u=HUD.u,T=HUD.t,cx=HUD.W/2,tn=.364;                        // tan 20°
  const y0=12*u-(1-hO3(hC((T-HUD.onT)/.55)))*120*u;                      // drops in at kickoff
@@ -316,10 +274,7 @@ function hudBeads(t,xa,len,y,s,tc){
   else{X.fillStyle='#102a3d';hudDot(bx,y,r);X.strokeStyle='rgba(255,255,255,.17)';X.lineWidth=1;X.stroke();}
  }
 }
-/* The clock hangs off the centre of the board. Level time counts up; a timed match counts DOWN, and
-   in the last MATCH.warnT seconds each second lands as a kick — a flash and a knock, once, on the
-   tick — rather than the old pulse that throbbed continuously. A timed match also draws the time
-   left as a hairline along the tab's foot. Returns the tab's bottom edge. */
+// the clock hangs off the board's centre: level time counts up, a timed match counts down and in the last MATCH.warnT seconds each second lands as a flash and knock; a timed match also draws time left as a hairline; returns the tab's bottom edge
 function hudClock(cx,y,w){
  const X=HUD.x,u=HUD.u,T=HUD.t,h=22*u,lim=gameTimeLimit();
  if(S.suddenDeath){
@@ -343,11 +298,8 @@ function hudClock(cx,y,w){
  return y+h+2*u;
 }
 
-/* ===== power-up tabs =====
-   Each grows out of the board's cut end on the side of the team it acts on, leaning off that same
-   20° cut, and the tab IS the timer: its fill drains back toward the board. Frozen shows on the team
-   actually slowed; big-goal on the team whose goal it widens — the side is S.eff's, not ours. Tabs
-   are preallocated per team x effect and re-used, so nothing is built per frame. */
+// ===== power-up tabs =====
+// each grows out of the board's cut end on the side of the team it acts on, and the tab is the timer (its fill drains toward the board); frozen shows on the team slowed, big-goal on the team whose goal widens (S.eff's side)
 function hudTabs(a,rdt){
  const bd=HUD.bd,X=HUD.x,u=HUD.u,T=HUD.t,now=S.time,th=26*u,gap=5*u;
  for(let t=0;t<2;t++){
@@ -396,11 +348,8 @@ function hudTab(t,tb,y,h,a,sx){
  X.restore();
 }
 
-/* ===== rod chips =====
-   A segmented control, not a row of pills: the rods are one choice. The seat's colour slides between
-   segments when you switch (the highlight is animated per seat, the text is not — the label you
-   asked for is already correct the frame you ask), a caret points up at the table, and a rod another
-   player holds is HATCHED — "you can't have this" reads faster than a dashed border ever did. */
+// ===== rod chips =====
+// a segmented control: the seat's colour slides between segments, a caret points at the table, a rod another player holds is hatched
 function hudChipSig(){let h=S.seats.length+(HUD.W|0)*7;for(const s of S.seats)h=h*31+s.ctrl*7+s.rods.length|0;return h;}
 function hudChipsBuild(){
  const X=HUD.x,u=HUD.u,ss=S.seats,C=HUD.chips;C.length=0;
@@ -467,8 +416,7 @@ function hudCursor(on){
  if(on){if(!g.style.cursor){g.style.cursor='pointer';HUD.cur=true;}}
  else if(HUD.cur){g.style.cursor='';HUD.cur=false;}   // never clears a cursor photo/training set
 }
-// CAPTURE phase, so a chip click is stolen before input.js's canvas mousedown can kick with it — and
-// only when the click was aimed at the table: the pause menu sits over the chip row too.
+// capture phase, so a chip click is stolen before input.js's canvas mousedown; only when aimed at the table (the pause menu overlaps the chips)
 addEventListener('mousedown',e=>{
  if(e.target!==hudGame())return;
  const i=hudChipAt(e.clientX,e.clientY);if(i<0)return;
@@ -481,16 +429,12 @@ addEventListener('mousemove',e=>{
  if(i!==HUD.hov){HUD.hov=i;hudCursor(i>=0);}
 },{passive:true});
 
-/* ===== controls hint =====
-   Bottom right, as keycaps. It is only worth full strength while you're still learning where things
-   are: after CONFIG.hud.hintHold of play it settles back to hintDim instead of sitting at full
-   brightness over the corner of the table all match. */
-// the keyboard lines or the pad lines: the pad's when a pad was the last thing touched, else whichever exists
+// ===== controls hint =====
+// bottom right as keycaps; after CONFIG.hud.hintHold of play it settles to hintDim; shows the pad lines when a pad was last touched, else whichever exists
 function hudHintPick(){return hudPadNow()&&HUD.hintP||HUD.hint||HUD.hintP;}
 function hudHintDraw(a){
  const X=HUD.x,u=HUD.u,H=CONFIG.hud,L=hudHintPick();
- // A solo player picking up the other device gets the hint back at full strength. Not with two seats
- // on different devices: it would flip back to bright every time either of them touched anything.
+ // a solo player picking up the other device gets the hint back at full strength (not with two seats on different devices)
  if(L!==HUD.hintUse){if(HUD.hintUse&&S.seats.length<2)HUD.hintT=HUD.t;HUD.hintUse=L;}
  const age=HUD.t-HUD.hintT;
  X.globalAlpha=a*(age<H.hintHold?1:1-(1-H.hintDim)*hO3(hC((age-H.hintHold)/1.2)));
@@ -499,9 +443,32 @@ function hudHintDraw(a){
  X.globalAlpha=1;
 }
 
-/* ===== notice · tier 2 =====
-   A live event the player already watched happen: one line under the board, colour-coded to whoever
-   it concerns, wiped in from the left behind a solid chevron in that colour. No subtitle. */
+// ===== pin shot hint =====
+// while a seat's rod holds a ball on the pin, the key that shoots it: a slim plate bottom centre with a slab in the seat's colour; it settles back after CONFIG.shots.pin.hint.hold (Options > Display, cfg.pinHint)
+function hudPinHint(a,rdt){
+ const H=SHOT.pin.hint,P=HUD.pin,s=shotPinHintOn()?shotPinSeat():null;
+ if(s){
+  if(!P.on){P.on=true;P.t=HUD.t;P.tok=hudTok(bindHint('kick','pin shot',2)||'pin shot');P.tokP=hudTok('{A} pin shot');}   // rebuilt per catch, so a rebind shows
+  P.s=s;
+ }else P.on=false;
+ P.a=P.on?Math.min(1,P.a+rdt/Math.max(.01,H.inT)):Math.max(0,P.a-rdt/Math.max(.01,H.outT));
+ if(P.a<=0||!P.s)return;
+ const X=HUD.x,u=HUD.u,age=HUD.t-P.t,ei=hO3(P.a);
+ const hasPad=P.s.devs.some(d=>/^pad/.test(d)),hasKb=P.s.devs.some(d=>d==='kbd'||d==='mouse');
+ const L=(hasPad&&(!hasKb||hudPadNow())?P.tokP:P.tok)[0];
+ const h=28*u,k=h*.158,pad=14*u,ab=6*u,gp=3*u,w=hudLineW(L,u)+pad*2,tot=ab+gp+w;
+ const x0=(HUD.W-tot)/2,y=HUD.chipY-H.gap*u-h+(1-ei)*8*u;   // sits on the rod chips, which hudChips placed this frame
+ X.globalAlpha=a*ei*(age<H.hold?1:1-(1-H.dim)*hO3(hC((age-H.hold)/1.2)));
+ X.fillStyle='rgba(0,0,0,.35)';hudPar(x0,y+3*u,tot,h,k);X.fill();
+ hudPar(x0,y,ab,h,k);X.fillStyle=hudCol(seatCol(P.s));X.fill();
+ hudPar(x0+ab+gp,y,w,h,k);X.fillStyle='rgba(6,16,26,.94)';X.fill();
+ X.fillStyle='rgba(255,255,255,.07)';X.fillRect(x0+ab+gp+k,y,w,u);
+ hudLine(L,x0+ab+gp+k/2+pad,y+h/2,u,'#9dc0d4');
+ X.globalAlpha=1;
+}
+
+// ===== notice, tier 2 =====
+// a live event the player already watched: one line under the board in the colour of whoever it concerns; no subtitle
 function hudNotice(){
  const n=HUD.ntc,X=HUD.x,u=HUD.u,age=HUD.t-n.t,h=30*u,k=h*.158,fs=15*u,tr=2.2*u,pad=18*u,ab=7*u,gp=3*u;
  X.font=hudF(fs);const w=hudW(n.s,tr)+pad*2,tot=ab+gp+w;
@@ -518,10 +485,8 @@ function hudNotice(){
  X.restore();
 }
 
-/* ===== banner · tier 1 =====
-   Stop-the-world only. The headline wipes in from the left while its lean settles 15° → 8°, the
-   rule under it draws in a beat later in the owning colour, the sub chip a beat after that, and one
-   light sweep crosses the lettering on the way in. It leaves by wiping off to the right. */
+// ===== banner, tier 1 =====
+// stop-the-world only: headline wipes in (lean settles 15° to 8°), the rule draws in the owning colour, then the sub chip and a light sweep; wipes off to the right
 function hudBanner(){
  const b=HUD.bnr,X=HUD.x,u=HUD.u,W=HUD.W,H=HUD.H,age=HUD.t-b.t;
  let fs=clamp(Math.min(W*.058,H*.1),44,92);X.font=hudF(fs);let tr=fs*.02,mw=hudW(b.m,tr);
@@ -551,10 +516,8 @@ function hudBanner(){
  X.restore();
 }
 
-/* ===== countdown =====
-   Each value lands — in from 1.55x, the previous one blown outward and gone — and a bar under the
-   numeral closes over its second. The count sits LOWER than the banner so the two can share a
-   kickoff, and READY is held back while a banner is up: it has nothing to add to one. */
+// ===== countdown =====
+// each value lands from 1.55x as the previous blows outward; sits lower than the banner so they can share a kickoff, and READY is held back while a banner is up
 function hudCountOne(c,out){
  const X=HUD.x,u=HUD.u,age=HUD.t-c.t,word=c.v.length>1,fs=clamp(HUD.H*.16,84,160)*(word?.46:1),tr=word?fs*.12:0;
  let s,al;
@@ -568,10 +531,8 @@ function hudCountOne(c,out){
  X.restore();
 }
 
-/* ===== replay letterbox =====
-   The bars slide in, a hairline in the SCORER's colour runs out from centre along both inner edges,
-   and the bottom bar carries the save state: an offer ([S] SAVE CLIP) while the recorder is armed,
-   a blinking record dot once the clip is kept. */
+// ===== replay letterbox =====
+// bars slide in, a hairline in the scorer's colour runs along both inner edges, and the bottom bar shows the save state: an offer ([S] SAVE CLIP) while armed, a record dot once kept
 function hudReplayDraw(){
  const R=HUD.rep,X=HUD.x,u=HUD.u,W=HUD.W,H=HUD.H,age=HUD.t-R.t;
  const q=1-hC(age/.3),e=R.on?1-Math.pow(1-hC(age/.45),4):q*q*(3-2*q);if(e<=0)return;
@@ -588,9 +549,8 @@ function hudReplayDraw(){
  else{X.font=hudF(12*u);X.fillStyle='#587f93';hudT('ANY KEY — SKIP',W-28*u,ly2+u,1,2.6*u);}
 }
 
-/* ===== toast · tier 3 =====
-   System and dev chatter. The quietest thing on screen, bottom left, stacked newest-lowest. A toast
-   that repeats one already up (a toggle pressed twice) replaces it rather than stacking a copy. */
+// ===== toast, tier 3 =====
+// system and dev chatter, bottom left, stacked newest-lowest; a repeat of one already up replaces it
 function hudToasts(){
  const X=HUD.x,u=HUD.u,T=HUD.t,fM=hudF(Math.max(10.5,11*u)),fS=hudF(Math.max(10,10.5*u)),trM=1.6*u,trS=.5*u;
  let y=HUD.H-64*u;
@@ -606,10 +566,8 @@ function hudToasts(){
  }
 }
 
-/* ===== dev readouts =====
-   An instrument, not chrome: system mono, square, unscaled, cyan-edged — it must not look like part
-   of the game. Sections are KEYED (hudDev(key,rows)) so each debug.js updater owns its own block and
-   none can overwrite another's; null removes one. Rows are lines of [label, value, hot] triples. */
+// ===== dev readouts =====
+// an instrument, not chrome (system mono, square, cyan-edged); sections are keyed (hudDev(key,rows)) so each debug.js updater owns one block; null removes it; rows are [label, value, hot] triples
 function hudDevDraw(){
  const X=HUD.x,D=HUD.dev;let y=14;
  X.font='11px '+HUD.mono;hudTrack(0);X.textAlign='left';
@@ -629,7 +587,7 @@ function hudDevDraw(){
  }
 }
 
-/* ===== frame ===== */
+// ===== frame =====
 function hudRender(rdt){
  if(!HUD.x&&!hudInit())return;
  rdt=rdt>0?rdt:0;HUD.t+=rdt;hudFit();
@@ -656,6 +614,7 @@ function hudRender(rdt){
   if(!S.trial){hudBoard(a);hudTabs(a,rdt);}
   hudChips(a,rdt);
   if(HUD.hint||HUD.hintP)hudHintDraw(a);
+  hudPinHint(a,rdt);
  }
  if(dev)hudDevDraw();
  if(rep)hudReplayDraw();
@@ -667,30 +626,27 @@ function hudRender(rdt){
  if(HUD.tst.length)hudToasts();
 }
 
-/* ===== API =====
-   THREE notification weights, deliberately not interchangeable — a dev toggle and a match-deciding
-   goal must not read alike. `col` is whoever the message concerns (team, ball, charge band); any
-   CSS colour, var() or 0xRRGGBB number.
-     banner(main,sub,dur,col)  tier 1 · stop-the-world: kickoff, goal, sudden death, full time.
-     notice(main,dur,col)      tier 2 · a live event the player already SAW. One line, no subtitle.
-     toast(main,sub,dur)       tier 3 · system/dev chatter. Small, bottom-left, out of the way. */
+// ===== API =====
+// three notification weights, not interchangeable; `col` = whoever it concerns (any CSS colour, var() or 0xRRGGBB)
+//   banner(main,sub,dur,col)  tier 1, stop-the-world: kickoff, goal, sudden death, full time
+//   notice(main,dur,col)      tier 2, a live event the player already saw; one line
+//   toast(main,sub,dur)       tier 3, system/dev chatter, small, bottom-left
 function banner(main,sub,dur,col){HUD.bnr={m:String(main).toUpperCase(),s:sub?String(sub).toUpperCase():'',c:hudCol(col||'#d6e8f2'),t:HUD.t,d:dur||1.6};}
 function notice(main,dur,col){HUD.ntc={s:String(main).toUpperCase(),c:hudCol(col||'#9dc0d4'),t:HUD.t,d:dur||1.3};}
 function toast(main,sub,dur){
  const m=String(main).toUpperCase();for(let i=HUD.tst.length;i--;)if(HUD.tst[i].m===m)HUD.tst.splice(i,1);
  HUD.tst.push({m,s:sub?String(sub):'',t:HUD.t,d:dur||1.6});if(HUD.tst.length>3)HUD.tst.shift();
 }
-// the match chrome, on at kickoff and off at the menu — what #hud's .hidden class used to be
+// the match chrome, on at kickoff and off at the menu
 function hudShow(on){
  HUD.on=!!on;HUD.dirty=true;HUD.cnt=HUD.cntOut=null;HUD.hl.clear();HUD.chipSig=NaN;HUD.hov=-1;hudCursor(false);
  HUD.rep.on=false;HUD.rep.t=-99;clearFxRail();
  if(on){HUD.onT=HUD.t;HUD.chromeA=1;hudColC.clear();hudTC[0].k=hudTC[1].k=null;HUD.nmc=[{},{}];
-  HUD.sc[0]=HUD.scFrom[0]=S.score[0];HUD.sc[1]=HUD.scFrom[1]=S.score[1];HUD.scT[0]=HUD.scT[1]=-9;HUD.clk=-1;}
+  HUD.sc[0]=HUD.scFrom[0]=S.score[0];HUD.sc[1]=HUD.scFrom[1]=S.score[1];HUD.scT[0]=HUD.scT[1]=-9;HUD.clk=-1;
+  HUD.pin.a=0;HUD.pin.on=false;}
  else{HUD.chromeA=0;HUD.ntc=HUD.bnr=null;}
 }
-/* `pad` is the same hint for a controller. With both given, the one drawn follows whichever device
-   last did something (js/padnav.js inputKind): a solo seat holds keyboard, mouse AND pad, and a Steam
-   Deck player shown [SPACE] [LMB] is being told how to play a game they aren't holding. */
+// `pad` is the same hint for a controller; with both given, the one drawn follows the device last used (js/padnav.js inputKind)
 function hudHint(src,pad){HUD.hint=src?hudTok(src):null;HUD.hintP=pad?hudTok(pad):null;HUD.hintUse=null;HUD.hintT=HUD.t;}
 function hudCount(v){
  v=v?String(v):'';const c=HUD.cnt;if((c?c.v:'')===v)return;
@@ -698,11 +654,11 @@ function hudCount(v){
 }
 function hudReplay(on,team){const R=HUD.rep;if(R.on===!!on)return;R.on=!!on;R.t=HUD.t;if(team!=null)R.team=team;}
 function hudReplaySave(st){const R=HUD.rep;R.save=st;
- // Re-read on every arm, not cached for the session: the save key is a binding and can move between replays.
+ // re-read on every arm, not cached: the save key is a binding and can move between replays
  if(st==='armed'){const kb=typeof bindHint==='function'?bindHint('saveClip','save clip'):'';
   R.tok=hudTok(kb||REPLAY.save.hint);R.tokP=REPLAY.save.hintPad?hudTok(REPLAY.save.hintPad):null;}}
 function hudDev(k,rows){if(rows)HUD.dev[k]=rows;else delete HUD.dev[k];}
-// a goal: the scoring side's number ROLLS and its bead slides home. Called with no team, it just snaps.
+// a goal: the scoring side's number rolls and its bead slides home; with no team it just snaps
 function updateScoreUI(team){
  for(let t=0;t<2;t++){
   if(t===team&&S.score[t]>HUD.sc[t]){HUD.scFrom[t]=HUD.sc[t];HUD.scT[t]=HUD.t;}
