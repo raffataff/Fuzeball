@@ -617,7 +617,7 @@ function buildRods(){
      chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
      shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1,
      // the player's hold, in the shape holdCfg's consumers read (CONFIG.ai.trap/.dribble); mutated in place
-     hold:{on:false,holdRest:KICK.rest,holdGrip:KICK.grip,carryMult:1},
+     hold:{on:false,holdRest:KICK.rest,holdGrip:KICK.grip,carryMult:1,sideRest:KICK.sideRest},
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,

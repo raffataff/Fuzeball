@@ -73,6 +73,7 @@ function kickRod(r, style, aimAt, curve){
  r.dribMan=-1;r.dribZ=0;r.dribZ0=0;                // …and any dribble carry, for the same reason
  r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.passTo=aimAt||null;                             // pass target for this swing only
+ if(typeof recvArm==='function'){if(aimAt&&style==='pass')recvArm(r,aimAt);else recvRelease(r);}   // the rod a pass is aimed at gets ready; any other kick lets the mates ahead go back up (ai.js)
  r.swOver=0;r.swF=0;r.swMx=0;                     // overspeed this swing may carry past maxV (shots.js shotFire / physics.js capSpeed, for a charge)
  if(r.pinB)pinRelease(r);                          // a swing lets a pinned ball go, and this swing is what strikes it (physics.js)
  r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
@@ -89,6 +90,7 @@ function resetRodRotation(){
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
   r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
+  r.catPh=null;r.catMan=-1;r.catCd=0;r.catUntil=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
  }
@@ -140,15 +142,15 @@ function updateRods(dt){
    else r.angle=r.padAngleTarget;
   }
   // THE PIN POSE (shots.js shotPinInput): finesse + raise; below the stick, above the raise; r.pinA is sweep-capped
-  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,SHOT.pin.lerp*dt));}
+  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:SHOT.pin.lerp)*dt));}
   else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,KICK.raiseA*r.kickDir,KICK.raiseLerp),Math.min(1,KICK.raiseLerp*dt));}
-  else{r.heldFwd=false;r.angle=lerp(r.angle,0,Math.min(1,KICK.dropLerp*dt));}
+  else{r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,0,KICK.dropLerp),Math.min(1,KICK.dropLerp*dt));}   // a forward pose coming back to rest is a back-lift: held short of a ball it would sweep
    // Total Control's slide multiplier is per seat (each pad has its own triggers)
    const uSeat=seatOf(r);
    let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
    // carrying a held ball is a shuffle, not a slide (the boot only drags the ball as fast as holdGrip transfers velocity); holdCfg is null mid-swing
    // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry
-   {const H=holdCfg(r);if(r.pinB)ms*=SHOT.pin.carry;else if(H)ms*=H.carryMult;}
+   {const H=holdCfg(r);if(r.pinB)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;}
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(uSeat){                                          // human hand: instant/responsive, speed-capped only
@@ -164,6 +166,7 @@ function updateRods(dt){
   r.slideV=(r.offset-prevOff)/dt;                     // keep slideV in sync across control handoff
   r.angVel=(r.angle-r.prevAngle)/dt;
   r.vz=(r.offset-r.prevOffset)/dt;
+  r.tgV=lerp(r.tgV||0,(r.target-(r.tgP==null?r.target:r.tgP))/dt,Math.min(1,dt*8));r.tgP=r.target;   // where the rod is heading, smoothed (ai.js ttObs): its slide speed flips every few steps, its target holds
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);
   stExertTick(r,dt);                         // stamina: swing exertion bleeds off (CONFIG.stats.kickFat.recover)
@@ -171,6 +174,7 @@ function updateRods(dt){
   r.lhT=Math.max(0,(r.lhT||0)-dt);           // back guard is holding this rod's lift (CONFIG.ai.backGuard.holdT); ai.js reads it
   r.laneCd=Math.max(0,(r.laneCd||0)-dt);     // lane-clear re-entry lockout (CONFIG.ai.clearLane.cd)
   r.retCd=Math.max(0,(r.retCd||0)-dt);       // retrieve re-entry lockout (CONFIG.ai.retrieve.cd)
+  r.catCd=Math.max(0,(r.catCd||0)-dt);       // catch re-entry lockout (CONFIG.ai.catch.cd)
   r.dribCd=Math.max(0,(r.dribCd||0)-dt);     // dribble re-entry lockout (CONFIG.ai.dribble.cd)
   r.dribEvT=Math.max(0,(r.dribEvT||0)-dt);   // next dribble target evaluation (dribble.reEval) — also gates entry scans
   r.passEvT=Math.max(0,(r.passEvT||0)-dt);   // pass-scan cache age (dribble.pass.every); the scan is the AI's priciest call

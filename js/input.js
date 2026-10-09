@@ -50,7 +50,7 @@ addEventListener('keydown',e=>{
  // photo mode (F1) takes the keyboard, after the keys[] write since photo.js reads that map
  if(S.photo)return;
  // the save key is tested first, before every other key skips the replay
- if(S.phase==='replay'){if(bindIs('saveClip',e.code))replaySaveClip();else replaySkip();return;}
+ if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',e.code))replaySaveClip();else replaySkip();return;}
  if(e.code==='Escape'){
   // Chrome eats Esc while pointer-locked (the release is the pause, see pointerlockchange); de-dupe browsers that send both
   if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
@@ -103,7 +103,7 @@ cvs.addEventListener('mousedown',e=>{
  const code='Mouse'+e.button;
  keys[code]=true;
  if(e.button===1||e.button>2)e.preventDefault();   // middle = autoscroll, 3/4 = browser Back/Forward
- if(S.phase==='replay'){if(bindIs('saveClip',code))replaySaveClip();else replaySkip();return;}   // any other click skips the goal replay
+ if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',code))replaySaveClip();else replaySkip();return;}   // any other click skips the goal replay
  if(S.freeRoam||!inMatch())return;
  if(!devSeat('mouse'))return;
  mouseLockRequest();                            // a click is a user gesture, which is what the lock needs
@@ -281,31 +281,38 @@ cvs.addEventListener('click',()=>{if(S.freeRoam&&S.phase!=='menu')cvs.requestPoi
 // the browser owns Esc while locked: its release is read as the pause; mlSelf marks releases we asked for
 let mlSelf=false,mlEsc=0;   // mlEsc: when a lock release stood in for an Escape press (see the keydown grace above)
 let mlAlt=0;                // when Alt / F10 last came up in a match (menuKey): a lock lost right after is the browser menu, not Esc
+let mlRef=false,mlT=0;      // mlRef: the browser refused a lock, so wait for a key / click; mlT: when the tick last asked
 function mouseLockWant(){
  if(!cfg.mouseLock)return false;
  if(S.freeRoam||S.photo)return false;                     // both drive the cursor themselves
- if(S.phase!=='play'&&S.phase!=='count')return false;
+ if(!inMatch()&&S.phase!=='goal'&&S.phase!=='replay')return false;   // a goal and its replay keep the lock, or the cursor pops back for every restart
  if(!devSeat('mouse'))return false;                       // nobody is steering with the mouse
+ if(S.trn&&S.trn.placing)return false;                    // click-place aims with the cursor
  if(S.trial&&S.trial.done)return false;                   // the result card takes clicks (plain data — safe with no trials.js)
  if(S.tut&&S.tut.card)return false;                       // …and so does the tutorial's
  const p=$('trnPanel');
  if(p&&!p.classList.contains('hidden'))return false;      // sandbox tools are clicks
  return true;
 }
-function mouseLockRequest(){
- if(!mouseLockWant()||document.pointerLockElement)return;
+function mouseLockRequest(auto){
+ if(!mouseLockWant()||document.pointerLockElement||(auto&&mlRef))return;
+ mlRef=false;
  const p=cvs.requestPointerLock();
- if(p&&p.catch)p.catch(()=>{});   // no gesture yet, or Chrome's cooldown after an Esc release — the next input retries
+ if(p&&p.catch)p.catch(()=>{mlRef=true;});   // no gesture yet, or Chrome's cooldown after an Esc release — the next key / click retries
 }
 function mouseLockTick(){
- if(document.pointerLockElement===cvs&&!mouseLockWant()){mlSelf=true;document.exitPointerLock();}
+ const want=mouseLockWant();
+ if(document.pointerLockElement===cvs&&!want){mlSelf=true;document.exitPointerLock();}
+ else if(want&&!document.pointerLockElement&&performance.now()-mlT>250){mlT=performance.now();mouseLockRequest(true);}   // allowed without a gesture after our own release or while the click that started the match is fresh
+ document.body.classList.toggle('mlHide',want);   // cursor hidden from the first frame, locked or not
 }
+document.addEventListener('pointerlockerror',()=>{mlRef=true;});
 document.addEventListener('pointerlockchange',()=>{
- if(document.pointerLockElement)return;
+ if(document.pointerLockElement){mlRef=false;return;}
  if(mlSelf){mlSelf=false;return;}                         // we let it go on purpose
  if(S.freeRoam){S.freeRoam=false;return;}
  if(mlAlt&&performance.now()-mlAlt<400)return;           // the browser menu took it off an Alt: not a pause — the next input re-locks
- if(mouseLockWant()){mlEsc=performance.now();togglePause();}   // Esc, or focus lost — read the release as the pause press
+ if(mouseLockWant()){mlEsc=performance.now();if(S.phase==='replay')replaySkip();else togglePause();}   // Esc, or focus lost — read the release as the pause press (a replay's Esc skips it)
 });
 document.addEventListener('mousemove',e=>{
  if(!S.freeRoam||!document.pointerLockElement)return;

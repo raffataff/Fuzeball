@@ -36,6 +36,7 @@ function shotHoldUpdate(r,lt){
  const t=clamp((lt-H.from)/(1-H.from),0,1);
  h.on=true;
  h.holdRest=lerp(KICK.rest,H.rest,t);
+ h.sideRest=lerp(KICK.sideRest,0,t);   // a squeeze cushions a side hit too, smoothly
  h.holdGrip=lerp(stGrip(r),H.grip,t);
  h.carryMult=lerp(1,H.carry,t);
 }
@@ -131,7 +132,7 @@ function shotReset(r){
  r.chgBlock=0;r.chgEndT=null;r.chgEndBand=-1;r.chgEndK=0;   // the blocked reading and the held verdict
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
- r.pinOn=false;r.pinPose=false;r.pinA=null;
+ r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 

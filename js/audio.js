@@ -148,23 +148,23 @@ const AUREACT={
  roar: {len:3.2,jit:.25,voices:40,lift:1,mix:1,env:[[0,0],[.15,1],[1.8,.9],[3.1,0]],vow:[[0,'a'],[.4,'ae'],[1.5,'a'],[2.8,'o']],pit:[[0,1.3],[.3,1.65],[1.6,1.5],[3.1,1.2]],wander:.015}};
 const AU_CLAP={secs:3.4,people:40,env:[[0,0],[.25,1],[1.6,.9],[3.2,0]]};
 
-// menu sounds in D major pentatonic: 'w' (wood) is the blue structural sound, 'b' (bell) the gold one for committing; note = [freq, start s, length s, level, timbre]
+// menu sounds in D suspended pentatonic (D E G A C, no third): 'w' (wood) is the blue structural sound, 'b' (bell) the gold one for committing; note = [freq, start s, length s, level, timbre]
 const AU_UI={
  move: [[880,0,.04,.05,'w']],
- value:[[739.99,0,.045,.055,'w']],
+ value:[[783.99,0,.045,.055,'w']],
  rod:  [[587.33,0,.035,.04,'w']],
  tab:  [[1318.51,0,.045,.05,'w']],
  click:[[880,0,.05,.05,'b'],[1174.66,.04,.09,.05,'b']],
  back: [[880,0,.05,.055,'w'],[587.33,.04,.08,.055,'w']],
- open: [[739.99,0,.08,.045,'w'],[880,0,.08,.04,'w']],
+ open: [[783.99,0,.08,.045,'w'],[880,0,.08,.04,'w']],
  error:[[293.66,0,.06,.07,'w'],[293.66,.08,.08,.06,'w']],
- start:[[587.33,0,.07,.045,'b'],[739.99,.045,.07,.045,'b'],[880,.09,.07,.045,'b'],[1174.66,.135,.35,.055,'b']]};
+ start:[[587.33,0,.07,.045,'b'],[783.99,.045,.07,.045,'b'],[880,.09,.07,.045,'b'],[1174.66,.135,.35,.055,'b']]};
 // stingers: brass (two saws through an opening lowpass) and gold (bells), all resolving upward; note = [freq, start s, length s]
 const AU_STING={
- goal:  {v:.05,brass:[[220,0,.1],[220,.13,.1],[146.83,.26,.95],[293.66,.26,.95],[369.99,.26,.95],[440,.26,.95]]},
- win:   {v:.045,brass:[[220,0,.13],[293.66,.15,.13],[369.99,.30,.13],[146.83,.45,1.5],[293.66,.45,1.5],[440,.45,1.5],[587.33,.45,1.5]]},
- trophy:{v:.045,bell:[[1174.66,0,1.4],[1479.98,.09,1.4],[1760,.18,1.6],[2349.32,.27,2]],brass:[[146.83,.27,1.4],[293.66,.27,1.4],[440,.27,1.4]]},
- medal: {v:.05,bell:[[1174.66,0,1.2],[1479.98,.08,1.2],[1760,.16,1.6]]}};
+ goal:  {v:.05,brass:[[220,0,.1],[220,.13,.1],[146.83,.26,.95],[293.66,.26,.95],[392,.26,.95],[440,.26,.95]]},
+ win:   {v:.045,brass:[[220,0,.13],[293.66,.15,.13],[392,.30,.13],[146.83,.45,1.5],[293.66,.45,1.5],[440,.45,1.5],[587.33,.45,1.5]]},
+ trophy:{v:.045,bell:[[1174.66,0,1.4],[1567.98,.09,1.4],[1760,.18,1.6],[2349.32,.27,2]],brass:[[146.83,.27,1.4],[293.66,.27,1.4],[440,.27,1.4]]},
+ medal: {v:.05,bell:[[1174.66,0,1.2],[1567.98,.08,1.2],[1760,.16,1.6]]}};
 
 const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
  dst:null, // beep/noise/wood/bell/brass route here instead of mg while set (route() / ui point it)

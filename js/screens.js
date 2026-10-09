@@ -47,7 +47,7 @@ function showScreen(id){
  hideScreens();
  el.classList.remove('hidden');
  scrCur=id;
- // a screen change arrives behind one diagonal wipe (.scrIn); the class comes off when it ends so no clip-path cuts the pad cursor's ring
+ // a screen change arrives behind one wipe (.scrIn); the class comes off when it ends so no clip-path cuts the pad cursor's ring
  if(prev!==id){el.classList.remove('scrIn');void el.offsetWidth;el.classList.add('scrIn');
   el.addEventListener('animationend',function e(ev){if(ev.target!==el)return;el.classList.remove('scrIn');el.removeEventListener('animationend',e);});}
  // re-clamp saved panel arrangements to the window; called for every screen, since it's also how layout.js notices an open editor was navigated away from (layEditGuard)

@@ -13,7 +13,9 @@
     "@gltf-transform/core": "^4.4.2",
     "@gltf-transform/extensions": "^4.4.2",
     "@gltf-transform/functions": "^4.4.2",
-    "@gpu-tex-enc/basis": "^1.16.4"
+    "@gpu-tex-enc/basis": "^1.16.4",
+    "polygon-clipping": "^0.15.7",
+    "sharp": "^0.34.0"
   },
   "//type": "DELIBERATELY NO \"type\":\"module\". Setting it would make every .js in tools/ an ES module, and every existing harness here (roomlights, trials, shots, venueload, roomenv...) is CommonJS and uses require() \u2014 they all die instantly. ktx2-encode.mjs is .mjs, which is ESM on its own extension and needs no help from this file."
 }

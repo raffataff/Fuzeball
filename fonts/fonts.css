@@ -1,7 +1,8 @@
 /* Custom fonts - change font-family values in css/styles.css :root to swap fonts.
    Soccer League by Vladimir Nikolic, commercial licence (2026-09-24).
    'SoccerLeague'         plain cut: labels, buttons, numbers.
-   'SoccerLeague College' the notched collegiate cut: TOTAL CONTROL in the logo. Titles only. */
+   'SoccerLeague College' the notched collegiate cut: TOTAL CONTROL in the logo. Titles only.
+   'FuzeClip'             our own display face (tools/build_font.js): capitals, digits, light punctuation; lowercase maps to capitals. */
 
 @font-face {
   font-family: 'SoccerLeague';
@@ -31,6 +32,22 @@
   font-family: 'SoccerLeague College';
   src: url('soccerLeague/Soccer League College Italic.ttf') format('truetype');
   font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'FuzeClip';
+  src: url('fuzeClip/FuzeClip.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'FuzeClip';
+  src: url('fuzeClip/FuzeClip.ttf') format('truetype');
+  font-weight: 100 900;
   font-style: italic;
   font-display: swap;
 }

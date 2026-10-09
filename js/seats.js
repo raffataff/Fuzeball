@@ -76,7 +76,7 @@ function clearRodAI(r){
  if(!r)return;
  r.raiseKeep=!!r.raise;                     // inherited raise — released by rodRaiseRelease / userControlUpdate
  if(!r.raiseKeep)r.behindFlag=false;
- r.act=null;r.heldFwd=false;
+ r.act=null;r.heldFwd=false;r.rvUntil=0;r.rvReady=false;r.ttOn=false;r.ttPh=null;
  // the rod holds its ground: r.target was left at the AI's destination and keyboard/pad add to it, so pin it to the live offset
  r.target=r.offset;r.slideV=0;
  rodInputRelease(r);                        // a stale stick angle or held kick from an earlier stint would pin this rod

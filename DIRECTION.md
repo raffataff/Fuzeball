@@ -92,19 +92,20 @@ Rules:
 - **Blue is structure.** Plates, bars and fills.
 - **UI colours never replace team colours.** Team 2's default kit blue (`#1e5bd8`, royal; was `#3d8bff`) sits near the UI
   blues, so the kit screen should let the team colour dominate.
-- **No frosted glass, no 14px rounded cards.** Shapes borrow the HUD board's angled cut ends and the
-  logo's bevels.
+- **No frosted glass, no 14px rounded cards.** Shapes borrow the small buttons' cut corners (top-left and
+  bottom-right, 45°) and the logo's bevels. No slanted parallelograms: they read as generic AI design.
 
 Type:
-- **Display: Soccer League College** (italic), the notched collegiate cut that matches "TOTAL CONTROL"
-  in the logo. Titles and the home menu only (`--font-display`). **Licensed for commercial use**
-  (2026-09-24, Vladimir Nikolic). The plain Soccer League cut (`--font-ui`) does labels, buttons and numbers.
-- **Body:** Space Grotesk 600 (`--font-body`; was Rajdhani until 2026-10-03). Soccer League is capitals only, so anything read as a sentence
-  stays in Space Grotesk.
+- **Display and UI: FuzeClip** (`--font-display`, `--font-ui`), our own face (`tools/build_font.js`), leaned 20° (the lean
+  dates from the old slanted plates) with the buttons' top-left / bottom-right corner clip. Capitals, digits, punctuation, arrows and Latin accents; lowercase maps to capitals.
+  Soccer League (commercial licence, 2026-09-24, Vladimir Nikolic) stays behind it in the stack, as the fallback for
+  glyphs FuzeClip does not draw.
+- **Body:** Exo 2 600 (`--font-body`; was Rajdhani until 2026-10-03). FuzeClip is capitals only, so anything read as a sentence
+  stays in Exo 2.
 
 **Applied (2026-09-24 UI pass):** the palette is the `:root` tokens in `css/styles.css`. Buttons, tabs and
-menu items are plates cut at the HUD board's 20°, the pad cursor fills a plate with gold, panels are
-square slabs with a caption tab, and the home screen is a menu column over the live table.
+menu items are plates with the top-left and bottom-right corners cut (they were 20° slanted until 2026-10-04), the pad cursor fills a plate with gold, panels are
+square slabs with a cut-corner caption tab, and the home screen is a menu column over the live table.
 
 ---
 

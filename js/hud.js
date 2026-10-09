@@ -405,7 +405,7 @@ function hudChips(a,rdt){
  X.globalAlpha=1;
 }
 function hudChipAt(px,py){
- if(!HUD.on||S.photo||HUD.chromeA<.5||document.pointerLockElement)return -1;
+ if(!HUD.on||S.photo||HUD.chromeA<.5||document.pointerLockElement||mouseLockWant())return -1;
  const u=HUD.u,h=30*u;if(py<HUD.chipY-8*u||py>HUD.chipY+h)return -1;
  const C=HUD.chips;for(let i=0;i<C.length;i++){const c=C[i];if(c.k&&px>=c.x&&px<=c.x+c.w+HUD.chipK)return i;}
  return -1;

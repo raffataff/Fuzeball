@@ -48,11 +48,11 @@ function pinUpdate(){
   const la=r.angle*r.kickDir;
   const posed=(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);
   if(!posed)continue;
-  const sa=Math.sin(r.angle),ca=Math.cos(r.angle),dx=sa*ARM,dy=-ca*ARM,reach=BALL_R+PRAD+P.touch;
+  const sa=Math.sin(r.angle),ca=Math.cos(r.angle),dx=sa*ARM,dy=-ca*ARM,fwd=r.pinFwd,reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch),front=fwd?P.fwdFront:P.front;
   for(const b of S.balls){
    if(b.scored||b.pinR)continue;
    const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
-   if(rel<P.back||rel>P.front||p.y>BALL_R+P.yTol)continue;
+   if(rel<P.back||rel>front||p.y>BALL_R+P.yTol)continue;
    if(Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;             // too quick to hold: the finesse grip slows it first
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
@@ -61,7 +61,8 @@ function pinUpdate(){
     // touching the leg (capsule pivot to foot), same measure as shots.js shotLegClips
     const wx=p.x-r.x,wy=p.y-ROD_H,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
     const nx=p.x-(r.x+dx*t),ny=p.y-(ROD_H+dy*t),nz=p.z-mz;
-    if(nx*nx+ny*ny+nz*nz>reach*reach)continue;
+    const d2=nx*nx+ny*ny+nz*nz;
+    if(d2>reach*reach||(fwd&&-ny<P.fwdDown*Math.sqrt(d2)))continue;   // a forward leg holds a ball only from above: the foot has to reach its top, else it pings off
     r.pinB=b;r.pinAt=(r.pinPose&&r.pinA!=null)?r.pinA:r.angle;
     b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=clamp(p.z-mz,-P.zHold,P.zHold);
     b.v.set(0,0,r.vz);b.spin=0;b.pinVx=0;b.pinVz=r.vz;b.pinPx=p.x;b.pinPz=p.z;
@@ -389,7 +390,7 @@ function collideRod(b,r){
     const relR=(p.x-r.x)*r.kickDir;
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
-    let jm=-(1+rest)*vn/b.t.mass;
+    let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
     // player shot (js/shots.js): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
@@ -459,7 +460,7 @@ function collideRod(b,r){
     const HLD=holdCfg(r),trapping=!!HLD;        // dead + sticky while trapping/dribbling — see the foot-box pass
     const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
-    let jm=-(1+rest)*vn/b.t.mass;
+    let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
     if(r.shotOn)jm*=r.shotPow;                  // player shot — see the foot-box pass
@@ -492,6 +493,12 @@ function collideRod(b,r){
    }
   }
  }
+}
+// the ball's own approach speed rebounds off a side face (CONFIG.kick.sideRest); the slide's push is left as it was, so a tap is no stronger; returns the extra impulse
+function sideBounce(b,nx,ny,nz,rest,HLD){
+ if(Math.abs(nz)<KICK.sideDot)return 0;
+ const e=(HLD?(HLD.sideRest||0):KICK.sideRest)-rest,bn=b.v.x*nx+b.v.y*ny+b.v.z*nz;
+ return(e>0&&bn<0)?-e*bn/b.t.mass:0;
 }
 function ballBall(a,b){
  const pa=a.m.position,pb=b.m.position;

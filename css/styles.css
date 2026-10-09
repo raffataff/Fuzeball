@@ -17,11 +17,11 @@
    --focus:var(--gold);       /* the controller cursor */
    --glass:rgba(8,20,32,.94); /* panel fill. Solid, not frosted: the name stays for the rules that use it */
    --edge:rgba(107,170,188,.2);
-   --cut:13px;                /* the HUD board's 20° end cut, at button height (36px · tan 20°) */
-   --font-display:'SoccerLeague College','SoccerLeague',sans-serif;   /* titles only, italic */
-   --font-ui:'SoccerLeague',sans-serif;
-   --font-body:'Space Grotesk',system-ui,sans-serif;
-   --font-italic:'SoccerLeague',sans-serif;
+   --cut:13px;                /* a plate's default nominal cut (--pc), for a ~36px plate */
+   --font-display:'FuzeClip','SoccerLeague College','SoccerLeague',sans-serif;   /* titles only; FuzeClip is already cut at the plates' 20° lean, italic adds nothing */
+   --font-ui:'FuzeClip','SoccerLeague',sans-serif;
+   --font-body:'Exo 2',system-ui,sans-serif;
+   --font-italic:'FuzeClip','SoccerLeague',sans-serif;
  /* ---- PANEL TYPE SCALE + TEXT ROLES ----
    micro: column/table heads (uppercase, wide tracking) · label: stat names, role heads, chips · head: a panel's h3 · num: numeric readouts (pair with --font-ui)
    body: the default · lead: the one headline line in a panel, and settings rows
@@ -40,21 +40,22 @@ canvas#game{position:fixed;inset:0;display:block;cursor:crosshair}
 .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:40;
  background:linear-gradient(180deg,rgba(7,17,28,.97) 0,rgba(7,17,28,.86) 120px,rgba(7,17,28,.8) 60%,rgba(7,17,28,.93) 100%)}
 .hidden{display:none!important}
-/* a routed screen arrives behind one left-to-right wipe leaning at the plates' 20° (36.4vh of run); added by showScreen, removed when it ends */
+/* a routed screen arrives behind one left-to-right wipe whose leading edge has the plates' cut bottom corner; added by showScreen, removed when it ends */
 .screen.scrIn{animation:scrWipe .32s cubic-bezier(.3,.7,.2,1) both}
-@keyframes scrWipe{from{clip-path:polygon(0 0,0 0,-36.4vh 100%,-36.4vh 100%)}to{clip-path:polygon(0 0,calc(100% + 36.4vh) 0,100% 100%,-36.4vh 100%)}}
+@keyframes scrWipe{from{clip-path:polygon(0 0,0 0,0 calc(100% - 36px),-36px 100%,0 100%)}to{clip-path:polygon(0 0,calc(100% + 36px) 0,calc(100% + 36px) calc(100% - 36px),100% 100%,0 100%)}}
 @media(prefers-reduced-motion:reduce){.screen.scrIn{animation:none}}
 .lowFx .screen.scrIn{animation:none}
 /* ===== FEDERATION PLATES =====
-   shared shape: ends cut at the HUD board's 20°, drawn by two clipped layers behind the element (::before rim, ::after fill, 1.5px in) so the element itself is never clipped
-   style a plate ONLY through --pl (fill), --pr (rim), --pc (cut), --pk (text); a new plate-shaped control joins the :is() lists here */
+   shared shape: a rectangle with the top-left and bottom-right corners cut at 45°, drawn by two clipped layers behind the element (::before rim, ::after fill, 1.5px in) so the element itself is never clipped
+   style a plate ONLY through --pl (fill), --pr (rim), --pc (cut), --pk (text); the cut drawn is 0.66 × --pc, never under 5px (--pc ≈ 0.36 × the plate's height); a new plate-shaped control joins the :is() lists here */
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn){
  position:relative;isolation:isolate;background:none;border:none;border-radius:0;box-shadow:none;color:var(--pk);
  --pl:linear-gradient(180deg,var(--fed-hi),var(--fed) 48%,var(--fed-lo));--pr:rgba(188,220,237,.26);--pc:var(--cut);--pk:var(--text);
  transition:transform .12s,filter .15s,color .12s}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::before,
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::after{
- content:'';position:absolute;z-index:-1;pointer-events:none;clip-path:polygon(var(--pc) 0,100% 0,calc(100% - var(--pc)) 100%,0 100%)}
+ --dc:max(5px,calc(var(--pc) * .66));
+ content:'';position:absolute;z-index:-1;pointer-events:none;clip-path:polygon(var(--dc) 0,100% 0,100% calc(100% - var(--dc)),calc(100% - var(--dc)) 100%,0 100%,0 var(--dc))}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::before{inset:0;background:var(--pr)}
 :is(.btn,.scrTabBtn,.optTabBtn,.optGear,.modeCard,.miniBtn,.teamBtn,.rodOpt,.rosDevBtn,.trlTab,.sPlus,.rosMini,.trnBtn)::after{inset:1.5px;background:var(--pl)}
 /* states every plate shares: hover lifts the rim to ice, SELECTED (.on) is gold rim and type, the pad cursor is the whole plate in gold, pressed drops to copper */
@@ -75,21 +76,15 @@ img.logo{display:block;max-width:460px;width:clamp(260px,30vw,460px);height:auto
 .tagline::before,.tagline::after,.lgSub::before,.lgSub::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,var(--steel))}
 .tagline::after,.lgSub::after{transform:scaleX(-1)}
 /* ===== HOME =====
-   a menu column down the left, the live table on the right; the mode plates step down the column by one cut per row so their slanted ends line up: --step = row pitch × tan 20° */
+   a menu column down the left, the live table on the right */
 #home{align-items:flex-start;justify-content:center;padding:0 0 60px clamp(28px,7vw,140px);
  background:linear-gradient(90deg,rgba(7,17,28,.95) 0,rgba(7,17,28,.82) 32%,rgba(7,17,28,.25) 62%,rgba(7,17,28,.1) 100%),
   linear-gradient(0deg,rgba(7,17,28,.9) 0,transparent 26%)}
-/* the mode plates step right at 12° (shallower than the 20° buttons), ends cut the other way: --step = row pitch × tan 12° */
-.homeCol{display:flex;flex-direction:column;align-items:flex-start;--row:66px;--tan:.213;--step:calc(var(--row) * var(--tan))}
+.homeCol{display:flex;flex-direction:column;align-items:flex-start;--row:66px}
 .homeCol img.logo{margin:0 0 26px -10px}
 .homeMenu{display:flex;flex-direction:column;gap:8px;margin-left:36px}
 .homeMenu .modeCard{display:flex;flex-direction:column;justify-content:center;width:390px;height:calc(var(--row) - 8px);padding:0 30px 0 38px;
- cursor:pointer;pointer-events:auto;--pc:calc((var(--row) - 8px) * var(--tan));--pl:linear-gradient(90deg,rgba(18,63,94,.72),rgba(11,42,64,.5));--pr:rgba(188,220,237,.16)}
-.homeMenu .modeCard::before,.homeMenu .modeCard::after{clip-path:polygon(0 0,calc(100% - var(--pc)) 0,100% 100%,var(--pc) 100%)}
-.homeMenu .modeCard:nth-child(2){margin-left:var(--step)}
-.homeMenu .modeCard:nth-child(3){margin-left:calc(var(--step) * 2)}
-.homeMenu .modeCard:nth-child(4){margin-left:calc(var(--step) * 3)}
-.homeMenu .modeCard:nth-child(5){margin-left:calc(var(--step) * 4)}
+ cursor:pointer;pointer-events:auto;--pc:21px;--pl:linear-gradient(90deg,rgba(18,63,94,.72),rgba(11,42,64,.5));--pr:rgba(188,220,237,.16)}
 .homeMenu .modeCard .big{font-family:var(--font-ui);font-size:24px;line-height:1;letter-spacing:.06em;text-transform:uppercase}
 .homeMenu .modeCard .sub{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-top:5px}
 .homeMenu .modeCard:hover{transform:translateX(10px);--pl:linear-gradient(180deg,var(--fed-hi),var(--fed) 48%,var(--fed-lo));--pr:var(--ice)}
@@ -111,7 +106,7 @@ body.padNav .homeMenu .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 .modeRow{display:flex;flex-direction:column;gap:10px;margin:0 auto 22px}
 .modeRow .modeCard{display:flex;flex-direction:column;justify-content:center;width:420px;height:70px;padding:0 34px 0 42px;cursor:pointer;pointer-events:auto;--pc:25px}
 .modeRow .modeCard:hover{transform:translateX(8px)}
-.modeRow .modeCard .big{font-family:var(--font-ui);font-style:italic;font-size:24px;line-height:1;letter-spacing:.06em;text-transform:uppercase}   /* plain Soccer League italic: the College cut is too dense at button size */
+.modeRow .modeCard .big{font-family:var(--font-ui);font-style:italic;font-size:24px;line-height:1;letter-spacing:.06em;text-transform:uppercase}
 .modeRow .modeCard .sub{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-top:5px}
 body.padNav .modeRow .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 /* Kick Off roster: two team columns either side of a VS, tinted by the live kit colour (--tc). */
@@ -157,7 +152,7 @@ body.padNav .modeRow .modeCard.navFocus .sub{color:rgba(7,17,28,.72)}
 /* h3 has NO weight, so it was picking up the UA's bold default — same synthetic smear as 800. */
 .panel h3{font-family:var(--font-ui);font-weight:400;font-size:var(--fs-head);letter-spacing:var(--tr-head);color:var(--tx-mute);margin-bottom:12px;text-transform:uppercase}
 .panel>h3{width:fit-content;max-width:calc(100% + 20px);margin:18px 0 14px -20px;padding:9px 34px 8px 20px;color:var(--text);
- background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%)}
+ background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)}
 .panel>h3:first-child{margin-top:-16px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:7px 0;border-bottom:1px solid rgba(107,170,188,.09);font-size:var(--fs-lead);font-weight:600}
 .row label{color:var(--tx-strong)}
@@ -224,7 +219,7 @@ input[type=text]{width:110px;text-transform:uppercase}
 /* buttons */
 /* The primary action is the gold plate. `.ghost` is every other choice: a Federation-blue plate. */
 .btn{pointer-events:auto;cursor:pointer;font-family:var(--font-ui);font-weight:400;font-size:18px;letter-spacing:.14em;padding:12px 40px;text-transform:uppercase;
- --pl:linear-gradient(180deg,#f7c668,var(--gold) 55%,#d99532);--pr:var(--spark);--pk:var(--ink)}
+ --pl:linear-gradient(180deg,#f7c668,var(--gold) 55%,#d99532);--pr:var(--spark);--pk:var(--ink);--pc:15px}
 .btn:hover{transform:translateY(-2px);--pr:#fff4dc;--pl:linear-gradient(180deg,#fbd589,#f4bd59 55%,#e0a13d)}
 body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--spark));--pr:#fff}
 .btn.ghost{--pl:linear-gradient(180deg,var(--fed-hi),var(--fed) 48%,var(--fed-lo));--pr:rgba(188,220,237,.26);--pk:var(--text)}
@@ -542,7 +537,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
   background:linear-gradient(180deg,rgba(12,33,50,.96),rgba(7,17,28,.96) 60%);border:1px solid rgba(107,170,188,.16);border-top:2px solid var(--fed-hi);box-shadow:0 14px 34px rgba(0,0,0,.45);transition:transform .12s,border-color .15s}
  .lgSlotCard.empty{background:rgba(7,17,28,.86);border:1px dashed rgba(107,170,188,.3);border-top:2px dashed rgba(107,170,188,.3);box-shadow:none;justify-content:flex-start}
  .lgSlotCard .slotNo{margin:-2px 0 14px -22px;padding:7px 30px 6px 22px;font-family:var(--font-ui);font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--ice);
-  background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,0 100%)}
+  background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%)}
  .lgSlotCard.empty .slotNo{background:rgba(18,63,94,.5);color:var(--tx-mute)}
  .lgSlotCard:hover{transform:translateY(-3px);border-color:var(--ice)}
  .lgSlotCard .slotName{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:28px;line-height:1.05;letter-spacing:.03em;color:var(--text);margin-bottom:8px;text-transform:uppercase}
@@ -632,7 +627,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .optWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1820px;width:100%;padding:16px;margin:0 auto;flex-wrap:wrap}
 .optPanel{flex:1 1 0;min-width:272px;max-width:350px;min-height:auto}
 .optDiv{height:1px;background:var(--edge);margin:13px 0}
-.optHint{font-size:14px;color:var(--tx-mute);line-height:1.42;margin-top:12px;letter-spacing:0}
+.optHint{font-size:14px;color:var(--tx-mute);line-height:1.44;margin-top:12px;letter-spacing:.02em}
 /* key bindings (js/options.js kbRender): keys use the reference card's .ctl b keycap; the + waiting for a press takes the selection gold */
 .optKeysPanel{max-width:380px}
 .kbList{display:flex;flex-direction:column;gap:3px}
@@ -1187,6 +1182,7 @@ body.padNav .trlTab.navFocus :is(.trlTabName,.trlTabCt){color:var(--ink)}
 /* ===== controller cursor + prompt strip (js/padnav.js) =====
    only under body.padNav (the pad is in use; the first mouse movement takes the class off); outline, not border, so it moves no layout; the pointer hides too */
 body.padNav{cursor:none}
+body.mlHide canvas#game{cursor:none!important}   /* in a match with the mouse seated (js/input.js mouseLockTick); beats the HUD's inline hover cursor */
 body.padNav .navFocus{outline:3px solid var(--focus)!important;outline-offset:3px;
  }
 body.padNav .btn.navFocus{transform:translateY(-2px)}

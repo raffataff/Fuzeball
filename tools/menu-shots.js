@@ -4,6 +4,7 @@
 //      node tools/menu-shots.js --size=1920x1080   another window size
 // writes to tools/build/menu-shots/ (gitignored): a PNG per screen, contact-sheet.jpg and notes.txt; exit 1 if any screen or box overflows (no menu screen scrolls at 1280x800)
 // needs Chrome or Edge (CHROME=path to pick one); serves the repo on a free port, runs headless with a fresh profile, drives screens through their own functions, builds a league with three rounds played, draws the cup straight away (cupCreate)
+// also lists, per screen, the characters FuzeClip does not draw (informational)
 // not covered: pause / win overlays, the match HUD
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),{spawn}=require('child_process'),{pathToFileURL}=require('url');
@@ -75,6 +76,22 @@ const AUDIT=`const o=[],on=e=>e.getClientRects().length,sc=v=>v==='auto'||v==='s
    if(sc(cs.overflowY)&&e.scrollHeight>e.clientHeight+1)o.push(n+' scrolls down: '+e.clientHeight+' / '+e.scrollHeight);
    if(sc(cs.overflowX)&&e.scrollWidth>e.clientWidth+1&&e.id!=='czStrip')o.push(n+' scrolls sideways: '+e.clientWidth+' / '+e.scrollWidth);}}
  return o;`;
+/* Characters on the live screen, set in FuzeClip, that the font does not draw (they fall back to Soccer League); informational, never fails the run. */
+const fuzeChars=(()=>{   // the codepoints in FuzeClip's own cmap (format 4), read from the file
+ try{const b=fs.readFileSync(path.join(ROOT,'fonts','fuzeClip','FuzeClip.ttf')),n=b.readUInt16BE(4);let co=0;
+  for(let i=0;i<n;i++){const o=12+i*16;if(b.toString('latin1',o,o+4)==='cmap')co=b.readUInt32BE(o+8);}
+  const sub=co+b.readUInt32BE(co+16),segs=b.readUInt16BE(sub+6)/2,end=sub+14,start=end+segs*2+2,out=[];
+  for(let s=0;s<segs;s++){const e=b.readUInt16BE(end+s*2),st=b.readUInt16BE(start+s*2);if(e!==0xFFFF)for(let c=st;c<=e;c++)out.push(c);}
+  return out;}catch(e){return [];}
+})();
+const GLYPHS=()=>`const ok=new Set(${JSON.stringify(fuzeChars)}),m={},on=e=>e.getClientRects().length;
+ const add=(s,t)=>{for(const ch of s){if(ok.has(ch.codePointAt(0))||/\\s/.test(ch))continue;(m[ch]=m[ch]||new Set()).add(t.trim().slice(0,28));}};
+ const lead=e=>/FuzeClip/.test(getComputedStyle(e).fontFamily.split(',')[0]);
+ for(const s of document.querySelectorAll('.screen')){if(s.classList.contains('hidden')||!on(s))continue;
+  const w=document.createTreeWalker(s,NodeFilter.SHOW_TEXT);
+  for(let n;n=w.nextNode();){const e=n.parentElement;if(e&&on(e)&&lead(e))add(n.nodeValue,n.nodeValue);}
+  for(const e of s.querySelectorAll('input[type=text],input:not([type]),textarea'))if(on(e)&&lead(e))add(e.value,e.value);}
+ return Object.keys(m).map(ch=>ch+' (U+'+ch.codePointAt(0).toString(16)+') in '+[...m[ch]].slice(0,3).map(t=>'"'+t+'"').join(', '));`;
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function serve(){
@@ -125,8 +142,8 @@ async function cdp(port){
    let err='';try{await c.ev(js);}catch(e){err=e.message.split('\n')[0];}
    await sleep(2000);
    const file=path.join(OUT,name+'.png');await c.shot(file);shots.push(name);
-   const a=err?[]:await c.ev(AUDIT);if(a.length||err)bad++;
-   notes.push(name+(err?'  ERROR '+err:'')+(a.length?'\n  '+a.join('\n  '):'')+(a.length||err?'':'  ok'));
+   const a=err?[]:await c.ev(AUDIT),g=err?[]:await c.ev(GLYPHS());if(a.length||err)bad++;
+   notes.push(name+(err?'  ERROR '+err:'')+(a.length?'\n  '+a.join('\n  '):'')+(a.length||err?'':'  ok')+(g.length?'\n  not in FuzeClip: '+g.join('; '):''));
    console.log(notes[notes.length-1]);
   }
   fs.writeFileSync(path.join(OUT,'notes.txt'),notes.join('\n')+'\n');

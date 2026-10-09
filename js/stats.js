@@ -57,9 +57,7 @@ function aimAssist(b,r,noPass){
  // every rod gets a baseline bend (assistBase), accuracy scales it toward assistMax
  // a pass (r.passTo, set by kickRod) retargets to a teammate with its own larger bend, cone and speed gate (CONFIG.ai.dribble.pass)
  const PS=CONFIG.ai.dribble.pass,pass=(!noPass&&r.passTo)||null;
- const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
- let a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
- if(pass)a=Math.max(a,PS.assist);
+ let a=assistAng(r,!!pass);
  // a player shot's control figure (js/shots.js): 1 in the sweet band, falling either side and under the power trigger; a wild swing is aimed less as well as sprayed more
  if(r.shotOn)a*=clamp(r.shotCtl,0,1);
  if(a<=0)return;
@@ -73,6 +71,12 @@ function aimAssist(b,r,noPass){
  if(Math.abs(da)>(pass?PS.assistCone:STC.assistCone))return;
  const th=clamp(da,-a,a)*dir,cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
  v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
+}
+// the most aimAssist can bend a strike (rad); the AI reads it as how far off straight a shot or a pass can be placed
+function assistAng(r,pass){
+ const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
+ const a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
+ return pass?Math.max(a,CONFIG.ai.dribble.pass.assist):a;
 }
 // WALL PLAY: the side-of-the-boot strike (CONFIG.ai.wallPlay)
 // an end man stops two units short of a wall ball, so a strike on one only runs down the wall; a forward strike on a wall ball now leaves infield, aimed like aimAssist but clamped into [minAng,maxAng]

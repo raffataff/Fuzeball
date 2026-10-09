@@ -24,7 +24,7 @@
     if(S.phase!=='play'){S.phase='count';serve();}
     const b0=S.balls[0];if(!b0)break;
     const pp=b0.m.position.clone(),pv=b0.v.clone();
-    const pst=rods.map(r=>({a:r.angle,off:r.offset,raise:r.raise,act:r.act?(r.act==='retrieve'?'retrieve/'+r.retPh:r.act):r.act,bf:r.behindFlag,tgt:r.target,kT:r.kickT}));   // a retrieve is named by its phase
+    const pst=rods.map(r=>({a:r.angle,off:r.offset,raise:r.raise,act:r.act?(r.act==='retrieve'?'retrieve/'+r.retPh:r.act==='catch'?'catch/'+r.catPh:r.act):r.act,bf:r.behindFlag,tgt:r.target,kT:r.kickT}));   // a retrieve and a catch are named by their phase
     const sc0=S.score.slice();
     aiUpdate(FIX);userControlUpdate(FIX);deadBallUpdate(FIX);updateRods(FIX);
     const post=rods.map(r=>({a:r.angle,off:r.offset,act:r.act,raise:r.raise}));
