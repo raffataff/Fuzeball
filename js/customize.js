@@ -96,24 +96,48 @@ function czStripFit(){
 }
 function closeCustomize(){showScreen('menu');}   // onHide above does the stop/refresh
 
-// live kit summary in the menu's Teams & Kits panel: thumbnails, model caption, palette, team-tinted accents
+// live kit summary in the menu's Teams & Kits panel: the tape render cut from the head down (a 3D thumbnail when a figurine has none), model caption, palette, team-tinted accents
+const KP_BAD={};
 function refreshKitUI(){
+ let thumbs=false;
  [0,1].forEach(team=>{
-  const col=(team===0?cfg.redColor:cfg.blueColor).toLowerCase();
-  const cap=$('kitCap'+team);if(cap)cap.textContent=activeModel(team).name;
-  const fig=$('kitFig'+team);if(fig)fig.style.setProperty('--tc',col);
+  const col=(team===0?cfg.redColor:cfg.blueColor).toLowerCase(),am=activeModel(team);
+  const cap=$('kitCap'+team);if(cap)cap.textContent=am.name;
+  const fig=$('kitFig'+team);
+  if(fig){fig.style.setProperty('--tc',col);if(!kitPortrait(team,fig,am))thumbs=true;}
   const nameEl=$(team===0?'nameRed':'nameBlue');if(nameEl)nameEl.style.setProperty('--tc',col);
   const pal=$('kitPal'+team);
   if(pal)pal.querySelectorAll('.czChip').forEach(c=>c.classList.toggle('on',c.dataset.hex===col));
  });
+ if(!thumbs)return;
  const needReload=!THB.model[0]||THB.loadedId[0]!==activeModel(0).id||!THB.model[1]||THB.loadedId[1]!==activeModel(1).id;
  if(needReload)thumbLoad(applyKitThumbs);
  else applyKitThumbs();
 }
+// the pre-match tape render in a kit frame, team colour laid over its mask; false = this figurine has no render (or it would not load), so the 3D thumbnail stands in
+function kitPortrait(team,fig,am){
+ const src=typeof modelRender==='function'?modelRender(am.id):null;
+ const img=fig.querySelector('.lgFigImg'),tint=fig.querySelector('.lgFigTint');
+ if(!src||KP_BAD[src]||!img||!tint){fig.classList.remove('hasRender');fig.dataset.src='';return false;}
+ const P=CONFIG.playerModel.portrait,mask=modelRenderMask(am.id);
+ fig.style.setProperty('--show',P.show);fig.style.setProperty('--fit',P.fit);fig.style.setProperty('--head',P.head);
+ fig.style.setProperty('--cx',team===1?1-P.cx:P.cx);
+ fig.style.setProperty('--rt',(am.renderTop==null?P.top:am.renderTop)/1024);
+ if(fig.dataset.src!==src){
+  fig.dataset.src=src;fig.style.backgroundImage='';
+  tint.style.webkitMaskImage=tint.style.maskImage=mask?'url('+mask+')':'none';
+  img.onload=()=>fig.classList.add('hasRender');
+  img.onerror=()=>{KP_BAD[src]=1;refreshKitUI();};
+  img.src=src;
+ }
+ return true;
+}
 function applyKitThumbs(){
  [0,1].forEach(team=>{
-  const url=thumbRender(team),fig=$('kitFig'+team);
-  if(url&&fig)fig.style.backgroundImage='url('+url+')';
+  const fig=$('kitFig'+team);
+  if(!fig||fig.dataset.src)return;
+  const url=thumbRender(team);
+  if(url)fig.style.backgroundImage='url('+url+')';
  });
 }
 

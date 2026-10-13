@@ -79,7 +79,7 @@ function venueLoad(run,opts){
 function startMatchNow(mode,rodLockRole){
  // the menu is clickable before boot() has run (skipped intro, reduced motion); starting then threw on S.ctrlRods[S.ctrl]; boot() is idempotent, so force it
  if(!rods.length){
-  if(typeof boot==='function')boot();
+  if(typeof boot==='function')boot(true);
   if(!rods.length)return;   // main.js not parsed yet — swallow the click rather than start a rodless match
  }
  Au.init();Au.ui('start');
@@ -91,10 +91,12 @@ function startMatchNow(mode,rodLockRole){
  // seed the sim's random surface (js/rng.js) before anything draws; seedNext is consumed here so a trial's seed can't leak into the next match
  S.seed=(S.seedNext!=null)?(S.seedNext>>>0):(Date.now()>>>0);S.seedNext=null;rngSeed(S.seed);
  S.score=[0,0];S.stats=freshStats();S.matchTime=0;S.time=0;S.timeScale=1;S.suddenDeath=false;S.clockBeep=0;S.pendingWin=null;
- S.serveAt=null;   // a restart spot left over from the last match must not aim its first kickoff
+ S.serveAt=null;S.kickTeam=-1;   // a restart spot or kicking team left over from the last match must not aim the opening drop
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
-  clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();
+  clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();vfxClear();
+  if(typeof iceClear==='function')iceClear();
+  if(typeof boostClear==='function')boostClear();
   // prime both teams' shatter GLBs (every mode funnels through startMatch, incl. league/cup); no live instance uses a template now, so prune every other figurine's
   if(typeof ensureExplosionModel==='function'){
    const ea=activeModel(0).id,eb=activeModel(1).id;
@@ -122,7 +124,7 @@ function startMatchNow(mode,rodLockRole){
   // the hint speaks to the devices actually seated and offers switching only if someone can; the pad line says what the triggers do in this mode
   {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
    const sw=S.seats.some(s=>s.rods.length>1);
-   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin':''):'';
+   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin'+(SHOT.pin.fwd.on?' · {LT}+{A} forward pin':''):''):'';
    // the keyboard line comes off the bindings (js/binds.js), so a rebind shows
    const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
    hudHint(!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
@@ -151,7 +153,7 @@ function onGoal(team,b){
  // classify the goal before removeBall (b.v is the velocity at the line); M carries the sub chip and banner accent (js/moments.js)
  const M=momGoal(team,b);
  msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit and rally clock; both read records hanging off the ball, which removeBall frees
- S.score[team]+=val;
+ S.score[team]+=val;S.kickTeam=1-team;   // the team that conceded kicks off
  goalFx(team,b,msScorer(b,team));   // the ring flash wants the scoring rod; msScorer decides (matchstats.js)
  updateScoreUI(team);
  removeBall(b);
@@ -197,7 +199,7 @@ function outOfBounds(b){
 function endMatch(w){
  S.phase='win';S.pendingWin=null;   // cleared here too: a clock-out/forfeit can land while a goal replay is queued
  Au.goal('win');Au.whistle(3);
- flash();S.shake=1;
+ if(vfxLive())flash(w===0?cfg.redColor:cfg.blueColor,0.5,0.9);else{flash();S.shake=1;}
  clearBalls();clearPU();replayAbort();clearFxRail();
   const wasLg=!!S.lg;
   if(wasLg){(S.lg.cup?cupRecord:lgRecord)(w);} // record + sim the rest while the bridge is live
@@ -220,8 +222,11 @@ function endMatch(w){
  $('winRewards').classList.toggle('hidden',!wasLg);
  $('btnWinContinue').classList.toggle('hidden',!wasLg); // league: Continue → lobby
  $('btnRematch').classList.toggle('hidden',wasLg);      // league: no rematches
- $('win').classList.remove('hidden');
- confetti(w);
+ // the board waits while the finale plays (CONFIG.fx.vfx.finale.board); vfxWinTick brings it in and throws the screen confetti
+ const wait=vfxLive()?vfxFinale(w):0;
+ S.winT=wait;vfxSkipT=0;
+ if(wait>0)$('win').classList.add('hidden');
+ else{$('win').classList.remove('hidden');confetti(w);}
 }
 function togglePause(){
  if(S.phase==='play'||S.phase==='count'){S.prePause=S.phase;S.phase='pause';$('pause').classList.remove('hidden');Au.ui('open');}
@@ -237,7 +242,9 @@ function gotoMenu(){
    loadPlayerModel(()=>{rebuildRodMen();applyColors();});
   }
   if(typeof lgVenueExit==='function')lgVenueExit();
-  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();clearMarks();
+  S.phase='menu';clearBalls();clearPU();clearFractures();replayAbort();clearFxRail();clearMarks();vfxClear();
+  if(typeof iceClear==='function')iceClear();
+  if(typeof boostClear==='function')boostClear();
   // no match live: free every shatter GLB except the two figurines the menu shows
   if(typeof pruneExplosionModels==='function')pruneExplosionModels([activeModel(0).id,activeModel(1).id]);
  S.lg=null;S.teamStats=null; // drop any league-match bridge (abandoned matches aren't recorded)

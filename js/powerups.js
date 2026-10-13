@@ -48,7 +48,8 @@ function collectPU(){
  // no banner: the rail tab sliding out of the score is the notification (hud.js hudTabs); freeze's tab is on the rival's side, so the collector gets this notice
  notice(nm+' · '+t.label,1.2,team===0?'var(--c0)':'var(--c1)');
  Au.power();
- burst(S.pu.obj.position,new THREE.Color(t.col),new THREE.Color(0xffffff),60,40);
+ if(vfxLive())vfxPickup(S.pu.obj.position,t.col);
+ else burst(S.pu.obj.position,new THREE.Color(t.col),new THREE.Color(0xffffff),60,40);
  disposePU();S.pu.timer=rngR(RNG.pu,PWR.respawn[0],PWR.respawn[1]);
 }
 function powerupUpdate(dt){

@@ -160,6 +160,7 @@ function buildArenaTable(){
 
 // ===== active flag =====
 let ARENA_ON=false;
+let WALL_H=F.wallH; // flat tables: the active table's drawn wall height (CONFIG.tables[*].wallH, else CONFIG.table.wallH); stepBall's walls and rim are built on it
 let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): end-wall height the goal is inset into; 0 = classic open ends (physics.js stepBall)
 // registry-driven: select the table by id, show its group, hide the rest, set the collision flag, show the active skin
 // onReady fires once the skin GLB and room backdrop are resident (sync if cached); assets are lazy (CONFIG.tableAssets), the old one is evicted after the new one lands, until then applySkin shows primitives
@@ -168,6 +169,7 @@ function applyTable(onReady){
  activeTable=CONFIG.tables[id];
  ARENA_ON=activeTable.collision==='bowl';                 // physics/balls/powerups/debug read this ('bowl'=arena SDF, else flat box)
  ENDWALL_H=(!ARENA_ON&&activeTable.endWall)?activeTable.endWall.h:0; // flat table w/ endWall = walled goal end (physics.js bounce-back)
+ WALL_H=activeTable.wallH||F.wallH;
  if(typeof clearMarks==='function')clearMarks();   // scuffs belong to the table that wore them
  // show only the selected table's group (its skin sub-groups and primitives ride along)
  for(const tid in tableGroups){if(tableGroups[tid])tableGroups[tid].visible=(tid===id);}

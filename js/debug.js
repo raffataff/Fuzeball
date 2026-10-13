@@ -148,11 +148,12 @@ function lightAudit(){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false};
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false};
 let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
+let dbgPins=[],dbgPinPanel=null,dbgPinShown=false,dbgPinKey='',dbgPinNom=[null,null];
 
 // ===== per-rod kick decision tracer =====
 // L (debug on) cycles the traced rod; one line per state change or kick, ★KICK carries gap= (seconds since this rod's last kick)
@@ -292,7 +293,9 @@ function buildAIPanel(){
     {key:'dribble',label:'Dribble',col:'#7a5cff'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
-    {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'}
+    {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'},
+    {key:'backPin',label:'Back Pin',col:'#3ec6ff'},
+    {key:'frontPin',label:'Front Pin',col:'#ff7ad1'}
   ];
  for(const it of items){
   const lbl=document.createElement('label');
@@ -315,6 +318,122 @@ function buildAIPanel(){
   dbgAIPanel.appendChild(lbl);
  }
  document.body.appendChild(dbgAIPanel);
+}
+
+// ===== pin ranges (Back Pin / Front Pin layers) =====
+// every number here is read live (physics.js pinUpdate, ai.js / shots.js fetch), so a slider is a CONFIG edit; COPY prints them for config.js
+// h = a heading above the row; l = the plain-words name; t = what it does, shown under the panel while the row is hovered or dragged (a ball is 3.8 across)
+const dbgPinDials=[
+ {h:'BACK PIN  (leg tilted back, ball under the shin)',g:'shots.pin',o:()=>SHOT.pin,k:'back',l:'Reach behind rod',min:-9,max:-1,st:.1,
+  t:'How far BEHIND the rod a ball can be and still get grabbed. More negative = he grabs balls from further back. -5.5 is about a ball and a half.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'front',l:'Reach ahead of rod',min:0,max:4,st:.1,
+  t:'How far IN FRONT of the rod a ball can be. The normal back-tilted leg sits behind the rod, so you only notice this on a leg leaning forward, like the receiving pose.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'touch',l:'Grab distance',min:0,max:1.5,st:.05,
+  t:'How far from the leg a ball can be and still get held. Keep it at 0.55 or more: a ball that runs into the foot stops about 3.4 off the shin, so a smaller number never holds it and the AI\'s side catch stops working. Small changes barely show.'},
+ {h:'FRONT PIN  (foot pressed down on top of the ball)',g:'shots.pin',o:()=>SHOT.pin,k:'fwdBack',l:'Nearest ball',min:-6,max:6,st:.1,
+  t:'The nearest ball to the rod the front pin will hold (0 = level with the rod, + = ahead of it). Raise it to stop the foot taking balls right under the man. Nothing nearer than about 1 can be held from above anyway.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'fwdFront',l:'Furthest ball',min:2,max:8,st:.1,
+  t:'The furthest ball ahead of the rod the front pin will hold. Past about 5 the man is stretched out flat, which looks silly. Lower = shorter reach.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'fwdTouch',l:'Grab distance',min:0,max:1.5,st:.05,
+  t:'How close the foot must be to the ball. 0 = the foot must really be on it. Higher = it holds a ball the foot is only hovering near.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'fwdDown',l:'Foot on top',min:.3,max:1,st:.01,
+  t:'How much the foot must press on the TOP of the ball rather than its side. 1 = dead on top, 0.75 = within about 40 degrees of it. Lower = it grabs a ball by the side, and the ball pings off.'},
+ {h:'BOTH PINS',g:'shots.pin',o:()=>SHOT.pin,k:'zCatch',l:'Sideways reach',min:.5,max:4,st:.1,
+  t:'How far left or right of the man\'s body a ball can be and still get grabbed. Smaller = the ball has to be right in front of him.'},
+ {h:'LOOSE BALL ROUTINE  (lift the leg, slide over, press down)',g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'near',l:'Starts at',min:0,max:6,st:.1,
+  t:'A loose ball lying at least this far ahead of the rod sets the routine off (the AI, and the player\'s finesse + kick). Nearer than this the boot already touches it. The white strip on the pitch. Keep it at or above Nearest ball.'},
+ {g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'far',l:'Gives up at',min:2,max:8,st:.1,
+  t:'...and no further than this. Past it the man would be stretched out flat, so the ball is left alone. Keep it at or under Furthest ball, or the AI goes for balls the foot cannot hold.'}
+];
+// combinations that look fine on the plates and break play (catchSoak 12 x 120 s pro: touch 0.1 took pins 19.5 -> 9.2 a match and taps landed 1.4 -> 0.1)
+function dbgPinWarn(){
+ const P=SHOT.pin,FE=AIC.catch.fetch,w=[];
+ if(BALL_R+PRAD+P.touch<Math.max(AIC.catch.side.legD,3.45))w.push('Grab distance (back pin) is too small: a ball stopped by the foot sits about 3.4 off the shin and is not held, and the AI side catch fails.');
+ if(FE.near<P.fwdBack-.05)w.push('Starts at is nearer than Nearest ball: the AI goes for balls the foot cannot hold.');
+ if(FE.far>P.fwdFront+.05)w.push('Gives up at is past Furthest ball: the AI goes for balls the foot cannot hold.');
+ return w;
+}
+// physics.js's own `posed` test: is this rod's leg at the angle a pin can catch from
+function dbgPosed(r){const P=SHOT.pin,la=r.angle*r.kickDir;return(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);}
+// where on the floor, on the man's z, a leg at dir-relative angle la holds a ball: pinUpdate's window, touch and (forward) from-above tests; false = nowhere
+function dbgPinSpan(la,fwd,out){
+ const P=SHOT.pin,reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch),dx=Math.sin(la)*ARM,dy=-Math.cos(la)*ARM,wy=BALL_R-ROD_H,lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front;
+ let a=null,b=0;
+ for(let x=lo;x<=hi+1e-6;x+=.05){
+  const t=clamp((x*dx+wy*dy)/(ARM*ARM),0,1),nx=x-dx*t,ny=wy-dy*t,d2=nx*nx+ny*ny;
+  if(d2>reach*reach||(fwd&&-ny<P.fwdDown*Math.sqrt(d2)))continue;
+  if(a===null)a=x;
+  b=x;
+ }
+ if(a===null)return false;
+ out[0]=a;out[1]=b;return true;
+}
+// the resting pose of each pin (back at pin.angle, forward at pin.fwd.angle), redone only when a number it reads has moved
+function dbgPinNominal(){
+ const P=SHOT.pin,key=[P.back,P.front,P.fwdBack,P.fwdFront,P.touch,P.fwdTouch,P.fwdDown,P.angle,P.fwd.angle].join();
+ if(key===dbgPinKey)return;
+ dbgPinKey=key;
+ const o=[0,0];
+ dbgPinNom[0]=dbgPinSpan(P.angle,false,o)?[o[0],o[1]]:null;
+ dbgPinNom[1]=dbgPinSpan(P.fwd.angle,true,o)?[o[0],o[1]]:null;
+}
+function buildPinPanel(){
+ if(dbgPinPanel)return;
+ const p=document.createElement('div');p.id='dbgPinPanel';
+ p.innerHTML='<h4>PIN RANGES</h4>';
+ const help=document.createElement('div');help.className='help';
+ const warn=document.createElement('div');warn.className='warn';
+ const tip=t=>{help.textContent=t||'Hover or drag a slider to see what it does. Gold numbers differ from config.js.';};
+ const check=()=>{warn.textContent=dbgPinWarn().join(' ');};
+ const rows=[];
+ for(const d of dbgPinDials){
+  if(d.h){const h=document.createElement('div');h.className='sec';h.textContent=d.h;p.appendChild(h);}
+  const o=d.o(),def=o[d.k],row=document.createElement('label'),nm=document.createElement('span'),vl=document.createElement('span'),rg=document.createElement('input');
+  nm.textContent=d.l;vl.className='val';
+  rg.type='range';rg.min=d.min;rg.max=d.max;rg.step=d.st;
+  const sync=()=>{rg.value=o[d.k];vl.textContent=o[d.k].toFixed(d.st<.1?2:1);vl.classList.toggle('chg',o[d.k]!==def);};
+  rg.addEventListener('input',()=>{o[d.k]=+rg.value;sync();tip(d.t);check();updateAIVis();});
+  row.addEventListener('mouseenter',()=>tip(d.t));
+  row.appendChild(nm);row.appendChild(rg);row.appendChild(vl);p.appendChild(row);
+  rows.push({o,d,def,sync});sync();
+ }
+ tip();check();p.appendChild(warn);p.appendChild(help);
+ const bar=document.createElement('div');bar.className='bar';
+ const btn=(t,f)=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.addEventListener('click',f);bar.appendChild(b);};
+ btn('RESET',()=>{for(const r of rows){r.o[r.d.k]=r.def;r.sync();}check();updateAIVis();});
+ btn('COPY',()=>{
+  const g={};for(const d of dbgPinDials)(g[d.g]=g[d.g]||[]).push(d.k+':'+(+d.o()[d.k].toFixed(2)));
+  const txt=Object.keys(g).map(k=>'// CONFIG.'+k+'\n'+g[k].join(', ')).join('\n');
+  console.log('%c[PIN RANGES]','color:#3ec6ff;font-weight:bold','\n'+txt);
+  const c=navigator.clipboard;if(c&&c.writeText)c.writeText(txt).catch(()=>{});
+  toast('PIN RANGES','copied to the clipboard and the console',1.4);
+ });
+ p.appendChild(bar);
+ document.body.appendChild(p);
+ dbgPinPanel=p;
+}
+// shown while either layer is on, parked just left of the AI panel
+function dbgPinPanelShow(v){
+ if(v===dbgPinShown)return;
+ dbgPinShown=v;
+ if(v){
+  buildPinPanel();
+  const a=dbgAIPanel&&dbgAIPanel.getBoundingClientRect(),w=document.documentElement.clientWidth||window.innerWidth;
+  dbgPinPanel.style.right=((a&&a.width&&w)?(w-a.left+8):200)+'px';
+ }
+ if(dbgPinPanel)dbgPinPanel.style.display=v?'block':'none';
+}
+// a held ball against the window: dir-relative x (hot within half a unit of either edge), z off the man, and the gap from the leg's surface
+function updatePinRows(){
+ const P=SHOT.pin,rows=[];
+ for(const r of rods){
+  const b=r.pinB;if(!b)continue;
+  const p=b.m.position,rel=(p.x-r.x)*r.kickDir,fwd=!!r.pinFwd,la=r.angle*r.kickDir,dx=Math.sin(la)*ARM,dy=-Math.cos(la)*ARM;
+  const wy=p.y-ROD_H,t=clamp((rel*dx+wy*dy)/(ARM*ARM),0,1),nx=rel-dx*t,ny=wy-dy*t,nz=p.z-(r.baseZ[b.pinMan]+r.offset);
+  const lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front;
+  rows.push([[dbgRodName(r),fwd?'FWD':'BACK'],['REL',rel.toFixed(2),rel-lo<.5||hi-rel<.5],['DZ',nz.toFixed(2)],['GAP',(Math.sqrt(nx*nx+ny*ny+nz*nz)-BALL_R-PRAD).toFixed(2)]]);
+ }
+ hudDev('pin',rows.length?rows:[[['PIN','none held']]]);
 }
 
 function buildDebug(){
@@ -612,6 +731,14 @@ function buildDebug(){
 
   dbgAIGroup.visible=false;
 
+  // backPin / frontPin: per man, pinUpdate's window (rel back..front or fwdFront, z +-zCatch) with the leg's real footprint inside it; frontPin adds the fetch band (white strip)
+  // sizes are written each frame (the sliders move them); hot window = this man holds a ball, bright footprint = the rod is posed for that pin now
+  const pnKinds=[{fwd:false,col:0x3ec6ff},{fwd:true,col:0xff7ad1}],pnFetch=dbgMat(0xffffff,.5);
+  for(const k of pnKinds){k.win=dbgMat(k.col,.12);k.hot=dbgMat(k.col,.45);k.fp=dbgMat(k.col,.2);k.arm=dbgMat(k.col,.42);}
+  for(const r of rods)for(let i=0;i<r.baseZ.length;i++)for(const k of pnKinds)
+   dbgPins.push({rod:r,manIdx:i,k,win:plate(k.win,1,0.05,1,0,0.055,0),fp:plate(k.fp,1,0.05,1,0,0.085,0),
+    ft:(k.fwd&&AIC.catch.fetch.roles.indexOf(r.role)>=0)?plate(pnFetch,1,0.05,1,0,0.115,0):null});
+
   // sweetSpot: per-man area in front of the foot where a clean strike earns the power bonus (matches collideRod, SW.zFrac, SW.xMin/xMax)
   const sweetM=dbgMat(0xffe14d,.20),sweetHot=dbgMat(0xffe14d,.85);
   const SW=KICK.sweetSpot;
@@ -658,9 +785,10 @@ function disposeDebug(){
  dbgDropSweep=[];dbgFootRange=[];dbgTrapZone=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
  dbgMakeWay=[];dbgDribble=[];dbgDeadzones=[];dbgShotLanes=[];
  dbgAIManRings=[];dbgAITargetDots=[];dbgFootReach=[];dbgAlignRings=[];dbgAIServe=[];dbgAIRedrop=[];
- dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;
+ dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;dbgPins=[];
  dbgShotOpen=dbgShotBlock=dbgMarkOpen=dbgMarkBlock=null;
  if(dbgAIPanel){dbgAIPanel.style.display='none';}
+ dbgPinPanelShow(false);hudDev('pin',null);
  dbgOn=false;
 }
 
@@ -840,6 +968,25 @@ function updateAIVis(){
     sl.marker.visible=true;
   }
 
+  // backPin / frontPin: the window (hot while that man holds a ball) and the footprint inside it (the live leg while posed for that pin, else its resting pose)
+  {const P=SHOT.pin,FE=AIC.catch.fetch,sp=[0,0],want=dbgAIOpts.backPin||dbgAIOpts.frontPin;
+   dbgPinPanelShow(on&&want);
+   if(on&&want)dbgPinNominal();
+   for(const e of dbgPins){
+    const r=e.rod,k=e.k,fwd=k.fwd,vis=on&&(fwd?dbgAIOpts.frontPin:dbgAIOpts.backPin)&&manLive(r,e.manIdx);
+    e.win.visible=e.fp.visible=vis;if(e.ft)e.ft.visible=vis;
+    if(!vis)continue;
+    const dir=r.kickDir,mz=r.baseZ[e.manIdx]+r.offset,lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front;
+    const hold=!!r.pinB&&r.pinB.pinMan===e.manIdx&&!!r.pinFwd===fwd;
+    e.win.scale.set(hi-lo,0.05,P.zCatch*2);
+    e.win.position.set(r.x+(lo+hi)/2*dir,0.055,mz);
+    e.win.material=hold?k.hot:k.win;
+    const live=!!r.pinOn&&dbgPosed(r)&&!!r.pinFwd===fwd,s=live?(dbgPinSpan(r.angle*dir,fwd,sp)?sp:null):dbgPinNom[fwd?1:0];
+    e.fp.visible=!!s;
+    if(s){e.fp.scale.set(s[1]-s[0],0.04,P.zCatch*2);e.fp.position.set(r.x+(s[0]+s[1])/2*dir,0.085,mz);e.fp.material=live?k.arm:k.fp;}
+    if(e.ft){e.ft.scale.set(Math.max(.05,FE.far-FE.near),0.04,0.8);e.ft.position.set(r.x+(FE.near+FE.far)/2*dir,0.115,mz);}
+   }}
+
   // sweetSpot flash: a disc blooms at the foot when a sweet kick landed this frame
   for(const f of dbgSweetFlash){
    const r=f.rod;
@@ -889,6 +1036,7 @@ function debugUpdate(){
   const fpsShow=show||cfg.showFps;   // player-facing FPS counter (Display tab) shows outside debug too
   if(fpsShow)updateFps(false);else{dbgFpsLast=0;hudDev('fps',null);}   // hidden: drop the clock so re-entry doesn't read one giant frame
   hudDev('dead',null);               // dead-ball clock is debug-only — it doesn't ride along into free roam
+  hudDev('pin',null);
   if(!show){hudDev('cam',null);hudDev('spd',null);hudDev('vel',null);return;}
   updateCamInfo();updateBallSpeed();updateBallVel();
   return;
@@ -897,6 +1045,7 @@ function debugUpdate(){
  updateCamInfo();updateBallSpeed();updateBallVel();
  updateFps(true);                    // debug: append the once-a-second leak-watch line
  updateDeadBall();
+ if(dbgAIOpts.backPin||dbgAIOpts.frontPin)updatePinRows();else hudDev('pin',null);
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];

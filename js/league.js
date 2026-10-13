@@ -80,6 +80,7 @@ function lgBuildHTML(bld,plus){
 }
 function playerDiv(){return LG.teams[LG.playerId].div;}
 function saveLG(){
+ LG.saved=Date.now();
  try{localStorage.setItem('fuzeball_league_'+LG.slot,JSON.stringify(LG));localStorage.setItem('fuzeball_league_slot',LG.slot);}catch(e){}
 }
 function loadLastSlot(){try{return parseInt(localStorage.getItem('fuzeball_league_slot'))||0;}catch(e){return 0;}}
@@ -117,9 +118,11 @@ function loadLG(slot){
      }
    }
   const mids=CONFIG.playerModel.models.filter(m=>m.src).map(m=>m.id);
+  const known=new Set(CONFIG.playerModel.models.map(m=>m.id));
   let migrated=false;
+  if(LG.cup&&LG.cup.pool)LG.cup.pool.forEach(e=>{if(!known.has(e.model)){e.model=mids[Math.floor(Math.random()*mids.length)];migrated=true;}});
   LG.teams.forEach((t,i)=>{
-   if(!t.model){t.model=i===LG.playerId?cfg.modelRed:mids[Math.floor(Math.random()*mids.length)];migrated=true;}
+   if(!t.model||!known.has(t.model)){t.model=i===LG.playerId?cfg.modelRed:mids[Math.floor(Math.random()*mids.length)];migrated=true;}
    if(t.id==null)t.id=i;
    if(t.div==null)t.div=1;
    if(t.up==null)t.up=0;
@@ -300,15 +303,15 @@ function lgPlayerFixture(){const pd=playerDiv(),R=LG.divs[pd].fixtures[LG.round]
 /* ---- figurine render image map ---- */
 const RENDER_STEM={
  cyborg:'cyborg',deltaborg:'deltaborg',irnman:'irnman',mechaMan:'mechaman',stormer:'stormer',
- rocko:'rocko',manJerry:'jerry',manrichie:'richie',manDeano:'deano',womanMaria:'maria',womanKimi:'kimi',
- womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanAndroid:'jennyBot',
+ rocko:'rocko',manrichie:'richie',manDeano:'deano',manLeo:'leo',womanMaria:'maria',womanKimi:'kimi',
+ womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanSandy:'sandy',
  womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
  alienKodus:'kodus',alienZargon:'zargon',animalAzlar:'azlar'};
 function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
 
 const MASK_STEMS=new Set([
- 'cyborg','deltaborg','irnman','mechaman','stormer','rocko','jerry','richie','deano','maria','kimi',
- 'talia','tanya','sasha','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
+ 'cyborg','deltaborg','irnman','mechaman','stormer','rocko','leo', 'richie','deano','maria','kimi',
+ 'talia','tanya','sasha','sandy','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
 
 
 function modelRenderMask(id){
@@ -735,7 +738,7 @@ function renderLgCabinet(){
 }
 /* ---- lobby UI ---- */
 function openLeague(reveal){
- if(!LG){LG={slot:0,name:'LEAGUE 1'};lgNewSeason(false,null,0);}
+ if(!LG)lgNewSeason(false,null,0);
   showScreen('league');   // hides menu/lgSlots + applies saved panel arrangement
   lgSetTab('season');     // always open on the next match, whatever tab was showing last time
   $('lgWipe').classList.add('hidden');   // overlay, so hideScreens() doesn't reach it
@@ -831,9 +834,22 @@ function renderLgLast(reveal){
  $('lgLast').innerHTML=h;
 }
 
+// --- squad tab cue: the parts count on both Squad tabs while at least one upgrade is affordable ---
+function lgCheapest(t){let m=Infinity;for(const r of LG_ROLES)for(const k of LG_KEYS)m=Math.min(m,lgCost(t.bld[r][k]));return m;}
+function lgTabCue(t){
+ const n=t.up>=lgCheapest(t)?t.up:0;
+ for(const id of ['lgTabBtnSquad','cupTabBtnSquad']){
+  const b=$(id);if(!b)continue;
+  let c=b.querySelector('.tabCue');
+  if(!n){if(c)c.remove();b.removeAttribute('title');continue;}
+  if(!c){c=document.createElement('span');c.className='tabCue';c.appendChild(document.createElement('b'));b.appendChild(c);}
+  c.firstChild.textContent=n;b.title=n+(n===1?' part':' parts')+' to spend';
+ }
+}
 function renderSquadInto(squadId,upId,again){
  const t=LG.teams[LG.playerId];
  $(upId).textContent=t.up;
+ lgTabCue(t);
  $(squadId).innerHTML=lgBuildHTML(t.bld,true);
  $(squadId).querySelectorAll('.sPlus').forEach(b=>{
   const k=b.dataset.k,r=b.dataset.r,st=t.bld[r],v=st[k],cost=lgCost(v);
@@ -858,34 +874,63 @@ function lgOrderFrom(data,tier){
  a.sort((x,y)=>y.t.p-x.t.p||(y.t.gf-y.t.ga)-(x.t.gf-x.t.ga)||y.t.gf-x.t.gf);
  return a;
 }
+// a kit colour for thin lines and bars on the dark card: a dark kit is lifted toward white
+function slotTint(hex){
+ const n=parseInt(String(hex||'#6baabc').slice(1),16),r=n>>16,g=n>>8&255,b=n&255,l=(.299*r+.587*g+.114*b)/255,k=clamp((.4-l)*1.7,0,.6);
+ return 'rgb('+Math.round(r+(255-r)*k)+','+Math.round(g+(255-g)*k)+','+Math.round(b+(255-b)*k)+')';
+}
+function slotAgo(ts){
+ if(!ts)return '';
+ const d=Math.floor((Date.now()-ts)/864e5);
+ return d<=0?'today':d===1?'yesterday':d<31?d+' days ago':d<60?'last month':d<365?Math.floor(d/30)+' mo ago':d<730?'a year ago':'years ago';
+}
+// the silverware on a save, one figure a trophy with its count; cup first, then the top division down
+function slotHonours(data){
+ const by={},o=[];
+ for(const t of data.trophies||[]){if(!by[t.tier]){by[t.tier]={tier:t.tier,n:0};o.push(by[t.tier]);}by[t.tier].n++;}
+ const rank=e=>e.tier==='cup'?3:e.tier;
+ o.sort((a,b)=>rank(b)-rank(a));
+ return o.map(e=>'<span class="slotTro">'+trophyFig(e.tier,'',false)+(e.n>1?'<em>×'+e.n+'</em>':'')+'</span>').join('');
+}
 function renderSlots(){
  let h='';
  for(let s=0;s<LGC.slots;s++){
   let data=null;
   try{data=JSON.parse(localStorage.getItem('fuzeball_league_'+s)||'null');}catch(e){}
-  const no='<div class="slotNo">Slot '+(s+1)+'</div>';
+  const no='<span class="slotNo">Slot '+(s+1)+'</span>';
   if(data){
-   const pd=(data.teams[data.playerId||0]||{}).div;
+   const pid=data.playerId||0,me=data.teams[pid]||{},pd=me.div;
    if(pd==null)continue;
-   const pdv=data.divs?data.divs[pd]:null;
-   const porder=pdv?lgOrderFrom(data,pd).findIndex(e=>e.i===data.playerId):-1;
-   h+='<div class="lgSlotCard" data-slot="'+s+'">'+no+
-    '<div class="slotName">'+data.name+'</div>'+
-    '<div class="slotDiv">'+(LGC.divisions[pd]?LGC.divisions[pd].name:'Pro League')+' · Season '+data.season+'</div>'+
-    '<div class="slotInfo">'+((data.teams[data.playerId||0]||{}).name||'?')+'</div>'+
-    '<div class="slotPos">'+(porder>=0?'#'+(porder+1):'')+'</div>'+
-    '<div class="lgSlotBtnRow">'+
-    '<button class="miniBtn ctn">Continue</button>'+
-    '<button class="miniBtn del">Delete</button>'+
+   const pdv=data.divs?data.divs[pd]:null,ord=pdv?lgOrderFrom(data,pd):[],pos=ord.findIndex(e=>e.i===pid)+1;
+   const tot=pdv?pdv.fixtures.length:0,rd=data.round||0,done=tot>0&&rd>=tot;
+   const col=me.col||'#6baabc',am=CONFIG.playerModel.models.find(m=>m.id===me.model),gd=(me.gf||0)-(me.ga||0);
+   let cells='';for(let i=0;i<tot;i++)cells+='<i class="'+(i<rd?'on':i===rd?'now':'')+'"></i>';
+   const hon=slotHonours(data),ago=slotAgo(data.saved);
+   h+='<div class="lgSlotCard" data-slot="'+s+'" style="--tc:'+col+';--tl:'+slotTint(col)+'">'+
+    '<div class="slotPhoto">'+no+
+     '<span class="slotMug" data-m="'+(am?am.id:'')+'">'+ico('figure')+'</span>'+
+     '<div class="slotLower"><b>'+(am?am.name:'')+'</b>'+(ago?'<i>Played '+ago+'</i>':'')+'</div>'+
+    '</div>'+
+    '<div class="slotBody">'+
+     '<div class="slotTop"><div class="slotDiv"><b>'+(LGC.divisions[pd]?LGC.divisions[pd].name:'Pro League')+'</b><i>Season '+data.season+'</i></div>'+
+      (pos&&rd?'<div class="slotPos'+(pos===1?' lead':'')+'"><b>'+lgOrd(pos)+'</b><i>of '+ord.length+'</i></div>':'')+'</div>'+
+     '<div class="slotName">'+(me.name||'?')+'</div>'+
+     '<div class="slotLeague">'+data.name+'</div>'+
+     (tot?'<div class="slotProg"><span>'+(done?'Season complete':'Round '+(rd+1)+' of '+tot)+'</span><span class="slotCells">'+cells+'</span></div>':'')+
+     '<div class="slotStats"><div><em>W–L</em><b>'+(me.w||0)+'–'+(me.l||0)+'</b></div><div><em>Pts</em><b>'+(me.p||0)+'</b></div>'+
+      '<div><em>GD</em><b>'+(gd>0?'+':'')+gd+'</b></div></div>'+
+     (hon?'<div class="slotHon">'+hon+'</div>':'')+
+     '<div class="lgSlotBtnRow"><button class="miniBtn ctn">Continue</button><button class="miniBtn del">Delete</button></div>'+
     '</div></div>';
   }else{
-   h+='<div class="lgSlotCard empty" data-slot="'+s+'">'+no+
-    '<div class="slotEmptyLab">New League</div>'+
-    '<div class="slotEmptySub">Empty</div>'+
+   h+='<div class="lgSlotCard empty" data-slot="'+s+'">'+
+    '<div class="slotPhoto">'+no+'<span class="slotMug"><span class="slotBig">'+(s+1)+'</span></span></div>'+
+    '<div class="slotBody"><div class="slotEmptyLab">New League</div><div class="slotEmptySub">Empty slot</div></div>'+
     '</div>';
   }
  }
  const cards=$('lgSlotCards');cards.innerHTML=h;
+ cards.querySelectorAll('.slotMug[data-m]').forEach(el=>mugImg(CONFIG.playerModel.models.find(m=>m.id===el.dataset.m),el,'slotMugImg','hasMug'));   // AFTER the innerHTML build
  cards.querySelectorAll('.lgSlotCard').forEach(card=>{
   const slot=+card.dataset.slot;
   card.onclick=e=>{

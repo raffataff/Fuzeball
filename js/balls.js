@@ -127,19 +127,31 @@ function pickType(){
  for(const k in BALL_TYPES){r-=BALL_TYPES[k].w;if(r<=0)return k;}
  return 'classic';
 }
+// the kickoff spot: in front of the kicking team's 5-rod (its MID), at the feet of the live man nearest the middle of the table
+function kickoffSpot(){
+ const K=SRV.kick;if(!K||!K.on||S.kickTeam<0)return null;
+ const r=rods.find(q=>q.team===S.kickTeam&&q.role==='MID');if(!r)return null;
+ let bi=-1,bd=1e9;
+ for(let i=0;i<r.baseZ.length;i++){const d=Math.abs(r.baseZ[i]+r.offset);if(d<bd&&!(r.removedUntil[i]&&r.removedUntil[i]>S.time)){bd=d;bi=i;}}
+ return bi<0?null:{x:r.x+r.kickDir*K.rel,z:r.baseZ[bi]+r.offset};
+}
 function serve(){
  resetRodRotation();
  replayCut();   // fresh rally = fresh footage (a replay must never show the drop-in teleport)
  const key=pickType();
  const b=makeBall(key);
- // a kickoff drops centre; a restart after the ball left play (out of bounds, a cannonball) comes back in the third it ended in via the dead-ball zone table, or clearing from your corner would be the dead-ball exploit
+ // a goal restart sets the ball at the feet of the team that conceded; a restart after the ball left play (out of bounds, a cannonball) comes back in the third it ended in via the dead-ball zone table, or clearing from your corner would be the dead-ball exploit
  // S.serveAt is set by outOfBounds/cannonballUpdate and consumed here
  const sz=(typeof S.serveAt==='number')?redropZone(S.serveAt):null;S.serveAt=null;
+ const ko=sz?null:kickoffSpot();
  const SR=RNG.serve;   // seeded (js/rng.js): the drop is the FIRST thing a trial has to reproduce
- b.m.position.set(sz?sz.x+rngR(SR,-sz.spread,sz.spread):rngR(SR,-SRV.spread,SRV.spread),SRV.dropY,rngR(SR,-SRV.zSpread,SRV.zSpread));
+ if(ko){b.m.position.set(ko.x,BALL_R+SRV.kick.dropY,ko.z);b.v.set(0,0,0);b.spin=0;}
+ else{
+  b.m.position.set(sz?sz.x+rngR(SR,-sz.spread,sz.spread):rngR(SR,-SRV.spread,SRV.spread),SRV.dropY,rngR(SR,-SRV.zSpread,SRV.zSpread));
   b.v.set(rngR(SR,-SRV.vel,SRV.vel),0,rngR(SR,-SRV.vel,SRV.vel));
   b.spin=rngR(SR,-SRV.spin,SRV.spin);
-  Au.drop(b);   // the ball fed in and rattling onto the pitch (recorded only)
+ }
+ Au.drop(b);   // the ball fed in and rattling onto the pitch (recorded only)
  if(ARENA_ON)arenaClampSpawn(b.m.position);
  syncBall(b);
  // tier 2: the ball drops in front of you (the old subtitle under a centre banner blocked the table)

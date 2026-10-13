@@ -1,7 +1,10 @@
 'use strict';
 /* ================= FX ================= */
-function flash(){const f=$('flash');f.style.transition='none';f.style.opacity=.85;
- requestAnimationFrame(()=>{f.style.transition='opacity .5s';f.style.opacity=0;});}
+// col = a css colour for a tinted flash (null = white), peak = how strong, dur = fade seconds
+function flash(col,peak,dur){const f=$('flash');
+ f.style.background=col?'radial-gradient(ellipse at 50% 58%,#fff 0%,'+col+' 55%,'+col+' 100%)':'#fff';
+ f.style.transition='none';f.style.opacity=peak>0?peak:.85;
+ requestAnimationFrame(()=>{f.style.transition='opacity '+(dur>0?dur:.5)+'s ease-out';f.style.opacity=0;});}
 /* banner / notice / toast live in js/hud.js, beside the canvas that draws them. */
 // charge verdict colours, indexed by the band shots.js stamps when a wind-up ends: 0 too early, 1 clean, 2 overcooked, 3 no room
 const CHG_COL=CONFIG.shots.charge.bandCol;
@@ -71,6 +74,7 @@ function rodHolesUpdate(rdt){
   const pulse=e.v>=RH.pulseFrom?1-RH.pulseDepth*(.5-.5*Math.cos(S.time*RH.pulseHz*Math.PI*2)):1;
   u.rhFill.value=e.fill;
   u.rhGlow.value.copy(e.col).multiplyScalar(tg*pulse);
+  if(r&&typeof boostRing==='function')boostRing(r,u.rhGlow.value);   // a boost flashes the ring gold at pickup, while it sputters out and at the end (js/boost.js)
  }
 }
 // ---- pinned-ball ring ----
@@ -101,6 +105,7 @@ function spawnTrail(b){
   const hk=(b.hot||0)*CONFIG.fx.heat.trail;
   if(hk>0)s.material.color.lerp(ballHeatColor(),hk);
   s.scale.set(3.2,3.2,1);s.material.opacity=.75;
+  if(b.pw>0&&typeof boostTrail==='function')boostTrail(s,b);   // a power hit's comet (js/boost.js)
   return;}
 }
 function burst(pos,c1,c2,n,speed){
@@ -170,16 +175,20 @@ function rodHoleGoal(scorer,team){
 }
 function goalFx(team,b,scorer){
  const col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor);
- const gold=new THREE.Color(0xffcf4d);
- const white=new THREE.Color(0xffffff);
  const pos=b.m.position.clone();pos.y+=1.5;
- burst(pos,col,white,220,78);      // main explosion
- burstRing(pos,col,white,120,60);   // horizontal ring blast
- burstUp(pos,col,gold,90,70);       // upward fountain with gold
- burst(pos,gold,white,60,50);       // gold sparkle
- flash();S.shake=1.5;Au.goal();
- const gi=team===0?1:0;
- goalLights[gi].color.copy(col);goalLights[gi].intensity=4;
+ if(vfxLive()){
+  vfxGoal(team,pos);
+  flash(team===0?cfg.redColor:cfg.blueColor,CONFIG.fx.vfx.flash,0.45);Au.goal();
+ }else{
+  const gold=new THREE.Color(0xffcf4d),white=new THREE.Color(0xffffff);
+  burst(pos,col,white,220,78);      // main explosion
+  burstRing(pos,col,white,120,60);   // horizontal ring blast
+  burstUp(pos,col,gold,90,70);       // upward fountain with gold
+  burst(pos,gold,white,60,50);       // gold sparkle
+  flash();S.shake=1.5;Au.goal();
+  const gi=team===0?1:0;
+  goalLights[gi].color.copy(col);goalLights[gi].intensity=4;
+ }
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
  rodHoleGoal(scorer,team);   // …and the scorer's own rod-hole ring, on the same clock
 }
@@ -259,11 +268,15 @@ function smokeUpdate(rdt){
 const CX_FIRE=new THREE.Color(0xff6a1a),CX_SPARK=new THREE.Color(0xffd24d),CX_WHITE=new THREE.Color(0xffffff);
 function cannonExplodeFx(pos){
  const p=pos.clone();p.y=Math.max(p.y,1.5);                 // keep the puff off the floor for the ground-level rings
- burst(p,CX_FIRE,CX_SPARK,240,92);      // fireball core
- burstRing(p,CX_FIRE,CX_SPARK,150,72);  // ground shockwave — all fire now, the grey in here only ever glowed
- burstUp(p,CX_SPARK,CX_WHITE,100,84);   // spark fountain
+ if(vfxLive()){vfxCannon(p);flash('#ff8a2a',0.5,0.45);}
+ else{
+  burst(p,CX_FIRE,CX_SPARK,240,92);      // fireball core
+  burstRing(p,CX_FIRE,CX_SPARK,150,72);  // ground shockwave — all fire now, the grey in here only ever glowed
+  burstUp(p,CX_SPARK,CX_WHITE,100,84);   // spark fountain
+  flash();S.shake=1.9;
+ }
  smokeBurst(p);                         // the actual smoke, and the dust ring under it
- flash();S.shake=1.9;Au.boom();
+ Au.boom();
  spawnBallFracture(pos);           // 3D debris at the TRUE pos (keeps its real height)
 }
 // LED strips: strobe the scorer's colour on a goal, else the idle look (rainbow or theme colour) with a pulse
@@ -284,6 +297,7 @@ function ledUpdate(rdt){
  ledMat.emissiveIntensity=L.baseBright+Math.sin(S.time*L.pulseSpeed)*L.pulse+Au.exc*L.excite;
 }
 function confetti(w){
+ if(vfxConfetti2D(w))return;   // the screen-space shower (js/vfx.js); the DOM pieces below are the fallback
  const cols=[w===0?cfg.redColor:cfg.blueColor,'#ffffff','#ffcf4d'];
  for(let i=0;i<90;i++){
   const d=document.createElement('div');d.className='confetti';
@@ -311,7 +325,11 @@ function fxUpdate(rdt){
   if(pd.life<=0||arr[i*3+1]<-2){pd.life=0;arr[i*3+1]=-999;}}
  if(any)pGeo.attributes.position.needsUpdate=true;
  smokeUpdate(rdt);   // explosion smoke + its ground dust ring (own pool, see CONFIG.fx.smoke)
- goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
+ vfxUpdate(rdt);   // GPU particles, blasts, confetti, light envelopes and the net (js/vfx.js)
+ if(typeof iceUpdate==='function')iceUpdate(rdt);   // the frost block on every slowed man (js/ice.js)
+ if(typeof boostUpdate==='function')boostUpdate(rdt);   // a power hit's comet (js/boost.js)
+ vfxWinTick(rdt);  // the full-time board waits on the finale
+ if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
  rodHolesUpdate(rdt);   // rod-hole stamina rings — decoration only, writes material colour and nothing else
  if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);
@@ -442,6 +460,7 @@ function cameraUpdate(rdt){
   return;
  }
  camMenuOn=false;
+ vfxCamPre();   // takes last frame's punch back out before the ease reads the position
  let bx=0;
  if(S.balls.length){for(const b of S.balls)bx+=b.m.position.x;bx/=S.balls.length;}
  const m=CAM.modes[S.camMode];
@@ -457,4 +476,5 @@ function cameraUpdate(rdt){
   camera.position.y+=rand(-1,1)*S.shake*CAM.shakeY;}
  S.camLookX=lerp(S.camLookX,m[3]*mir+bx*CAM.lookFollow,k);
  camera.lookAt(S.camLookX,m[4],m[5]);
+ vfxCamPost(rdt);   // this frame's goal / blast punch rides on top (spring, js/vfx.js)
 }

@@ -382,7 +382,7 @@ RD.maxBall=0;
   ok('…nor one further ahead than gk.reach',none(w=>{w.d.x=-52.5+GKc.reach+3;})===0);
   ok('…nor the other team\'s rod',none(w=>{w.d.team=1;w.d.kickDir=-1;})===0);}
  // ---- coming back to rest --------------------------------------------------------------------------------------------
- ok('the drop from a forward pose is a back-lift the guard holds short of a ball (rods.js)',/else\{r\.heldFwd=false;r\.angle=lerp\(r\.angle,backLimit\(r,0,KICK\.dropLerp\),/.test(rd('js/rods.js')));
+ ok('the drop from a forward pose is a back-lift the guard holds short of a ball (rods.js)',/else\{r\.heldFwd=false;r\.angle=lerp\(r\.angle,backLimit\(r,0,KICK\.dropLerp(,r\.fwdOut)?\),/.test(rd('js/rods.js')));
  // ---- which ball -----------------------------------------------------------------------------------------------------
  {const {r}=world(X);
   const slow=ball(X,-20,0,10,0),fast=ball(X,-25,0,50,0),away=ball(X,-20,0,-50,0),past=ball(X,0,0,50,0),gone=ball(X,-25,0,90,0);gone.scored=true;

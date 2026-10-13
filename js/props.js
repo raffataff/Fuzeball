@@ -217,10 +217,7 @@ function disposeProp(id){
  });
  delete propTemplates[id];console.log('prop freed: '+id);
 }
-// compile a room's prop materials off-screen so the first frame isn't a shader stall
+// queue the scene's materials (the props just joined it) so the first frame isn't a shader stall
 function warmPropShaders(g){
- if(!renderer||!scene||!camera||!g)return;
- const vis=g.visible;g.visible=true;
- renderer.compile(scene,camera);
- g.visible=vis;
+ if(g&&typeof warmPush==='function')warmPush(scene);
 }

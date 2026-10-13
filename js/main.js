@@ -141,16 +141,24 @@ function applyLogo(){
  el.style.setProperty('--logo-pulse-size',L.pulseSize+'px');
  el.style.setProperty('--logo-pulse-speed',L.pulseSpeed+'s');
 }
-function boot(){
+function boot(now){
  if(booted)return;booted=true;
  applyLogo();
  buildRods();applyTable();applyRoom();applyColors();
  if(typeof renderDirty==='function')renderDirty();        // first frame of the world: draw it at full rate
- if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
- requestAnimationFrame(loop);
- // footprint dump: boot() is pre-first-frame (GPU uploads lazily), so the delayed snapshot is the real menu-idle cost
- if(typeof memLog==='function'){memLog('boot');setTimeout(()=>memLog('boot+3s'),3000);}
- while(bootWaiters.length)bootWaiters.shift()();   // release anyone waiting on the world (match-start gate)
+ const up=()=>{
+  if(typeof introGameReady==='function')introGameReady();  // release the intro's loading hold
+  requestAnimationFrame(loop);
+  // footprint dump: boot() is pre-first-frame (GPU uploads lazily), so the delayed snapshot is the real menu-idle cost
+  if(typeof memLog==='function'){memLog('boot');setTimeout(()=>memLog('boot+3s'),3000);}
+  while(bootWaiters.length)bootWaiters.shift()();   // release anyone waiting on the world (match-start gate)
+ };
+ // the first render and the reveal wait for every shader the menu and a match need, a slice at a time (models.js warmPush); now = a match start forced this boot, warmMatchAssets flushes
+ if(!now&&typeof warmWhen==='function'){
+  if(typeof warmMatchPrep==='function')warmMatchPrep();   // the ball types, the frost blocks and the boost glow, so the queue sees them
+  warmPush(scene);warmWhen(up,CONFIG.warm.holdMax);
+ }
+ else up();
 }
 // requestIdleCallback with a setTimeout fallback (Safari has none)
 const ric=window.requestIdleCallback||function(fn,o){return setTimeout(fn,(o&&o.timeout)||50);};
@@ -164,8 +172,9 @@ function startLoading(){
  loadPowerupModels(()=>{ric(warmPowerupShaders,{timeout:1200});});
  loadBallModel(()=>{                     // ball GLB with material slots
   loadPlayerModel(()=>{
+   if(booted&&rods.length){rebuildRodMen();applyColors();if(typeof warmPush==='function')warmPush(scene);}   // the failsafe booted first: swap the stand-in men for the figurines
    loadExplosionModels(()=>{             // shared cannonball + swirl GLBs only (per-figurine shatters lazy-load)
-    ric(warmFractureShaders,{timeout:1000}); // precompile shaders off-screen, still nudged off the main tick
+    ric(warmFractureShaders,{timeout:1000}); // queue the shatter shaders (models.js warmPush)
     ensureExplosionModel(activeModel(0).id); // prime the two figurines actually on the table (each warms itself on load)
     ensureExplosionModel(activeModel(1).id);
     loadRodModels(()=>{                  // rod GLBs must be ready before buildRods clones them
@@ -179,6 +188,7 @@ function startLoading(){
 // can't hang: the 8s boot failsafe caps the wait and every loader falls back to primitives
 function ensureMatchAssets(cb){
  startLoading();
+ if(typeof warmGo==='function')warmGo();   // someone is waiting on a match: the warm runs now
  whenBooted(()=>{
   let a=false,b=false,c=false;
   const done=()=>{if(a&&b&&c&&cb){const f=cb;cb=null;f();}};
@@ -191,5 +201,7 @@ function ensureMatchAssets(cb){
 const introPlaying=CONFIG.intro.on&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 const loadDelay=introPlaying?(CONFIG.intro.igniteT+CONFIG.intro.fuseT+CONFIG.intro.slamDelay+0.35)*1000:0;
 setTimeout(startLoading,loadDelay);
-// failsafe: if a loader stalls with no load/error event, start anyway after 8s
-setTimeout(boot,8000);
+// failsafe: if a loader stalls with no load/error event, start anyway 8s after the chain begins
+setTimeout(boot,loadDelay+8000);
+// shader compiles block the main thread, so none run until the cinematic is over (the intro's skip and a match start release them early)
+setTimeout(()=>{if(typeof warmGo==='function')warmGo();},introPlaying?CONFIG.intro.revealT*1000:0);

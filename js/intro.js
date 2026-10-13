@@ -59,6 +59,7 @@ function introGameReady(){introReady=true;}
  function skip(){
   if((performance.now()-t0)/1000<.3||revealing)return;
   if(typeof startLoading==='function')startLoading(); // skipping cuts the intro short: start the asset chain now instead of waiting on its timer (idempotent)
+  if(typeof warmGo==='function')warmGo();             // ...and the shader warm, which only waited for the cinematic to end
   ov.classList.add('fast');
   if(!detonated)detonate();
   if(!slammed){slammed=true;lw.classList.add('slam');}

@@ -28,7 +28,7 @@ const ctx={console,Math,Date,JSON,Object,Array,String,Number,Boolean,isNaN,parse
  navigator:{userAgent:'node'},
  // teamName/teamCol live in league.js, notice/Au elsewhere — stubbed, not loaded.
  teamName:t=>t?'BLUE':'RED', teamCol:t=>t?'#3d8bff':'#ff4d5a',
- notice(){}, Au:{react(){}}, globalThis:null};
+ notice(){}, Au:{react(){}}, isUserRod:r=>!!r.human, globalThis:null};
 ctx.globalThis=ctx;
 
 let src=read('core.js')+read('config.js')+read('state.js')+read('moments.js')+read('matchstats.js');
@@ -207,6 +207,26 @@ a=rod(0,'DEF',true);msContact(b,a);
 msReset(b);                                          // a re-drop / split teleports the ball
 S.time+=0.2;msContact(b,rod(0,'MID',false));
 eq(st.passes[0],0,'msReset (syncBall) breaks the chain — a record must not survive a teleport');
+
+// the human's forward pin stroke (CONFIG.shots.pin.fwd): finesse + kick plays the ball with a leg going forward and no swing in flight; it is a swing touch for the ledger so the pass still counts
+const hs=(team,role,w,o)=>Object.assign(rod(team,role,false),{pinFwd:true,pinPose:true,angVel:w*(team?-1:1),kickDir:team?-1:1,human:true},o||{});   // w = the leg's forward speed (rod-local); a blue rod turns the other way in the world
+st=match();b=ball(-37.5,C.BALL_R,0,40,0,0);
+a=hs(0,'DEF',3);msContact(b,a);S.time+=0.2;msContact(b,rod(0,'MID',false));
+eq(st.passes[0],1,'a human forward leg going through the ball, then a mate receiving it: a completed pass');
+eq(st.shots[0],0,'...and the stroke is not a shot attempt (nothing is swinging)');
+st=match();b=ball(-37.5,C.BALL_R,0,40,0,0);
+a=hs(0,'DEF',0.4);msContact(b,a);S.time+=0.2;msContact(b,rod(0,'MID',false));
+eq(st.passes[0],0,'a leg settling onto the ball (under stroke speed) is a deflection, not a played ball');
+st=match();b=ball(-37.5,C.BALL_R,0,40,0,0);
+a=hs(0,'DEF',3,{human:false});msContact(b,a);S.time+=0.2;msContact(b,rod(0,'MID',false));
+eq(st.passes[0],0,'a forward leg on an AI rod is not counted: the AI ledger is as it was');
+st=match();b=ball(-37.5,C.BALL_R,0,40,0,0);
+a=hs(0,'DEF',3,{pinPose:false});msContact(b,a);S.time+=0.2;msContact(b,rod(0,'MID',false));
+eq(st.passes[0],0,'a leg not in the forward pin pose is not a stroke');
+st=match();b=ball(37.5,C.BALL_R,0,-40,0,0);
+a=hs(1,'DEF',3);msContact(b,a);S.time+=0.2;msContact(b,rod(1,'MID',false));
+eq(st.passes[1],1,'blue (kickDir -1): a stroke is the leg going its own way');
+
 
 /* =========================================================================
    4. GOALS — scorer credit, own goals, deflections

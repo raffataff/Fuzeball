@@ -49,10 +49,11 @@ function pinUpdate(){
   const posed=(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);
   if(!posed)continue;
   const sa=Math.sin(r.angle),ca=Math.cos(r.angle),dx=sa*ARM,dy=-ca*ARM,fwd=r.pinFwd,reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch),front=fwd?P.fwdFront:P.front;
+  const back=fwd?P.fwdBack:P.back;
   for(const b of S.balls){
    if(b.scored||b.pinR)continue;
    const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
-   if(rel<P.back||rel>front||p.y>BALL_R+P.yTol)continue;
+   if(rel<back||rel>front||p.y>BALL_R+P.yTol)continue;
    if(Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;             // too quick to hold: the finesse grip slows it first
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
@@ -66,6 +67,7 @@ function pinUpdate(){
     r.pinB=b;r.pinAt=(r.pinPose&&r.pinA!=null)?r.pinA:r.angle;
     b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=clamp(p.z-mz,-P.zHold,P.zHold);
     b.v.set(0,0,r.vz);b.spin=0;b.pinVx=0;b.pinVz=r.vz;b.pinPx=p.x;b.pinPz=p.z;
+    if(P.snug&&P.snug.on&&r.pinPose&&r.pinA!=null)pinSnug(r,b);
     break;
    }
    if(r.pinB)break;
@@ -87,10 +89,36 @@ function pinBallStep(b,h){
 }
 // let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide
 function pinRelease(r,ext){
- const b=r.pinB;r.pinB=null;
+ const b=r.pinB;r.pinB=null;r.sgA=null;r.sgB=null;
  if(!b)return;
  b.pinR=null;
  if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}
+}
+// --- the settle: the leg turns onto the ball it caught (shots.pin.snug) ---
+// the angle at which the drawn leg touches the held ball; the ball stays where it is
+function pinSnug(r,b){
+ const N=SHOT.pin.snug,p=b.m.position,dir=r.kickDir,u=(p.x-r.x)*dir,wy=p.y-ROD_H,a0=r.angle*dir,dA=0.004;
+ const f=a=>u*Math.cos(a)+wy*Math.sin(a),s=a=>u*Math.sin(a)-wy*Math.cos(a);   // the ball's distance off the leg's axis (+ in front), and how far down the leg it is
+ const side=f(a0)>=0?1:-1;
+ const want=a=>side>0?lerp(N.front,N.toe,clamp((s(a)-N.toeFrom)/(N.toeTo-N.toeFrom),0,1)):N.rear;
+ if(side*f(a0)<=want(a0)+0.02)return;
+ const st=side*(wy*Math.cos(a0)-u*Math.sin(a0))>0?-dA:dA;   // the way that closes on it
+ let a=a0;
+ for(let k=0;k<N.max/dA&&side*f(a)>want(a);k++)a+=st;
+ if(Math.abs(a-a0)<0.01)return;
+ r.sgA=a*dir;r.sgB=a0;r.sgE=a;r.sgT=S.time+N.t;r.pinAt=r.sgA;
+}
+// the rod-local angle a swing starts from: where the rod is, or the pose a held ball was caught in while the leg is settled on it
+function swingA0(r){
+ const a=r.angle/(r.kickDir||1);
+ return(r.pinB&&r.sgB!=null&&Math.abs(a-r.sgE)<0.06)?r.sgB:a;
+}
+// one frame of it (rods.js pose branch): the pose follows sgA unless somebody else asks for another
+function pinSettle(r){
+ const N=SHOT.pin.snug;
+ if(!r.pinB||S.time>r.sgT||!(Math.abs(r.pinA-r.sgA)<0.002||Math.abs(r.pinA-r.angle)<N.hand)){r.sgA=null;return;}
+ r.pinA=r.sgA;
+ if(Math.abs(r.angle-r.sgA)<0.01)r.sgA=null;
 }
 
 // ================= contact AUDIO gating =================
@@ -109,7 +137,7 @@ function rollProbe(b){
  if(b.scored)return;
  const p=b.m.position,v=b.v,eps=PHY.contactEps,aC=b.t.audio;
  if(p.y<BALL_R+eps)Au.rollFeed(0,Math.hypot(v.x,v.z),aC);             // floor — both tables
- if(ARENA_ON||p.y>=F.wallH+BALL_R)return;
+ if(ARENA_ON||p.y>=WALL_H+BALL_R)return;
  const zl=F.W/2-BALL_R,xl=F.L/2-BALL_R;
  if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
  else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
@@ -123,12 +151,37 @@ function notMouth(p,gh){
 // latch the crossing: walls and floor stop reaching for it and physStep whistles; cleared when back inside both planes; PHY.wallEscape false restores the old behaviour
 function wallLatch(b){
  if(b.scored||!PHY.wallEscape){b.outWall=0;return;}
- const p=b.m.position,zl=F.W/2-BALL_R,xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
+ const p=b.m.position,zl=F.W/2-BALL_R,xl=F.L/2-BALL_R,ew=ENDWALL_H||WALL_H;
  if(Math.abs(p.z)<=zl&&Math.abs(p.x)<=xl){b.outWall=0;return;}   // back inside — walls live again
  if(b.outWall)return;
- if(Math.abs(p.z)>zl){if(p.y>=F.wallH+BALL_R)b.outWall=1;return;}          // over a side rail
+ if(Math.abs(p.z)>zl){if(p.y>=WALL_H+BALL_R)b.outWall=1;return;}          // over a side rail
  const gh=F.goalHalf*(S.eff[p.x>0?0:1].big>S.time?PHY.bigGoalMult:1);
  if(Math.abs(p.z)>=gh&&p.y>=ew+BALL_R)b.outWall=1;                        // over an end wall
+}
+// the rim: a ball that cleared a wall comes down on the drawn top of it (PHY.rimW thick, rounded) and rolls off either side, instead of sinking through
+// a wall is a vertical half-line (its core) inflated by rimW/2: below the cap that is the old wall plane exactly, above it the ball meets a curve
+function rimSeg(b,ax,az,bx,bz,r,yc){
+ const p=b.m.position,v=b.v,sx=bx-ax,sz=bz-az,t=clamp(((p.x-ax)*sx+(p.z-az)*sz)/(sx*sx+sz*sz),0,1),rr=BALL_R+r;
+ const dx=p.x-ax-sx*t,dz=p.z-az-sz*t,dy=Math.max(p.y-yc,0),d2=dx*dx+dy*dy+dz*dz;
+ if(d2>=rr*rr)return;
+ if(d2<1e-8){p.y=yc+rr;if(v.y<0)v.y=0;return;}   // dead on the core: lift it onto the top
+ const d=Math.sqrt(d2),nx=dx/d,ny=dy/d,nz=dz/d,pen=rr-d;
+ p.x+=nx*pen;p.y+=ny*pen;p.z+=nz*pen;
+ const vn=v.x*nx+v.y*ny+v.z*nz;
+ if(vn>=0)return;
+ const e=1+PHY.wallRest+(PHY.floorRest-PHY.wallRest)*ny,k=ny>.5?1:0;   // the wall's bounce on the face, the floor's on the top
+ v.x-=e*vn*nx;v.y-=e*vn*ny;v.z-=e*vn*nz;
+ if(hitFresh(b,k,-vn,k?PHY.floorHitSnd:PHY.wallHitSnd))Au.wall(k?-vn*.5:-vn,b.t.audio?.wall,b,k);
+}
+function rimLand(b){
+ const r=PHY.rimW/2,yc=WALL_H-r;
+ if(b.m.position.y>=yc+BALL_R+r)return;
+ const zm=F.W/2+r,xm=F.L/2+r;
+ for(let s=-1;s<=1;s+=2){
+  rimSeg(b,-xm,s*zm,xm,s*zm,r,yc);   // side wall
+  const gh=F.goalHalf*(S.eff[s>0?0:1].big>S.time?PHY.bigGoalMult:1);
+  rimSeg(b,s*xm,gh+r,s*xm,zm,r,yc);rimSeg(b,s*xm,-zm,s*xm,-gh-r,r,yc);   // end wall, either side of the mouth
+ }
 }
 function stepBall(b,h){
  const p=b.m.position,v=b.v;
@@ -163,15 +216,16 @@ function stepBall(b,h){
   }else{const f=Math.exp(-PHY.airFric*h);v.x*=f;v.z*=f;}
   const zl=F.W/2-BALL_R;
   // the clamp is positional, only the bounce is gated on arrival (a boot pressing a ball into the wall leaves it never 'arriving', see staticClamp)
-  if(Math.abs(p.z)>zl&&p.y<F.wallH+BALL_R&&!b.outWall){
+  if(Math.abs(p.z)>zl&&p.y<WALL_H+BALL_R&&!b.outWall){
    const sz=p.z>0?1:-1;
    // gated on a fresh contact + PHY.wallHitSnd; a ball riding the wall is a roll (rollProbe)
    if(v.z*sz>0){const im=Math.abs(v.z);v.z=-v.z*PHY.wallRest;if(hitFresh(b,1,im,PHY.wallHitSnd)){Au.wall(im,b.t.audio?.wall,b,0);spawnMark(b,0,0,-sz,im);}}   // the tap AND the scuff ride the same fresh-contact gate
    p.z=sz*zl;
   }
+  if(b.outWall)rimLand(b);
   if(!b.scored){
    // ENDWALL_H>0 (walled tables, e.g. circuit): each end is one solid wall with the mouth inset; 0 = classic, the wall only flanks the mouth
-   const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
+   const xl=F.L/2-BALL_R,ew=ENDWALL_H||WALL_H;
    if(p.x>xl){
     const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
     if(p.x>F.L/2&&notMouth(p,gh))b.noGoal=1;                                                    // past the line but not in the opening: no goal (see notMouth)
@@ -276,11 +330,11 @@ function staticClamp(b){
  const p=b.m.position,v=b.v;
  if(p.y<BALL_R){p.y=BALL_R;if(v.y<0)v.y=0;}
  const zl=F.W/2-BALL_R;
- if(p.y<F.wallH+BALL_R){
+ if(p.y<WALL_H+BALL_R){
   if(p.z>zl){p.z=zl;if(v.z>0)v.z=0;}
   else if(p.z<-zl){p.z=-zl;if(v.z<0)v.z=0;}
  }
- const xl=F.L/2-BALL_R,ew=ENDWALL_H||F.wallH;
+ const xl=F.L/2-BALL_R,ew=ENDWALL_H||WALL_H;
  if(p.y<ew+BALL_R){
   // mouth test mirrors stepBall's: a ball in the opening is on its way in
   if(p.x>xl){const gh=F.goalHalf*(S.eff[0].big>S.time?PHY.bigGoalMult:1);
@@ -398,7 +452,7 @@ function collideRod(b,r){
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
-    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
+    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);   // the back of a man does not carry a ball along with the slide
     if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling (see the banner above); a held contact is exempt
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
@@ -419,6 +473,7 @@ function collideRod(b,r){
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
+    if(typeof boostTouch==='function')boostTouch(b,r,trapping);   // js/boost.js: a boosted strike's flash, sparks and comet
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
      {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact of this swing
     if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
@@ -450,38 +505,39 @@ function collideRod(b,r){
   if(d>R)continue;
   if(d<1e-4){nx=r.kickDir;ny=0;nz=0;d=1;}else{nx/=d;ny/=d;nz/=d;}
   const cvx=-(cy-ay)*r.angVel,cvy=(cx-ax)*r.angVel,cvz=r.vz;
-  const rvx=b.v.x-cvx,rvy=b.v.y-cvy,rvz=b.v.z-cvz*KICK.slidePush;   // slide damped, swing not — see the foot-box pass
+  const rvx=b.v.x-cvx,rvy=b.v.y-cvy,rvz=b.v.z-cvz*KICK.slidePush;
   const vn=rvx*nx+rvy*ny+rvz*nz;
   p.x+=nx*(R-d);p.y+=ny*(R-d);p.z+=nz*(R-d);
   if(vn<0){
-    const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;   // tracer only — see the foot-box pass
+    const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
     const ks=kickStyleCfg(r);
     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-    const HLD=holdCfg(r),trapping=!!HLD;        // dead + sticky while trapping/dribbling — see the foot-box pass
-    const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
+    const HLD=holdCfg(r),trapping=!!HLD;
+    const dead=KICK.capDeadPosed&&(r.pinPose||r.pinOn);   // a posed rod's leg is the catch: dead and gripping, as the foot
+    const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
     if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
     jm*=stHit(r);
-    if(r.shotOn)jm*=r.shotPow;                  // player shot — see the foot-box pass
+    if(r.shotOn)jm*=r.shotPow;
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
-    const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
-    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);
-    if(!trapping)capSpeed(b,r,false,in2);   // per-contact speed ceiling; a leg graze is no more entitled to a top-speed ball than a boot
+    const g=trapping?clamp(HLD.holdGrip,0,1):(dead?stGrip(r):KICK.capGrip);
+    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);
+    if(!trapping)capSpeed(b,r,false,in2);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    // human: power window only; AI: every contact; the pass assist is always suppressed (the capsule is the leg, not a pass)
-    if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);
-    if(!trapping)wallAssist(b,r,true);                 // …and off the leg too — see the foot-box pass
+    if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);   // human: power window only; AI: every contact; never the pass assist
+    if(!trapping)wallAssist(b,r,true);
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;
+   if(typeof boostTouch==='function')boostTouch(b,r,trapping);
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
-    {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: first contact (capsule graze) of this swing; a capsule can't be a sweet hit
+    {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}
    if(b.t.splits&&!b.didSplit&&-vn>KICK.splitVel&&S.balls.length<KICK.splitMax){
     b.didSplit=true;
     const nb=makeBall('split');nb.didSplit=true;

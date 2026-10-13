@@ -41,18 +41,55 @@ function shotHoldUpdate(r,lt){
  h.carryMult=lerp(1,H.carry,t);
 }
 
-// --- the PIN (finesse + raise) ---
+// --- the PIN (finesse + raise = back pin, finesse + kick = forward pin) ---
 // the input half (CONFIG.shots.pin): may this rod pin, and is it being posed; physics.js pinUpdate / pinBallStep do the catch, carry and releases
-// r.pinA is sweep-capped like a wind-up and frozen while a ball is pinned
+// r.pinA is sweep-capped like a wind-up and frozen while a ball is pinned; the forward pose is not (it lies over a ball, which the cap would hold off)
 function shotPinInput(r,I){
  const P=SHOTC.pin;
- if(!P||!P.on){r.pinOn=false;r.pinPose=false;return;}
+ if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;return;}
  // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
  const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
+ const rzUp=!!I.rz&&!r.rzWas;r.rzWas=!!I.rz;                   // a raise PRESS picks the back pin; held, it must not undo a forward pose asked for after it
  r.pinOn=fin&&r.chg<0&&r.kickT<0;
- if(!r.pinOn)r.pinPose=false;
- else if(I.rz)r.pinPose=true;
- if(r.pinPose&&!r.pinB)r.pinA=shotPullCap(r,r.angle,P.angle*r.kickDir);
+ if(!r.pinOn){if(r.pinPose&&r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;}
+ else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB)r.pinFwd=false;}   // a ball held under the forward leg keeps its pose
+ if(r.pinPose&&!r.pinB)r.pinA=r.pinFwd?shotFwdAngle(r)*r.kickDir:shotPullCap(r,r.angle,P.angle*r.kickDir);
+ if(r.fwdOut&&r.angle*r.kickDir<=P.fwd.outA)r.fwdOut=false;
+}
+// the low ball rel0..rel1 ahead, slower than vmax to the table or to the rod, whose z is nearest a man's, within his clearance, the men counted where the slide has them `lead` s on; null = none (scratch reused)
+const _fwb={b:null,rel:0,dz:0};
+function shotFwdBall(r,rel0,rel1,vmax){
+ const P=SHOTC.pin,FE=AIC.catch.fetch,cz=FOOT_BOX.z+BALL_R+AIC.clearMargin+FE.clearPad;
+ const o1=clamp(r.offset+r.vz*P.fwd.lead,-r.maxOff,r.maxOff);
+ _fwb.b=null;let best=cz;
+ for(const b of S.balls){
+  if(b.scored||b.pinR)continue;
+  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
+  if(rel<rel0||rel>rel1||p.y>BALL_R+P.yTol||Math.min(b.v.length(),Math.hypot(b.v.x,b.v.z-r.vz))>vmax)continue;
+  for(let i=0;i<r.baseZ.length;i++){
+   if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
+   const dz=Math.min(Math.abs(p.z-(r.baseZ[i]+r.offset)),Math.abs(p.z-(r.baseZ[i]+o1)));
+   if(dz<=best){best=dz;_fwb.b=b;_fwb.rel=rel;_fwb.dz=dz;}
+  }
+ }
+ return _fwb.b?_fwb:null;
+}
+// the forward leg's angle: up and clear beside a slow ball lying ahead, onto its top once over it and slow (the AI's fetch, from where the man stands); else the pose angle
+function shotFwdAngle(r){
+ const W=SHOTC.pin.fwd;
+ if(!W.assist||typeof sideAngle!=='function')return W.angle;
+ const FE=AIC.catch.fetch,h=shotFwdBall(r,FE.near,FE.far,FE.bailV);
+ if(!h)return W.angle;
+ return (h.dz<=FE.alignZ&&Math.abs(r.vz)<=FE.slideV)?sideAngle(h.rel,true):AIC.catch.recv.lift.angle;
+}
+// letting the forward pin go with a ball under the leg: up and forward off it (the AI's flift), not down through it (rods.js)
+function shotFwdHold(r){const W=SHOTC.pin.fwd;return shotFwdBall(r,W.holdNear,W.holdFar,W.holdV)!==null;}
+// finesse + kick poses the forward pin instead of swinging; true = the press was spent on it (same axis as the old pass: power cancels it, a half trigger is a soft touch)
+function shotPinFwdPress(r,m){
+ const P=SHOTC.pin,W=P&&P.fwd;
+ if(!W||!W.on||!P.on||m>SHOTC.pass.modAt||r.chg>=0||r.kickT>=0)return false;
+ r.pinPose=true;r.pinFwd=true;r.pinA=shotFwdAngle(r)*r.kickDir;
+ return true;
 }
 // a kick from the pin is the pin shot: the AI's trapShot curve, no spray, ignores the finesse axis; kickRod keeps carryOut of the slide
 function shotPinFire(r){
@@ -63,7 +100,7 @@ function shotPinFire(r){
 }
 // what the pin shows the player: the ring under the caught ball (fx.js pinMarkUpdate) and the kick plate (hud.js hudPinHint) both ask these
 function shotPinBall(s){const r=s&&seatRod(s),b=r&&r.pinB;return b&&!b.scored?b:null;}
-function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i]))return S.seats[i];return null;}
+function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&!seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // the plate is for a ball the kick would shoot: held under the forward leg, kick does nothing
 // the plate is live play only, off for a player who switched it off, and off in the tutorial (its own prompt says it)
 function shotPinHintOn(){const P=SHOTC.pin,H=P&&P.hint;return !!(shotsOn()&&P&&P.on&&H&&H.on&&cfg.pinHint!==false&&S.phase==='play'&&!S.tut);}
 
@@ -132,7 +169,7 @@ function shotReset(r){
  r.chgBlock=0;r.chgEndT=null;r.chgEndBand=-1;r.chgEndK=0;   // the blocked reading and the held verdict
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
- r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;
+ r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.fwdOut=false;r.rzWas=false;
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
@@ -294,8 +331,8 @@ function shotSeatsUpdate(dt){
 // a kick press from any device: plain = shotFire on the live axis, with a wind-up live it releases it; Total Control's stick charge is judged at contact
 function shotKickEdge(r,m){
  const k=shotCharge(r),C=SHOTC.charge;
- // a ball on the pin: the kick is the pin shot whatever the axis says
- if(r.pinB&&r.kickT<0){shotPinFire(r);return;}
+ // a ball on the pin: the kick is the pin shot whatever the axis says; held under the forward leg it is control, not a shot
+ if(r.pinB&&r.kickT<0){if(!r.pinFwd)shotPinFire(r);return;}
  if(k>=0&&r.chgSrc&&r.chgSrc!=='stick'&&r.kickT<0){
   shotVerdict(r,k);
   shotFire(r,(r.chgMod!=null?r.chgMod:m),k);
@@ -311,6 +348,8 @@ function shotKickEdge(r,m){
   if(C.tone.on)Au.chargeFire(kk,shotChgBand(kk)===1);
   return;
  }
+ // finesse + kick: the forward pin, then the swing as it always was
+ if(shotPinFwdPress(r,m))return;
  shotFire(r,m,k);
 }
 

@@ -311,6 +311,8 @@ body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--
  .msSheet{padding:12px 14px 14px}
  .msRow{grid-template-columns:58px 1fr 58px;gap:9px}
 }
+#win.winIn{animation:winIn .5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes winIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 .confetti{position:fixed;top:-24px;width:10px;height:16px;z-index:60;pointer-events:none;animation:confFall linear forwards}
 @keyframes confFall{to{transform:translateY(110vh) rotate(720deg)}}
 /* customize open button */
@@ -326,7 +328,19 @@ body.padNav .btn:not(.ghost).navFocus{--pl:linear-gradient(180deg,#fff1d4,var(--
  border:1px solid rgba(107,170,188,.2);border-bottom:3px solid var(--tc,var(--steel));
  transition:transform .15s,box-shadow .15s,border-color .15s;pointer-events:auto}
 .kitFig:hover{transform:translateY(-3px);border-color:var(--ice);border-bottom-color:var(--tc,var(--steel))}
-.kitCap{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-family:var(--font-ui);font-size:13px;letter-spacing:.18em;color:var(--tx-strong);text-transform:uppercase;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+/* the pre-match tape render, cut from the head down (CONFIG.playerModel.portrait sets --show / --head / --cx, the figurine's renderTop sets --rt); the frame's own height is the unit, so it crops the same at any frame shape */
+.kitFig{container-type:size;isolation:isolate}
+.kitStage{--sh:min(calc(100cqh / var(--show,.5)),calc(200cqw / var(--fit,.8)));
+ position:absolute;left:50%;height:var(--sh);aspect-ratio:1/2;opacity:0;
+ top:calc((var(--head,.045) - var(--rt,.06)) * var(--sh));translate:calc(var(--cx,.49) * -100%) 0;transform-origin:50% calc(var(--rt,.06) * 100%);
+ isolation:isolate;filter:drop-shadow(0 0 9px color-mix(in srgb,var(--tc,var(--steel)) 55%,transparent));transition:scale .25s ease-out,opacity .25s}
+.kitFig.hasRender{background-image:radial-gradient(100% 62% at 50% 22%,color-mix(in srgb,var(--tc,var(--steel)) 30%,transparent),transparent 75%);
+ box-shadow:inset 0 0 34px rgba(0,0,0,.5)}
+.kitFig.hasRender .kitStage{opacity:1}
+.kitFig.hasRender:hover .kitStage{scale:1.045}
+.kitFig.hasRender::after{content:'';position:absolute;left:0;right:0;bottom:0;height:36%;pointer-events:none;
+ background:linear-gradient(to top,color-mix(in srgb,var(--tc,var(--steel)) 42%,#0a1a28),transparent)}
+.kitCap{position:absolute;z-index:1;bottom:8px;left:0;right:0;text-align:center;font-family:var(--font-ui);font-size:13px;letter-spacing:.18em;color:var(--tx-strong);text-transform:uppercase;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.9)}
 .kitPal{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 .kitPal .czChip{border-radius:2px;aspect-ratio:1}
 /* ===== customize panel ===== */
@@ -530,26 +544,68 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
  #lgHist .row.head span,#cupHist .row.head span{color:var(--tx-dim);font-size:var(--fs-micro)}
  /* ===== league setup ===== */
  #lgSlots,#lgSetup{justify-content:flex-start;overflow-y:auto;padding:24px 16px}
- .lgSlotCards{display:grid;grid-template-columns:repeat(3,minmax(0,320px));gap:18px;justify-content:center;width:100%;margin:0 auto}
- @media(max-width:1060px){.lgSlotCards{grid-template-columns:repeat(2,minmax(0,320px))}}
- /* A save file: the panel slab with a "SLOT n" tab. An empty slot is a dashed outline, quiet until hovered. */
- .lgSlotCard{position:relative;min-height:200px;display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:0 22px 18px;pointer-events:auto;cursor:pointer;
-  background:linear-gradient(180deg,rgba(12,33,50,.96),rgba(7,17,28,.96) 60%);border:1px solid rgba(107,170,188,.16);border-top:2px solid var(--fed-hi);box-shadow:0 14px 34px rgba(0,0,0,.45);transition:transform .12s,border-color .15s}
- .lgSlotCard.empty{background:rgba(7,17,28,.86);border:1px dashed rgba(107,170,188,.3);border-top:2px dashed rgba(107,170,188,.3);box-shadow:none;justify-content:flex-start}
- .lgSlotCard .slotNo{margin:-2px 0 14px -22px;padding:7px 30px 6px 22px;font-family:var(--font-ui);font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--ice);
-  background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%)}
- .lgSlotCard.empty .slotNo{background:rgba(18,63,94,.5);color:var(--tx-mute)}
- .lgSlotCard:hover{transform:translateY(-3px);border-color:var(--ice)}
- .lgSlotCard .slotName{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:28px;line-height:1.05;letter-spacing:.03em;color:var(--text);margin-bottom:8px;text-transform:uppercase}
- .lgSlotCard .slotDiv{font-family:var(--font-ui);font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);margin-bottom:6px}
- .lgSlotCard .slotInfo{font-size:17px;color:var(--tx-strong);margin-bottom:2px}
- .lgSlotCard .slotPos{font-family:var(--font-ui);font-size:26px;color:var(--text);position:absolute;right:22px;top:40px}
- .lgSlotCard .slotEmptyLab{margin-top:18px;font-family:var(--font-display);font-style:italic;font-weight:400;font-size:26px;letter-spacing:.04em;text-transform:uppercase;color:var(--tx-mute)}
- .lgSlotCard .slotEmptySub{font-family:var(--font-ui);font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--tx-dim);margin-top:6px}
- .lgSlotCard.empty:hover .slotEmptyLab{color:var(--text)}
+ .lgSlotCards{display:grid;grid-template-columns:repeat(3,minmax(0,404px));gap:18px;justify-content:center;width:100%;margin:0 auto}
+ @media(max-width:1060px){.lgSlotCards{grid-template-columns:repeat(2,minmax(0,404px))}}
+ /* A save is a team sheet: the figurine's mugshot on a studio backdrop in the kit colour, the club's standing beside it.
+    --tc is the kit colour, --tl the same lifted for lines and bars (a navy kit would vanish on the slab). Gold is the primary action, the leader's place and silverware. */
+ .lgSlotCard{position:relative;height:clamp(250px,calc((100vh - 160px) / 2),296px);display:grid;grid-template-columns:176px minmax(0,1fr);text-align:left;pointer-events:auto;cursor:pointer;
+  background:linear-gradient(180deg,rgba(12,33,50,.96),rgba(7,17,28,.96) 60%);border:1px solid rgba(107,170,188,.16);border-top:3px solid var(--tl,var(--fed-hi));box-shadow:0 14px 34px rgba(0,0,0,.45);transition:transform .12s,border-color .15s}
+ .lgSlotCard:hover{transform:translateY(-3px);border-color:var(--ice);border-top-color:var(--tl,var(--ice))}
  body.padNav .lgSlotCard.navFocus{outline-offset:2px}
- .lgSlotBtnRow{display:flex;gap:6px;margin-top:auto;padding-top:16px}
- .lgSlotBtnRow .miniBtn{pointer-events:auto}
+ .slotPhoto{position:relative;overflow:hidden;isolation:isolate;border-right:1px solid rgba(0,0,0,.4);
+  background:radial-gradient(130% 80% at 50% 26%,color-mix(in srgb,var(--tc,var(--fed)) 82%,#fff 8%),color-mix(in srgb,var(--tc,var(--fed)) 48%,var(--ink)) 62%,var(--ink) 125%)}
+ .slotPhoto::after{content:'';position:absolute;inset:auto 0 0;height:44%;pointer-events:none;background:linear-gradient(to top,rgba(5,12,20,.94),rgba(5,12,20,.55) 55%,transparent)}
+ .slotNo{position:absolute;z-index:3;top:0;left:0;padding:6px 22px 5px 12px;font-family:var(--font-ui);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--ice);
+  background:linear-gradient(180deg,var(--fed-hi),var(--fed));clip-path:polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%)}
+ .slotMug{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.22)}
+ .slotMug .ico{width:44%;height:auto}
+ .slotMug.hasMug .ico{display:none}
+ .slotMug .slotMugImg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 6%;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45));transition:transform .3s ease-out;transform-origin:50% 80%}
+ .lgSlotCard:hover .slotMugImg{transform:scale(1.05)}
+ .slotLower{position:absolute;z-index:2;left:12px;right:10px;bottom:10px;display:flex;flex-direction:column;gap:2px;pointer-events:none}
+ .slotLower b{font-family:var(--font-ui);font-weight:400;font-size:var(--fs-head);letter-spacing:.14em;text-transform:uppercase;color:var(--text);text-shadow:0 1px 3px rgba(0,0,0,.8)}
+ .slotLower i{font-style:normal;font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-mute)}
+ .slotBody{display:flex;flex-direction:column;min-width:0;padding:12px 16px 14px 18px}
+ .slotTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+ .slotDiv{display:flex;flex-direction:column;gap:3px;min-width:0;padding-top:2px;font-family:var(--font-ui);font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+ .slotDiv b{font-weight:400;color:var(--ice);overflow:hidden;text-overflow:ellipsis}
+ .slotDiv i{font-style:normal;color:var(--tx-dim)}
+ .slotPos{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;line-height:1;margin-top:-2px}
+ .slotPos b{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:28px;letter-spacing:.02em;text-transform:uppercase;color:var(--text)}
+ .slotPos i{font-style:normal;font-family:var(--font-ui);font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-dim);margin-top:3px}
+ .slotPos.lead b{color:var(--gold)}
+ .slotName{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:24px;line-height:1.04;letter-spacing:.03em;text-transform:uppercase;color:var(--text);margin-top:6px;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+ .slotName::before{content:'';display:block;width:34px;height:3px;margin-bottom:7px;background:var(--tl)}
+ .slotLeague{font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:var(--tr-label);text-transform:uppercase;color:var(--tx-mute);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .slotProg{display:flex;align-items:center;gap:10px;margin-top:11px;font-family:var(--font-ui);font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-strong);white-space:nowrap}
+ .slotCells{display:flex;gap:2px;flex:1;min-width:30px}
+ .slotCells i{flex:1;height:6px;background:rgba(107,170,188,.18)}
+ .slotCells i.on{background:var(--tl)}
+ .slotCells i.now{background:transparent;box-shadow:inset 0 0 0 1px var(--tl)}
+ .slotStats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:10px;background:var(--edge);border:1px solid var(--edge)}
+ .slotStats div{display:flex;flex-direction:column;gap:2px;padding:5px 9px 4px;background:rgba(7,17,28,.78)}
+ .slotStats em{font-style:normal;font-family:var(--font-ui);font-size:var(--fs-micro);letter-spacing:var(--tr-micro);text-transform:uppercase;color:var(--tx-dim)}
+ .slotStats b{font-family:var(--font-ui);font-weight:400;font-size:19px;letter-spacing:.04em;color:var(--text)}
+ .slotHon{display:flex;align-items:center;gap:12px;margin-top:9px}
+ .slotTro{display:inline-flex;align-items:center;gap:3px}
+ .slotTro .troFig{width:26px;height:26px}
+ .slotTro em{font-style:normal;font-family:var(--font-ui);font-size:var(--fs-label);color:var(--gold)}
+ /* an empty slot is a dashed outline, quiet until hovered */
+ .lgSlotCard.empty{background:rgba(7,17,28,.86);border:1px dashed rgba(107,170,188,.3);border-top:1px dashed rgba(107,170,188,.3);box-shadow:none}
+ .lgSlotCard.empty .slotPhoto{background:rgba(18,63,94,.16);border-right:1px dashed rgba(107,170,188,.22)}
+ .lgSlotCard.empty .slotPhoto::after{display:none}
+ .lgSlotCard.empty .slotNo{background:rgba(18,63,94,.5);color:var(--tx-mute)}
+ .slotBig{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:132px;line-height:1;color:transparent;-webkit-text-stroke:2px rgba(107,170,188,.3);padding-right:10px}
+ .lgSlotCard.empty:hover .slotBig{-webkit-text-stroke-color:rgba(240,178,74,.6)}
+ .lgSlotCard.empty .slotBody{justify-content:center}
+ .slotEmptyLab{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:26px;letter-spacing:.04em;text-transform:uppercase;color:var(--tx-mute);transition:color .15s}
+ .slotEmptySub{font-family:var(--font-ui);font-size:var(--fs-label);letter-spacing:.24em;text-transform:uppercase;color:var(--tx-dim);margin-top:6px}
+ .lgSlotCard.empty:hover{border-color:rgba(240,178,74,.55)}
+ .lgSlotCard.empty:hover .slotEmptyLab{color:var(--gold)}
+ .lgSlotBtnRow{display:flex;gap:6px;margin-top:auto;padding-top:10px}
+ .lgSlotBtnRow .miniBtn{pointer-events:auto;flex:1 1 0;min-width:0;padding:8px 6px;text-align:center}
+ .lgSlotBtnRow .miniBtn.ctn{flex-grow:1.5}
  .lgSlotBtnRow .miniBtn.ctn{--pl:linear-gradient(180deg,#f7c668,var(--gold) 55%,#d99532);--pr:var(--spark);--pk:var(--ink)}
  .lgSlotBtnRow .miniBtn.del{--pk:var(--tx-mute)}
  .lgSlotBtnRow .miniBtn.del:hover{--pk:#ef6a4a;--pr:#ef6a4a}
@@ -585,6 +641,18 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 #dbgPanel label{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;font-family:var(--font-ui);font-size:12px;color:var(--tx-strong);font-weight:100;letter-spacing: 0.18em;white-space:nowrap}
 #dbgPanel label .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
 #dbgPanel input[type=checkbox]{width:14px;height:14px;accent-color:var(--gold);cursor:pointer}
+#dbgPinPanel{position:fixed;top:14px;right:200px;z-index:25;background:rgba(0,0,0,.75);border:1px solid rgba(240,178,74,.25);border-radius:2px;padding:10px 14px;font-family:var(--font-body);font-size:12px;color:var(--gold);display:none;pointer-events:auto}
+#dbgPinPanel h4{font-family:var(--font-ui);font-size:12px;letter-spacing:.18em;margin-bottom:6px;color:var(--gold);white-space:nowrap}
+#dbgPinPanel label{display:grid;grid-template-columns:150px 110px 40px;align-items:center;gap:8px;padding:2px 0;font-family:var(--font-ui);font-size:12px;color:var(--tx-strong);font-weight:100;letter-spacing:.12em;white-space:nowrap}
+#dbgPinPanel .sec{margin:9px 0 3px;max-width:316px;font-family:var(--font-ui);font-size:11px;letter-spacing:.14em;color:var(--gold);white-space:normal}
+#dbgPinPanel .help{margin-top:10px;min-height:82px;max-width:316px;font-family:var(--font-body);font-size:12px;line-height:1.35;color:var(--tx-body);white-space:normal}
+#dbgPinPanel input[type=range]{width:110px;accent-color:var(--gold);cursor:pointer}
+#dbgPinPanel .val{text-align:right;color:var(--tx-body)}
+#dbgPinPanel .val.chg{color:var(--gold)}
+#dbgPinPanel .warn{margin-top:8px;max-width:316px;font-family:var(--font-body);font-size:12px;line-height:1.35;color:#ff8c3a}
+#dbgPinPanel .warn:empty{display:none}
+#dbgPinPanel .bar{display:flex;gap:8px;margin-top:8px}
+#dbgPinPanel button{flex:1;font-family:var(--font-ui);font-size:12px;letter-spacing:.18em;color:var(--gold);background:transparent;border:1px solid rgba(240,178,74,.35);padding:4px 8px;cursor:pointer}
 @media(max-width:820px){.czWrap{grid-template-columns:minmax(0,1fr);grid-template-rows:42% auto minmax(0,1fr)}.czPanel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid var(--edge)}}
 @media(max-width:800px){.panelWrap{flex-wrap:wrap;max-width:100%;padding:10px;margin:0;background:transparent;box-shadow:none;border:none;border-radius:0}.panel{flex:1 1 auto;min-width:260px;min-height:auto}.ctl{grid-template-columns:1fr}}
 @media(max-width:1040px){
@@ -622,6 +690,12 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 .scrTab.hidden{display:none}
 .optTabBtn,.scrTabBtn{font-family:var(--font-ui);font-size:16px;letter-spacing:.16em;text-transform:uppercase;padding:10px 34px;cursor:pointer;pointer-events:auto;--pc:12px;--pk:var(--tx-mute)}
 .optTabBtn:hover,.scrTabBtn:hover{--pk:var(--text)}
+/* unspent parts on a Squad tab: a plate-cut chip off the top-right corner; the outline is four drop-shadows so it follows the cut */
+.tabCue{position:absolute;top:-10px;right:-7px;z-index:2;pointer-events:none;
+ filter:drop-shadow(1.5px 0 0 var(--space)) drop-shadow(-1.5px 0 0 var(--space)) drop-shadow(0 1.5px 0 var(--space)) drop-shadow(0 -1.5px 0 var(--space))}
+.tabCue b{display:flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px 0 5px;font:400 15px/1 var(--font-ui);letter-spacing:.02em;color:var(--ink);background:var(--gold);
+ clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
+body.padNav .scrTabBtn.navFocus .tabCue b{background:var(--ink);color:var(--gold)}
 .optTab.hidden{display:none}
 .optSubH{font-family:var(--font-ui);font-weight:400;font-size:13px;letter-spacing:.18em;color:var(--tx-mute);text-transform:uppercase;margin:0 0 8px}
 .optWrap{display:flex;gap:16px;justify-content:center;align-items:stretch;max-width:1820px;width:100%;padding:16px;margin:0 auto;flex-wrap:wrap}
@@ -916,7 +990,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 
 /* ===== photo mode (js/photo.js · F1) ===== third dev-panel accent — steel-cyan, distinct from gold (debug/AI) and green (training). */
 /* HARD hides — an invisible dev panel still eats clicks meant for the viewfinder. */
-body.photoOn #trnPanel,body.photoOn #dbgPanel,body.photoOn #dbgKickLog,body.photoOn #perfPanel{display:none!important}
+body.photoOn #trnPanel,body.photoOn #dbgPanel,body.photoOn #dbgPinPanel,body.photoOn #dbgKickLog,body.photoOn #perfPanel{display:none!important}
 /* Vignette is DOM, so it tints what you SEE and never what you GET. */
 body.photoOn #vignette{opacity:0;transition:opacity .25s}
 

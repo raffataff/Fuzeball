@@ -307,7 +307,7 @@ def strip_ktx(src, dst):
 def t_figurines():
     """The game's own figurines: open borders, non-manifold edges, flipped faces, several shells."""
     root = os.path.abspath(os.path.join(HERE, '..', '..'))
-    for name in ('womanKimi', 'cyborg', 'manJerry'):
+    for name in ('womanKimi', 'cyborg', 'manRichie'):
         path = os.path.join(root, 'assets', 'fuzeball_%s.glb' % name)
         if not os.path.exists(path):
             print('   skip %s (asset missing)' % name)

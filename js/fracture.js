@@ -14,19 +14,21 @@ function cloneFractureInstance(tpl){
   return g;
 }
 
-// warm one template off-screen in its transparent fade state (used by warmFractureShaders and ensureExplosionModel); no-op until the renderer exists
+// queue one template in its transparent fade state, a mesh per distinct source material (used by warmFractureShaders and ensureExplosionModel); no-op until the renderer exists
 function warmFractureTemplate(tpl){
-  if(!tpl||!renderer||!scene||!camera)return;
-  const inst=cloneFractureInstance(tpl);
+  if(!tpl||!renderer||!scene||!camera||typeof warmPush!=='function')return;
+  const inst=cloneFractureInstance(tpl),src=[],seen=new Set(),rep=[];
+  let i=0;
+  tpl.scene.traverse(c=>{if(c.isMesh)src.push(c.material);});
   inst.traverse(c=>{
    if(!c.isMesh)return;
+   const k=src[i++];
+   if(seen.has(k))return;seen.add(k);
    const mats=Array.isArray(c.material)?c.material:[c.material];
    mats.forEach(m=>{m.transparent=true;m.opacity=1;});
+   rep.push(c);
   });
-  inst.position.set(0,-500,0);
-  scene.add(inst);
-  renderer.compile(scene,camera);
-  scene.remove(inst);
+  rep.forEach(c=>warmPush(c));
 }
 // boot: warm every shatter template already resident (ball + swirl + any figurine explosions primed so far)
 function warmFractureShaders(){
@@ -50,15 +52,23 @@ function spawnFracture(r,mi){
   const inst=cloneFractureInstance(tpl);
   inst.position.copy(wp);inst.quaternion.copy(wq);inst.scale.copy(ws);
   scene.add(inst);
-  // tint the kit parts the intact figure tints (teamParts); only Blender's numeric re-import suffix (.001) is stripped (kit_grimlot.skin is a different material)
-  const teamParts=new Set((activeModel(r.team).teamParts||[]).map(s=>s.toLowerCase()));
+  // kit parts take the team colour, hair takes the man's own hair colour; only Blender's numeric suffix (.001) is stripped (kit_grimlot.skin is a different material)
+  const am=activeModel(r.team);
+  const teamParts=new Set((am.teamParts||[]).map(s=>s.toLowerCase()));
+  const hairParts=new Set((am.hairParts||[]).map(s=>s.toLowerCase()));
   const col=kitLin(r.team===0?cfg.redColor:cfg.blueColor);
+  let hair=null;
+  if(hairParts.size)manObj.traverse(c=>{
+   if(hair||!c.isMesh)return;
+   if(hairParts.has((c.material.name||'').toLowerCase().replace(/\.\d+$/,'')))hair=c.material.color.clone();
+  });
   const mats=[];
   inst.traverse(c=>{
    if(!c.isMesh)return;
    c.material.transparent=true;c.material.opacity=1;
    const name=(c.material.name||'').toLowerCase().replace(/\.\d+$/,'');
    if(teamParts.has(name))c.material.color.set(col);
+   else if(hair&&hairParts.has(name))c.material.color.copy(hair);
    mats.push(c.material);
   });
   const mixer=new THREE.AnimationMixer(inst);
@@ -226,25 +236,37 @@ function warmBallMaterials(){
   if(!renderer||!scene)return;
   // park one hidden instance of each ball type off-screen once (frustum-culled at y=-800) so its compiled program is never released
   if(!warmMeshHolder){warmMeshHolder=new THREE.Group();warmMeshHolder.position.set(0,-800,0);scene.add(warmMeshHolder);}
+  const useModel=!!(CONFIG.debug&&CONFIG.debug.useBallModel);
   for(const key in BALL_TYPES){
    if(warmedBallTypes[key])continue;
-   let mesh=(CONFIG.debug&&CONFIG.debug.useBallModel)?makeBallModel(key):null;
+   if(useModel&&!ballModel)break;   // the ball GLB is still on its way: they are parked on the next call
+   let mesh=useModel?makeBallModel(key):null;
    if(!mesh){const t=BALL_TYPES[key];
     mesh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,24,16),
      new THREE.MeshStandardMaterial({color:t.col,emissive:t.em,emissiveIntensity:t.em?0.7:0,
       roughness:t.metal?.25:.4,metalness:t.metal||.05}));}
-   // match the real ball's envMap state (applyBallEnv): null/texture is itself a recompile
-   if(typeof ballReflectOn==='function'&&ballReflectOn()&&typeof ballCubeRT!=='undefined'&&ballCubeRT)
-    mesh.traverse(o=>{if(o.isMesh){o.material.envMap=ballCubeRT.texture;o.material.envMapIntensity=CONFIG.ballReflect.intensity;o.material.needsUpdate=true;}});
    warmMeshHolder.add(mesh);warmedBallTypes[key]=1;
   }
+  // a real ball takes the reflection map at birth (applyBallEnv), and null/texture is itself a program: the parked ones follow the option as it is now
+  const env=(typeof ballReflectOn==='function'&&ballReflectOn())?ballCubeRT.texture:null;
+  warmMeshHolder.children.forEach(c=>setBallEnv({m:c},env));
+}
+// what a match needs that needs no match: boot queues it, so the first Start has nothing left to compile (warmMatchAssets calls it too, for a boot that went straight up)
+function warmMatchPrep(){
+  if(CONFIG.fx&&CONFIG.fx.warmMatch===false)return;
+  if(!renderer||!scene||!camera)return;
+  warmBallMaterials();
+  if(typeof iceBuild==='function')iceBuild();   // the ice blocks sit hidden in the scene, so the queue finds their shader
+  if(typeof boostBuild==='function')boostBuild();   // ...and so does the boost glow
 }
 function warmMatchAssets(){
   if(CONFIG.fx&&CONFIG.fx.warmMatch===false)return;
   if(!renderer||!scene||!camera)return;
-  warmBallMaterials();
-  renderer.compile(scene,camera);            // one pass compiles every scene material (incl. the parked ball types) at the live light count
+  warmMatchPrep();
+  if(typeof warmFlush==='function')warmFlush();   // whatever the boot queue still holds is compiled before the whistle
+  renderer.compile(scene,camera);            // one pass over every scene material at the live light count
   for(const id in explosionTemplates)warmFractureTemplate(explosionTemplates[id]); // re-warm the shatters/swirl for THIS room's exact light set
   warmFractureTemplate(ballExplosionTemplate);
   warmFractureTemplate(respawnSwirlTemplate);
+  if(typeof warmFlush==='function')warmFlush();   // ...the shatters just queued
 }

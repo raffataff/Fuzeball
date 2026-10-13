@@ -198,7 +198,7 @@ function kbRender(){
  const sh=kbShots();
  // read-only rows for what isn't a binding: the mouse slide, the pin chord and Esc; this list is the keyboard reference
  const fixed=(lab,cap)=>'<div class="kbRow kbFixed"><span class="kbLab">'+lab+'</span><span class="kbKeys"><span class="kbCap">'+cap+'</span></span></div>';
- const fl=bindList('finesse'),rl=bindList('raise');
+ const fl=bindList('finesse'),rl=bindList('raise'),kl=bindList('kick');
  box.innerHTML=fixed('Slide','MOUSE ↕')+CONFIG.binds.list.filter(b=>sh||!b.shots).map(b=>{
   const l=bindList(b.act),cap=KB.cap===b.act;
   return '<div class="kbRow'+(l.length?'':' kbNone')+'"><span class="kbLab">'+b.lab+'</span><span class="kbKeys">'
@@ -206,6 +206,7 @@ function kbRender(){
    +'<button class="kbAdd'+(cap?' on':'')+'" data-act="'+b.act+'" title="Add an input">'+(cap?'PRESS…':'+')+'</button></span></div>';
  }).join('')
   +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
+  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&fl.length&&kl.length?fixed('Forward pin',bindLabel(fl[0])+' + '+bindLabel(kl[0])):'')
   +fixed('Pause','ESC');
 }
 function kbCapStart(act){KB.cap=act;kbMsg('Press a key, mouse button or wheel for '+bindActLabel(act)+' — ESC cancels');kbRender();}

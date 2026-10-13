@@ -109,7 +109,6 @@ FIGURINES = {
     "mechaMan":     {"stem": "mechaman",  "team": ["kit_mechaman_new"], "hair": []},
     "stormer":      {"stem": "stormer",   "team": ["kit_stormer"], "hair": []},
     "rocko":        {"stem": "rocko2",    "team": ["kit_rocko", "kit_rocko_badge"], "hair": []},
-    "manJerry":     {"stem": "jerry",     "team": ["kit_manJerry"], "hair": ["kit_manJerry_hair"]},
     "manrichie":    {"stem": "richie",    "team": ["kit_richie"], "hair": ["kit_richie_hair"]},
     "manDeano":     {"stem": "deano",     "team": ["kit_deano"], "hair": []},
     "womanMaria":   {"stem": "maria",     "team": ["kit_maria2"], "hair": ["kit_maria2_hair"]},

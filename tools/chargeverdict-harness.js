@@ -50,6 +50,7 @@ function build(srcFx){
   function shotChargeBlock(r){return r.chgBlock||0;}
   function shotChargeBand(r){return -1;}
   function marksUpdate(){}   // js/marks.js — wall scuffs, nothing to do with the verdict
+  function vfxUpdate(){}function vfxWinTick(){}function vfxLive(){return false;}   // js/vfx.js — particles, not the verdict
   var smokePuffs=[],dustRing={visible:false,material:{color:{copy(){}}},scale:{setScalar(){}},position:{}};   // world.js's smoke pool, empty
   var rodHoleMeshes=[];   // world.js's stamina gauges, none built
   var pinRings=[];   // world.js's pinned-ball rings, none built

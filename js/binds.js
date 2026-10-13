@@ -51,13 +51,15 @@ function bindHintRods(sw,mouse){
  const pair=(a,b)=>[bindCap(a),bindCap(b)].filter(Boolean).join(' ');
  const sh=typeof shotsOn==='function'&&shotsOn()&&CONFIG.shots.kbm&&CONFIG.shots.kbm.on;
  const pin=sh&&CONFIG.shots.pin&&CONFIG.shots.pin.on&&bindCap('finesse')&&bindCap('raise');
+ const fwd=pin&&CONFIG.shots.pin.fwd.on&&bindCap('kick');
  const sw2=sw?pair('rodPrev','rodNext'):'',sl=(pair('slideUp','slideDown')+(mouse?' [MOUSE]':'')).trim();
  return {sw:sw2?sw2+' switch rod':'',slide:sl?sl+' slide':'',
   act:bindJoin([bindHint('kick','kick',2),bindHint('raise','raise',2)]),
-  // needRaise: power is half the wind-up, so the hint names both keys; the pin is finesse + raise (shots.js shotPinInput)
+  // needRaise: power is half the wind-up, so the hint names both keys; the pin is finesse + raise, the forward pin finesse + kick (shots.js shotPinInput)
   mod:sh?bindJoin([CONFIG.shots.charge.needRaise
     ?(bindCap('power')&&bindCap('raise')?bindCap('power')+' + '+bindCap('raise')+' wind up':'')
-    :bindHint('power','power'),bindHint('finesse','touch'),pin?bindCap('finesse')+' + '+bindCap('raise')+' pin':'']):''};
+    :bindHint('power','power'),bindHint('finesse','touch'),pin?bindCap('finesse')+' + '+bindCap('raise')+' pin':'',
+    fwd?bindCap('finesse')+' + '+bindCap('kick')+' forward pin':'']):''};
 }
 
 // ---- editing (Options > Controls) ----

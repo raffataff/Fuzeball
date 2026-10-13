@@ -153,7 +153,7 @@ const muts=[
  ['shots','&&cfg.pinHint!==false','&&cfg.pinHint===true','a save from before the option never shows it'],
  ['shots',"&&S.phase==='play'&&!S.tut)","&&!S.tut)",'the plate shows while paused'],
  ['shots',"&&S.phase==='play'&&!S.tut)","&&S.phase==='play')",'the plate shows over the tutorial'],
- ['shots','for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i]))return S.seats[i];return null;','return S.seats[0]||null;','the plate belongs to the first seat, not the one that pinned'],
+ ['shots','for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&!seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;','return S.seats[0]||null;','the plate belongs to the first seat, not the one that pinned'],
  ['fx',"if(!live){u.a=0;m.visible=false;continue;}",'','a ring lingers through a goal'],
  ['fx','}else u.a=Math.max(0,u.a-rdt/Math.max(.01,M.outT));','}else u.a=0;','the ring blinks out on release'],
  ['fx','u.x=b.m.position.x;u.z=b.m.position.z;','','the ring stays where the ball was caught'],

@@ -582,6 +582,69 @@ function makeBallModel(key){
   return any?g:null;
 }
 
+// --- shader warm queue ---
+// renderer.compile(scene) links every new program in one block; cold, that is ~0.35 s a program and a frozen splash
+// each material is a job instead, run in short slices; a job compiles on a stand-in scene holding the live lights, fog and environment, so it fills the program cache the real render reads
+const warmQ=[],warmWait=[],warmSeen=new WeakSet();
+let warmScn=null,warmTm=0,warmGate=true,warmHeld=false;
+// put every material under root that has not been compiled on the queue
+function warmAdd(root){
+ if(!root||!renderer||!scene||!camera)return;
+ root.traverse(o=>{for(const m of Array.isArray(o.material)?o.material:[o.material])if(m&&!warmSeen.has(m)){warmSeen.add(m);warmQ.push([m,o]);}});
+}
+function warmKick(ms){if(warmTm)clearTimeout(warmTm);warmTm=setTimeout(warmTick,ms);}
+function warmPush(root){
+ warmAdd(root);
+ if(CONFIG.warm.on===false)warmRun(0);
+ else if(!warmHeld)warmKick(CONFIG.warm.gap);
+}
+// until this (the cinematic is over, a match was asked for, the menu is up) the queue only probes: a job as slow as a cold compile parks it
+// so a warm start is done inside the cinematic, and a cold one does not hitch it
+function warmGo(){
+ if(!warmGate)return;warmGate=false;warmHeld=false;
+ if(warmQ.length)warmKick(0);
+}
+function warmTick(){
+ warmTm=0;
+ if(warmHeld)return;
+ warmRun(CONFIG.warm.slice);
+ if(warmQ.length&&!warmTm&&!warmHeld)warmKick(CONFIG.warm.gap);
+}
+// run jobs until ms is spent (0 = all); a drained queue looks at the scene once more, and the waiters fire when that finds nothing
+function warmRun(ms){
+ const t0=performance.now();
+ let L=null,s=null;
+ for(;;){
+  if(!warmQ.length)warmAdd(scene);   // whatever joined the scene while the queue ran (the frost blocks, the boost glow)
+  if(!warmQ.length)break;
+  if(!s){
+   s=warmScn||(warmScn=new THREE.Scene());L=[];
+   scene.traverseVisible(c=>{if(c.isLight)L.push(c);});
+   s.fog=scene.fog;s.environment=scene.environment;
+  }
+  s.children=L.concat(warmQ.shift()[1]);
+  const tj=performance.now();
+  try{renderer.compile(s,camera);}catch(e){console.warn('shader warm failed',e);}
+  const now=performance.now();
+  if(ms&&warmGate&&now-tj>=CONFIG.warm.slow){warmHeld=true;break;}
+  if(ms&&now-t0>=ms)break;
+ }
+ if(s)s.children=[];
+ if(!warmQ.length)warmAdd(scene);   // one more look before anyone is let go: a slice can end on the last job
+ if(!warmQ.length)warmWait.splice(0).forEach(f=>f());
+}
+// cb once the queue is done (at once if it is), or after cap seconds whatever is left
+function warmWhen(cb,cap){
+ if(!warmQ.length){cb();return;}
+ let on=true;const go=()=>{if(on){on=false;cb();}};
+ warmWait.push(go);setTimeout(go,cap*1000);
+}
+// everything queued, now, held or not (the match start)
+function warmFlush(){
+ if(warmTm){clearTimeout(warmTm);warmTm=0;}
+ warmRun(0);
+}
+
 // --- power-up pickup models ---
 // CONFIG.powerups.models: optional per type, a missing GLB falls back to the octahedron in powerups.js
 // templates load at boot and are cloned per spawn; anything touching a material is baked in here to avoid a mid-match compile
@@ -628,13 +691,9 @@ function loadPowerupModels(onReady){
 }
 // one pickup instance, null if the type has no model (caller draws the gem)
 function makePUModel(key){const t=puTemplates[key];return t?t.clone(true):null;}
-// off-screen shader precompile so a pickup's first frame doesn't compile mid-match
+// shader precompile so a pickup's first frame doesn't compile mid-match
 function warmPowerupShaders(){
- if(!renderer||!scene||!camera)return;
- for(const k in puTemplates){
-  const o=puTemplates[k].clone(true);o.position.set(0,-500,0);
-  scene.add(o);renderer.compile(scene,camera);scene.remove(o);
- }
+ for(const k in puTemplates)warmPush(puTemplates[k]);
 }
 
 // --- pitches (one GLB each, lazy + LRU) ---

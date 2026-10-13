@@ -88,6 +88,7 @@ function markHide(i){
 
 // leave a mark where the ball just hit a wall; n is the wall's inward normal, imp the speed straight into the wall (a rail clip smears, a hit craters); PHY.wallHitSnd (16) is where a hit becomes audible
 function spawnMark(b,nx,ny,nz,imp){
+ if(!b.scored)vfxImpact(b,nx,ny,nz,imp);   // sparks off a hard hit (js/vfx.js), whether or not scuffs are on
  if(!markMesh||!cfg.marks||b.scored)return;
  const M=CONFIG.fx.marks;
  if(!M.on||imp<M.minImp)return;
@@ -127,7 +128,7 @@ function spawnMark(b,nx,ny,nz,imp){
 
  // keep the mark on the wall, whole: the bowl's wall starts above its curved skirting and walls have a top rail; if the band is too short the mark shrinks (vh = the quad's half-height once tilted)
  const bot=ARENA_ON?ARENA.creaseR:0,
-       top=ARENA_ON?F.wallH:(Math.abs(nx)>.5?(ENDWALL_H||F.wallH):F.wallH),
+       top=ARENA_ON?F.wallH:(Math.abs(nx)>.5?(ENDWALL_H||WALL_H):WALL_H),
        band=Math.max(.1,top-bot);
  let vh=Math.abs(_mkA.y)*hw+Math.abs(_mkB.y)*hh;
  if(vh*2>band*.9){const k=band*.9/(vh*2);hw*=k;hh*=k;vh*=k;}

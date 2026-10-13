@@ -34,6 +34,7 @@
        else{kickRod(u,null);T.humanKick++;}
       }
      }
+     if(i%2===0)shotSeatsUpdate(2*FIX);   // main.js runs the shot step once a frame, before the fixed steps: it is what drops a pose the AI left on a rod the seat took
      aiUpdate(FIX);userControlUpdate(FIX);deadBallUpdate(FIX);updateRods(FIX);physics(FIX);S.time+=FIX;
      for(const q of S.balls)q.cur.copy(q.m.position);
      for(const r of rods){

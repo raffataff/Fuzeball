@@ -110,7 +110,7 @@ function strikeProbe(r,b,style){
  const n=Math.max(2,SG.samples|0),dir=r.kickDir;
  // skip the windup, the boot moves away from the ball there
  const t0=Math.max(KS.windup,KS.powFrom-SG.lead),t1=Math.max(t0,Math.min(KS.drop,KS.powTo+SG.lag));
- const a0=r.angle/(dir||1);                          // the swing starts from where the rod IS — kickRod's kickA0
+ const a0=swingA0(r);                                // the swing starts from where kickRod will start it (kickA0)
  const p=b.m.position,v=b.v,room=r.target-r.offset;
  // exact integral of the exponential friction
  const fr=(p.y<=BALL_R+SG.groundY)?PHY.floorFric:PHY.airFric;
@@ -206,9 +206,9 @@ function backHit(r,aT,off,rate){
 // ease rate of the safe-raise lift: the keeper's own, the others' shared one
 function srLerp(r){const SR=AIC.safeRaise;return r.role==='GK'&&SR.gkLerp?SR.gkLerp:SR.lerp;}
 // angle updateRods may ease toward instead of aT; stamps r.lhT when it holds a lift
-function backLimit(r,aT,rate){
+function backLimit(r,aT,rate,own){
  const G=AIC.backGuard;
- if(!G||!G.on||!G.lift||r.kickT>=0||seatOf(r)||(aT-r.angle)*r.kickDir>=0)return aT;
+ if(!G||!G.on||!G.lift||r.kickT>=0||(seatOf(r)&&!own)||(aT-r.angle)*r.kickDir>=0)return aT;   // own: a human's leg coming back from the forward pin (r.fwdOut) is held clear too
  const h=backHit(r,aT,r.offset,rate);
  if(h===null)return aT;
  BGS.lift++;r.lhT=G.holdT;r.bgT=S.time;
@@ -1708,22 +1708,22 @@ function rodHoldRaise(r){
  let bb=null,bd=1e9;
  for(const b of S.balls){if(b.scored)continue;const d=Math.abs(b.m.position.x-r.x);if(d<bd){bd=d;bb=b;}}
  if(!bb){r.raise=false;r.behindFlag=false;return false;}
- const dir=r.team===0?1:-1,rel=(bb.m.position.x-r.x)*dir;
+ const dir=r.team===0?1:-1,rel=(bb.m.position.x-r.x)*dir,RB=AIC.raiseBack;
  // a resting rod must not stand in a teammate's kick lane: lift only, with the same back-swing guard
- if(AIC.clearLane.on&&AIC.clearLane.lift&&rel<AIC.clearLane.behind&&rel>-AIC.clearLane.nearBall
+ if(RB&&AIC.clearLane.on&&AIC.clearLane.lift&&rel<AIC.clearLane.behind&&rel>-AIC.clearLane.nearBall
     &&bb.m.position.y<AIC.lowY&&!inFootRange(r,bb)&&laneMate(r,bb)){
   r.raise=true;r.behindFlag=false;return true;
  }
  if(inFootRange(r,bb,AIC.underFootBack)||(r.lhT>0&&inFootRange(r,bb))){
   r.raise=false;r.behindFlag=false;                 // ball right at the feet (or the back guard is holding the lift) — never swing back through it
  }else{
-  if(!r.behindFlag && rel<AIC.raiseBehind) r.behindFlag=true;
+  if(!r.behindFlag && RB && rel<AIC.raiseBehind) r.behindFlag=true;
   if(r.behindFlag){
    r.raise=true;
    // release when the ball reaches the feet or has moved well past
    if(rel>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
   }else{
-   r.raise=rel<AIC.raiseBehind;
+   r.raise=RB && rel<AIC.raiseBehind;
   }
  }
  return r.raise;
@@ -1984,13 +1984,13 @@ function coverZ(r,bzp,relFront,dt){
    if(latchStuck){
     r.raise=false;r.behindFlag=false;       // ball right at the feet — drop, never swing back through it
    }else{
-    if(!r.behindFlag && relReal<AIC.raiseBehind) r.behindFlag=true;
+    if(!r.behindFlag && AIC.raiseBack && relReal<AIC.raiseBehind) r.behindFlag=true;
     if(r.behindFlag){
      r.raise=true;
      // release when the ball reaches the feet or has moved well past
      if(overFoot || relReal>AIC.overFootOffset+AIC.overFoot) r.behindFlag=false;
     }else{
-     r.raise=relReal<AIC.raiseBehind;
+     r.raise=AIC.raiseBack && relReal<AIC.raiseBehind;
     }
    }
   // --- lane-clear action (r.act='lane') ---
@@ -2008,7 +2008,7 @@ function coverZ(r,bzp,relFront,dt){
   }
   if(r.act==='lane'){
    const cz=FOOT_BOX.z+BALL_R+CL.laneMargin,blocked=inLaneZ(r,bp.z,cz);
-   r.raise=CL.lift&&!footStuck;            // lift only when the back-swing can't clip the ball; the slide clears z, then this opens
+   r.raise=AIC.raiseBack&&CL.lift&&!footStuck;   // lift only when the back-swing can't clip the ball; the slide clears z, then this opens
    r.behindFlag=false;                     // the action owns the angle — no latch to release
    if(blocked){
     if(!r.laneDir){const o0=clearOffset(r,bp.z,cz,0);r.laneDir=(o0!=null&&o0>=r.offset)?1:-1;} // committed once, like evadeDir

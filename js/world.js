@@ -447,6 +447,7 @@ function buildTable(){
   bar.rotation.x=Math.PI/2;bar.position.set(0,GH,0);bar.castShadow=true;gf.add(bar);
   // net: one team-tinted material per goal (applyColors); the roof is a solid collider (goalFrameCollide)
   const netM=new THREE.MeshStandardMaterial({color:kitLin(i?cfg.blueColor:cfg.redColor),map:netTex,transparent:true,opacity:.85,roughness:.9,side:THREE.DoubleSide,depthWrite:false});
+  vfxNetPatch(netM);   // the goal ripple + glow ride this material's shader (js/vfx.js)
   netMats.push(netM);
   g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
   const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
@@ -752,6 +753,7 @@ function buildFxPools(){
   }
  }
  buildMarkPool();   // wall scuffs — one batched mesh of its own (js/marks.js)
+ vfxBuild();        // GPU particle pools: sparks, confetti, blasts (js/vfx.js)
 }
 
 // ===== fx light pool =====

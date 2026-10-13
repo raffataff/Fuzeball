@@ -48,6 +48,7 @@ function suite(X){
  {const r=mk(X);ball(X,-4,0);X.AIC.backGuard.on=false;const h=X.backLimit(r,full);X.AIC.backGuard.on=true;ok('backGuard.on:false restores the old lift exactly',h===full);}
  {const r=mk(X,{kickT:0.05});ball(X,-4,0);ok('a kick swing is exempt',X.backLimit(r,full)===full);}
  {const r=mk(X);ball(X,-4,0);X.setSeat({});const h=X.backLimit(r,full);X.setSeat(null);ok('a human-held rod is exempt',h===full);}
+ {const r=mk(X);ball(X,-4,0);X.setSeat({});const h=X.backLimit(r,full,undefined,true);X.setSeat(null);ok('...unless it is coming back from the forward pin (own): then the guard holds it like an AI rod',h!==full&&h<=0);}
  {const r=mk(X,{angle:-1.3});ball(X,-4,0);ok('a forward move is not a back-swing: the drop through a ball behind it is left alone',X.backLimit(r,0)===0);}
  {const r=mk(X,{team:1,kickDir:-1,x:52.5});X.S.balls=[{scored:false,m:{position:{x:56.5,y:X.BALL_R,z:0}},v:{x:0,y:0,z:0}}];
   const h=X.backLimit(r,-full);ok('blue mirrors red (its back-swing is the positive angle)',h<1&&h>=0&&h<0.6,'h='+h);}
@@ -84,8 +85,9 @@ const MUT=[
  {n:'the slide guard forgets a ball inside the box',part:'guard',from:'(d1>=G.deepD&&_fb.nx*dir>=G.backDot)',to:'(_fb.nx*dir>=G.backDot)'},
  {n:'a fast ball is swept as if it were loitering',part:'guard',from:'||v.x*v.x+v.y*v.y+v.z*v.z>ms2',to:''},
  {n:'the lift never reports a hold (latch stamp lost)',part:'guard',from:'BGS.lift++;r.lhT=G.holdT;',to:'BGS.lift++;'},
- {n:'a kick swing is no longer exempt',part:'guard',from:'||r.kickT>=0||seatOf(r)||(aT-r.angle)',to:'||seatOf(r)||(aT-r.angle)'},
- {n:'a human-held rod is no longer exempt from the lift guard',part:'guard',from:'||r.kickT>=0||seatOf(r)||(aT-r.angle)',to:'||r.kickT>=0||(aT-r.angle)'},
+ {n:'a kick swing is no longer exempt',part:'guard',from:'||r.kickT>=0||(seatOf(r)&&!own)||(aT-r.angle)',to:'||(seatOf(r)&&!own)||(aT-r.angle)'},
+ {n:'a human-held rod is no longer exempt from the lift guard',part:'guard',from:'||r.kickT>=0||(seatOf(r)&&!own)||(aT-r.angle)',to:'||r.kickT>=0||(aT-r.angle)'},
+ {n:'a human leg coming back from the forward pin is exempt like any human rod',part:'guard',from:'||(seatOf(r)&&!own)||(aT-r.angle)',to:'||seatOf(r)||(aT-r.angle)'},
  {n:'a forward move is treated as a back-swing',part:'guard',from:'||(aT-r.angle)*r.kickDir>=0)return aT;',to:')return aT;'},
  {n:'a slide AWAY from a ball is refused too (no closing test)',part:'guard',from:'if(d1<footBoxDist(r,r.angle,i,p.x,p.y,p.z,o0)-1e-4)',to:'if(true)'},
  {n:'a ball beside/ahead of the boot blocks the slide (no behind test)',part:'guard',from:'||(p.x-r.x)*dir>G.behindRel)continue;',to:')continue;'},

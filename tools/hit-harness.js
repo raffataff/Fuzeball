@@ -61,7 +61,7 @@ function suite(X){
  // ---- the angle that squares the foot onto a ball ----
  {const lx=(a,rel)=>{const sa=Math.sin(a),ca=Math.cos(a),fx=sa*X.ARM*X.FOOT_T,fy=X.ROD_H-ca*X.ARM*X.FOOT_T,bcx=fx+X.FOOT_BOX_OFF.x*sa+X.FOOT_BOX_OFF.y*ca,bcy=fy-X.FOOT_BOX_OFF.x*ca+X.FOOT_BOX_OFF.y*sa,dx=rel-bcx,dy=X.BALL_R-bcy;return [dx*sa-dy*ca,dx*ca+dy*sa];};
   let allIn=true,mono=true,prev=-9;
-  for(const rel of [-3.8,-3,-2,-1,-0.7,2,3,4]){const a=X.hitAngle(rel);if(a==null){allIn=false;continue;}const [u,v]=lx(a,rel);if(Math.abs(u)>FB.x*HT.fit+1e-9||Math.abs(v)>FB.y*HT.fit+1e-9)allIn=false;if(a<=prev&&rel!==2)mono=false;prev=a;}
+  for(const rel of [-3.8,-3,-2,-1,-0.7,2,3,3.9]){const a=X.hitAngle(rel);if(a==null){allIn=false;continue;}const [u,v]=lx(a,rel);if(Math.abs(u)>FB.x*HT.fit+1e-9||Math.abs(v)>FB.y*HT.fit+1e-9)allIn=false;if(a<=prev&&rel!==2)mono=false;prev=a;}
   ok('every depth the bands name has an angle that puts the ball inside the foot box\'s face',allIn);
   ok('...a ball behind the pivot turns the leg back, a ball ahead turns it forward, and the further ahead the further forward',X.hitAngle(-3)<X.hitAngle(-1)&&X.hitAngle(-1)<0&&X.hitAngle(3)>X.hitAngle(2)&&X.hitAngle(2)>0&&mono);
   ok('a ball at a depth no angle reaches (well past the foot) has none',X.hitAngle(7)===null&&X.hitAngle(-7)===null);

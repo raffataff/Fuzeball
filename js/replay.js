@@ -232,6 +232,7 @@ function replayStart(){
  replayCamStash();                            // free-roam only — see replayCamStash
   replayGhosts();
   for(const g of RP.ghosts){g.typ=-1;replayGhostHide(g);g.trailT=0;}
+  vfxFadeOut(0.3);                            // what the goal threw up goes before the footage starts (js/vfx.js)
   hudReplay(true,RP.team);                    // letterbox in, match chrome out (js/hud.js)
   replaySaveArm();
  flash();Au.ui();
@@ -250,6 +251,7 @@ function replayEnd(){
  if(saved)toast('CLIP SAVED','goal replay → downloads');
  // a match-winning goal held its win back for this replay (flow.js onGoal): go to the win screen
  if(finishPendingWin())return;
+ vfxFadeOut(0.35);   // the burst thrown at the freeze-frame does not carry into the re-count
  flash();
  startCount(MATCH.recount);
 }
@@ -277,7 +279,7 @@ function replayUpdate(rdt){
   RP.t+=rdt*lerp(REPLAY.speed,REPLAY.slowSpeed,zk);
   if(RP.t>=RP.len){RP.t=RP.len;RP.mode='hold';RP.hold=REPLAY.holdT;
    // the horn lands on the freeze-frame at normal pitch (it's the celebration, not footage)
-   if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();}}
+   if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();if(vfxLive())vfxGoal(RP.team,RP.focus);}}
  }else{RP.hold-=rdt;if(RP.hold<=0){replayEnd();return;}}
  const j=clamp(RP.start+RP.t*SIM.hz,0,RB.n-1);
  // SIM steps since the last frame as sim time; ghost speed is measured against that, not rdt, so slow-mo doesn't cool a flying ball (js/balls.js)

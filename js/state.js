@@ -6,12 +6,13 @@ const S={phase:'menu',mode:'red',userTeam:0,score:[0,0],balls:[],time:0,matchTim
  // seats: live seat objects built at kickoff (js/seats.js), empty = nobody playing; userTeam is the primary seat's team, not a stand-in for per-seat state
  // roster: the Kick Off lobby's seat specs ({team,devs,lockRole}), kept so a rematch keeps the line-up
  roster:[],seats:[],active:[[],[]],pairCd:[0,0],goalT:0,countT:0,lastCount:-1,timeScale:1,prePause:'play',
- // serveAt: world-x the rally ended at, so a restart after the ball left play comes back in that third; null = plain kickoff (centre); serve() consumes it
- serveAt:null,
+ // serveAt: world-x the rally ended at, so a restart after the ball left play comes back in that third; null = a kickoff; serve() consumes it
+ // kickTeam: the team that conceded the last goal; its 5-rod gets the next kickoff at its feet. -1 (the opening kickoff, set by startMatchNow) = the spawn drop at the centre
+ serveAt:null,kickTeam:-1,
  // seeded sim rng (js/rng.js): seed = this match's seed (quote it to reproduce a run); seedNext = a seed for the next match (a trial, the daily), consumed by startMatchNow; null = wall clock
  seed:0,seedNext:null,
  eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}],lastTouch:-1,lastSwitch:0,
- stats:null,pu:{obj:null,timer:10,type:null,spin:0},shake:0,camMode:0,camLookX:0,freeRoam:false,camYaw:0,camPitch:0,
+ stats:null,pu:{obj:null,timer:10,type:null,spin:0},shake:0,winT:0,camMode:0,camLookX:0,freeRoam:false,camYaw:0,camPitch:0,
   fromScreen:'home', // screen the live match was launched from: gotoMenu returns there
   rodLockRole:null,teamStats:null,lg:null,trn:null,trial:null,photo:null,redit:null,frac:[],swirl:[]}; // teamStats: per-team stat builds (stats.js) · lg: league bridge · trn: training bridge · photo: photo mode (F1) · redit: room editor (F2) · frac / swirl: live fracture and respawn-swirl instances; null = off, and other files gate on these only
 // the match ledger: written by js/matchstats.js (saves and woodwork by js/moments.js), read by the post-match sheet; arrays are [team0,team1]; `terr` is by pitch third in world-x order; `rods` is keyed 'team|role' (built by msRod)

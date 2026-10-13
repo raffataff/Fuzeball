@@ -58,7 +58,7 @@ Check every decision against it. "Table football, taken far too seriously" still
 What it means in practice:
 - **The figures are the Federation's registered players** from across the galaxy. The humans are the
   Earth team: the sport's inventors, now the underdogs.
-- **Rooms are venues on the circuit**, places people actually play: the Neon Arcade (default), a Moon
+- **Rooms are venues on the circuit**, places people actually play: the Starport Arcade (default), a Moon
   base, a saucer bar, a spaceport cantina (the pub, re-dressed). Not sci-fi set pieces.
 - **The table stays wood, worn and chipped.** It came from Earth. It's the one constant in every room.
 - **The League belongs to the Federation.** Divisions become sectors, team names come from the species.
@@ -111,7 +111,7 @@ square slabs with a cut-corner caption tab, and the home screen is a menu column
 
 ## 4. Defaults
 
-- **Default location: the Neon Arcade** (`cfg.room` default `'arcade'`). Only affects new saves; a save
+- **Default location: the Starport Arcade** (`cfg.room` default `'arcade'`; renamed from Neon Arcade 2026-10-12, the id is unchanged). Only affects new saves; a save
   that already has a room keeps it.
 
 ---

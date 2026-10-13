@@ -30,14 +30,19 @@ function msKick(r){
 
 // ---- contact (js/physics.js collideRod, both passes) ----
 // runs at the two S.lastTouch sites; order against momContact doesn't matter (own record)
+// a human's forward pin leg going forward through the ball (CONFIG.shots.pin.fwd): finesse + kick is the pass verb there, so it is a swing touch for the ledger, though no swing is in flight
+function msStroke(r){
+ const W=SHOT.pin&&SHOT.pin.fwd;
+ return !!(W&&r.pinFwd&&r.pinPose&&r.angVel*r.kickDir>W.stroke&&typeof isUserRod==='function'&&isUserRod(r));
+}
 function msContact(b,r){
  if(!msOn()||S.phase!=='play')return;
- const st=S.stats,p=b.m.position,sw=r.kickT>=0,prev=b.msc;
+ const st=S.stats,p=b.m.position,swing=r.kickT>=0,sw=swing||msStroke(r),prev=b.msc;
  // pass completed: a teammate rod receiving a ball another of its rods struck (not tied to the AI's 'pass' style; trapping is receiving); an opponent touch overwrites b.msc and breaks the chain
  if(prev&&prev.sw&&prev.team===r.team&&prev.rod!==r&&S.time-prev.t<MSTAT.passT){
   st.passes[r.team]++;const pb=msRod(prev.rod);if(pb)pb.passes++;
  }
- if(sw){
+ if(swing){
   const sp=b.v.length();
   if(sp>st.hardest[r.team])st.hardest[r.team]=sp;
   // shot: one per swing, not per contact (r.msSw is the latch, cleared in kickRod)

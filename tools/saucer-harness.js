@@ -47,7 +47,7 @@ function bandTris(j,bin,meshName,r,tol,y0,y1,swap){
  }
  return out;
 }
-const roomBlock=src=>{const a=src.indexOf('\n   saucer:{\n'),b=src.indexOf('\n      pub:{\n',a);if(a<0||b<0)throw new Error('ANCHOR LOST: saucer room block');return src.slice(a,b);};
+const roomBlock=src=>{const a=src.indexOf('\n   saucer:{\n'),b=src.indexOf('\n   pub:{\n',a);if(a<0||b<0)throw new Error('ANCHOR LOST: saucer room block');return src.slice(a,b);};
 
 /* ---- 1. the shipped files ----------------------------------------------- */
 function assetSuite(cfgSrc,tweak){
