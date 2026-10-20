@@ -63,6 +63,7 @@ addEventListener('keydown',e=>{
   togglePause();return;
  }
  if(bindIs('camera',e.code)&&S.phase!=='menu'){cycleCam(1);}
+ else if(/^Numpad\d$/.test(e.code)&&S.phase!=='menu'&&!bindActs(e.code,'play').length){camPick(CAM.numpad[+e.code[6]]);}
  if(e.code==='KeyC'&&S.phase!=='menu'){toggleDebug();return;}
  if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
@@ -129,19 +130,21 @@ function userControlUpdate(dt){
   if(bindHeld('slideDown',s))dz+=1;
   if(dz)r.target=clamp(r.target+dz*CTRL.slideSpeed*cfg.kbdSens*dt,-r.maxOff,r.maxOff);
  }
- // auto rod-switch runs per seat, skips rods another seat holds, and is silent; autoHoldRod (ai.js) withholds the keeper mid-save
- // chases the threat to this seat's own goal (focusBall), not S.balls[0]
+ // auto rod-switch, per seat, silent: the zone the threat to this seat's goal (focusBall) is in, else the nearest rod in x
+ // skips rods another seat holds and the keeper autoHoldRod (ai.js) withholds mid-save
   if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
    S.seats.forEach(s=>{
     if(s.rods.length<2)return;
     const fb=focusBall(s.team);if(!fb)return;
-    const bx=fb.m.position.x;
-    let bi=s.ctrl,bd=1e9;
+    const bx=fb.m.position.x,zi=zonePick(s,fb);
+    let bi=s.ctrl,bd=1e9,zok=false;
     s.rods.forEach((rr,i)=>{
      // ask the gate first on every rod so its clock never goes stale behind a rodTaken skip
      if(autoHoldRod(s,rr,fb)||rodTaken(rr,s))return;
+     if(i===zi)zok=true;
      const d=Math.abs(bx-rr.x);if(d<bd){bd=d;bi=i;}
     });
+    if(zok)bi=zi;
     if(bi!==s.ctrl){
      rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;
      s.padAngleArm=false;                          // a stick already deflected re-centres before it drives the new rod
@@ -268,9 +271,10 @@ function toggleFreeRoam(){
  if(S.freeRoam){
   const e=new THREE.Euler().setFromQuaternion(camera.quaternion,'YXZ');
   S.camYaw=e.y;S.camPitch=e.x;
-  toast('FREE ROAM','WASD move · Q/E up/down · Shift sprint · Esc exit',1.8);
+  if(S.phase!=='menu'&&!S.redit&&!document.pointerLockElement){const p=cvs.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}   // a refusal waits for the click below
+  toast('FREE ROAM','WASD move · Q/E up/down · Shift sprint · mouse look · Esc exit',1.8);
  }else{
-  document.exitPointerLock();
+  if(document.pointerLockElement){mlSelf=true;document.exitPointerLock();}   // ours: not read as a pause
   toast('FREE ROAM','off',0.9);
  }
  Au.ui();
@@ -292,6 +296,8 @@ function mouseLockWant(){
  if(S.tut&&S.tut.card)return false;                       // …and so does the tutorial's
  const p=$('trnPanel');
  if(p&&!p.classList.contains('hidden'))return false;      // sandbox tools are clicks
+ const zp=$('dbgZonePanel');
+ if(zp&&zp.style.display==='block')return false;          // …and so is the Rod Zones painter (debug.js)
  return true;
 }
 function mouseLockRequest(auto){
@@ -302,7 +308,7 @@ function mouseLockRequest(auto){
 }
 function mouseLockTick(){
  const want=mouseLockWant();
- if(document.pointerLockElement===cvs&&!want){mlSelf=true;document.exitPointerLock();}
+ if(document.pointerLockElement===cvs&&!want&&!S.freeRoam){mlSelf=true;document.exitPointerLock();}   // free roam keeps its own lock for mouse-look
  else if(want&&!document.pointerLockElement&&performance.now()-mlT>250){mlT=performance.now();mouseLockRequest(true);}   // allowed without a gesture after our own release or while the click that started the match is fresh
  document.body.classList.toggle('mlHide',want);   // cursor hidden from the first frame, locked or not
 }

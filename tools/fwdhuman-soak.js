@@ -2,7 +2,7 @@
 //      node tools/page-run.js tools/fwdhuman-soak.js "fhAll()"
 //      fhScene({ri:5,R:3,dz:8,mode:'catch'})   // red human holds a rod, the other men are off the table; keys go through bindPress / shotSeatsUpdate like a player's
 //      fhCatchGrid()                           // a ball at rest R ahead, the leg posed z-clear, then slid onto it: how many pin, where they rest
-//      fhStrokeGrid()                          // the stroke: finesse + kick with a ball in the man's lane, what leaves and how fast
+//      fhStrokeGrid()                          // the stroke: finesse + a TAP of kick with a ball in the man's lane, what leaves and how fast (and the same with kick held: the hop and the pin)
 //      fhReleaseGrid()                         // a forward-pinned ball and finesse let go: the ball must not be knocked toward the rod's own goal
 // why: the human's forward pin (CONFIG.shots.pin.fwd) shares physics with the AI's fetch (r.pinFwd, the reach rule) but not its choreography: the man is posed first and slid onto the ball, and the leg comes back by itself
 // modes: catch = pose z-clear then slide on | stroke = pose with the ball in the lane | release = catch, then finesse up | kick = catch, then kick pressed | raise = catch posed, then raise pressed
@@ -37,7 +37,7 @@
   try{return scene(o);}finally{cfg.auto=a0;}
  }
  function scene(o){
-  o=Object.assign({ri:5,R:3,dz:8,man:1,seed:1,mode:'catch',T:2.5,keep:[],slide:12,away:0,place:null,trace:false,every:0.1},o||{});
+  o=Object.assign({ri:5,R:3,dz:8,man:1,seed:1,mode:'catch',T:2.5,keep:[],slide:12,away:0,place:null,tap:null,trace:false,every:0.1},o||{});   // tap: kick let go this long after the press (s)
   const {s,r}=setup(o),dir=r.kickDir,b=makeBall('classic');
   const mz=r.baseZ[o.man]+r.offset;
   const parked=o.place!=null;   // place: the ball is put down this late (s), so the pose's own sweep cannot touch it; until then it waits well off the rod's lane
@@ -63,6 +63,7 @@
    if(o.mode==='kick'&&kickT==null&&r.pinB&&t>0.5){press(KICK_K);lift(KICK_K);kickT=t;}
    if(o.mode==='raise'&&raiseT==null&&r.pinB&&t>0.5){press(RZ);raiseT=t;}
    if(o.place!=null&&t>=o.place&&!placed){placed=true;b.m.position.set(r.x+o.R*dir,BALL_R,mz+o.dz);b.v.set(0,0,0);syncBall(b);}
+   if(o.tap!=null&&t>=o.tap&&keys[KICK_K])lift(KICK_K);
    step(r,1);
    const p=b.m.position,rel=(p.x-r.x)*dir;
    if(posed==null&&Math.abs(r.angle*dir-SHOT.pin.fwd.angle)<0.03)posed=+t.toFixed(2);
@@ -86,12 +87,15 @@
    for(const R of o.Rs){const a=fhScene({ri,R,dz:DZ[ri],man:MAN[ri],T:o.T,mode:'catch'});rows[nm+' R='+R]=(a.pinned?'PIN rel '+a.rel+' maxVx '+a.maxVx:'no  rel '+a.rel+' vx '+a.vx+' maxVx '+a.maxVx)+' @'+(a.tPin==null?'-':a.tPin);}}
   return rows;
  }
- // finesse + kick with the ball in the man's lane: the leg goes forward through it
+ // finesse + a tap of kick with the ball in the man's lane: the leg goes forward through it (the pass); kick held instead: he steps off, up, over and down onto it
  function fhStrokeGrid(o){
-  o=Object.assign({Rs:[1.5,2,2.5,3,3.5,4,5],ris:[5],T:1.5},o||{});
+  o=Object.assign({Rs:[1.5,2,2.5,3,3.5,4,5],ris:[5],T:1.5,tap:0.08},o||{});
   const rows={};
   for(const ri of o.ris){const nm={5:'ATT',3:'MID',1:'DEF'}[ri];
-   for(const R of o.Rs){const a=fhScene({ri,R,dz:0,T:o.T,mode:'stroke'});rows[nm+' R='+R]=`pin=${a.pinned?1:0} leaves ${a.maxVx} u/s (rest ${a.vx}) swung=${a.swung} kicks+${a.kicksAdded}`;}}
+   for(const R of o.Rs){
+    const a=fhScene({ri,R,dz:0,T:o.T,mode:'stroke',tap:o.tap}),h=fhScene({ri,R,dz:0,T:o.T,mode:'stroke'});
+    rows[nm+' R='+R]=`tap: pin=${a.pinned?1:0} leaves ${a.maxVx} u/s (rest ${a.vx}) swung=${a.swung} kicks+${a.kicksAdded} | held: pin=${h.pinned?1:0} @${h.tPin==null?'-':h.tPin} maxVx ${h.maxVx}`;
+   }}
   return rows;
  }
  // pinned, then finesse up: nothing may go toward the rod's own goal (minVx), the leg stays up over the ball

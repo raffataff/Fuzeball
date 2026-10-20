@@ -328,6 +328,7 @@ function fxUpdate(rdt){
  vfxUpdate(rdt);   // GPU particles, blasts, confetti, light envelopes and the net (js/vfx.js)
  if(typeof iceUpdate==='function')iceUpdate(rdt);   // the frost block on every slowed man (js/ice.js)
  if(typeof boostUpdate==='function')boostUpdate(rdt);   // a power hit's comet (js/boost.js)
+ if(typeof hazeUpdate==='function')hazeUpdate(rdt);   // the dust motes (js/haze.js)
  vfxWinTick(rdt);  // the full-time board waits on the finale
  if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
  ledUpdate(rdt);
@@ -414,11 +415,22 @@ function camTeamSide(){
  for(let i=1;i<S.seats.length;i++)if(S.seats[i].team!==t)return-1;
  return t;
 }
-function camModeOK(i){return camTeamSide()>=0||CAM.soloOnly.indexOf(i)<0;}
+// the rod a rod-mode shot sits on: the primary seat's, or null
+function camRod(i){return CAM.rodModes&&CAM.rodModes.indexOf(i)>=0&&typeof userRod==='function'?userRod():null;}
+function camModeOK(i){
+ if(CAM.rodModes&&CAM.rodModes.indexOf(i)>=0)return!!camRod(i);
+ return camTeamSide()>=0||CAM.soloOnly.indexOf(i)<0;
+}
 // V / pad-Y step: skips shots that aren't offerable right now
 function cycleCam(d){
  const n=CAM.modes.length;
  for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui('value');return;}}
+}
+// numpad: straight to one shot
+function camPick(i){
+ if(i==null||i<0||i>=CAM.modes.length||i===S.camMode)return;
+ if(!camModeOK(i)){Au.ui('error');return;}
+ S.camMode=i;Au.ui('value');
 }
 // the menus' look target, eased on all three axes (a match eases only lookX)
 // built on first use, not at load: harnesses boot this file against a THREE stub with no Vector3
@@ -466,15 +478,18 @@ function cameraUpdate(rdt){
  const m=CAM.modes[S.camMode];
  // end-anchored shots flip to the viewing team's end (CONFIG.camera.sideModes); only x and lookX mirror
  const mir=(camTeamSide()===1&&CAM.sideModes.indexOf(S.camMode)>=0)?-1:1;
- const fx=(S.camMode===1||S.camMode===3||S.camMode===4)?0:bx*CAM.follow;
+ // a rod shot is placed from the held rod toward its attack, so switching rods glides the camera along the table
+ const rr=camRod(S.camMode),rd=rr?(rr.team?-1:1):0;
+ const fx=(rr||S.camMode===1||S.camMode===3||S.camMode===4)?0:bx*CAM.follow;
+ const px=rr?rr.x+m[0]*rd:m[0]*mir+fx,lx=rr?rr.x+m[3]*rd:m[3]*mir+bx*CAM.lookFollow;
  const k=clamp(rdt*CAM.lerp,0,1);
- camera.position.x=lerp(camera.position.x,m[0]*mir+fx,k);
+ camera.position.x=lerp(camera.position.x,px,k);
  camera.position.y=lerp(camera.position.y,m[1],k);
  camera.position.z=lerp(camera.position.z,m[2],k);
  if(S.shake>0){S.shake=Math.max(0,S.shake-rdt*CAM.shakeDecay);
   camera.position.x+=rand(-1,1)*S.shake*CAM.shakeX;
   camera.position.y+=rand(-1,1)*S.shake*CAM.shakeY;}
- S.camLookX=lerp(S.camLookX,m[3]*mir+bx*CAM.lookFollow,k);
+ S.camLookX=lerp(S.camLookX,lx,k);
  camera.lookAt(S.camLookX,m[4],m[5]);
  vfxCamPost(rdt);   // this frame's goal / blast punch rides on top (spring, js/vfx.js)
 }

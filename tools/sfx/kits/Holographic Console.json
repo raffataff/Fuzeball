@@ -1,0 +1,2996 @@
+{
+ "name": "Holographic Console",
+ "key": "E",
+ "scale": "susPent",
+ "a4": 440,
+ "sounds": {
+  "ui_move": {
+   "v": 1,
+   "name": "ui_move",
+   "note": "hover: one high sine blip and a tick of air",
+   "takes": 1,
+   "bits": 16,
+   "master": {
+    "gain": 1.56,
+    "norm": {
+     "mode": "loud",
+     "db": -28.5
+    },
+    "width": 0.725,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 144.22149583657992,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0.4075,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.07519972393711466,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.1575,
+     "size": 0.35,
+     "damp": 0.489654831495136,
+     "pre": 0.006
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0,
+     "max": 4.506851980142528
+    },
+    "seed": 8988,
+    "vary": {
+     "cents": 0,
+     "time": 0.12107125903363339,
+     "filt": 0.16548978587263263,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "blip",
+     "type": "osc",
+     "gain": -16.31,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 3,
+      "oct": 6,
+      "acc": 0,
+      "hz": 440,
+      "cents": -21.419606879353523,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.07755060483468697,
+      "stepGain": 1.0231653654272668,
+      "reps": 1,
+      "repEvery": 0.0569758008630015,
+      "repGain": 0.5208936540887226,
+      "repShift": 0,
+      "penv": {
+       "st": -8.849414691329002,
+       "time": 0.006,
+       "curve": 2.841225077967392
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0.13251655150670558
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.02253128869036711,
+      "h": 0.06,
+      "d": 0.1423698697841975,
+      "s": 0,
+      "len": 0.34918314968235786,
+      "r": 0.02
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8857.673291357441,
+      "q": 1.2237980602473408,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.03687868133422056,
+      "lfo": 0,
+      "lfoRate": 2.733880798075311
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 0.6748693785023621,
+      "trem": 0.12211632776306941,
+      "tremRate": 26.59898708580945,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "blip",
+     "type": "osc",
+     "gain": -8.835,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 3,
+      "oct": 2,
+      "acc": -1,
+      "hz": 440,
+      "cents": -21.419606879353523,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.07755060483468697,
+      "stepGain": 1.0231653654272668,
+      "reps": 1,
+      "repEvery": 0.0569758008630015,
+      "repGain": 0.5208936540887226,
+      "repShift": 0,
+      "penv": {
+       "st": -8.849414691329002,
+       "time": 0.006,
+       "curve": 2.841225077967392
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0.13251655150670558
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.02253128869036711,
+      "h": 0.06,
+      "d": 0.1423698697841975,
+      "s": 0,
+      "len": 0.34918314968235786,
+      "r": 0.02
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8857.673291357441,
+      "q": 1.2237980602473408,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.03687868133422056,
+      "lfo": 0,
+      "lfoRate": 2.733880798075311
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 0.6748693785023621,
+      "trem": 0.12211632776306941,
+      "tremRate": 26.59898708580945,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "fm",
+     "type": "fm",
+     "gain": -40,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 4,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": -5,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.055,
+      "stepGain": 0.2,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 8.88,
+       "time": 0.023438372289185036,
+       "curve": 3.62025
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.027040253082737248,
+      "h": 0.1375,
+      "d": 0.15,
+      "s": 0.1075,
+      "len": 0,
+      "r": 0.2479559628866186
+     },
+     "filt": {
+      "type": "lp",
+      "poles": 2,
+      "cut": 1047.2008731715002,
+      "q": 0.49036399818684046,
+      "track": 0.54,
+      "env": -2.04,
+      "ea": 0.0005,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "air",
+     "type": "noise",
+     "gain": -40,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.6502015734557062
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "pink",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1.0066511277155952,
+      "reps": 1,
+      "repEvery": 0.022617406721343297,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": -7.880901573970913,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": -1,
+       "time": 0,
+       "delay": 0.07985912808217108
+      },
+      "vib": {
+       "depth": 15.992479457054287,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.20113269412495394,
+      "h": 0.09,
+      "d": 0.11495270842646639,
+      "s": 0.095,
+      "len": 0.36,
+      "r": 1.2252171398668323
+     },
+     "filt": {
+      "type": "hp",
+      "poles": 2,
+      "cut": 7000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.0029540489423011034,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 0.667486021878106,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 28.70439003141878
+     }
+    }
+   ]
+  },
+  "ui_value": {
+   "v": 1,
+   "name": "ui_value",
+   "note": "value step: a triangle tick with a glass glint",
+   "takes": 2,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -21
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.12,
+     "size": 0.35,
+     "damp": 0.35,
+     "pre": 0.006
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "tick",
+     "type": "osc",
+     "gain": -6,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "triangle",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 2,
+      "oct": 6,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 7,
+       "time": 0.008,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.0008,
+      "h": 0,
+      "d": 0.05,
+      "s": 0,
+      "len": 0,
+      "r": 0.02
+     },
+     "filt": {
+      "type": "lp",
+      "poles": 2,
+      "cut": 6000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "glint",
+     "type": "fm",
+     "gain": -18,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 3.5,
+      "idx": 1.5,
+      "idxEnd": 0,
+      "idxTime": 0.03,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 2,
+      "oct": 7,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.001,
+      "h": 0,
+      "d": 0.04,
+      "s": 0,
+      "len": 0,
+      "r": 0.02
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_rod": {
+   "v": 1,
+   "name": "ui_rod",
+   "note": "rod switch: a low soft tick",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -23
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.12,
+     "size": 0.35,
+     "damp": 0.35,
+     "pre": 0.006
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "tick",
+     "type": "osc",
+     "gain": -6,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 5,
+       "time": 0.01,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.0008,
+      "h": 0,
+      "d": 0.035,
+      "s": 0,
+      "len": 0,
+      "r": 0.015
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "air",
+     "type": "noise",
+     "gain": -26,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.6
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.0005,
+      "h": 0,
+      "d": 0.01,
+      "s": 0,
+      "len": 0,
+      "r": 0.01
+     },
+     "filt": {
+      "type": "bp",
+      "poles": 2,
+      "cut": 4500,
+      "q": 2,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_tab": {
+   "v": 1,
+   "name": "ui_tab",
+   "note": "tab: a short swish into a blip",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -20
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.12,
+     "size": 0.35,
+     "damp": 0.35,
+     "pre": 0.006
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "swish",
+     "type": "noise",
+     "gain": -14,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.7
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "pink",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.01,
+      "h": 0,
+      "d": 0.06,
+      "s": 0,
+      "len": 0,
+      "r": 0.03
+     },
+     "filt": {
+      "type": "bp",
+      "poles": 2,
+      "cut": 1800,
+      "q": 1.6,
+      "track": 0,
+      "env": 2,
+      "ea": 0.04,
+      "ed": 0.08,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "blip",
+     "type": "osc",
+     "gain": -7,
+     "pan": 0,
+     "t0": 0.025,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 6,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": -3,
+       "time": 0.01,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.001,
+      "h": 0,
+      "d": 0.06,
+      "s": 0,
+      "len": 0,
+      "r": 0.02
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_click": {
+   "v": 1,
+   "name": "ui_click",
+   "note": "confirm: two rising glass notes with a halo",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -18
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 156.61918631456763,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0,
+     "time": 0.06823172774356566,
+     "fb": 0.20617274541873487,
+     "tone": 7813.848533905432,
+     "ping": false
+    },
+    "verb": {
+     "mix": 0.07643574427347631,
+     "size": 0.3660941976122558,
+     "damp": 0.22416677353903652,
+     "pre": 0.006071515787625686
+    },
+    "tail": {
+     "trim": -72,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 69,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "rise",
+     "type": "noise",
+     "gain": -10.007265316322446,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.8
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "pink",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.1006930016051165,
+      "h": 0,
+      "d": 0.08916813161083266,
+      "s": 0,
+      "len": 0,
+      "r": 0.05
+     },
+     "filt": {
+      "type": "bp",
+      "poles": 2,
+      "cut": 869.5764466491495,
+      "q": 1.910983473341912,
+      "track": 0,
+      "env": 2.1919506611302495,
+      "ea": 0.10805327853584885,
+      "ed": 0.19272815434338453,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "chord",
+     "type": "osc",
+     "gain": -6,
+     "pan": 0,
+     "t0": 0.07771351780742408,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 2,
+      "det": 6,
+      "spread": 0.6
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 2,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0 2 4",
+      "play": "chord",
+      "step": 0.026681369247380644,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.004,
+      "h": 0,
+      "d": 0.4552299594675677,
+      "s": 0,
+      "len": 0,
+      "r": 0.12
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     },
+     "wave": "triangle"
+    }
+   ]
+  },
+  "ui_back": {
+   "v": 1,
+   "name": "ui_back",
+   "note": "back: the confirm turned down and darker",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -20
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.12,
+     "size": 0.35,
+     "damp": 0.35,
+     "pre": 0.006
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "glass",
+     "type": "fm",
+     "gain": -6,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 1.6,
+      "idxEnd": 0,
+      "idxTime": 0.05,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 3,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0 -2",
+      "play": "arp",
+      "step": 0.045,
+      "stepGain": 0.9,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.001,
+      "h": 0,
+      "d": 0.12,
+      "s": 0,
+      "len": 0,
+      "r": 0.05
+     },
+     "filt": {
+      "type": "lp",
+      "poles": 2,
+      "cut": 4000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "air",
+     "type": "noise",
+     "gain": -28,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.6
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.0005,
+      "h": 0,
+      "d": 0.02,
+      "s": 0,
+      "len": 0,
+      "r": 0.01
+     },
+     "filt": {
+      "type": "hp",
+      "poles": 2,
+      "cut": 7000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_open": {
+   "v": 1,
+   "name": "ui_open",
+   "note": "panel open: air rising into a strummed glass chord",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -19
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.16,
+     "size": 0.45,
+     "damp": 0.35,
+     "pre": 0.01
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "rise",
+     "type": "noise",
+     "gain": -14,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.8
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "pink",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.06,
+      "h": 0,
+      "d": 0.12,
+      "s": 0,
+      "len": 0,
+      "r": 0.05
+     },
+     "filt": {
+      "type": "bp",
+      "poles": 2,
+      "cut": 700,
+      "q": 1.2,
+      "track": 0,
+      "env": 3,
+      "ea": 0.09,
+      "ed": 0.15,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "chord",
+     "type": "fm",
+     "gain": -9,
+     "pan": 0,
+     "t0": 0.06,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 2,
+      "det": 6,
+      "spread": 0.6
+     },
+     "fm": {
+      "ratio": 3,
+      "idx": 1.2,
+      "idxEnd": 0,
+      "idxTime": 0.1,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0 2 4",
+      "play": "chord",
+      "step": 0.018,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.004,
+      "h": 0,
+      "d": 0.3,
+      "s": 0,
+      "len": 0,
+      "r": 0.12
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_error": {
+   "v": 1,
+   "name": "ui_error",
+   "note": "denied: two flickering low buzzes, a semitone rub on purpose",
+   "takes": 1,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -18
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 112.87192743736894,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0,
+     "time": 0.08732992005191705,
+     "fb": 0.1248718630289659,
+     "tone": 8608.530258421591,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.0722265263972804,
+     "size": 0.20735946884378792,
+     "damp": 0.31439716937020423,
+     "pre": 0.0037098690578714014
+    },
+    "tail": {
+     "trim": -72,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1378,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "buzz",
+     "type": "osc",
+     "gain": -6,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "square",
+      "pw": 0.39295684588141744,
+      "uni": 3,
+      "det": 12.937896996736526,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": -5,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 3,
+      "repEvery": 0.08240944505203515,
+      "repGain": 0.9363099511712789,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.003,
+      "h": 0.05118368285242468,
+      "d": 0.035401838869534887,
+      "s": 0,
+      "len": 0,
+      "r": 0.03
+     },
+     "filt": {
+      "type": "lp",
+      "poles": 2,
+      "cut": 918.7687578456527,
+      "q": 3.79135391053278,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 34.9701691495945,
+      "tremShape": "square",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "rub",
+     "type": "osc",
+     "gain": -13.530949445441365,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "square",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": -5,
+      "oct": 5,
+      "acc": 1,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 3,
+      "repEvery": 0.08240944505203515,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.003,
+      "h": 0.05118368285242468,
+      "d": 0.035401838869534887,
+      "s": 0,
+      "len": 0,
+      "r": 0.03
+     },
+     "filt": {
+      "type": "lp",
+      "poles": 2,
+      "cut": 1000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_start": {
+   "v": 1,
+   "name": "ui_start",
+   "note": "match start: a rising arpeggio landing on a glass bell",
+   "takes": 1,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -15.9
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.15,
+     "time": 0.11,
+     "fb": 0.3,
+     "tone": 6000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.22,
+     "size": 0.6,
+     "damp": 0.3,
+     "pre": 0.012
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "arp",
+     "type": "fm",
+     "gain": -12.745,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 3.5,
+      "idx": 2,
+      "idxEnd": 0.2,
+      "idxTime": 0.05,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0 2 3 5",
+      "play": "arp",
+      "step": 0.05,
+      "stepGain": 1.05,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.0038049154721947623,
+      "h": 0.0075,
+      "d": 0.10260456381140191,
+      "s": 0,
+      "len": 0,
+      "r": 0.018166295395985278
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "bell",
+     "type": "modal",
+     "gain": -8,
+     "pan": 0,
+     "t0": 0.22,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 0.4
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 1.1,
+      "tilt": 0.5,
+      "bright": 0.4,
+      "hit": 0.15
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 5,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.001,
+      "h": 0,
+      "d": 0.15,
+      "s": 1,
+      "len": 1.2,
+      "r": 0.3
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "shimmer",
+     "type": "add",
+     "gain": -20,
+     "pan": 0,
+     "t0": 0.22,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 4,
+      "det": 10,
+      "spread": 1
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 0 .4 0 .2",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 5,
+      "oct": 6,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 6,
+       "rate": 5
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.08,
+      "h": 0,
+      "d": 0.9,
+      "s": 0,
+      "len": 0,
+      "r": 0.4
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  },
+  "ui_wipe": {
+   "v": 1,
+   "name": "ui_wipe",
+   "note": "screen wipe: a filtered air sweep with a faint rising glint",
+   "takes": 3,
+   "bits": 16,
+   "master": {
+    "gain": 0,
+    "norm": {
+     "mode": "loud",
+     "db": -21
+    },
+    "width": 1,
+    "drive": 0,
+    "mono": false,
+    "lowcut": 120,
+    "shelf": {
+     "f": 8000,
+     "db": 0
+    },
+    "chorus": {
+     "mix": 0,
+     "rate": 0.6,
+     "depth": 3
+    },
+    "delay": {
+     "mix": 0.08,
+     "time": 0.075,
+     "fb": 0.2,
+     "tone": 7000,
+     "ping": true
+    },
+    "verb": {
+     "mix": 0.12,
+     "size": 0.4,
+     "damp": 0.4,
+     "pre": 0.008
+    },
+    "tail": {
+     "trim": -60,
+     "fade": 0.01,
+     "max": 6
+    },
+    "seed": 1,
+    "vary": {
+     "cents": 12,
+     "time": 0.06,
+     "filt": 0.12,
+     "gain": 1
+    }
+   },
+   "layers": [
+    {
+     "on": true,
+     "solo": false,
+     "name": "sweep",
+     "type": "noise",
+     "gain": -8,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 1,
+      "det": 8,
+      "spread": 1
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "pink",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 5,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 0,
+       "time": 0,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.08,
+      "h": 0,
+      "d": 0.2,
+      "s": 0,
+      "len": 0,
+      "r": 0.08
+     },
+     "filt": {
+      "type": "bp",
+      "poles": 2,
+      "cut": 500,
+      "q": 1.4,
+      "track": 0,
+      "env": 3.5,
+      "ea": 0.16,
+      "ed": 0.2,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    },
+    {
+     "on": true,
+     "solo": false,
+     "name": "glint",
+     "type": "osc",
+     "gain": -22,
+     "pan": 0,
+     "t0": 0,
+     "osc": {
+      "wave": "sine",
+      "pw": 0.5,
+      "uni": 2,
+      "det": 8,
+      "spread": 0.8
+     },
+     "fm": {
+      "ratio": 2,
+      "idx": 2,
+      "idxEnd": 0,
+      "idxTime": 0.15,
+      "fb": 0
+     },
+     "noise": {
+      "color": "white",
+      "dens": 800
+     },
+     "pluck": {
+      "decay": 0.6,
+      "bright": 0.6
+     },
+     "modal": {
+      "model": "glass",
+      "ratios": "1 2.32 4.25",
+      "decay": 0.6,
+      "tilt": 0.5,
+      "bright": 0.45,
+      "hit": 0.2
+     },
+     "add": {
+      "harm": "1 .5 .33 .25",
+      "stretch": 0
+     },
+     "pitch": {
+      "mode": "scale",
+      "deg": 0,
+      "oct": 6,
+      "acc": 0,
+      "hz": 440,
+      "cents": 0,
+      "notes": "0",
+      "play": "chord",
+      "step": 0.05,
+      "stepGain": 1,
+      "reps": 1,
+      "repEvery": 0.12,
+      "repGain": 0.6,
+      "repShift": 0,
+      "penv": {
+       "st": 0,
+       "time": 0.03,
+       "curve": 2
+      },
+      "glide": {
+       "deg": 5,
+       "time": 0.2,
+       "delay": 0
+      },
+      "vib": {
+       "depth": 0,
+       "rate": 6
+      },
+      "rnd": 0
+     },
+     "amp": {
+      "a": 0.05,
+      "h": 0,
+      "d": 0.2,
+      "s": 0,
+      "len": 0,
+      "r": 0.08
+     },
+     "filt": {
+      "type": "none",
+      "poles": 2,
+      "cut": 8000,
+      "q": 0.7,
+      "track": 0,
+      "env": 0,
+      "ea": 0.001,
+      "ed": 0.1,
+      "lfo": 0,
+      "lfoRate": 2
+     },
+     "mod": {
+      "drive": 0,
+      "ring": 0,
+      "ringRatio": 1.5,
+      "trem": 0,
+      "tremRate": 12,
+      "tremShape": "sine",
+      "crush": 0,
+      "down": 1,
+      "glitch": 0,
+      "glitchRate": 16
+     }
+    }
+   ]
+  }
+ },
+ "exp": {
+  "ui_move": "dr8a2w",
+  "ui_value": "gfrrzk",
+  "ui_click": "1vcah9b",
+  "ui_back": "1o7mr3h",
+  "ui_open": "u6s5oo",
+  "ui_error": "1qxi0mw",
+  "ui_start": "medmql"
+ }
+}

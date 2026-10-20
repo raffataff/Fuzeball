@@ -624,3 +624,9 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
 // Options > Audio 'Mute in background': a blur (alt-tab, Steam overlay) or a hidden document; tracked always, applied only when cfg.muteBg is on
 function auBg(){Au.bg=document.hidden||!document.hasFocus();Au.mix();}
 addEventListener('blur',auBg);addEventListener('focus',auBg);document.addEventListener('visibilitychange',auBg);
+// a browser allows a context only from a gesture: the first click or key anywhere starts the audio (the intro's "Click to start" asks for one)
+// a press that is not a gesture (a pad button, a touch's down, Esc) leaves it suspended until the next one; once it runs nothing here touches it again
+(()=>{const K=['pointerdown','pointerup','keydown'],go=()=>{Au.init();const c=Au.ctx;
+ if(!c||c.state==='running'){for(const k of K)removeEventListener(k,go,true);return;}
+ c.resume();};
+ for(const k of K)addEventListener(k,go,true);})();

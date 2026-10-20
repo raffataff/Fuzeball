@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuzeball SFX Lab</title>
+<link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../vendor/fonts.css"><link rel="stylesheet" href="sfx.css">
+</head><body>
+<div id="app">
+ <header>
+  <h1>SFX LAB<small>Fuzeball</small></h1>
+  <div class="grp"><label>Kit</label><input type="text" id="kitName" style="width:150px"><select id="kitLoad" title="Load a saved kit"></select><button class="b sm" id="kitSave" title="Save the kit to tools/sfx/kits">Save kit</button></div>
+  <div class="grp"><label>Key</label><select id="kKey"></select><select id="kScale"></select><label>A4</label><input type="number" id="kA4" min="400" max="480" step="1">
+   <button class="b ic sm" id="kDn" title="Transpose the whole kit down a semitone">−</button><button class="b ic sm" id="kUp" title="Transpose the whole kit up a semitone">+</button></div>
+  <div class="grp"><label>Preview</label><input type="range" id="vol" min="0" max="1" step=".01" style="width:80px"></div>
+  <span class="sp"></span>
+  <span class="pill" id="srv">server</span>
+  <button class="b sm" id="kitIO" title="Download the kit as JSON">Kit file</button><button class="b sm" id="kitImp" title="Load a kit JSON file">Open file</button>
+  <button class="b ic" id="helpB" title="Help">?</button>
+ </header>
+ <aside class="l">
+  <input type="text" id="find" placeholder="Find a sound" style="width:100%">
+  <div class="leg"><span><i class="dot kit"></i>in kit</span><span><i class="dot file"></i>file in game</span><span><i class="dot sil"></i>silent</span></div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0">
+   <button class="b sm" id="tour" title="Play the kit's menu sounds as if navigating">Menu tour</button>
+   <button class="b sm" id="playAll" title="Play every sound in the group one after another">Play group</button>
+   <button class="b sm" id="balance" title="Set every menu sound to the same loudness ladder">Balance levels</button>
+   <button class="b sm" id="newS" title="A sound that is not a game id (download only)">+ Free sound</button>
+  </div>
+  <div id="klist"></div>
+ </aside>
+ <main id="main"></main>
+ <aside class="r">
+  <div class="box"><h2>Generate</h2>
+   <div class="cats" id="cats"></div>
+   <div class="hint">Each click makes 6 candidates below in the kit's key. Play them, then Use one.</div></div>
+  <div class="box"><h2>Vary</h2>
+   <div class="grp"><label>Amount</label><input type="range" id="amt" min=".05" max="1" step=".05" style="flex:1"><span id="amtV" style="width:32px;text-align:right"></span></div>
+   <div class="locks" id="locks"></div>
+   <div style="display:flex;gap:4px;flex-wrap:wrap"><button class="b" id="mut6">6 variations</button><button class="b sm" id="mut1" title="Mutate the current sound in place">Mutate</button><button class="b sm" id="reseed" title="New noise / phases, same settings">New seed</button></div></div>
+  <div class="box"><h2>Candidates</h2><div class="cands" id="cands"><div class="hint">Nothing yet.</div></div></div>
+  <div class="box"><h2>Start from</h2>
+   <div style="display:flex;gap:4px;flex-wrap:wrap"><button class="b sm" id="pHolo" title="The Holographic Console version of this sound">Holographic</button><button class="b sm" id="pLegacy" title="The game's current synthesized stand-in">Game stand-in</button><button class="b sm" id="pBlank">Blank</button><button class="b sm" id="pPaste" title="Paste a recipe JSON">Paste</button><button class="b sm" id="pCopy" title="Copy this recipe as JSON">Copy</button></div>
+   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px"><button class="b sm" id="kHolo" title="Fill every menu sound with the Holographic Console kit">Whole kit: Holographic</button></div></div>
+  <div class="box"><h2>History</h2><div style="display:flex;gap:4px;margin-bottom:6px"><button class="b sm" id="undo">Undo</button><button class="b sm" id="redo">Redo</button></div><div class="hist" id="hist"></div></div>
+ </aside>
+</div>
+<div id="toast"></div>
+<input type="file" id="fileIn" accept=".json" style="display:none">
+<div id="help"><div class="box">
+ <h2>SFX Lab</h2>
+ <ul>
+  <li><b>Kit</b>: a set of sounds sharing one <b>key and scale</b>. Every pitch is a <b>scale degree</b> (0 = the key's root, 1 = the next note of the scale, -1 the one below), so sounds made here always agree with each other. Change the key or scale and the whole kit follows.</li>
+  <li><b>Layers</b> stack sources: <b>osc</b> (sine, triangle, saw, square, pulse, unison), <b>fm</b> (glassy and metallic tones), <b>noise</b> (air, whooshes, static, crackle), <b>pluck</b> (a plucked string), <b>modal</b> (struck bells, glass, bars, membranes), <b>add</b> (harmonics you list). Each has pitch motion, an envelope, a filter with its own envelope and LFO, and mods (drive, ring, tremolo, bit crush, downsample, glitch).</li>
+  <li><b>Notes</b> lists degrees played from the layer's root: <kbd>0 2 4</kbd> is a triad in the scale. <b>Play</b>: chord (together, Step = strum), arp (one after another), rand. <b>Repeats</b> echo the figure, <b>Repeat shift</b> moves each echo up or down the scale.</li>
+  <li><b>Master</b>: EQ, chorus, ping-pong delay, reverb, width, and <b>Normalise</b>. <b>loud</b> sets the loudest 50 ms to the target, so short and long sounds sit level with each other. <b>Balance levels</b> puts the menu sounds on a loudness ladder.</li>
+  <li><b>Takes</b>: the game round-robins takes. Take 1 is the recipe exactly; the others vary pitch, timing, filter and level by the Vary settings in Master.</li>
+  <li><b>Export to game</b> writes <kbd>assets/audio/ui/&lt;id&gt;_01.wav</kbd>… and rebuilds the manifest. The id's old files are moved to <kbd>tools/build/sfx-backup/</kbd> first. Reload the game to hear them. It needs <kbd>node tools/sfx-server.js</kbd>; without it you get downloads.</li>
+  <li><b>Keys</b>: <kbd>Space</kbd> play, <kbd>Ctrl Z</kbd> / <kbd>Ctrl Y</kbd> undo / redo, <kbd>Ctrl S</kbd> save kit, <kbd>Ctrl E</kbd> export. Double-click a parameter's name to reset it. Click the keyboard strip to hear a note.</li>
+ </ul>
+ <button class="b" onclick="this.closest('#help').style.display='none'">Close</button></div></div>
+<script src="../../js/core.js"></script>
+<script src="../../js/config.js"></script>
+<script src="engine.js"></script>
+<script src="presets.js"></script>
+<script src="app.js"></script>
+</body></html>

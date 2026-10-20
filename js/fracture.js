@@ -258,6 +258,7 @@ function warmMatchPrep(){
   warmBallMaterials();
   if(typeof iceBuild==='function')iceBuild();   // the ice blocks sit hidden in the scene, so the queue finds their shader
   if(typeof boostBuild==='function')boostBuild();   // ...and so does the boost glow
+  if(typeof hazeBuild==='function')hazeBuild();     // ...and the dust motes
 }
 function warmMatchAssets(){
   if(CONFIG.fx&&CONFIG.fx.warmMatch===false)return;

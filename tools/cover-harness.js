@@ -1,6 +1,6 @@
 // goal-cover harness. node tools/cover-harness.js
 // slices the real coverMen / coverGap / coverFit / coverMan / coverZ (ai.js) and runs them on live CONFIG
-// question: do the keeper and the defender split the mouth between them (the open width of the goal drops against both sitting on the ball-to-goal line), does the rod that plays the ball stay out of it while its mate covers, is a human or busy mate held where it stands, and is the pair steady (no side flips, no jumps); each mutation must break an assertion
+// question: do the keeper and the defender split the mouth between them (the open width of the goal drops against both sitting on the ball-to-goal line), does the rod that plays the ball stay out of it while its mate covers, is a human or busy mate held where it stands, is the pair steady (no side flips, no jumps), and does the keeper go for a shot going in; each mutation must break an assertion
 // the open width is measured here by testing real lines from the ball against every man, not by the shadow maths under test
 'use strict';
 const fs=require('fs'),vm=require('vm');
@@ -13,7 +13,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  cover:slice(AI,'const CVB=new Float64Array',NL+' function aiUpdate(')
 };
-const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(){return 'pro';}";
+const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(){return 'pro';} function stPred(){return 1;}";
 
 function boot(mut){
  const g=Object.assign({},parts);
@@ -183,6 +183,22 @@ function suite(X){
   ok('with the DEF playing a slow ball the keeper fits an assumed shot from further up the pitch',Math.abs(slow.gk.cvO-nominal)<1e-9,'got '+slow.gk.cvO+' want '+nominal);
   ok('...but a ball flying at the goal past the DEF is fitted as the real shot',Math.abs(fast.gk.cvO-real)<1e-9,'got '+fast.gk.cvO+' want '+real);
   ok('...and the two are not the same answer (the fade matters)',Math.abs(real-nominal)>0.3,'real '+real+' nominal '+nominal);}
+ // ---- a shot going in: the keeper goes for it -----------------------------------------------------------------
+ {const fol=CV.gkFollow,P=X.DIFFS.pro,pred0=P.pred,gkx=-52.5;
+  const shotAt=(bx,bz,zk,v,f,role)=>{const sl=(zk-bz)/(gkx-bx),vx=-v/Math.hypot(1,sl),vz=vx*sl;CV.gkFollow=f;const T=table(X);T.gk.offset=T.gk.target=0;T.df.offset=T.df.target=12;T.gk.cvM=0;T.df.cvM=0;
+   const z=role==='DEF'?call(X,T.df,bx,bz,DT,vx,vz):call(X,T.gk,bx,bz,DT,vx,vz);CV.gkFollow=fol;return {z,sl,vx};};
+  const a0=shotAt(-30,-14,2,80,0),a1=shotAt(-30,-14,2,80,fol),zc=-14+a1.sl*pred0*(gkx+30);
+  ok('A SHOT GOING IN: the keeper moves gkFollow of the way from the cover answer to where it reads the ball will cross its rod',Math.abs(a1.z-(a0.z+(zc-a0.z)*fol))<1e-9,'z '+a1.z+' cover '+a0.z+' read '+zc);
+  P.pred=1;const p1=shotAt(-30,-14,2,80,fol);P.pred=pred0;
+  ok('…which, read with full anticipation, takes it toward the ball\'s real crossing',fol>0&&Math.abs(p1.z-2)<Math.abs(a0.z-2)-1,'z '+p1.z+' cover '+a0.z);
+  P.pred=0.4;const lo=shotAt(-30,-14,2,80,fol);P.pred=pred0;const zlo=-14+lo.sl*0.4*(gkx+30);
+  ok('…read with the difficulty\'s anticipation: a keeper that leads less stays nearer the ball\'s own z',Math.abs(lo.z-(a0.z+(zlo-a0.z)*fol))<1e-9,'z '+lo.z+' want '+(a0.z+(zlo-a0.z)*fol));
+  const h0=shotAt(-30,-14,2,25,0),h1=shotAt(-30,-14,2,25,fol),sh=(-h1.vx-CV.shotV[0])/(CV.shotV[1]-CV.shotV[0]);
+  ok('…and only as far as the ball is a shot (closing between the shotV speeds goes part of the way)',Math.abs(h1.z-(h0.z+(zc-h0.z)*fol*sh))<1e-9,'z '+h1.z+' want '+(h0.z+(zc-h0.z)*fol*sh));
+  const w0=shotAt(-30,0,15,80,0),w1=shotAt(-30,0,15,80,fol);
+  ok('a shot the keeper reads going past the post is not followed',w1.z===w0.z,'z '+w1.z+' cover '+w0.z);
+  const d0=shotAt(-25,-14,2,80,0,'DEF'),d1=shotAt(-25,-14,2,80,fol,'DEF');
+  ok('the DEF does not follow (it keeps its cover answer)',d1.z===d0.z,'z '+d1.z+' cover '+d0.z);}
  // ---- the keeper while the DEF plays: a short window on the old line -------------------------------------------
  {const T=table(X);T.gk.offset=T.gk.target=0;T.df.offset=T.df.target=12;const bx=-40,bz=0;const z=call(X,T.gk,bx,bz);
   ok('with the DEF playing the ball the keeper steps off it by no more than playReach from the old line',Math.abs(z)<=CV.playReach+1e-9,'z='+z);
@@ -253,8 +269,14 @@ const MUT=[
  {n:'a wide ball keeps the keeper on the budget (stays on its line past the keeper)',part:'cover',from:'(wide?lerp(CV.reachMax,Rb,shot):Math.min(Rb,CV.playReach))',to:'(wide?Rb:Math.min(Rb,CV.playReach))'},
  {n:'a wide ball flying at the goal gets the full reach',part:'cover',from:'(wide?lerp(CV.reachMax,Rb,shot):Math.min(Rb,CV.playReach))',to:'(wide?CV.reachMax:Math.min(Rb,CV.playReach))'},
  {n:'the pair is fitted while the DEF is still playing the ball (no mate hold)',part:'cover',from:'const pair=dEng&&gEng&&',to:'const pair=gEng&&'},
- {n:'the reach budget is gone (a rod stays in its slot however fast the ball)',part:'cover',from:'return iz+clamp((z-iz)*CV.mix,-R,R);',to:'return iz+clamp((z-iz)*CV.mix,-1e9,1e9);'},
- {n:'the mix is ignored (always the full split)',part:'cover',from:'return iz+clamp((z-iz)*CV.mix,-R,R);',to:'return iz+clamp((z-iz),-R,R);'},
+ {n:'the reach budget is gone (a rod stays in its slot however fast the ball)',part:'cover',from:'const cz=iz+clamp((z-iz)*CV.mix,-R,R);',to:'const cz=iz+clamp((z-iz)*CV.mix,-1e9,1e9);'},
+ {n:'the mix is ignored (always the full split)',part:'cover',from:'const cz=iz+clamp((z-iz)*CV.mix,-R,R);',to:'const cz=iz+clamp((z-iz),-R,R);'},
+ {n:'the keeper never follows a shot (the cover answer only)',part:'cover',from:'if(!gk||!(shot>0)||!CV.gkFollow)return cz;',to:'return cz;'},
+ {n:'the DEF follows the shot too',part:'cover',from:'if(!gk||!(shot>0)',to:'if(!(shot>0)'},
+ {n:'the read ignores the anticipation stat (every keeper leads perfectly)',part:'cover',from:'*DIFFS[teamDiff(r.team)].pred*stPred(r)',to:''},
+ {n:'a shot past the post is followed',part:'cover',from:'clamp((F.goalHalf+BALL_R+CV.gkPost-Math.abs(zg))/CV.gkPost,0,1)',to:'1'},
+ {n:'half a shot is followed as far as a whole one',part:'cover',from:'shot*CV.gkFollow*',to:'CV.gkFollow*'},
+ {n:'the crossing is read at the goal line, not at the keeper\'s rod',part:'cover',from:'zc=r.aiBZ+k*(r.x-bx)',to:'zc=r.aiBZ+k*(gx-bx)'},
  {n:'the budget counts only the speed toward the goal (a ball at rest gives all the time there is)',part:'cover',from:'Math.max(Math.hypot(r.aiBVX,r.aiBVZ),CV.vFloor)',to:'Math.max(-r.aiBVX*(r.team===0?1:-1),1e-6)'},
  {n:'the budget has no speed floor (a ball at rest is never close)',part:'cover',from:'Math.max(Math.hypot(r.aiBVX,r.aiBVZ),CV.vFloor)',to:'Math.max(Math.hypot(r.aiBVX,r.aiBVZ),1e-6)'},
  {n:'the budget ignores the slack (a rod counts on moving the instant the ball is struck)',part:'cover',from:'Math.max(0,T-CV.slack)',to:'Math.max(0,T)'},

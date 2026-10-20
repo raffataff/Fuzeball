@@ -1,5 +1,34 @@
 {
  "v": 1,
  "note": "written by tools/build_audio_manifest.js, do not edit",
- "sounds": {}
+ "sounds": {
+  "ui_back": [
+   "ui/ui_back_01.wav",
+   "ui/ui_back_02.wav",
+   "ui/ui_back_03.wav"
+  ],
+  "ui_click": [
+   "ui/ui_click_01.wav",
+   "ui/ui_click_02.wav",
+   "ui/ui_click_03.wav"
+  ],
+  "ui_error": [
+   "ui/ui_error_01.wav"
+  ],
+  "ui_move": [
+   "ui/ui_move_01.wav"
+  ],
+  "ui_open": [
+   "ui/ui_open_01.wav",
+   "ui/ui_open_02.wav",
+   "ui/ui_open_03.wav"
+  ],
+  "ui_start": [
+   "ui/ui_start_01.wav"
+  ],
+  "ui_value": [
+   "ui/ui_value_01.wav",
+   "ui/ui_value_02.wav"
+  ]
+ }
 }

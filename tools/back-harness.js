@@ -22,7 +22,9 @@ const stubs=[
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;}",
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}"
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -68,9 +70,9 @@ function suite(X){
  ok('the receiver\'s lane shut and the sender\'s open: it goes back',ev(null,shutJ)===true);
  ok('...not when the receiver\'s lane is still open',ev(null,open)===false);
  ok('...not when the sender\'s lane is shut too',ev(null,shutBoth)===false);
- {const lo=[{x:37.5,z:zJ+drift+4.5}];const r=world(X);ok('(the set-up) a blocker that shuts the receiver\'s lane only where he will have drifted to',out(r,zJ+drift,lo)<lc&&out(r,zJ,lo)>=lc&&out(r,zI-drift,lo)>=lc);
+ {const lo=[{x:37.5,z:zJ+drift+lc+2.5}];const r=world(X);ok('(the set-up) a blocker that shuts the receiver\'s lane only where he will have drifted to',out(r,zJ+drift,lo)<lc&&out(r,zJ,lo)>=lc&&out(r,zI-drift,lo)>=lc);
    ok('the receiver\'s lane is judged where he will have drifted to, not where he stands',ev(null,lo)===true);}
- {const lo=[{x:37.5,z:zJ+drift},{x:37.5,z:zI-drift-4.5}];const r=world(X);ok('(the set-up) a blocker that shuts the sender\'s lane only where he will have drifted back to',out(r,zI-drift,lo)<lc&&out(r,zI,lo)>=lc&&out(r,zI+drift,lo)>=lc);
+ {const lo=[{x:37.5,z:zJ+drift},{x:37.5,z:zI-drift-lc-2.5}];const r=world(X);ok('(the set-up) a blocker that shuts the sender\'s lane only where he will have drifted back to',out(r,zI-drift,lo)<lc&&out(r,zI,lo)>=lc&&out(r,zI+drift,lo)>=lc);
    ok('the sender\'s lane is judged where he will have drifted back to (the way it came)',ev(null,lo)===false);}
  {ok('not with nobody to go back to (the receiver is the end of the row)',ev({catMan:0,catSg:1},shutJ)===false);}
  {ok('...either way along the row (the ball rolling -z from man 1 to man 0)',ev({catMan:0,catSg:-1},[{x:37.5,z:zI-drift}],zJ-TB.clear-0.1)===true);}

@@ -653,6 +653,21 @@ input[type=range]::-moz-range-thumb{width:11px;height:20px;border-radius:0;borde
 #dbgPinPanel .warn:empty{display:none}
 #dbgPinPanel .bar{display:flex;gap:8px;margin-top:8px}
 #dbgPinPanel button{flex:1;font-family:var(--font-ui);font-size:12px;letter-spacing:.18em;color:var(--gold);background:transparent;border:1px solid rgba(240,178,74,.35);padding:4px 8px;cursor:pointer}
+#dbgZonePanel{position:fixed;left:16px;bottom:16px;z-index:26;background:rgba(0,0,0,.82);border:1px solid rgba(240,178,74,.25);border-radius:2px;padding:10px 14px;font-family:var(--font-body);font-size:12px;color:var(--gold);display:none;pointer-events:auto;user-select:none;width:604px;box-sizing:border-box}
+#dbgZonePanel h4{font-family:var(--font-ui);font-size:12px;letter-spacing:.18em;margin-bottom:6px;color:var(--gold);white-space:nowrap;cursor:move}
+#dbgZonePanel .zr{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0}
+#dbgZonePanel button{font-family:var(--font-ui);font-size:11.5px;letter-spacing:.12em;color:var(--tx-strong);background:transparent;border:1px solid rgba(240,178,74,.3);padding:3px 7px;cursor:pointer;white-space:nowrap}
+#dbgZonePanel button.on{color:#02070c;background:var(--gold);border-color:var(--gold)}
+#dbgZonePanel button .sw{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px}
+#dbgZonePanel canvas{display:block;width:576px;height:326px;margin:6px 0 4px;cursor:crosshair}
+#dbgZonePanel .read{min-height:30px;font-family:var(--font-body);font-size:12px;line-height:1.3;color:var(--tx-strong)}
+#dbgZonePanel label{display:grid;grid-template-columns:120px 160px 40px;align-items:center;gap:8px;padding:2px 0;font-family:var(--font-ui);font-size:12px;color:var(--tx-strong);letter-spacing:.12em;white-space:nowrap}
+#dbgZonePanel input[type=range]{width:160px;accent-color:var(--gold);cursor:pointer}
+#dbgZonePanel .val{text-align:right;color:var(--tx-body)}
+#dbgZonePanel .val.chg{color:var(--gold)}
+#dbgZonePanel .help{margin-top:6px;min-height:34px;font-family:var(--font-body);font-size:12px;line-height:1.35;color:var(--tx-body)}
+#dbgZonePanel .bar{display:flex;gap:6px;margin-top:8px}
+#dbgZonePanel .bar button{flex:1;color:var(--gold)}
 @media(max-width:820px){.czWrap{grid-template-columns:minmax(0,1fr);grid-template-rows:42% auto minmax(0,1fr)}.czPanel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid var(--edge)}}
 @media(max-width:800px){.panelWrap{flex-wrap:wrap;max-width:100%;padding:10px;margin:0;background:transparent;box-shadow:none;border:none;border-radius:0}.panel{flex:1 1 auto;min-width:260px;min-height:auto}.ctl{grid-template-columns:1fr}}
 @media(max-width:1040px){
@@ -892,6 +907,11 @@ body.padNav .scrTabBtn.navFocus .tabCue b{background:var(--ink);color:var(--gold
 #introLoad{position:absolute;top:100%;left:0;right:0;margin-top:64px;text-align:center;font-family:var(--font-ui);font-size:15px;letter-spacing:.5em;color:var(--tx-dim);opacity:0;text-transform:uppercase}
 #introLoad.on{opacity:1;animation:inLoad 1.1s ease-in-out infinite}
 @keyframes inLoad{0%,100%{opacity:.35}50%{opacity:1}}
+#introAsk{position:absolute;top:100%;left:0;right:0;margin-top:64px;padding-left:.5em;text-align:center;font-family:var(--font-ui);font-size:17px;letter-spacing:.5em;color:var(--tx-strong);text-transform:uppercase;opacity:0;transform:translateY(10px);transition:opacity .5s,transform .5s;pointer-events:none}
+#introAsk.on{opacity:1;transform:none;animation:inAsk 2.4s .6s ease-in-out infinite}
+#introAsk.go{animation:none;opacity:0;transform:scale(1.12);transition:opacity .25s,transform .25s}
+@keyframes inAsk{0%,100%{opacity:1}50%{opacity:.4}}
+#intro.ask{cursor:pointer}
 #introFlash{position:fixed;inset:0;background:radial-gradient(900px 600px at 50% 41%,#fff,rgba(255,214,140,.85) 45%,rgba(255,140,40,.35) 70%,transparent 100%);opacity:0;pointer-events:none}
 #introFlash.on{animation:inFlash .6s ease-out both}
 @keyframes inFlash{0%{opacity:1}100%{opacity:0}}
@@ -990,7 +1010,7 @@ body.padNav .scrTabBtn.navFocus .tabCue b{background:var(--ink);color:var(--gold
 
 /* ===== photo mode (js/photo.js · F1) ===== third dev-panel accent — steel-cyan, distinct from gold (debug/AI) and green (training). */
 /* HARD hides — an invisible dev panel still eats clicks meant for the viewfinder. */
-body.photoOn #trnPanel,body.photoOn #dbgPanel,body.photoOn #dbgPinPanel,body.photoOn #dbgKickLog,body.photoOn #perfPanel{display:none!important}
+body.photoOn #trnPanel,body.photoOn #dbgPanel,body.photoOn #dbgPinPanel,body.photoOn #dbgZonePanel,body.photoOn #dbgKickLog,body.photoOn #perfPanel{display:none!important}
 /* Vignette is DOM, so it tints what you SEE and never what you GET. */
 body.photoOn #vignette{opacity:0;transition:opacity .25s}
 

@@ -81,9 +81,10 @@ function replaySndUpdate(absNow,zk){
 // ===== playback state =====
 // sndI = cursor into the sound log; keep = promoted to a file; sting = goal horn already re-fired; camSaved/camSave = free-roam parking spot
 const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,
- shot:0,lastShot:-1,fov0:0,snap:false,ghosts:null,hasLook:false,sndI:0,keep:false,sting:false,
+ shot:0,lastShot:-1,side:1,fov0:0,snap:false,ghosts:null,hasLook:false,sndI:0,keep:false,sting:false,
  camSaved:false,camSave:new THREE.Vector3(),
- look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3()};
+ look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3(),
+ area:new THREE.Vector3(),ar:null,arRaw:null,arN:0};
 
 // ===== free-roam handoff =====
 // free roam's camera position is the state (the broadcast camera re-derives its own), so stash it on the way in and restore it on the way out; rotation survives untouched
@@ -166,6 +167,29 @@ function replayTint(g,ti){
  }
  g.shim.t.trail=t.trail||'#ffffff';
 }
+// the patch the camera films: the rally ball's track smoothed both ways over on-screen seconds (footage seconds x playback rate), so it leads the play and a tic-tac averages out
+function replayArea(){
+ const A=REPLAY.area,hz=SIM.hz,N=Math.ceil(RP.len*hz)+1,p=RP.area;
+ if(!RP.ar||RP.ar.length<N*3){RP.ar=new Float32Array(N*3);RP.arRaw=new Float32Array(N*3);}
+ const raw=RP.arRaw,out=RP.ar;
+ let px=0,py=BALL_R,pz=0;
+ for(let k=0;k<N;k++){const j=Math.min(RP.start+k,RB.n-1);
+  for(let s=0;s<RB.slots;s++)if(rbBall(s,j,p)>=0){px=p.x;py=p.y;pz=p.z;break;}   // first live slot, as the focus picks
+  raw[k*3]=px;raw[k*3+1]=py;raw[k*3+2]=pz;}
+ for(let k=0;k<N;k++){
+  const rem=RP.len-k/hz,u=rem<REPLAY.slowLast?1-rem/REPLAY.slowLast:0,rt=lerp(REPLAY.speed,REPLAY.slowSpeed,u*u*(3-2*u));
+  for(let c=0;c<3;c++){
+   const sg=Math.max(1e-3,(c===2?A.sigZ:A.sigX)*rt*hz),w=Math.ceil(sg*3),i0=Math.max(0,k-w),i1=Math.min(N-1,k+w);
+   let sw=0,sv=0;
+   for(let i=i0;i<=i1;i++){const e=Math.exp(-.5*((i-k)/sg)**2);sw+=e;sv+=e*raw[i*3+c];}
+   out[k*3+c]=sv/sw;}
+  out[k*3+2]*=A.zKeep;}
+ RP.arN=N;
+}
+function replayAreaAt(j){
+ const N=RP.arN,k=clamp(j-RP.start,0,N-1),k0=Math.floor(k),k1=Math.min(k0+1,N-1),a=k-k0,o=RP.ar;
+ RP.area.set(lerp(o[k0*3],o[k1*3],a),lerp(o[k0*3+1],o[k1*3+1],a),lerp(o[k0*3+2],o[k1*3+2],a));
+}
 // interpolated pose of slot s at logical float step j into out; false when the slot is empty
 function rbBall(s,j,out){
  const j0=Math.floor(j),j1=Math.min(j0+1,RB.n-1),a=j-j0;
@@ -178,8 +202,8 @@ function rbBall(s,j,out){
 }
 
 // ===== camera shots =====
-// hand-placed moves picked at random per replay; bp = the followed ball, t01 = 0..1 through the footage; numbers in CONFIG.replay.shots
-// a shot sets RP.cx/cy/cz (chased at camLerp) and looks at the ball unless it sets RP.lookTo + RP.hasLook (the ball cam); all end near the beaten goal (RP.gx = ±L/2)
+// hand-placed moves picked at random per replay; bp = the filmed patch (RP.area), ball = the rally ball, t01 = 0..1 through the footage; numbers in CONFIG.replay.shots
+// a shot sets RP.cx/cy/cz (chased at camLerp) and looks at the patch unless it sets RP.lookTo + RP.hasLook (the ball cam); all end near the beaten goal (RP.gx = ±L/2)
 const REPLAY_SHOTS=[
  // RAIL CAM — elevated sideline dolly chasing the ball down the pitch
  function(bp,t01){const H=REPLAY.shots.rail;
@@ -193,10 +217,19 @@ const REPLAY_SHOTS=[
  // SKY DRONE — slow high float that leans toward the goal end
  function(bp,t01){const H=REPLAY.shots.drone;
   RP.cx=bp.x*.5+RP.gx*.25*t01;RP.cy=H.y-H.dip*t01;RP.cz=H.z+H.sway*Math.sin(t01*2.1);},
- // BALL CAM: rides just goal-side of the ball, gazing back up the pitch; ends inside the goal mouth
- function(bp,t01){const H=REPLAY.shots.ball,d=RP.gx>0?1:-1;
-  RP.cx=bp.x+d*H.back;RP.cy=Math.max(bp.y+H.up,H.minY);RP.cz=bp.z;
-  RP.lookTo.set(bp.x-d*H.lookAhead,H.lookY,bp.z*.6);RP.hasLook=true;}
+ // BALL CAM: rides goal-side of the ball, gazing back up the pitch; ends inside the goal mouth
+ function(bp,t01,ball){const H=REPLAY.shots.ball,d=RP.gx>0?1:-1;
+  RP.cx=ball.x+d*H.back;RP.cy=Math.max(ball.y+H.up,H.minY);RP.cz=bp.z;
+  RP.lookTo.set(ball.x-d*H.lookAhead,H.lookY,bp.z*.6);RP.hasLook=true;},
+ // TOP DOWN: overhead, the beaten goal at the top of the frame, drifting toward it and dropping in
+ function(bp,t01){const H=REPLAY.shots.top,d=RP.gx>0?1:-1,e=t01*t01*(3-2*t01);
+  const lx=d*Math.min(d*bp.x+H.lead+H.drift*e,F.L/2+4);
+  RP.cx=lx-d*H.tilt;RP.cy=lerp(H.yFrom,H.yTo,e);RP.cz=bp.z;
+  RP.lookTo.set(lx,0,bp.z);RP.hasLook=true;},
+ // SHOULDER CAM: behind the attack and to one side, looking down the table at the goal, moving in
+ function(bp,t01){const H=REPLAY.shots.shoulder,d=RP.gx>0?1:-1,e=t01*t01*(3-2*t01);
+  RP.cx=clamp(bp.x-d*(H.back-H.push*e),-F.L/2-30,F.L/2+30);RP.cy=H.y;RP.cz=bp.z*.5+RP.side*H.side;
+  RP.lookTo.set(d*Math.min(d*bp.x+H.ahead,F.L/2),2,bp.z*.8);RP.hasLook=true;}
 ];
 
 // ===== saving the clip =====
@@ -222,12 +255,13 @@ function replayStart(){
  RP.start=RB.n-RP.len*SIM.hz;
  RP.t=0;RP.hold=0;RP.mode='play';RP.snap=true;RP.sting=false;RP.prevJ=-1;
  RP.gx=(RP.team===0?1:-1)*F.L/2;             // the goal that was scored into
+ replayArea();
  // sound cursor: skip everything fired before the stretch shown, so a trimmed rally doesn't dump its history in frame one
  RP.sndI=0;
  if(RS.n){const a0=rbAbs(RP.start);while(RP.sndI<RS.n&&RS.step[rsIdx(RP.sndI)]<a0)RP.sndI++;}
  let si=Math.floor(Math.random()*REPLAY_SHOTS.length);
  if(si===RP.lastShot)si=(si+1)%REPLAY_SHOTS.length;
- RP.shot=si;RP.lastShot=si;
+ RP.shot=si;RP.lastShot=si;RP.side=Math.random()<.5?-1:1;
  RP.fov0=camera.fov;
  replayCamStash();                            // free-roam only — see replayCamStash
   replayGhosts();
@@ -315,10 +349,11 @@ function replayUpdate(rdt){
   g.prev.copy(g.m.position);
  }
  heatClose();
- // camera: hand-held chase toward the shot's placement plus a push-in on the slow-mo; the gaze is the ball unless the shot set RP.hasLook
+ // camera: hand-held chase toward the shot's placement plus a push-in on the slow-mo; the gaze is the patch of table, not the ball, unless the shot set RP.hasLook
  RP.hasLook=false;
- REPLAY_SHOTS[RP.shot](RP.focus,RP.len>0?RP.t/RP.len:1);
- const tgt=RP.hasLook?RP.lookTo:RP.focus;
+ replayAreaAt(j);
+ REPLAY_SHOTS[RP.shot](RP.area,RP.len>0?RP.t/RP.len:1,RP.focus);
+ const tgt=RP.hasLook?RP.lookTo:RP.area;
  const k=RP.snap?1:Math.min(1,rdt*REPLAY.camLerp);
  camera.position.x=lerp(camera.position.x,RP.cx,k);
  camera.position.y=lerp(camera.position.y,RP.cy,k);

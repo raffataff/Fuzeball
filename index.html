@@ -31,6 +31,7 @@
       <div id="introShine"></div>
       <div id="introTag"></div>
       <div id="introLoad">Loading</div>
+      <div id="introAsk" data-padtext="Press any button">Click to start</div>
     </div>
   </div>
   <div id="introFlash"></div>
@@ -52,7 +53,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.39</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.40</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -403,6 +404,7 @@
         <div class="row"><label>Shadows</label><input type="checkbox" id="optShadows"></div>
         <div class="row" id="optShadowQRow"><label>Shadow quality</label><select id="optShadowQ"><option value="low">Low</option><option value="high">High</option></select></div>
         <div class="row"><label>Grass</label><select id="optGrass"><option value="off">Off</option><option value="low">Low</option><option value="high">High</option></select></div>
+        <div class="row"><label>Atmosphere</label><select id="optAtmos"><option value="off">Off</option><option value="low">Low</option><option value="high">High</option></select></div>
         <div class="row"><label>Reduced effects</label><input type="checkbox" id="optReducedFx"></div>
         <div class="optHint">Lower the preset or the resolution if the frame rate drops.</div>
       </div>
@@ -412,7 +414,6 @@
         <div class="row"><label>Particles</label><input type="checkbox" id="optParticles"></div>
         <div class="row"><label>Wall marks</label><input type="checkbox" id="optMarks"></div>
         <div class="row"><label>Rod stamina rings</label><input type="checkbox" id="optRodHoles"></div>
-        <div class="row"><label>Fog</label><input type="checkbox" id="optFog"></div>
         <div class="row"><label>Pin shot hint</label><input type="checkbox" id="optPinHint"></div>
         <div class="optHint">Cosmetic only. Turn them off if the frame rate drops. The pin shot hint is the key prompt shown while you hold a pinned ball; the ring under the ball stays.</div>
       </div>
@@ -714,7 +715,7 @@ if(DEV){
   {srcs:['vendor/KTX2Loader.js','https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/loaders/KTX2Loader.js']},
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
  /* CDN_FALLBACK (OFF BY DEFAULT for security in packaged builds) — local vendor first; the second

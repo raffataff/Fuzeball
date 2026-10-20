@@ -26,7 +26,9 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}"
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -37,7 +39,7 @@ function boot(mut){
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.catch,
   ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,pushSlope:pushSlope,pushOutlet:pushOutlet,pinTarget:pinTarget,pinPlayStart:pinPlayStart,pinPlay:pinPlay,pinFire:pinFire,'+
-  'catchEnd:catchEnd,catchPick:catchPick,catchStep:catchStep,tapStart:tapStart,tapStep:tapStep,setTapEval:function(f){tapEval=f;},setRng:function(v){RNGV=v;},takeFwd:takeFwd,sidePick:sidePick,meetPick:meetPick,sideStep:sideStep,sideAngle:sideAngle,thruStep:thruStep,catchUp:catchUp,tapEval:tapEval,released:function(){return RELEASED;},setStrike:function(v){STRIKE=v;},setSweep:function(v){SWEEP=v;},setPick:function(v){PICK=v;},passed:function(){return PASSED;},seen:function(){return SEEN;}};'].join(NL),ctx);
+  'catchEnd:catchEnd,catchPick:catchPick,catchStep:catchStep,tapStart:tapStart,tapStep:tapStep,setTapEval:function(f){tapEval=f;},setRng:function(v){RNGV=v;},takeFwd:takeFwd,sidePick:sidePick,meetPick:meetPick,sideStep:sideStep,sideAngle:sideAngle,footAngle:footAngle,footBoxD:footBoxD,thruStep:thruStep,catchUp:catchUp,tapEval:tapEval,released:function(){return RELEASED;},setStrike:function(v){STRIKE=v;},setSweep:function(v){SWEEP=v;},setPick:function(v){PICK=v;},passed:function(){return PASSED;},seen:function(){return SEEN;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -370,32 +372,29 @@ function suite(X){
    RV.on=false;ok("...and the receiving pose",X.takeFwd(r,22,0)===false);RV.on=true;
    const g=world(X);g.role="GK";ok("a role that does not take the pose (the keeper) never does",X.takeFwd(g,22,0)===false);
    const c0=X.CAS.take;X.takeFwd(r,22,-6);ok("a shot open is not counted as a ball that could be taken",X.CAS.take===c0);X.setRng(0.99);}
-  // the side catch picks the style and drops the leg to match
-  {const r=world(X);const b=view(X,-1.2,-8,0,10);X.setRng(0);
-   ok("a ball rolling along the row to a man whose lane is shut: the side catch is taken forward",X.sidePick(r,b)===true&&r.catFwd===true,"fwd="+r.catFwd);
-   X.setRng(0.99);const q=world(X);ok("...or as usual, by chance",X.sidePick(q,b)===true&&q.catFwd===false);
-   const o=world(X);o.baseZ=[-18,-6,6];X.setRng(0);ok("...and a ball rolling to a man whose lane is open (z -6) is not",(X.sidePick(o,view(X,-1.2,-14,0,10)),o.catMan===1&&o.catFwd===false),"man="+o.catMan+" fwd="+o.catFwd);X.setRng(0.99);}
+  // the side catch: behind the rod the back foot comes down on the ball, ahead of it the forward foot (where it is decides, not the lanes)
+  {const r=world(X);X.setRng(0);ok("a ball rolling along the row behind the rod is taken by the back foot, whatever the lanes",X.sidePick(r,view(X,-3.0,-8,0,10))===true&&r.catFwd===false,"fwd="+r.catFwd);
+   const q=world(X);ok("...one ahead of it by the forward foot",X.sidePick(q,view(X,3.5,-8,0,10))===true&&q.catFwd===true,"fwd="+q.catFwd);X.setRng(0.99);}
   {const mk=(over)=>{const r=world(X,Object.assign({defOff:-6},over||{}));r.catPh="side";r.catMan=1;r.catSg=1;r.catFwd=true;return r;};
-   const up=mk(),bu=view(X,-1.2,-8,0,10);X.sideStep(up,bu);
+   const up=mk(),bu=view(X,3.5,-8,0,10);X.sideStep(up,bu);
    ok("a forward side catch: while the ball rolls in the leg is up and forward, not raised back, and the pin is off",up.pinOn===false&&up.pinPose===true&&Math.abs(up.pinA-CA.recv.lift.angle)<1e-9&&up.raise===false,JSON.stringify(pose(up)));
-   const dn=mk(),bd=view(X,-1.2,-2,0,10);X.sideStep(dn,bd);
-   const want=X.sideAngle(-1.2,true);
-   ok("...and it comes down onto it the angle that holds the leg legD from it, tilted forward",dn.pinOn===true&&dn.pinPose===true&&dn.pinA>0&&Math.abs(dn.pinA-want)<1e-9,"pinA="+dn.pinA);
-   const wy=X.BALL_R-X.ROD_H,dx=Math.sin(want)*X.ARM,dy=-Math.cos(want)*X.ARM,t=Math.max(0,Math.min(1,(-1.2*dx+wy*dy)/(X.ARM*X.ARM))),nx=-1.2-dx*t,ny=X.BALL_R-(X.ROD_H+dy*t);
-   ok("...legD from the ball",Math.abs(Math.sqrt(nx*nx+ny*ny)-CA.side.legD)<0.01,"d="+Math.sqrt(nx*nx+ny*ny).toFixed(3));
-   ok("the back pose is on the other side of the rod",X.sideAngle(-1.2,false)<0&&X.sideAngle(-1.2,true)>0);
-   const bk=mk({});bk.catFwd=false;X.sideStep(bk,bu);
+   const dn=mk(),bd=view(X,3.5,-2,0,10);X.sideStep(dn,bd);
+   const want=X.footAngle(3.5,true);
+   ok("...and the forward foot comes down onto it, a forward pin",dn.pinOn===true&&dn.pinPose===true&&dn.pinFwd===true&&dn.pinA>0&&Math.abs(dn.pinA-want)<1e-9,"pinA="+dn.pinA);
+   const gap=X.footBoxD({x:0,kickDir:1,angle:want},{x:3.5,y:X.BALL_R,z:0},0,[0,0])-X.BALL_R;
+   ok("...topGap above the ball",Math.abs(gap-CA.side.topGap)<0.01,"gap="+gap.toFixed(3));
+   ok("the back pose is on the other side of the rod",X.footAngle(-3.0,false)<0&&X.footAngle(3.5,true)>0);
+   const bk=mk({});bk.catFwd=false;X.sideStep(bk,view(X,-3.0,-8,0,10));
    ok("a side catch as usual raises the men back and over, as before",bk.raise===true&&bk.pinPose===false&&bk.pinOn===false);
    }
   {const r=world(X);r.catFwd=true;X.catchUp(r);ok("the men up for a forward leg: forward and up, nothing raised back",r.pinPose===true&&r.pinOn===false&&r.raise===false&&Math.abs(r.pinA-CA.recv.lift.angle)<1e-9);
    const q=world(X);q.catFwd=false;X.catchUp(q);ok("...and as usual: back and over",q.pinPose===false&&q.pinOn===false&&q.raise===true&&q.pinA===null);}
   // the meet: a slow ball along the row that no man will roll into
-  {const mp=(over,rngv)=>{const r=world(X,over);X.setRng(rngv);const got=X.meetPick(r,view(X,-1.2,-6,0,3));return {r,got};};
-   const a=mp({defOff:-6},0);ok("a slow ball met by a man whose lane is shut: taken forward",a.got===true&&a.r.catFwd===true,"got="+a.got+" fwd="+a.r.catFwd);
-   ok("...or as usual, by chance",mp({defOff:-6},0.99).r.catFwd===false);
-   ok("...a lane open where he will stand: as usual",mp({},0).r.catFwd===false);X.setRng(0.99);}
+  {const mp=(rel)=>{const r=world(X,{defOff:-6});X.setRng(0);const got=X.meetPick(r,view(X,rel,-6,0,3));return {r,got};};
+   const a=mp(-3.0);ok("a slow ball behind the rod is met by the back foot, whatever the lanes",a.got===true&&a.r.catFwd===false,"got="+a.got+" fwd="+a.r.catFwd);
+   const b=mp(3.5);ok("...one ahead of it by the forward foot",b.got===true&&b.r.catFwd===true,"got="+b.got+" fwd="+b.r.catFwd);X.setRng(0.99);}
   // a ball let through: picked, the leg up while it rolls under, down onto it
-  {const r=world(X);X.setRng(0);const pick=(rel,vx,vz,over,y)=>{const q=world(X,over);return {q,ph:X.catchPick(q,view(X,rel,0,vx,vz,y))};};
+  {const thW=TH.on;TH.on=true;const r=world(X);X.setRng(0);const pick=(rel,vx,vz,over,y)=>{const q=world(X,over);return {q,ph:X.catchPick(q,view(X,rel,0,vx,vz,y))};};   // off in CONFIG: its own tests switch it on
    const a=pick(12,-10,0);
    ok("a slow ball running at the rod from upfield, to a man whose lane is shut: let through",a.ph==="thru"&&a.q.catFwd===true,a.ph);
    ok("...the man is the one it will arrive at",a.q.catMan===1);
@@ -408,7 +407,7 @@ function suite(X){
    X.setRng(0.99);ok("...by chance it is caught as usual",pick(12,-10,0).ph==="front");X.setRng(0);
    ok("...with the lane open (z -6) it is caught as usual, ready to shoot",(()=>{const q=world(X);return X.catchPick(q,view(X,12,-6,-10,0));})()==="front");
    TH.on=false;ok("...the switch",pick(12,-10,0).ph==="front");TH.on=true;
-   ok("...a front ball not let through leaves the style as usual",pick(12,-30,0).q.catFwd===false);X.setRng(0.99);}
+   ok("...a front ball not let through leaves the style as usual",pick(12,-30,0).q.catFwd===false);X.setRng(0.99);TH.on=thW;}
   {const mk=(props)=>{const r=world(X);r.catPh="thru";r.catFwd=true;r.catMan=1;r.catO=0;r.catT=0;return Object.assign(r,props||{});};X.setRng(0);
    const up=mk(),bu=view(X,12,0,-10,0);X.thruStep(up,bu);
    ok("a ball let through, still far: the leg is up and forward, pin off, the man on its line",up.pinOn===false&&up.pinPose===true&&Math.abs(up.pinA-CA.recv.lift.angle)<1e-9&&up.aiMan===1&&up.target===0&&up.act==="catch");
@@ -448,12 +447,12 @@ function suite(X){
    const hd=mk(-3.4,0);hd.r.catFwd=false;hd.r.pinB={m:{position:{x:22.5-3.4,y:X.BALL_R,z:0}},v:{x:0,y:0,z:0},pinMan:1,pinDz:0,scored:false};X.pinPlayStart(hd.r);X.catchStep(hd.r,hd.b,D);
    ok("...a ball pinned at the heel is handed on as before",X.CAS.hand===h0+1&&hd.r.act===null);
    // a ball stopped dead against the leg is waited on for the pin
-   const sl=mk(-0.8,0);X.S.balls=[sl.b];sl.r.catT=0;X.S.time=1;
-   X.catchStep(sl.r,sl.b,D);ok("a ball the leg has stopped dead (in the pin window) keeps the pose for a moment: the pin takes it on the next physics step",sl.r.act==="catch"&&sl.r.pinOn===true);
+   const sl=mk(3.0,0);X.S.balls=[sl.b];sl.r.catT=0;X.S.time=1;
+   X.catchStep(sl.r,sl.b,D);ok("a ball the forward foot has stopped dead (in the pin window) keeps the pose for a moment: the pin takes it on the next physics step",sl.r.act==="catch"&&sl.r.pinOn===true);
    X.S.time=1+CA.recv.rest+0.05;X.catchStep(sl.r,sl.b,D);ok("...not for ever",sl.r.act===null&&(X.CAW.slow||0)>=1);
    const sm=mk(-6,0);X.S.balls=[sm.b];X.S.time=5;X.catchStep(sm.r,sm.b,D);ok("a ball that has simply stopped short of the pin window is over at once",sm.r.act===null);
    const p1=mk(0.4,10);X.catchStep(p1.r,p1.b,D);ok("a ball just past the pivot is not yet past a forward catch",p1.r.act==="catch");
-   const p2=mk(0.6,10);X.catchStep(p2.r,p2.b,D);ok("...well past it is",p2.r.act===null);
+   const p2=mk(X.SHOT.pin.fwdFront+0.2,10);X.catchStep(p2.r,p2.b,D);ok("...past the forward foot it is",p2.r.act===null);
    const pb=mk(-0.2,-1);X.S.balls=[pb.b];X.catchStep(pb.r,pb.b,D);X.S.balls=[];X.setRng(0.99);}
   // the carry turns round only after it has been going one way a while
   {CA.turnT=0.8;const r=world(X,{defOff:-3,gkOff:-9});r.angle=-0.75;pinned(X,r,0);const best=view(X,-0.5,0);
@@ -525,11 +524,11 @@ const MUT=[
  {n:'a held ball is played before it has settled',part:'catch',from:' if(t<CA.settleT)return 0;',to:''},
  {n:'every lane counts as open',part:'catch',from:'open=now>=CA.lineClear,',to:'open=true,'},
  {n:'a ball with no way forward is never played, however long it is held',part:'catch',from:'else if(late){v=1;',to:'else if(false){v=1;'},
- {n:'a pass is made without asking the strike gate',part:'catch',from:'&&strikeOn(r,best,\'pass\'))',to:')'},
+ {n:'a pass is made without asking the strike gate',part:'catch',from:'&&strikeOn(r,best,\'pass\',pinSwing(true)))',to:')'},
  {n:'the passes are looked at even with an open lane (the attacker)',part:'catch',from:'const pk=((open&&!OP)||mull)?null:passPick(r,p.x,p.z,\'pin\');',to:'const pk=mull?null:passPick(r,p.x,p.z,\'pin\');'},
  {n:'no rod looks at the passes with an open lane',part:'catch',from:'const OP=open&&CA.open?CA.open[r.role]:null;',to:'const OP=null;'},
  {n:'every rod looks at the passes with an open lane',part:'catch',from:'const OP=open&&CA.open?CA.open[r.role]:null;',to:'const OP=open?{k:0,b:-9}:null;'},
- {n:'an open pass is made without asking the strike gate',part:'catch',from:'pk.score>now*OP.k+OP.b&&strikeOn(r,best,\'pass\')){',to:'pk.score>now*OP.k+OP.b){'},
+ {n:'an open pass is made without asking the strike gate',part:'catch',from:'pk.score>now*OP.k+OP.b&&strikeOn(r,best,\'pass\',pinSwing(true))){',to:'pk.score>now*OP.k+OP.b){'},
  {n:'an open pass ignores how good the mate is',part:'catch',from:'pk.score>now*OP.k+OP.b&&',to:'pk.score>0&&'},
  {n:'an open pass is held for a carry',part:'catch',from:'if(!open&&(CA.carryFirst||fwd)){\n   pinCarryEval(',to:'if((CA.carryFirst||fwd)){\n   pinCarryEval('},
  {n:'a push is judged without the slide the ball gains before it leaves the boot',part:'catch',from:'pinOutlet(r,bx,bz+AIC.catch.push.drift*sv,obs,goalX,sl)',to:'pinOutlet(r,bx,bz,obs,goalX,sl)'},
@@ -573,7 +572,7 @@ const MUT=[
  {n:'…and a holder waiting for its receiver goes on to carry the ball (the slide reads as a push lane next frame)',part:'catch',from:'CAS.rdyWait++;return 0;}',to:'CAS.rdyWait++;}'},
  {n:'…the wait is never counted',part:'catch',from:'if((r.pcRdy=(r.pcRdy||0)+dt)<CA.recv.ready.wait){if(',to:'if(((r.pcRdy=0)+dt)<CA.recv.ready.wait){if('},
  {n:'a holder does not get its mates ready',part:'catch',from:'if(pk&&(!open||v===2))recvReady(r,pk.cands);',to:''},
- {n:'the pin shot fires without asking the strike gate',part:'catch',from:'if(!strikeOn(r,best,\'trapShot\'))return -1;',to:''},
+ {n:'the pin shot fires without asking the strike gate',part:'catch',from:'if(!strikeOn(r,best,\'trapShot\',pinSwing()))return -1;',to:''},
  {n:'the rod is not held still through the swing',part:'catch',from:' r.catSw=true;',to:' r.catSw=false;'},
  {n:'a swing already running is started again',part:'catch',from:' if(r.kickT>=0)return 0;\n if(v===2)',to:' if(v===2)'},
  {n:'a ball too fast to hold is still caught (front)',part:'catch',from:'c<A.minClose||c>A.maxClose)return fetchPick(r,best)?\'fetch\':null;\n  tAr=rel/c;',to:'c<A.minClose)return fetchPick(r,best)?\'fetch\':null;\n  tAr=rel/c;'},
@@ -588,7 +587,7 @@ const MUT=[
  {n:'a ball that has gone past is still waited for (front)',part:'catch',from:'if(rel<SHOT.pin.back-1)why=\'past\';',to:'if(false)why=\'past\';'},
  {n:'a ball running off is still waited for',part:'catch',from:'else if(vf>1&&rel>A.near)why=\'away\';',to:''},
  {n:'a ball that stopped short is still waited for',part:'catch',from:'else if(sp<CA.restV&&rel>SHOT.pin.front+0.3)why=\'stopped\';',to:''},
- {n:'a ball that went past the rod behind is still waited for',part:'catch',from:'if(rel>(r.catFwd?0.5:-0.5))why=\'past\';',to:'if(false)why=\'past\';'},
+ {n:'a ball that went past the rod behind is still waited for',part:'catch',from:'if(rel>(r.catFwd?SHOT.pin.fwdFront:-0.5))why=\'past\';',to:'if(false)why=\'past\';'},
  {n:'a ball that died before the heel is still waited for',part:'catch',from:'else if(sp<CA.restV&&!(r.catFwd&&recvRest(r)&&S.time-(r.rvRestT||(r.rvRestT=S.time))<CA.recv.rest))why=\'slow\';',to:''},
  {n:'a ball in the air does not end it',part:'catch',from:'else if(p.y>CA.liftY)why=\'lifted\';',to:''},
  {n:'a hopping ball ends it (the old lowY limit)',part:'catch',from:'else if(p.y>CA.liftY)why=\'lifted\';',to:'else if(p.y>AIC.lowY)why=\'lifted\';'},
@@ -662,11 +661,10 @@ const MUT=[
  {n:"the share is ignored",part:'catch',from:"return rngAi(r.idx)()<TK.share;",to:"return true;"},
  {n:"the chance is the wrong way round",part:'catch',from:"return rngAi(r.idx)()<TK.share;",to:"return rngAi(r.idx)()>=TK.share;"},
  {n:"a ball that could be taken is not counted",part:'catch',from:"CAS.take++;",to:""},
- {n:"the side catch never takes forward",part:'catch',from:"r.catFwd=ahead||takeFwd(r,p.x,r.baseZ[bi]+r.offset);",to:"r.catFwd=false;"},
- {n:"the side catch always takes forward",part:'catch',from:"r.catFwd=ahead||takeFwd(r,p.x,r.baseZ[bi]+r.offset);",to:"r.catFwd=true;"},
- {n:"the side catch judges the lane where the ball is, not where the man is",part:'catch',from:"r.catFwd=ahead||takeFwd(r,p.x,r.baseZ[bi]+r.offset);",to:"r.catFwd=ahead||takeFwd(r,p.x,p.z);"},
- {n:"the meet never takes forward",part:'catch',from:"r.catFwd=takeFwd(r,p.x,r.baseZ[bi]+clamp(p.z-r.baseZ[bi],-r.maxOff,r.maxOff));",to:"r.catFwd=false;"},
- {n:"the forward pose drops on the back angle",part:'catch',from:"r.pinA=sideAngle(rel,r.catFwd)*dir;}\n else catchUp(r);",to:"r.pinA=sideAngle(rel)*dir;}\n else catchUp(r);"},
+ {n:"the side catch never takes forward",part:'catch',from:"r.catSg=sg;r.catCush=false;r.catFwd=ahead;",to:"r.catSg=sg;r.catCush=false;r.catFwd=false;"},
+ {n:"the side catch always takes forward",part:'catch',from:"r.catSg=sg;r.catCush=false;r.catFwd=ahead;",to:"r.catSg=sg;r.catCush=false;r.catFwd=true;"},
+  {n:"the meet never takes forward",part:'catch',from:"r.catSg=-sg;r.catCush=false;r.catFwd=rel>0;",to:"r.catSg=-sg;r.catCush=false;r.catFwd=false;"},
+ {n:"the forward pose drops on the back angle",part:'catch',from:" const fa=footAngle(rel,r.catFwd);\n if(fa!=null&&(r.catCush",to:" const fa=footAngle(rel,false);\n if(fa!=null&&(r.catCush"},
  {n:"the forward angle search looks on the back side",part:'catch',from:"let lo=fwd?1.4:-1.4,hi=fwd?0.1:-0.2;",to:"let lo=-1.4,hi=-0.2;"},
  {n:"the men go up back and over for a forward catch",part:'catch',from:"r.pinOn=false;r.pinPose=!!fw;",to:"r.pinOn=false;r.pinPose=false;"},
  {n:"...raised as well",part:'catch',from:"r.raise=!fw;",to:"r.raise=true;"},
@@ -688,7 +686,8 @@ const MUT=[
  {n:"...and is not counted",part:'catch',from:"if(r.catPh==='behind')CAS.behindOk++;",to:""},
  {n:"a ball from behind is held on the straight pose",part:'catch',from:"r.pinA=(r.catFwd?CA.recv.angle:A.angle)*dir;",to:"r.pinA=A.angle*dir;"},
  {n:"a forward catch from behind times the pose to the heel",part:'catch',from:"r.catFwd?CA.recv.take.behind.stop:A.stop",to:"A.stop"},
- {n:"a forward catch from behind is over at the pivot",part:'catch',from:"rel>(r.catFwd?0.5:-0.5)",to:"rel>-0.5"},
+ {n:"a ball from behind that has rolled under to the forward foot is still on its way",part:'catch',from:"tAr=Math.max(0,((front?rel:-rel)-",to:"tAr=Math.max(0,(Math.abs(rel)-"},
+ {n:"a forward catch from behind is over at the pivot",part:'catch',from:"rel>(r.catFwd?SHOT.pin.fwdFront:-0.5)",to:"rel>-0.5"},
  {n:"a ball stopped dead against the leg is not waited on",part:'catch',from:"&&!(r.catFwd&&recvRest(r)&&S.time-(r.rvRestT||(r.rvRestT=S.time))<CA.recv.rest))",to:"&&true)"},
  {n:"...any slow ball is",part:'catch',from:"!(r.catFwd&&recvRest(r)&&",to:"!(r.catFwd&&"},
  {n:"...for ever",part:'catch',from:"S.time-(r.rvRestT||(r.rvRestT=S.time))<CA.recv.rest",to:"true"},

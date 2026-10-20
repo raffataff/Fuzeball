@@ -38,7 +38,7 @@ function boot(mut){
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.phys,g.catch,
   ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
-  'catchEnd:catchEnd,reseat:reseat,tapStep:tapStep,tapEval:tapEval,sidePick:sidePick,catchPick:catchPick,catchStep:catchStep,fetchPick:fetchPick,fetchStep:fetchStep,sideAngle:sideAngle,setPick:function(v){PICK=v;},setRng:function(v){RNGV=v;}};'].join(NL),ctx);
+  'catchEnd:catchEnd,reseat:reseat,tapStep:tapStep,tapEval:tapEval,sidePick:sidePick,catchPick:catchPick,catchStep:catchStep,fetchPick:fetchPick,fetchStep:fetchStep,footAngle:footAngle,footBoxD:footBoxD,sideAngle:function(rel,fwd){const a=footAngle(rel,fwd);return a==null?AIC.catch.recv.lift.angle:a;},setPick:function(v){PICK=v;},setRng:function(v){RNGV=v;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -64,7 +64,7 @@ function suite(X){
  // ---- the pin physics: a forward pose reaches a ball lying ahead ----
  {const r=world(X),a=X.sideAngle(4.5,true),b=view(X,4.5,0);X.S.balls.push(b);
   r.pinOn=true;r.pinPose=true;r.pinA=a;r.angle=a;X.pinUpdate();
-  ok('a rod posed over a ball lying ahead does not catch it from the usual window',!r.pinB,'a='+a.toFixed(2));
+  ok('a rod leaning forward over a ball lying ahead catches it: the window is the lean\'s, not the flag\'s',!!r.pinB,'a='+a.toFixed(2));
   r.pinFwd=true;X.pinUpdate();
   ok('...as a forward pin it does, wherever the leg touches it',!!r.pinB&&r.pinB===b&&b.pinDx>4.4&&b.pinDx<4.6,'pinDx='+b.pinDx);
   r.offset=4;for(let i=0;i<5;i++)X.pinBallStep(b,dt);
@@ -158,15 +158,17 @@ function suite(X){
  // ---- a forward leg holds a ball from above only: the foot has to reach the top of it ----
  {const hold=(rel,ang,vx)=>{const r=world(X),b=view(X,rel,0,vx||0,0);X.S.balls.push(b);r.angle=ang;r.pinOn=true;r.pinPose=true;r.pinFwd=true;r.pinA=ang;X.pinUpdate();return !!r.pinB;},sa=X.sideAngle;
   ok('a leg lowered onto a ball lying 3, 4 and 4.9 ahead until it touches the top of it holds it',hold(3,sa(3,true))&&hold(4,sa(4,true))&&hold(4.9,sa(4.9,true)));
-  ok('...a leg hovering over it (further off than fwdTouch) does not',!hold(4,sa(4,true)+0.06)&&!hold(4.9,sa(4.9,true)+0.12));
+  ok('...a leg hovering over it (further off than touch) does not',!hold(4,sa(4,true)+0.06)&&!hold(4.9,sa(4.9,true)+0.12));
   ok('...a ball in front of a low raised leg (touching its side, not its top) is pushed away, not held (the toe cannot pin)',!hold(4.7,0.3)&&!hold(4.4,0.3)&&!hold(3.0,0.1));
   ok('...a ball too near for the foot to sit on it (the contact is low on its side) is not held',!hold(1.5,0.8));
   const keep=P.fwdFront;P.fwdFront=3.5;ok('...a ball past fwdFront is not held, touching or not',!hold(4,sa(4,true)));P.fwdFront=keep;
-  const dn=P.fwdDown;P.fwdDown=-1;ok('(the rule is fwdDown: with it off the low touch holds again)',hold(4.7,0.3)&&hold(1.5,0.8));P.fwdDown=dn;
-  const tc=P.fwdTouch;P.fwdTouch=P.touch;ok('(...and fwdTouch: with the old slop a leg 0.06 over it holds)',hold(4,sa(4,true)+0.06));P.fwdTouch=tc;
+  {const lowRel=(a)=>{const q={x:0,kickDir:1,angle:a},p={x:0,y:X.BALL_R,z:0},dn=[0,0];for(let i=Math.ceil(P.fwdBack*100);i<=700;i++){p.x=i*0.01;if(X.footBoxD(q,p,0,dn)<=X.BALL_R+0.01)return p.x;}return null;},u=lowRel(0.75);
+   ok('...a leg leaning forward a little meets the ball on its side: not held',u!=null&&!hold(u,0.75));
+   const dn=P.down;P.down=-1;ok('(the rule is down: with it off that low touch holds)',hold(u,0.75));P.down=dn;}
+  const tc=P.touch;P.touch=0.7;ok('(...and touch: with a slack of 0.7 a leg 0.06 over it holds)',hold(4,sa(4,true)+0.06));P.touch=tc;
   const q=world(X);ok('a ball running at the rod is never taken by a toe now: the shaft stops it',X.catchPick(q,view(X,18,0,-30,0))==='front'&&!q.catFwd);
   ok('the pose that sits the foot on a ball lying ahead is higher the further the ball (a leg lowered onto it)',sa(3,true)<sa(4,true)&&sa(4,true)<sa(4.9,true));
-  ok('...and out of its reach the leg stays up',sa(P.fwdFront+3,true)===RV.lift.angle);}
+  ok('...and out of its reach no pose puts the foot on it (the fetch keeps the leg up)',X.footAngle(P.fwdFront+3,true)===null&&sa(P.fwdFront+3,true)===RV.lift.angle);}
  // ---- a tap from a ball held ahead ----
  {const TP=CA.tap,mk=(dx,ang,fwd)=>{const r=world(X);r.baseZ=[-6,0,6];r.catPh='tap';r.tapS=1;r.tapJ=1;r.tapF=fwd;r.angle=ang;r.pinOn=true;r.pinPose=true;r.pinFwd=fwd&&dx>1.4;r.pinA=ang;r.slideV=1e3;
    const b=view(X,dx,-6);b.pinMan=0;X.S.balls.push(b);X.pinUpdate();if(!r.pinB){r.pinB=b;}b.pinDx=dx;b.pinDz=0;b.pinR=r;return {r,b};};
@@ -195,8 +197,8 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 
 const MUT=[
  {n:'the pin window ignores the forward flag',part:'phys',from:'front=fwd?P.fwdFront:P.front',to:'front=P.front'},
- {n:'a forward leg holds a ball it only touches on the side',part:'phys',from:'||(fwd&&-ny<P.fwdDown*Math.sqrt(d2))',to:''},
- {n:'a forward leg holds a ball it hovers over',part:'phys',from:'reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch)',to:'reach=BALL_R+PRAD+P.touch'},
+ {n:'a forward leg holds a ball it only touches on the side',part:'phys',from:'&&PIN_DN[0]>=P.down',to:''},
+ {n:'a forward leg holds a ball it hovers over',part:'phys',from:'d<=BALL_R*FOOT_BOX_REACH+P.touch&&',to:'d<=BALL_R*FOOT_BOX_REACH+P.touch+0.6&&'},
  {n:'every role fetches',part:'catch',from:'FE.roles.indexOf(r.role)<0||',to:''},
  {n:'a ball at the boot is fetched',part:'catch',from:'rel<FE.near||rel>FE.far||',to:'rel>FE.far||'},
  {n:'a ball too far is fetched',part:'catch',from:'rel<FE.near||rel>FE.far||',to:'rel<FE.near||'},
@@ -213,8 +215,8 @@ const MUT=[
  {n:'it waits for the leg for ever',part:'catch',from:'if(r.angle*dir<RV.lift.angle-FE.upTol&&r.ftT<FE.downT)return;',to:'if(r.angle*dir<RV.lift.angle-FE.upTol)return;'},
  {n:'it does not wait to be over the ball',part:'catch',from:'if(Math.abs(bz-(r.baseZ[mn.i]+r.offset))>FE.alignZ||Math.abs(r.slideV)>FE.slideV)return;',to:''},
  {n:'it does not wait for the slide to die',part:'catch',from:'||Math.abs(r.slideV)>FE.slideV)return;',to:')return;'},
- {n:'the leg comes down at the wrong angle',part:'catch',from:'r.pinA=sideAngle(rel,true)*dir;r.target=mn.o;',to:'r.pinA=RV.lift.angle*dir;r.target=mn.o;'},
- {n:'the leg that never takes it stays down for ever',part:'catch',from:"if(r.ftT>FE.downT)catchEnd(r,CA.cd,'fetch:nopin');",to:''},
+ {n:'the leg comes down at the wrong angle',part:'catch',from:'r.pinA=(fa==null?RV.lift.angle:fa)*dir;r.target=mn.o;',to:'r.pinA=RV.lift.angle*dir;r.target=mn.o;'},
+ {n:'the leg that never takes it stays down for ever',part:'catch',from:"if(r.ftT>FE.downT||fa==null)catchEnd(r,CA.cd,'fetch:nopin');",to:''},
  {n:'a ball that moved is still waited for',part:'catch',from:"else if(rb.v.length()>FE.bailV)why='moved';",to:''},
  {n:'a ball that rolled out of range is still waited for',part:'catch',from:"else if(rel<FE.near-1||rel>FE.far+1)why='off';",to:''},
  {n:'a fetch that never ends',part:'catch',from:"else if(r.catT>FE.abortT)why='time';",to:''},

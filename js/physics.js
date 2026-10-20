@@ -46,10 +46,10 @@ function pinUpdate(){
   }
   if(!r.pinOn||r.kickT>=0)continue;
   const la=r.angle*r.kickDir;
-  const posed=(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);
+  const pa=(r.pinPose&&r.pinA!=null)?r.pinA:(r.pinMag!=null?r.pinMag:null);   // the pose, or the stick settling onto a ball (shots.js shotStickPin)
+  const posed=pa!=null?Math.abs(r.angle-pa)<P.capA:(la>=P.band[0]&&la<=P.band[1]);
   if(!posed)continue;
-  const sa=Math.sin(r.angle),ca=Math.cos(r.angle),dx=sa*ARM,dy=-ca*ARM,fwd=r.pinFwd,reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch),front=fwd?P.fwdFront:P.front;
-  const back=fwd?P.fwdBack:P.back;
+  const fwd=la>0,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;   // a leg leaning forward reaches ahead of the rod, one tilted back behind it
   for(const b of S.balls){
    if(b.scored||b.pinR)continue;
    const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
@@ -58,21 +58,31 @@ function pinUpdate(){
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
     const mz=r.baseZ[i]+r.offset;
-    if(Math.abs(p.z-mz)>P.zCatch)continue;
-    // touching the leg (capsule pivot to foot), same measure as shots.js shotLegClips
-    const wx=p.x-r.x,wy=p.y-ROD_H,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
-    const nx=p.x-(r.x+dx*t),ny=p.y-(ROD_H+dy*t),nz=p.z-mz;
-    const d2=nx*nx+ny*ny+nz*nz;
-    if(d2>reach*reach||(fwd&&-ny<P.fwdDown*Math.sqrt(d2)))continue;   // a forward leg holds a ball only from above: the foot has to reach its top, else it pings off
-    r.pinB=b;r.pinAt=(r.pinPose&&r.pinA!=null)?r.pinA:r.angle;
-    b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=clamp(p.z-mz,-P.zHold,P.zHold);
+    if(!footUnder(r,p,mz))continue;
+    r.pinB=b;r.pinAt=pa!=null?pa:r.angle;
+    b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=p.z-mz;
     b.v.set(0,0,r.vz);b.spin=0;b.pinVx=0;b.pinVz=r.vz;b.pinPx=p.x;b.pinPz=p.z;
-    if(P.snug&&P.snug.on&&r.pinPose&&r.pinA!=null)pinSnug(r,b);
     break;
    }
    if(r.pinB)break;
   }
  }
+}
+// distance from a man's foot box (collideRod's own shape) to a point; dn[0] = how far down the box-to-point direction points (1 = the point is straight below), dn[1] = how far the point is beyond the foot's side
+function footBoxD(r,p,mz,dn){
+ const sa=Math.sin(r.angle),ca=Math.cos(r.angle),fx=r.x+sa*ARM*FOOT_T,fy=ROD_H-ca*ARM*FOOT_T,offy=FOOT_BOX_OFF.y*r.kickDir;
+ const bcx=fx+FOOT_BOX_OFF.x*sa+offy*ca,bcy=fy-FOOT_BOX_OFF.x*ca+offy*sa,dxw=p.x-bcx,dyw=p.y-bcy,lz=p.z-mz;
+ const lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa;
+ const cdx=lx-clamp(lx,-FOOT_BOX.x,FOOT_BOX.x),cdy=ly-clamp(ly,-FOOT_BOX.y,FOOT_BOX.y),cdz=lz-clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
+ const d=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz);
+ dn[0]=d>1e-4?(cdx*ca-cdy*sa)/d:0;dn[1]=Math.abs(cdz);
+ return d;
+}
+// the ball is under this man's foot: its centre within the foot's width, touching the foot box (within pin.touch) from above, the contact at least pin.down downward
+const PIN_DN=[0,0];
+function footUnder(r,p,mz){
+ const P=SHOT.pin,d=footBoxD(r,p,mz,PIN_DN);
+ return d>1e-4&&d<=BALL_R*FOOT_BOX_REACH+P.touch&&PIN_DN[0]>=P.down&&PIN_DN[1]===0;
 }
 // one substep of a pinned ball; false = let go (it's stepped normally this substep)
 // breaks on an outside velocity change (another ball) or position change (re-drop, syncBall), measured against what this wrote
@@ -87,40 +97,16 @@ function pinBallStep(b,h){
  b.pinVx=v.x;b.pinVz=v.z;b.pinPx=p.x;b.pinPz=p.z;
  return true;
 }
+// the swing played from the pin (shots.js shotPinFire, ai.js pinPlay / pinFire): the trapShot curve with shots.pin.swing over it, or for a pass the passShot curve with shots.pin.pass
+const PIN_SW={},PIN_PS={};
+function pinSwing(pass){return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);}
 // let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide
 function pinRelease(r,ext){
- const b=r.pinB;r.pinB=null;r.sgA=null;r.sgB=null;
+ const b=r.pinB;r.pinB=null;
  if(!b)return;
  b.pinR=null;
  if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}
 }
-// --- the settle: the leg turns onto the ball it caught (shots.pin.snug) ---
-// the angle at which the drawn leg touches the held ball; the ball stays where it is
-function pinSnug(r,b){
- const N=SHOT.pin.snug,p=b.m.position,dir=r.kickDir,u=(p.x-r.x)*dir,wy=p.y-ROD_H,a0=r.angle*dir,dA=0.004;
- const f=a=>u*Math.cos(a)+wy*Math.sin(a),s=a=>u*Math.sin(a)-wy*Math.cos(a);   // the ball's distance off the leg's axis (+ in front), and how far down the leg it is
- const side=f(a0)>=0?1:-1;
- const want=a=>side>0?lerp(N.front,N.toe,clamp((s(a)-N.toeFrom)/(N.toeTo-N.toeFrom),0,1)):N.rear;
- if(side*f(a0)<=want(a0)+0.02)return;
- const st=side*(wy*Math.cos(a0)-u*Math.sin(a0))>0?-dA:dA;   // the way that closes on it
- let a=a0;
- for(let k=0;k<N.max/dA&&side*f(a)>want(a);k++)a+=st;
- if(Math.abs(a-a0)<0.01)return;
- r.sgA=a*dir;r.sgB=a0;r.sgE=a;r.sgT=S.time+N.t;r.pinAt=r.sgA;
-}
-// the rod-local angle a swing starts from: where the rod is, or the pose a held ball was caught in while the leg is settled on it
-function swingA0(r){
- const a=r.angle/(r.kickDir||1);
- return(r.pinB&&r.sgB!=null&&Math.abs(a-r.sgE)<0.06)?r.sgB:a;
-}
-// one frame of it (rods.js pose branch): the pose follows sgA unless somebody else asks for another
-function pinSettle(r){
- const N=SHOT.pin.snug;
- if(!r.pinB||S.time>r.sgT||!(Math.abs(r.pinA-r.sgA)<0.002||Math.abs(r.pinA-r.angle)<N.hand)){r.sgA=null;return;}
- r.pinA=r.sgA;
- if(Math.abs(r.angle-r.sgA)<0.01)r.sgA=null;
-}
-
 // ================= contact AUDIO gating =================
 // an impact is an event, a roll is a state (js/audio.js); hitFresh is the event half: the surface must have been clear for PHY.contactHold and the hit hard enough
 // timestamps, not countdowns (S.time only advances between sim steps); k indexes b.cT: 0 floor/net roof, 1 wall, 2 ball-vs-ball

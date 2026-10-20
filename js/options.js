@@ -19,15 +19,15 @@ let optRefLast=0, optRefAcc=[], optRefShown=0;
 // ---- Display / graphics ----
 // presets bundle the four heavy knobs; touching any control flips the preset to 'custom'; applied live via applyDisplay() and applyRoom()/refreshBallReflect()
 const GFX_PRESETS={
- low:{renderScale:0.5,shadows:false,shadowQuality:'low',grass:'off',reflections:false,fpsCap:30,reducedFx:true},
- medium:{renderScale:0.75,shadows:true,shadowQuality:'low',grass:'low',reflections:false,fpsCap:60,reducedFx:true},
- high:{renderScale:1,shadows:true,shadowQuality:'high',grass:'high',reflections:true,fpsCap:0,reducedFx:false}
+ low:{renderScale:0.5,shadows:false,shadowQuality:'low',grass:'off',reflections:false,fpsCap:30,reducedFx:true,atmos:'low'},
+ medium:{renderScale:0.75,shadows:true,shadowQuality:'low',grass:'low',reflections:false,fpsCap:60,reducedFx:true,atmos:'high'},
+ high:{renderScale:1,shadows:true,shadowQuality:'high',grass:'high',reflections:true,fpsCap:0,reducedFx:false,atmos:'high'}
 };
 function applyReducedFx(){document.body.classList.toggle('lowFx',!!cfg.reducedFx);}   // cheap-CSS mode (see .lowFx in styles.css)
 function applyGfxPreset(name){
  const p=GFX_PRESETS[name];if(!p)return;
  cfg.renderScale=p.renderScale;cfg.shadows=p.shadows;cfg.shadowQuality=p.shadowQuality;cfg.grass=p.grass;
- cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;
+ cfg.reflections=p.reflections;cfg.fpsCap=p.fpsCap;cfg.reducedFx=p.reducedFx;cfg.atmos=p.atmos;
  cfg.gfxPreset=name;
  applyDisplay();applyReducedFx();if(typeof grassApply==='function')grassApply();
  // a preset moves `reflections` (a PMREM bake), so it goes through the staged gate (js/flow.js)
@@ -53,7 +53,7 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optParticles').checked=cfg.particles!==false;
  $('optMarks').checked=cfg.marks!==false;
  $('optRodHoles').checked=cfg.rodHoles!==false;
- $('optFog').checked=cfg.fog!==false;
+ $('optAtmos').value=cfg.atmos;
  $('optPinHint').checked=cfg.pinHint!==false;
  $('optFpsCap').value=String(cfg.fpsCap||0);
  $('optPhysQ').value=cfg.physQuality||'high';
@@ -207,6 +207,7 @@ function kbRender(){
  }).join('')
   +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
   +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&fl.length&&kl.length?fixed('Forward pin',bindLabel(fl[0])+' + '+bindLabel(kl[0])):'')
+  +fixed('Camera views','NUM 1-9')+fixed('Rod camera','NUM 0')
   +fixed('Pause','ESC');
 }
 function kbCapStart(act){KB.cap=act;kbMsg('Press a key, mouse button or wheel for '+bindActLabel(act)+' — ESC cancels');kbRender();}
@@ -349,8 +350,8 @@ function bindOptions(){
  $('optParticles').onchange=e=>{cfg.particles=e.target.checked;saveCfg();};  // fx.js burst* read cfg.particles live
  $('optMarks').onchange=e=>{cfg.marks=e.target.checked;if(!cfg.marks)clearMarks();saveCfg();};  // off wipes what is already up
  $('optRodHoles').onchange=e=>{cfg.rodHoles=e.target.checked;saveCfg();};   // rings settle back to their authored look on their own
- // does not flip the preset to 'custom': fog is a look, not one of the four heavy knobs
- $('optFog').onchange=e=>{cfg.fog=e.target.checked;applyFog();saveCfg();};   // world.js: one recompile per real change
+ // off <-> on recompiles every material once (fog is a shader define); low <-> high only moves uniforms
+ $('optAtmos').onchange=e=>{cfg.atmos=e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';applyFog();saveCfg();};
  $('optPinHint').onchange=e=>{cfg.pinHint=e.target.checked;saveCfg();};   // hud.js reads it live, so it takes effect mid-match
  $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
  $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset

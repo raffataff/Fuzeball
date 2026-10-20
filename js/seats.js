@@ -114,6 +114,43 @@ function setSeatCtrl(s,i,dir){
 }
 function seatStep(s,d){return setSeatCtrl(s,s.ctrl+d,d);}
 
+// ---- auto-switch zones (CONFIG.control.zones) ----
+// a map is one string a row drawn from red's end; blue reads it turned round
+const ZONE_CH={GK:'G',DEF:'D',MID:'M',ATT:'A'};
+const ZONE_RING=[[1,0],[-1,0],[0,1],[0,-1],[.71,.71],[-.71,.71],[.71,-.71],[-.71,-.71]];
+// the letter under (x,z) for team t on map m
+function zoneAt(m,t,x,z){
+ if(t===1){x=-x;z=-z;}
+ const row=m[clamp(Math.floor((z/F.W+.5)*m.length),0,m.length-1)];
+ if(!row)return '.';
+ return row[clamp(Math.floor((x/F.L+.5)*row.length),0,row.length-1)]||'.';
+}
+// the defending map while the other team has the ball (touched it last, or holds it under a foot) or it runs at our goal
+function zoneDef(s,b){
+ const own=b.pinR?b.pinR.team:S.lastTouch;
+ return own!==s.team||-b.v.x*(s.team===0?1:-1)>CTRL.zones.closing;
+}
+// is zone c within h of (x,z): the held rod's zone grown by the hysteresis
+function zoneNear(m,t,x,z,h,c){
+ if(zoneAt(m,t,x,z)===c)return true;
+ if(!(h>0))return false;
+ for(const d of ZONE_RING)if(zoneAt(m,t,x+d[0]*h,z+d[1]*h)===c)return true;
+ return false;
+}
+// the index in s.rods the zones give ball b to; -1 = they say nothing (off, a '.' cell, or a rod this seat has not got)
+function zonePick(s,b){
+ const Z=CTRL.zones;
+ if(!Z||!Z.on||!s||!b)return -1;
+ const m=zoneDef(s,b)?Z.def:Z.att;
+ if(!m||!m.length)return -1;
+ const p=b.m.position,cur=seatRod(s),cc=cur&&ZONE_CH[cur.role];
+ if(cc&&zoneNear(m,s.team,p.x,p.z,Z.hyst,cc))return s.ctrl;
+ const c=zoneAt(m,s.team,p.x,p.z);
+ if(c==='.')return -1;
+ for(let i=0;i<s.rods.length;i++)if(ZONE_CH[s.rods[i].role]===c)return i;
+ return -1;
+}
+
 // ---- seat colour ----
 // the kit colour identifies the team, not the player, so each seat past the first on a team is offset in HSL (CONFIG.seats.tint); seatTintHex(team,i) lets the lobby colour cards from plain specs
 const _seatCol=new THREE.Color();

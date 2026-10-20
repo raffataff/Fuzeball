@@ -32,7 +32,7 @@
        u.target=goal;                                               // follows the ball
        if(u.kickT<0&&!u.pinB&&r0>2.5&&r0<4.5&&b.v.length()<4&&p.y<BALL_R+0.5&&md<5&&!ev){
         ev={r:u,t:0,own:0,dir:dir};T.events++;
-        if(o.chord){press(FIN);press(KK);lift(KK);st={ph:'pose',t:0,z0:u.offset};T.chords++;}
+        if(o.chord){press(FIN);press(KK);st={ph:'pose',t:0,z0:u.offset};T.chords++;}   // kick held: the pose lasts while it is
        }
       }else{
        st.t+=FIX;
@@ -45,7 +45,7 @@
         if(u.pinB)u.target=clamp(u.target+Math.sign(Math.sin(st.t*3))*20*FIX,-u.maxOff,u.maxOff);   // carries it a little
         if(st.t>0.7||!u.pinB){T.carried+=Math.abs(u.offset-st.z0);st.ph='drop';st.t=0;}
        }
-       if(st.ph==='drop'){lift(FIN);T.releases++;watch={r:u,t:0,v:0,own:0,dir:u.kickDir};st={ph:'idle',t:0,z0:0};}
+       if(st.ph==='drop'){lift(FIN);lift(KK);T.releases++;watch={r:u,t:0,v:0,own:0,dir:u.kickDir};st={ph:'idle',t:0,z0:0};}
       }
      }else if(st.ph!=='idle'){lift(FIN);lift(KK);st={ph:'idle',t:0,z0:0};}
      const b0=S.balls[0],u0=S.seats[0]&&seatRod(S.seats[0]),pv=(b0&&u0)?-b0.v.x*u0.kickDir:0;

@@ -333,7 +333,7 @@ function navTick(t){
   if(hit||Math.abs(a[0]||0)>.55||Math.abs(a[1]||0)>.55||Math.abs(a[2]||0)>.55||Math.abs(a[3]||0)>.55){
    const f=navFamily(gp);if(f!==NAV.fam){NAV.fam=f;padLabels();}NAV.kind='pad';}
  }
- // The intro takes any button as a skip, exactly like a key or a click (js/intro.js).
+ // The intro takes any button like a key or a click: it answers "Click to start" (js/intro.js).
  if($('intro')){if(ev.length&&typeof introSkipHook==='function')introSkipHook();return;}
  if(NAV.edit&&document.activeElement!==NAV.edit)NAV.edit=null;
  const R=navRoot();
@@ -385,3 +385,10 @@ padLabels();
 addEventListener('mousemove',e=>{if(Math.abs(e.movementX)+Math.abs(e.movementY)>3){NAV.kind='kbm';navHide();}},{passive:true});
 addEventListener('mousedown',()=>{NAV.kind='kbm';navHide();},{passive:true});
 addEventListener('keydown',()=>{NAV.kind='kbm';},{passive:true});
+// --- mouse hover: the cursor's move sound for a pointer landing on something clickable ---
+const NAV_HOV={el:null};
+function navHoverEl(t){const H=CONFIG.audioMix.hover;
+ for(let el=t;el&&el!==document.body;el=el.parentElement)if(el.nodeType===1&&navable(el))return!H.fields&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA')?null:el;
+ return null;}
+addEventListener('mouseover',e=>{const H=CONFIG.audioMix.hover;if(!H||!H.on)return;const el=navHoverEl(e.target);
+ if(el===NAV_HOV.el)return;NAV_HOV.el=el;if(el&&!el.disabled&&navVis(el))Au.ui('move');},{passive:true});

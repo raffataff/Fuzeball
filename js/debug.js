@@ -148,7 +148,7 @@ function lightAudit(){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false};
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
 let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
@@ -295,7 +295,8 @@ function buildAIPanel(){
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
     {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'},
     {key:'backPin',label:'Back Pin',col:'#3ec6ff'},
-    {key:'frontPin',label:'Front Pin',col:'#ff7ad1'}
+    {key:'frontPin',label:'Front Pin',col:'#ff7ad1'},
+    {key:'rodZones',label:'Rod Zones',col:'#ffcf4d'}
   ];
  for(const it of items){
   const lbl=document.createElement('label');
@@ -324,44 +325,40 @@ function buildAIPanel(){
 // every number here is read live (physics.js pinUpdate, ai.js / shots.js fetch), so a slider is a CONFIG edit; COPY prints them for config.js
 // h = a heading above the row; l = the plain-words name; t = what it does, shown under the panel while the row is hovered or dragged (a ball is 3.8 across)
 const dbgPinDials=[
- {h:'BACK PIN  (leg tilted back, ball under the shin)',g:'shots.pin',o:()=>SHOT.pin,k:'back',l:'Reach behind rod',min:-9,max:-1,st:.1,
+ {h:'BACK PIN  (leg tilted back, ball under the boot)',g:'shots.pin',o:()=>SHOT.pin,k:'back',l:'Reach behind rod',min:-9,max:-1,st:.1,
   t:'How far BEHIND the rod a ball can be and still get grabbed. More negative = he grabs balls from further back. -5.5 is about a ball and a half.'},
  {g:'shots.pin',o:()=>SHOT.pin,k:'front',l:'Reach ahead of rod',min:0,max:4,st:.1,
   t:'How far IN FRONT of the rod a ball can be. The normal back-tilted leg sits behind the rod, so you only notice this on a leg leaning forward, like the receiving pose.'},
- {g:'shots.pin',o:()=>SHOT.pin,k:'touch',l:'Grab distance',min:0,max:1.5,st:.05,
-  t:'How far from the leg a ball can be and still get held. Keep it at 0.55 or more: a ball that runs into the foot stops about 3.4 off the shin, so a smaller number never holds it and the AI\'s side catch stops working. Small changes barely show.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'angle',l:'Pin angle',min:-1.4,max:-.5,st:.01,
+  t:'How far back the leg tilts in the pin pose. Further back (more negative) = a ball rolling under the rod stops further back, under the boot. Too upright and it stops against the shin, which is not a pin.'},
  {h:'FRONT PIN  (foot pressed down on top of the ball)',g:'shots.pin',o:()=>SHOT.pin,k:'fwdBack',l:'Nearest ball',min:-6,max:6,st:.1,
   t:'The nearest ball to the rod the front pin will hold (0 = level with the rod, + = ahead of it). Raise it to stop the foot taking balls right under the man. Nothing nearer than about 1 can be held from above anyway.'},
  {g:'shots.pin',o:()=>SHOT.pin,k:'fwdFront',l:'Furthest ball',min:2,max:8,st:.1,
   t:'The furthest ball ahead of the rod the front pin will hold. Past about 5 the man is stretched out flat, which looks silly. Lower = shorter reach.'},
- {g:'shots.pin',o:()=>SHOT.pin,k:'fwdTouch',l:'Grab distance',min:0,max:1.5,st:.05,
-  t:'How close the foot must be to the ball. 0 = the foot must really be on it. Higher = it holds a ball the foot is only hovering near.'},
- {g:'shots.pin',o:()=>SHOT.pin,k:'fwdDown',l:'Foot on top',min:.3,max:1,st:.01,
-  t:'How much the foot must press on the TOP of the ball rather than its side. 1 = dead on top, 0.75 = within about 40 degrees of it. Lower = it grabs a ball by the side, and the ball pings off.'},
- {h:'BOTH PINS',g:'shots.pin',o:()=>SHOT.pin,k:'zCatch',l:'Sideways reach',min:.5,max:4,st:.1,
-  t:'How far left or right of the man\'s body a ball can be and still get grabbed. Smaller = the ball has to be right in front of him.'},
+ {h:'BOTH PINS',g:'shots.pin',o:()=>SHOT.pin,k:'down',l:'Foot on top',min:.3,max:1,st:.01,
+  t:'How much the boot must be ON TOP of the ball rather than beside it. 1 = dead on top, 0.75 = within about 40 degrees. Lower = a ball against the shin or the side of the foot gets held.'},
+ {g:'shots.pin',o:()=>SHOT.pin,k:'touch',l:'Contact slack',min:0,max:.5,st:.01,
+  t:'How close the boot must be to count as touching. Keep it small: it only covers rounding, a resting ball already sits exactly against the boot.'},
  {h:'LOOSE BALL ROUTINE  (lift the leg, slide over, press down)',g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'near',l:'Starts at',min:0,max:6,st:.1,
   t:'A loose ball lying at least this far ahead of the rod sets the routine off (the AI, and the player\'s finesse + kick). Nearer than this the boot already touches it. The white strip on the pitch. Keep it at or above Nearest ball.'},
  {g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'far',l:'Gives up at',min:2,max:8,st:.1,
   t:'...and no further than this. Past it the man would be stretched out flat, so the ball is left alone. Keep it at or under Furthest ball, or the AI goes for balls the foot cannot hold.'}
 ];
-// combinations that look fine on the plates and break play (catchSoak 12 x 120 s pro: touch 0.1 took pins 19.5 -> 9.2 a match and taps landed 1.4 -> 0.1)
+// combinations that look fine on the plates and break play
 function dbgPinWarn(){
  const P=SHOT.pin,FE=AIC.catch.fetch,w=[];
- if(BALL_R+PRAD+P.touch<Math.max(AIC.catch.side.legD,3.45))w.push('Grab distance (back pin) is too small: a ball stopped by the foot sits about 3.4 off the shin and is not held, and the AI side catch fails.');
  if(FE.near<P.fwdBack-.05)w.push('Starts at is nearer than Nearest ball: the AI goes for balls the foot cannot hold.');
  if(FE.far>P.fwdFront+.05)w.push('Gives up at is past Furthest ball: the AI goes for balls the foot cannot hold.');
  return w;
 }
 // physics.js's own `posed` test: is this rod's leg at the angle a pin can catch from
-function dbgPosed(r){const P=SHOT.pin,la=r.angle*r.kickDir;return(r.pinPose&&r.pinA!=null)?Math.abs(r.angle-r.pinA)<P.capA:(la>=P.band[0]&&la<=P.band[1]);}
-// where on the floor, on the man's z, a leg at dir-relative angle la holds a ball: pinUpdate's window, touch and (forward) from-above tests; false = nowhere
+function dbgPosed(r){const P=SHOT.pin,la=r.angle*r.kickDir,pa=(r.pinPose&&r.pinA!=null)?r.pinA:(r.pinMag!=null?r.pinMag:null);return pa!=null?Math.abs(r.angle-pa)<P.capA:(la>=P.band[0]&&la<=P.band[1]);}
+// where on the floor, on the man's z, a leg at dir-relative angle la holds a ball: pinUpdate's window and its own under-the-foot test; false = nowhere
 function dbgPinSpan(la,fwd,out){
- const P=SHOT.pin,reach=BALL_R+PRAD+(fwd?P.fwdTouch:P.touch),dx=Math.sin(la)*ARM,dy=-Math.cos(la)*ARM,wy=BALL_R-ROD_H,lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front;
+ const P=SHOT.pin,lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front,r={x:0,kickDir:1,angle:la},p={x:0,y:BALL_R,z:0};
  let a=null,b=0;
  for(let x=lo;x<=hi+1e-6;x+=.05){
-  const t=clamp((x*dx+wy*dy)/(ARM*ARM),0,1),nx=x-dx*t,ny=wy-dy*t,d2=nx*nx+ny*ny;
-  if(d2>reach*reach||(fwd&&-ny<P.fwdDown*Math.sqrt(d2)))continue;
+  p.x=x;if(!footUnder(r,p,0))continue;
   if(a===null)a=x;
   b=x;
  }
@@ -370,7 +367,7 @@ function dbgPinSpan(la,fwd,out){
 }
 // the resting pose of each pin (back at pin.angle, forward at pin.fwd.angle), redone only when a number it reads has moved
 function dbgPinNominal(){
- const P=SHOT.pin,key=[P.back,P.front,P.fwdBack,P.fwdFront,P.touch,P.fwdTouch,P.fwdDown,P.angle,P.fwd.angle].join();
+ const P=SHOT.pin,key=[P.back,P.front,P.fwdBack,P.fwdFront,P.touch,P.down,P.angle,P.fwd.angle].join();
  if(key===dbgPinKey)return;
  dbgPinKey=key;
  const o=[0,0];
@@ -434,6 +431,268 @@ function updatePinRows(){
   rows.push([[dbgRodName(r),fwd?'FWD':'BACK'],['REL',rel.toFixed(2),rel-lo<.5||hi-rel<.5],['DZ',nz.toFixed(2)],['GAP',(Math.sqrt(nx*nx+ny*ny+nz*nz)-BALL_R-PRAD).toFixed(2)]]);
  }
  hudDev('pin',rows.length?rows:[[['PIN','none held']]]);
+}
+
+// ===== rod zones (Rod Zones layer) =====
+// the auto-switch maps (CONFIG.control.zones, seats.js zonePick) painted on a plan of the table from the first seat's end; a stroke is live, COPY prints the block for config.js
+const DBG_ZCOL={G:'#ffcf4d',D:'#3ec6ff',M:'#7dff8a',A:'#ff5c8a'},DBG_ZNAME={G:'GK',D:'DEF',M:'MID',A:'ATT','.':'NEAREST'};
+const DBG_ZW=576,DBG_ZH=326;
+const DBG_ZTIP='Paint which rod you get when the ball is there. Left-drag paints, right-click picks up a cell\'s rod. Gold numbers differ from config.js.';
+let dbgZone=null,dbgZoneShown=false;
+// the plan is drawn for the first seat's team, its own goal on the left (blue reads the map turned round, so the cells never move)
+function dbgZoneTeam(){const s=S.seats[0];return s?s.team:0;}
+function dbgZonePt(x,z,o){if(dbgZoneTeam()===1){x=-x;z=-z;}o[0]=(x/F.L+.5)*DBG_ZW;o[1]=(z/F.W+.5)*DBG_ZH;return o;}
+function dbgZoneMap(){return CTRL.zones[dbgZone.lay];}
+function dbgZoneSet(m,i,j,c){const row=m[j];if(row&&i>=0&&i<row.length&&row[i]!==c)m[j]=row.slice(0,i)+c+row.slice(i+1);}
+// one dab of the brush on cell (i,j), and on its mirror across the width
+function dbgZoneDab(i,j){
+ const Z=dbgZone,m=dbgZoneMap(),n=Z.size,h=(n-1)>>1;
+ for(let a=-h;a<n-h;a++)for(let b=-h;b<n-h;b++){
+  const jj=j+b;if(jj<0||jj>=m.length)continue;
+  dbgZoneSet(m,i+a,jj,Z.brush);
+  if(Z.mirror)dbgZoneSet(m,i+a,m.length-1-jj,Z.brush);
+ }
+ Z.dirty=true;
+}
+function dbgZoneCell(e,o){const r=dbgZone.cv.getBoundingClientRect(),m=dbgZoneMap();o[0]=Math.floor((e.clientX-r.left)/r.width*m[0].length);o[1]=Math.floor((e.clientY-r.top)/r.height*m.length);return o;}
+// undo keeps both maps, so a reset or a copy onto the other map comes back in one step
+function dbgZonePush(){const Z=dbgZone,C=CTRL.zones;Z.undo.push({def:C.def.slice(),att:C.att.slice()});if(Z.undo.length>80)Z.undo.shift();}
+function dbgZonePut(m,rows){for(let j=0;j<rows.length;j++)m[j]=rows[j];m.length=rows.length;}
+function dbgZoneUndo(){const u=dbgZone.undo.pop();if(!u)return;dbgZonePut(CTRL.zones.def,u.def);dbgZonePut(CTRL.zones.att,u.att);dbgZone.dirty=true;}
+// the old rule as a map: each cell to red's nearest rod along the table
+function dbgZoneNearest(m){
+ const rr=rods.filter(r=>r.team===0);
+ for(let j=0;j<m.length;j++){
+  const nx=m[j].length;let s='';
+  for(let i=0;i<nx;i++){const x=((i+.5)/nx-.5)*F.L;let c='.',bd=1e9;for(const r of rr){const d=Math.abs(x-r.x);if(d<bd){bd=d;c=ZONE_CH[r.role]||'.';}}s+=c;}
+  m[j]=s;
+ }
+}
+// the zones block exactly as config.js lays it out
+function dbgZoneText(){
+ const Z=CTRL.zones,ln=(c,t)=>('   '+c).padEnd(19)+'// '+t,rows=m=>m.map((r,j)=>"    '"+r+"'"+(j<m.length-1?',':''));
+ return['  zones:{',
+  ln('on:'+Z.on+',','false = the nearest rod in x, as before'),
+  ln('hyst:'+(Number.isInteger(Z.hyst)?Z.hyst.toFixed(1):+Z.hyst.toFixed(2))+',','the rod you hold keeps the ball until it is this far into another rod\'s zone (units)'),
+  ln('closing:'+Math.round(Z.closing)+',','a ball running at our goal faster than this (u/s) reads the defending map, whoever touched it'),
+  '   // one string a row, drawn from red\'s end: column 0 is red\'s goal line (x -60), row 0 is z -34; blue reads it turned round',
+  '   // G keeper, D defence, M midfield, A attack, . nearest rod',
+  ln('def:[','the other team has the ball (touched it last or holds it), or it is running at our goal'),...rows(Z.def),'   ],',
+  ln('att:[','our team has it'),...rows(Z.att),'   ]',
+  '  }'].join('\n');
+}
+function buildZonePanel(){
+ if(dbgZone)return;
+ const C=CTRL.zones,p=document.createElement('div');p.id='dbgZonePanel';
+ const Z=dbgZone={p,lay:'def',brush:'D',size:3,mirror:true,pins:true,undo:[],paint:false,over:false,dirty:true,li:0,lj:0,hi:-1,hj:-1,mesh:null,tex:null,tcv:null,
+  orig:{def:C.def.slice(),att:C.att.slice(),on:C.on,hyst:C.hyst,closing:C.closing},font:getComputedStyle(document.documentElement).getPropertyValue('--font-ui')||'sans-serif'};
+ p.innerHTML='<h4>ROD ZONES</h4>';
+ const help=document.createElement('div');help.className='help';
+ const tip=t=>{help.textContent=t||DBG_ZTIP;};
+ const row=()=>{const d=document.createElement('div');d.className='zr';p.appendChild(d);return d;};
+ const btn=(par,t,f,h,sw)=>{
+  const b=document.createElement('button');b.type='button';
+  if(sw){const s=document.createElement('span');s.className='sw';s.style.background=sw;b.appendChild(s);}
+  b.appendChild(document.createTextNode(t));
+  b.addEventListener('click',()=>{f();Z.sync();});
+  b.addEventListener('mouseenter',()=>tip(h));
+  par.appendChild(b);return b;
+ };
+ const r1=row(),tabs={};
+ tabs.def=btn(r1,'DEFENDING',()=>{Z.lay='def';Z.dirty=true;},'The map used while the other team has the ball (they touched it last or hold it under a foot), or it is running at your goal faster than Shot speed.');
+ tabs.att=btn(r1,'ATTACKING',()=>{Z.lay='att';Z.dirty=true;},'The map used while your team has the ball.');
+ const r2=row(),br={},sz={};
+ for(const c of ['G','D','M','A','.'])br[c]=btn(r2,DBG_ZNAME[c],()=>{Z.brush=c;},c==='.'?'No zone: the ball goes to the nearest rod along the table, the old rule.':'Paint where you get the '+DBG_ZNAME[c]+'. Right-click a cell to pick up its rod.',DBG_ZCOL[c]||'#3a3a3a');
+ for(const n of [1,3,5])sz[n]=btn(r2,n+'',()=>{Z.size=n;},'Brush size in cells (a cell is 2.5 along the table by 2.4 across; a ball is 3.8).');
+ const mir=btn(r2,'MIRROR',()=>{Z.mirror=!Z.mirror;},'Paint the top and bottom halves of the table at once, so a map stays the same on either side.');
+ const pin=btn(r2,'PINS',()=>{Z.pins=!Z.pins;},'Show where each rod holds a pinned ball: filled = the back pin, outlined = the forward pin. Your rods solid, the other team dashed.');
+ const cv=document.createElement('canvas');cv.width=DBG_ZW;cv.height=DBG_ZH;Z.cv=cv;Z.cx=cv.getContext('2d');p.appendChild(cv);
+ const read=document.createElement('div');read.className='read';Z.read=read;p.appendChild(read);
+ const c2=[0,0];
+ cv.addEventListener('contextmenu',e=>e.preventDefault());
+ cv.addEventListener('mouseenter',()=>tip());
+ cv.addEventListener('pointerdown',e=>{
+  dbgZoneCell(e,c2);
+  if(e.button===2){const r=dbgZoneMap()[c2[1]],c=r&&r[c2[0]];if(c){Z.brush=c;Z.sync();}return;}
+  if(e.button!==0)return;
+  e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
+  dbgZonePush();Z.paint=true;Z.li=c2[0];Z.lj=c2[1];dbgZoneDab(c2[0],c2[1]);
+ });
+ cv.addEventListener('pointermove',e=>{
+  dbgZoneCell(e,c2);Z.hi=c2[0];Z.hj=c2[1];
+  if(!Z.paint)return;
+  const di=c2[0]-Z.li,dj=c2[1]-Z.lj,n=Math.max(Math.abs(di),Math.abs(dj));
+  for(let k=1;k<=n;k++)dbgZoneDab(Math.round(Z.li+di*k/n),Math.round(Z.lj+dj*k/n));
+  Z.li=c2[0];Z.lj=c2[1];
+ });
+ // a stroke that changed nothing leaves no undo step
+ const end=()=>{
+  if(!Z.paint)return;
+  Z.paint=false;
+  const u=Z.undo[Z.undo.length-1],C2=CTRL.zones;
+  if(u&&u.def.every((r,j)=>r===C2.def[j])&&u.att.every((r,j)=>r===C2.att[j]))Z.undo.pop();
+ };
+ cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+ cv.addEventListener('pointerleave',()=>{Z.hi=Z.hj=-1;});
+ // dials, written straight to CONFIG like the pin panel's
+ const dials=[
+  {k:'hyst',l:'Hold margin',min:0,max:6,st:.25,t:'The rod you hold keeps the ball until it is this far into another rod\'s zone, so a ball sitting on a line does not flick you between two rods. 0 = switch the moment it crosses. The dashed ring round the ball.'},
+  {k:'closing',l:'Shot speed',min:0,max:150,st:5,t:'A ball running at your goal faster than this uses the Defending map, whoever touched it last (your own deflection, a back pass gone wrong).'}];
+ const rows=[];
+ {const lb=document.createElement('label'),nm=document.createElement('span'),cb=document.createElement('input');
+  nm.textContent='Zones on';cb.type='checkbox';
+  cb.addEventListener('change',()=>{CTRL.zones.on=cb.checked;Z.sync();});
+  lb.addEventListener('mouseenter',()=>tip('Off = the old rule: the nearest rod along the table. The maps are kept.'));
+  lb.appendChild(nm);lb.appendChild(cb);p.appendChild(lb);Z.onCb=cb;}
+ for(const d of dials){
+  const lb=document.createElement('label'),nm=document.createElement('span'),vl=document.createElement('span'),rg=document.createElement('input');
+  nm.textContent=d.l;vl.className='val';rg.type='range';rg.min=d.min;rg.max=d.max;rg.step=d.st;
+  rg.addEventListener('input',()=>{CTRL.zones[d.k]=+rg.value;Z.sync();tip(d.t);});
+  lb.addEventListener('mouseenter',()=>tip(d.t));
+  lb.appendChild(nm);lb.appendChild(rg);lb.appendChild(vl);p.appendChild(lb);
+  rows.push({d,rg,vl});
+ }
+ tip();p.appendChild(help);
+ const bar=document.createElement('div');bar.className='bar';
+ btn(bar,'UNDO',dbgZoneUndo,'Take back the last stroke or fill (Ctrl+Z with the cursor over this panel).');
+ btn(bar,'FILL NEAREST',()=>{dbgZonePush();dbgZoneNearest(dbgZoneMap());Z.dirty=true;},'Repaint this map with the old rule: the nearest rod along the table.');
+ btn(bar,'COPY TO OTHER',()=>{const o=Z.lay==='def'?'att':'def';dbgZonePush();dbgZonePut(CTRL.zones[o],dbgZoneMap().slice());toast('ROD ZONES','copied onto the '+(o==='def'?'defending':'attacking')+' map',1.2);},'Copy this map onto the other one.');
+ btn(bar,'RESET',()=>{const O=Z.orig,C2=CTRL.zones;dbgZonePush();dbgZonePut(C2.def,O.def);dbgZonePut(C2.att,O.att);C2.on=O.on;C2.hyst=O.hyst;C2.closing=O.closing;Z.dirty=true;},'Back to the maps and numbers config.js had when this panel opened.');
+ btn(bar,'COPY',()=>{
+  const txt=dbgZoneText();
+  console.log('%c[ROD ZONES]','color:#ffcf4d;font-weight:bold','\n'+txt);
+  const c=navigator.clipboard;if(c&&c.writeText)c.writeText(txt).catch(()=>{});
+  toast('ROD ZONES','copied: paste it over zones:{ ... } in CONFIG.control',1.6);
+ },'Copy the zones block for config.js (clipboard and console). Paste it over zones:{ ... } in CONFIG.control.');
+ p.appendChild(bar);
+ Z.sync=()=>{
+  const C2=CTRL.zones,O=Z.orig;
+  for(const k in tabs)tabs[k].classList.toggle('on',Z.lay===k);
+  for(const k in br)br[k].classList.toggle('on',Z.brush===k);
+  for(const k in sz)sz[k].classList.toggle('on',Z.size===+k);
+  mir.classList.toggle('on',Z.mirror);pin.classList.toggle('on',Z.pins);
+  Z.onCb.checked=!!C2.on;
+  for(const r of rows){const v=C2[r.d.k];r.rg.value=v;r.vl.textContent=r.d.st<1?v.toFixed(2):Math.round(v)+'';r.vl.classList.toggle('chg',v!==O[r.d.k]);}
+ };
+ // drag by the title
+ const h4=p.firstChild;let dg=null;
+ h4.addEventListener('pointerdown',e=>{const r=p.getBoundingClientRect();dg={x:e.clientX-r.left,y:e.clientY-r.top};try{h4.setPointerCapture(e.pointerId);}catch(_){}});
+ h4.addEventListener('pointermove',e=>{if(!dg)return;p.style.left=Math.max(0,e.clientX-dg.x)+'px';p.style.top=Math.max(0,e.clientY-dg.y)+'px';p.style.bottom='auto';});
+ h4.addEventListener('pointerup',()=>{dg=null;});
+ p.addEventListener('pointerenter',()=>{Z.over=true;});p.addEventListener('pointerleave',()=>{Z.over=false;});
+ addEventListener('keydown',e=>{if(dbgZoneShown&&Z.over&&(e.ctrlKey||e.metaKey)&&e.code==='KeyZ'){e.preventDefault();e.stopPropagation();dbgZoneUndo();}},true);
+ document.body.appendChild(p);
+ Z.sync();
+}
+// the map on the pitch: one transparent plane, a texel a cell
+function dbgZoneMesh(){
+ const Z=dbgZone,m=dbgZoneMap(),tc=document.createElement('canvas');
+ tc.width=m[0].length;tc.height=m.length;
+ const tex=new THREE.CanvasTexture(tc);
+ tex.magFilter=tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.encoding=THREE.sRGBEncoding;
+ const g=new THREE.PlaneGeometry(F.L,F.W);dbgGeo.push(g);
+ const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.35,depthWrite:false,toneMapped:false}));
+ mesh.rotation.x=-Math.PI/2;mesh.position.y=0.07;mesh.renderOrder=2;mesh.visible=dbgZoneShown;
+ dbgAIGroup.add(mesh);
+ Z.mesh=mesh;Z.tex=tex;Z.tcv=tc;Z.dirty=true;
+}
+function dbgZoneShow(v){
+ if(v&&!dbgZone)buildZonePanel();
+ if(v&&!dbgZone.mesh&&dbgAIGroup)dbgZoneMesh();
+ if(v===dbgZoneShown)return;
+ dbgZoneShown=v;
+ if(!dbgZone)return;
+ dbgZone.p.style.display=v?'block':'none';
+ if(dbgZone.mesh)dbgZone.mesh.visible=v;
+ if(v){dbgZone.sync();dbgZone.dirty=true;}
+}
+// what the switch is doing for each seat, and the cell under the cursor
+function dbgZoneRead(){
+ const Z=dbgZone,C=CTRL.zones,parts=[];
+ S.seats.forEach((s,i)=>{
+  const fb=focusBall(s.team),r=seatRod(s);if(!fb||!r)return;
+  const def=zoneDef(s,fb),m=def?C.def:C.att,p=fb.m.position,c=zoneAt(m,s.team,p.x,p.z),zi=zonePick(s,fb);
+  parts.push('P'+(i+1)+(s.team?' BLUE':' RED')+' · '+(def?'DEFENDING':'ATTACKING')+' · ball in '+DBG_ZNAME[c]+' · holding '+r.role+(zi===s.ctrl&&ZONE_CH[r.role]!==c?' (margin)':''));
+ });
+ if(!S.seats.length)parts.push('no human seat: the plan is drawn for red');
+ if(!cfg.auto)parts.push('auto rod-switch is off (Options)');
+ if(!C.on)parts.push('zones off: nearest rod');
+ if(Z.hi>=0&&Z.hj>=0){
+  const m=dbgZoneMap(),nx=m[0].length,nz=m.length;
+  if(Z.hi<nx&&Z.hj<nz){let x=((Z.hi+.5)/nx-.5)*F.L,z=((Z.hj+.5)/nz-.5)*F.W;if(dbgZoneTeam()===1){x=-x;z=-z;}parts.push('cursor x '+x.toFixed(1)+' z '+z.toFixed(1)+': '+DBG_ZNAME[m[Z.hj][Z.hi]]);}
+ }
+ Z.read.textContent=parts.join('   ');
+}
+function dbgZoneDraw(){
+ const Z=dbgZone;if(!Z)return;
+ const cx=Z.cx,m=dbgZoneMap(),nz=m.length,nx=m[0].length,cw=DBG_ZW/nx,ch=DBG_ZH/nz,t=dbgZoneTeam(),o=[0,0],o2=[0,0],s0=S.seats[0];
+ cx.fillStyle='#0a1712';cx.fillRect(0,0,DBG_ZW,DBG_ZH);
+ cx.globalAlpha=.5;
+ for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const c=DBG_ZCOL[m[j][i]];if(!c)continue;cx.fillStyle=c;cx.fillRect(Math.floor(i*cw),Math.floor(j*ch),Math.ceil(cw),Math.ceil(ch));}
+ cx.globalAlpha=1;
+ cx.strokeStyle='rgba(255,255,255,.06)';cx.lineWidth=1;cx.beginPath();
+ for(let i=1;i<nx;i++){cx.moveTo(i*cw,0);cx.lineTo(i*cw,DBG_ZH);}
+ for(let j=1;j<nz;j++){cx.moveTo(0,j*ch);cx.lineTo(DBG_ZW,j*ch);}
+ cx.stroke();
+ // zone edges
+ cx.strokeStyle='rgba(255,255,255,.8)';cx.lineWidth=1.5;cx.beginPath();
+ for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){
+  const c=m[j][i];
+  if(i+1<nx&&m[j][i+1]!==c){cx.moveTo((i+1)*cw,j*ch);cx.lineTo((i+1)*cw,(j+1)*ch);}
+  if(j+1<nz&&m[j+1][i]!==c){cx.moveTo(i*cw,(j+1)*ch);cx.lineTo((i+1)*cw,(j+1)*ch);}
+ }
+ cx.stroke();
+ const gh=F.goalHalf/F.W*DBG_ZH;cx.fillStyle='#fff';cx.fillRect(0,DBG_ZH/2-gh,3,gh*2);cx.fillRect(DBG_ZW-3,DBG_ZH/2-gh,3,gh*2);
+ // rods, men and where their pins hold a ball
+ if(Z.pins)dbgPinNominal();
+ const fh=FOOT_BOX.z/F.W*DBG_ZH;
+ cx.font='11px '+Z.font;
+ for(const r of rods){
+  const own=r.team===t,col=r.team===0?'#ff5a5a':'#5a96ff';
+  dbgZonePt(r.x,0,o);
+  cx.globalAlpha=own?.9:.55;cx.strokeStyle=col;cx.lineWidth=own?2:1.5;cx.setLineDash(own?[]:[5,4]);
+  cx.beginPath();cx.moveTo(o[0],0);cx.lineTo(o[0],DBG_ZH);cx.stroke();cx.setLineDash([]);
+  for(let k=0;k<r.men.length;k++){
+   if(!manLive(r,k))continue;
+   const mz=r.baseZ[k]+r.offset;
+   if(Z.pins)for(let f=0;f<2;f++){
+    const sp=dbgPinNom[f];if(!sp)continue;
+    dbgZonePt(r.x+sp[0]*r.kickDir,mz-FOOT_BOX.z,o);dbgZonePt(r.x+sp[1]*r.kickDir,mz+FOOT_BOX.z,o2);
+    const x0=Math.min(o[0],o2[0]),y0=Math.min(o[1],o2[1]),w=Math.abs(o2[0]-o[0]),h=Math.abs(o2[1]-o[1]);
+    cx.globalAlpha=own?.45:.3;
+    if(f===0){cx.fillStyle=col;cx.fillRect(x0,y0,w,h);}else{cx.strokeStyle=col;cx.lineWidth=1;cx.strokeRect(x0+.5,y0+.5,w-1,h-1);}
+   }
+   cx.globalAlpha=own?1:.7;dbgZonePt(r.x,mz,o);cx.fillStyle=col;cx.fillRect(o[0]-2,o[1]-fh,4,fh*2);
+  }
+  cx.globalAlpha=1;
+  if(own){dbgZonePt(r.x,0,o);cx.fillStyle='#fff';cx.fillText(r.role,o[0]+4,12);}
+ }
+ // the brush under the cursor
+ if(Z.hi>=0){
+  const n=Z.size,h=(n-1)>>1;cx.strokeStyle='#fff';cx.lineWidth=1;
+  cx.strokeRect((Z.hi-h)*cw+.5,(Z.hj-h)*ch+.5,n*cw-1,n*ch-1);
+  if(Z.mirror){cx.setLineDash([3,3]);cx.strokeRect((Z.hi-h)*cw+.5,(nz-Z.hj-1-(n-1-h))*ch+.5,n*cw-1,n*ch-1);cx.setLineDash([]);}
+ }
+ // balls, ringed in the colour of the rod the first seat gets; the threat's hold margin dashed
+ const R=BALL_R/F.L*DBG_ZW,fb=s0?focusBall(s0.team):null;
+ for(const b of S.balls){
+  if(b.scored)continue;
+  const p=b.m.position,zi=s0?zonePick(s0,b):-1;
+  dbgZonePt(p.x,p.z,o);
+  cx.fillStyle='#fff';cx.beginPath();cx.arc(o[0],o[1],R,0,7);cx.fill();
+  cx.strokeStyle=zi>=0?DBG_ZCOL[ZONE_CH[s0.rods[zi].role]]:'#888';cx.lineWidth=3;cx.stroke();
+  if(b===fb&&CTRL.zones.hyst>0){cx.strokeStyle='rgba(255,255,255,.7)';cx.lineWidth=1;cx.setLineDash([4,3]);cx.beginPath();cx.arc(o[0],o[1],CTRL.zones.hyst/F.L*DBG_ZW,0,7);cx.stroke();cx.setLineDash([]);}
+ }
+ dbgZoneRead();
+ // the pitch copy, redrawn only when a cell changed
+ if(Z.mesh){
+  Z.mesh.rotation.z=t===1?Math.PI:0;
+  if(Z.dirty){
+   const tx=Z.tcv.getContext('2d');tx.clearRect(0,0,nx,nz);
+   for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const c=DBG_ZCOL[m[j][i]];if(c){tx.fillStyle=c;tx.fillRect(i,j,1,1);}}
+   Z.tex.needsUpdate=true;Z.dirty=false;
+  }
+ }
 }
 
 function buildDebug(){
@@ -731,7 +990,7 @@ function buildDebug(){
 
   dbgAIGroup.visible=false;
 
-  // backPin / frontPin: per man, pinUpdate's window (rel back..front or fwdFront, z +-zCatch) with the leg's real footprint inside it; frontPin adds the fetch band (white strip)
+  // backPin / frontPin: per man, pinUpdate's window (rel back..front or fwdFront, z the foot's width) with the leg's real footprint inside it; frontPin adds the fetch band (white strip)
   // sizes are written each frame (the sliders move them); hot window = this man holds a ball, bright footprint = the rod is posed for that pin now
   const pnKinds=[{fwd:false,col:0x3ec6ff},{fwd:true,col:0xff7ad1}],pnFetch=dbgMat(0xffffff,.5);
   for(const k of pnKinds){k.win=dbgMat(k.col,.12);k.hot=dbgMat(k.col,.45);k.fp=dbgMat(k.col,.2);k.arm=dbgMat(k.col,.42);}
@@ -789,6 +1048,7 @@ function disposeDebug(){
  dbgShotOpen=dbgShotBlock=dbgMarkOpen=dbgMarkBlock=null;
  if(dbgAIPanel){dbgAIPanel.style.display='none';}
  dbgPinPanelShow(false);hudDev('pin',null);
+ dbgZoneShow(false);if(dbgZone){if(dbgZone.tex)dbgZone.tex.dispose();dbgZone.mesh=dbgZone.tex=dbgZone.tcv=null;}
  dbgOn=false;
 }
 
@@ -971,6 +1231,7 @@ function updateAIVis(){
   // backPin / frontPin: the window (hot while that man holds a ball) and the footprint inside it (the live leg while posed for that pin, else its resting pose)
   {const P=SHOT.pin,FE=AIC.catch.fetch,sp=[0,0],want=dbgAIOpts.backPin||dbgAIOpts.frontPin;
    dbgPinPanelShow(on&&want);
+   dbgZoneShow(on&&dbgAIOpts.rodZones);
    if(on&&want)dbgPinNominal();
    for(const e of dbgPins){
     const r=e.rod,k=e.k,fwd=k.fwd,vis=on&&(fwd?dbgAIOpts.frontPin:dbgAIOpts.backPin)&&manLive(r,e.manIdx);
@@ -978,12 +1239,12 @@ function updateAIVis(){
     if(!vis)continue;
     const dir=r.kickDir,mz=r.baseZ[e.manIdx]+r.offset,lo=fwd?P.fwdBack:P.back,hi=fwd?P.fwdFront:P.front;
     const hold=!!r.pinB&&r.pinB.pinMan===e.manIdx&&!!r.pinFwd===fwd;
-    e.win.scale.set(hi-lo,0.05,P.zCatch*2);
+    e.win.scale.set(hi-lo,0.05,FOOT_BOX.z*2);
     e.win.position.set(r.x+(lo+hi)/2*dir,0.055,mz);
     e.win.material=hold?k.hot:k.win;
     const live=!!r.pinOn&&dbgPosed(r)&&!!r.pinFwd===fwd,s=live?(dbgPinSpan(r.angle*dir,fwd,sp)?sp:null):dbgPinNom[fwd?1:0];
     e.fp.visible=!!s;
-    if(s){e.fp.scale.set(s[1]-s[0],0.04,P.zCatch*2);e.fp.position.set(r.x+(s[0]+s[1])/2*dir,0.085,mz);e.fp.material=live?k.arm:k.fp;}
+    if(s){e.fp.scale.set(s[1]-s[0],0.04,FOOT_BOX.z*2);e.fp.position.set(r.x+(s[0]+s[1])/2*dir,0.085,mz);e.fp.material=live?k.arm:k.fp;}
     if(e.ft){e.ft.scale.set(Math.max(.05,FE.far-FE.near),0.04,0.8);e.ft.position.set(r.x+(FE.near+FE.far)/2*dir,0.115,mz);}
    }}
 
@@ -1046,6 +1307,7 @@ function debugUpdate(){
  updateFps(true);                    // debug: append the once-a-second leak-watch line
  updateDeadBall();
  if(dbgAIOpts.backPin||dbgAIOpts.frontPin)updatePinRows();else hudDev('pin',null);
+ if(dbgZoneShown)dbgZoneDraw();
  updateFootBoxes();
  for(let i=0;i<dbgBalls.length;i++){
   const b=S.balls[i];

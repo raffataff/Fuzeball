@@ -1,6 +1,6 @@
 // back-guard harness. node tools/backguard-harness.js
 // slices the real backHit / backLimit / slideBlocked (ai.js) and the footBoxDist under them and runs them on live CONFIG
-// question: does an AI rod refuse to swing a boot back through a ball behind it and refuse to walk a man into one, while leaving legitimate moves alone (z-clear lifts, balls ahead, sliding away, kick swings, a human's rod); each mutation must break an assertion
+// question: does an AI rod refuse to swing a boot back through a ball behind it and refuse to walk a man into one, while leaving legitimate moves alone (z-clear lifts, balls ahead, sliding away, kick swings, a human's rod); each mutation must break an assertion; and does the keeper keep its leg down for a ball in front of it that is going in
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -22,7 +22,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.foot,g.guard,
-  ';globalThis.X={S:S,AIC:AIC,KICK:KICK,BALL_R:BALL_R,backLimit:backLimit,slideBlocked:slideBlocked,setSeat:function(v){SEAT=v;}};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,KICK:KICK,BALL_R:BALL_R,backLimit:backLimit,srGoingIn:srGoingIn,slideBlocked:slideBlocked,setSeat:function(v){SEAT=v;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -69,6 +69,17 @@ function suite(X){
  {const r=mk(X);ball(X,-6,4);ok('…a rod that is down and not lifting is left to the ordinary logic',X.slideBlocked(r,0,1.6)===false);}
  {const r=mk(X,{angle:-1.45,raise:true});ball(X,-6,4);ok('…and once the boot is over the ball the slide-in is free',X.slideBlocked(r,0,1.6)===false);}
  {const r=mk(X,{angle:-0.3,offset:1.6});ball(X,-6,4);ok('…a rod already IN the lane is not pinned there: moving within it is allowed',X.slideBlocked(r,1.6,1.3)===false);}
+ // ---- the keeper keeps its leg down for a ball going in (safeRaise.gkIn) ------------------------------------
+ {const G=X.AIC.safeRaise.gkIn,gk=mk(X,{role:'GK'}),dist=-52.5+4+60,b=()=>X.S.balls[0];
+  ball(X,4,0,{x:-40});ok('GOING IN: a ball in front of the keeper coming at the goal inside the mouth: no safe-raise',X.srGoingIn(gk,b())===true);
+  ball(X,4,0,{x:-(G.v-1)});ok('…but a ball slower than gkIn.v is the old rule',X.srGoingIn(gk,b())===false);
+  ball(X,4,0,{x:-40,z:16*40/dist});ok('…and so is one going past the post',X.srGoingIn(gk,b())===false);
+  ball(X,4,0,{x:-40,z:5*40/dist});ok('…while one going in off centre still counts',X.srGoingIn(gk,b())===true);
+  ball(X,-2,0,{x:-40});ok('…and a ball already behind the keeper is the old rule',X.srGoingIn(gk,b())===false);
+  ball(X,4,0,{x:-40});ok('…only the keeper: an outfield rod is the old rule',X.srGoingIn(mk(X,{role:'DEF'}),b())===false);
+  G.on=false;const off=X.srGoingIn(gk,b());G.on=true;ok('…and gkIn.on false is the old rule',off===false);
+  const bk=mk(X,{role:'GK',team:1,kickDir:-1,x:52.5});X.S.balls=[{scored:false,m:{position:{x:48.5,y:X.BALL_R,z:0}},v:{x:40,y:0,z:5*40/dist}}];
+  ok('…and the blue keeper reads its own goal',X.srGoingIn(bk,b())===true);}
  return R;
 }
 
@@ -97,7 +108,13 @@ const MUT=[
  {n:'the keeper is exempt from the slide guard when forced',part:'guard',from:"||(r.force&&r.role!=='GK')||seatOf(r))return false;",to:"||r.force||seatOf(r))return false;"},
  {n:'the lane check is gone',part:'guard',from:'if(G.lane&&(',to:'if(false&&('},
  {n:'the lane check fires on a rod that is down and not lifting',part:'guard',from:"(r.raise||r.act==='safeRaise'||r.angle*dir<-0.05)",to:'true'},
- {n:'the lane check forgets the boot is already over the ball',part:'guard',from:'backHit(r,aT,o1)!==null&&backHit(r,aT,o0)===null',to:'backHit(r,aT,o1)!==null'}
+ {n:'the lane check forgets the boot is already over the ball',part:'guard',from:'backHit(r,aT,o1)!==null&&backHit(r,aT,o0)===null',to:'backHit(r,aT,o1)!==null'},
+ {n:'an outfield rod keeps its leg down too',part:'guard',from:"||r.role!=='GK'||",to:'||'},
+ {n:'a ball behind the keeper keeps the leg down too',part:'guard',from:'||(p.x-r.x)*dir<=G.rel||',to:'||'},
+ {n:'a slow ball keeps the leg down',part:'guard',from:'||v<=G.v)return false;',to:'||v<=0)return false;'},
+ {n:'a ball going wide keeps the leg down',part:'guard',from:'<F.goalHalf+BALL_R;',to:'<1e9;'},
+ {n:'the blue keeper reads the red goal',part:'guard',from:'(dir>0?-F.L/2:F.L/2)',to:'(-F.L/2)'},
+ {n:'the gkIn switch is ignored',part:'guard',from:'if(!G.on||',to:'if('}
 ];
 let missed=0;
 for(const m of MUT){

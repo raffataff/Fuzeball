@@ -274,17 +274,18 @@ function applyDisplay(){
   (Array.isArray(m)?m:[m]).forEach(mm=>{if(mm)mm.needsUpdate=true;});});
 }
 
-// scene fog (Options > Display), applied live; fog is a shader define, so it recompiles only when the state changes
-let _dispFog=true;   // matches the fog-on starting state (cfg.fog defaults true)
+// scene fog and the room's air (Options > Display > Atmosphere, js/haze.js), applied live; fog is a shader define, so only turning it on or off recompiles
+let _dispFog=true;   // matches the starting state (cfg.atmos defaults to high)
 function applyFog(){
  if(!scene)return;
- const on=cfg.fog!==false, rm=activeRoom||CONFIG.rooms.open;
+ const on=(typeof hazeLevel==='function'?hazeLevel():cfg.atmos)!=='off', rm=activeRoom||CONFIG.rooms.open;
  if(on){
   const f=rm.fog||[200,430];
-  // Rebuilt rather than mutated, because turning fog back on finds scene.fog null.
+  // rebuilt rather than mutated: turning fog back on finds scene.fog null
   if(scene.fog){scene.fog.color.set(rm.bg);scene.fog.near=f[0];scene.fog.far=f[1];}
   else scene.fog=new THREE.Fog(rm.bg,f[0],f[1]);
  }else scene.fog=null;
+ if(typeof hazeApply==='function')hazeApply();
  renderDirty();
  if(on!==_dispFog){
   scene.traverse(o=>{const m=o.material;if(!m)return;
@@ -947,7 +948,7 @@ function applyRoom(onReady){
  // sky (rooms.<id>.sky, models.js ensureSky): a resident one goes on at once, else the flat bg holds; set before pruneSkies
  const wantSky=(typeof roomHasSky==='function')&&roomHasSky(id);
  scene.background=(wantSky&&skyCache[id])||new THREE.Color(rm.bg);
- applyFog();                                             // honours cfg.fog; reads THIS room's near/far
+ applyFog();                                             // honours cfg.atmos; reads THIS room's near/far and air
  if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
  if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
  applyRoomKeyLights(rm);

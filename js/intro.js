@@ -1,9 +1,9 @@
 'use strict';
 // ================= intro cinematic =================
-// a lit-fuse boot splash: a spark snakes across the dark, detonates into a shockwave and embers, the logo slams in, then morphs up into its menu spot; also the loading screen (holds until boot() fires)
-// pure canvas/CSS; knobs in CONFIG.intro; any key/click skips
+// a lit-fuse boot splash: a spark snakes across the dark, detonates into a shockwave and embers, the logo slams in, "Click to start" waits for a press, then the logo morphs up into its menu spot; also the loading screen (holds until boot() fires)
+// pure canvas/CSS; knobs in CONFIG.intro
 let introReady=false;                 // flipped by main.js boot() via introGameReady()
-let introSkipHook=null;               // the skip, for js/padnav.js — a pad button skips like a key does
+let introSkipHook=null;               // for js/padnav.js — a pad button counts as a key press
 function introGameReady(){introReady=true;}
 (function(){
  const IN=CONFIG.intro,ov=$('intro');if(!ov)return;
@@ -13,7 +13,8 @@ function introGameReady(){introReady=true;}
  if(!IN.on||matchMedia('(prefers-reduced-motion: reduce)').matches){off();return;}
  const stage=$('introStage'),cv=$('introFx'),ctx=cv.getContext('2d');
  const lw=$('introLogoWrap'),logo=$('introLogo'),gR=$('introGR'),gB=$('introGB'),
-       shine=$('introShine'),tag=$('introTag'),flash=$('introFlash'),loadEl=$('introLoad'),skipEl=$('introSkip');
+       shine=$('introShine'),tag=$('introTag'),flash=$('introFlash'),loadEl=$('introLoad'),skipEl=$('introSkip'),askEl=$('introAsk');
+ const askTxt=askEl.textContent;
  if(CONFIG.logo.src){logo.src=gR.src=gB.src=CONFIG.logo.src;shine.style.webkitMaskImage=shine.style.maskImage='url("'+CONFIG.logo.src+'")';}
  /* tagline → per-letter spans (staggered rise) */
  const txt=tag.textContent;tag.textContent='';
@@ -29,7 +30,7 @@ function introGameReady(){introReady=true;}
  const dust=[],trail=[],sparks=[],rings=[],smoke=[];
  for(let i=0;i<42;i++)dust.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*7,vy:(Math.random()-.5)*7,r:.6+Math.random()*1.6,a:.04+Math.random()*.1});
  const dT=IN.igniteT+IN.fuseT;        // detonation time
- let t0=performance.now(),last=t0,shakeA=0,detonated=false,slammed=false,shone=false,tagged=false,revealing=false,done=false,holdOn=false;
+ let t0=performance.now(),last=t0,shakeA=0,detonated=false,slammed=false,shone=false,tagged=false,revealing=false,done=false,holdOn=false,asking=false,askPad=false;
  function spark(x,y,vx,vy,life,r,g,hot){sparks.push({x,y,vx,vy,life,tot:life,r,g,hot:!!hot});}
  function detonate(){
   detonated=true;const p=bez(1),x=p[0],y=p[1];
@@ -44,6 +45,7 @@ function introGameReady(){introReady=true;}
  function reveal(){
   if(revealing)return;revealing=true;
   loadEl.classList.remove('on');skipEl.classList.add('off');tag.classList.add('off');shine.classList.add('off');
+  if(asking){askEl.classList.remove('on');askEl.classList.add('go');ov.classList.remove('ask');}
   /* morph the intro logo onto the landing screen's logo spot (measure BEFORE un-hiding) */
   const tEl=home.querySelector('.logo'),tr=tEl?tEl.getBoundingClientRect():null,lr=logo.getBoundingClientRect();
   if(tr&&tr.width>0&&lr.width>0){
@@ -54,7 +56,7 @@ function introGameReady(){introReady=true;}
   home.classList.remove('introHide');home.classList.add('introIn');
   setTimeout(()=>{done=true;if(ov.parentNode)ov.remove();},900);
   setTimeout(()=>home.classList.remove('introIn'),2100); // stop entrance anims re-firing when home is re-shown later
-  removeEventListener('keydown',skip);
+  removeEventListener('keydown',press);
  }
  function skip(){
   if((performance.now()-t0)/1000<.3||revealing)return;
@@ -66,7 +68,18 @@ function introGameReady(){introReady=true;}
   shone=tagged=true;shine.classList.add('sweep');tag.classList.add('in');
   reveal();
  }
- if(IN.skip){introSkipHook=skip;addEventListener('keydown',skip);ov.addEventListener('pointerdown',skip);setTimeout(()=>{if(!revealing)skipEl.classList.add('on');},1200);}
+ function ask(){
+  if(asking||revealing)return;asking=true;
+  loadEl.classList.remove('on');skipEl.classList.add('off');
+  askEl.classList.add('on');ov.classList.add('ask');
+ }
+ function press(e){
+  if(revealing||e&&e.type==='keydown'&&(e.repeat||/^(Shift|Control|Alt|Meta)/.test(e.code)))return;
+  if(asking){if(typeof Au!=='undefined')Au.init();reveal();}   // a pad press is not a gesture: audio.js resumes the context on the next click or key
+  else if(IN.skip)skip();
+ }
+ introSkipHook=press;addEventListener('keydown',press);ov.addEventListener('pointerdown',press);
+ if(IN.skip)setTimeout(()=>{if(!revealing&&!asking)skipEl.classList.add('on');},1200);
  function step(e,dt){
   if(!detonated){
    if(e>=dT)detonate();
@@ -85,10 +98,11 @@ function introGameReady(){introReady=true;}
     const lr=logo.getBoundingClientRect();
     spark(lr.left+Math.random()*lr.width,lr.bottom-6,(Math.random()-.5)*18,-(18+Math.random()*55),1.4+Math.random()*1.4,.5+Math.random()*1.2,-14,false);
    }
-   if(!revealing&&e>=IN.revealT){
-    if(introReady||e>=IN.revealT+IN.holdMax)reveal();
+   if(!revealing&&!asking&&e>=IN.revealT){
+    if(introReady||e>=IN.revealT+IN.holdMax){if(IN.ask)ask();else reveal();}
     else if(!holdOn){holdOn=true;loadEl.classList.add('on');}
    }
+   if(asking&&!revealing&&typeof inputKind==='function'&&(inputKind()==='pad')!==askPad){askPad=!askPad;askEl.textContent=askPad?askEl.dataset.padtext:askTxt;}
   }
   for(const d of dust){d.x+=d.vx*dt;d.y+=d.vy*dt;if(d.x<0)d.x+=W;if(d.x>W)d.x-=W;if(d.y<0)d.y+=H;if(d.y>H)d.y-=H;}
   for(let i=trail.length-1;i>=0;i--){trail[i].a-=dt*1.15;if(trail[i].a<=0)trail.splice(i,1);}
@@ -127,7 +141,9 @@ function introGameReady(){introReady=true;}
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
  }
  function frame(now){
-  if(done)return;requestAnimationFrame(frame);
+  if(done)return;
+  if(!ov.isConnected){done=true;home.classList.remove('introHide');return;}   // the tools (menu-shots, page-run) take the overlay away instead of clicking
+  requestAnimationFrame(frame);
   const dt=Math.min(.05,(now-last)/1000);last=now;
   step((now-t0)/1000,dt);draw();
  }

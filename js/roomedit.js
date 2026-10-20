@@ -364,8 +364,8 @@ function reditTabWorld(w){
  w.appendChild(reNum('fog near',fg[0],5,v=>{fg[0]=v;setFog();}));
  w.appendChild(reNum('fog far',fg[1],5,v=>{fg[1]=v;setFog();}));
  // these write the room but can't preview with fog off in Options
- if(typeof cfg!=='undefined'&&cfg.fog===false)
-  w.appendChild(reEl('div','reMuted','fog is OFF in Options → Display — these still export'));
+ if(typeof cfg!=='undefined'&&cfg.atmos==='off')
+  w.appendChild(reEl('div','reMuted','Atmosphere is Off in Options → Display — these still export'));
  w.appendChild(reEl('h4',null,'renderer (global)'));
  w.appendChild(reSlider('exposure',(CONFIG.render&&CONFIG.render.exposure)||1,0.2,2.5,0.01,
   v=>{CONFIG.render.exposure=v;if(typeof applyToneMapping==='function')applyToneMapping(renderer,false);}));

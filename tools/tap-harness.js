@@ -23,7 +23,9 @@ const stubs=[
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}"
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -182,7 +184,7 @@ function suite(X){
  {const r=T0({slideV:TP.releaseV*carryV(r0())+1});X.catchStep(r,view(X,-0.7,r.pinB.m.position.z),D);ok('...a shallow one is not',r.catPh==='side'&&r.catDeep===false);}
  {const r=world(X,{catPh:'side',catDeep:true,catMan:1,catSg:1,tapPend:true,tapN:1});X.catchStep(r,view(X,CA.side.back-2.5,-8,0,12),D);
   ok('a deep roll is not over while it is still inside the deep limit',r.act==='catch'&&!X.CAW['side:off'],JSON.stringify(X.CAW));
-  const q=world(X,{catPh:'side',catMan:1,catSg:1});X.catchStep(q,view(X,CA.side.back-2.5,-8,0,12),D);ok('...an ordinary one is (it left the row)',q.act===null&&X.CAW['side:off']===1);
+  const q=world(X,{catPh:'side',catMan:1,catSg:1});X.catchStep(q,view(X,X.AIC.catch.side.back-4.5,-8,0,12),D);ok('...an ordinary one is (it left the row: past the pin window)',q.act===null&&X.CAW['side:off']===1);
   const e=world(X,{catPh:'side',catDeep:true,catMan:1,catSg:1,tapPend:true,tapN:1});X.catchStep(e,view(X,TD.back-1.5,-8,0,12),D);ok('...and a deep roll is over past that',e.act===null&&X.CAW['side:off']===1);}
  {const r=world(X,{catDeep:true,tapN:1});X.catchEnd(r,0,'x');ok('every ending clears the deep mark',r.catDeep===false);}
  // ---- a ball retrieve pinned ----
@@ -235,8 +237,8 @@ const MUT=[
  {n:'a deep ball is never marked',from:'const deep=b.pinDx<CA.side.back;',to:'const deep=false;'},
  {n:'every tapped ball is marked deep',from:'const deep=b.pinDx<CA.side.back;',to:'const deep=true;'},
  {n:'an ending leaves the deep mark up',from:'r.catCush=false;r.catDeep=false;',to:'r.catCush=false;'},
- {n:'a deep roll is judged by the shallow limit',from:'rel<(deep?CA.tap.deep.back:SD.back)-1',to:'rel<SD.back-1'},
- {n:'every roll is judged by the deep limit',from:'rel<(deep?CA.tap.deep.back:SD.back)-1',to:'rel<CA.tap.deep.back-1'},
+ {n:'a deep roll is judged by the side catch limit',from:'rel<(deep?CA.tap.deep.back:SHOT.pin.back)-1',to:'rel<SHOT.pin.back-1'},
+ {n:'every roll is judged by the deep limit',from:'rel<(deep?CA.tap.deep.back:SHOT.pin.back)-1',to:'rel<CA.tap.deep.back-1'},
  {n:'the tap from retrieve does not take the action over',from:"r.act='catch';r.actT=0;r.retPh=null;",to:"r.actT=0;r.retPh=null;"},
  {n:'the tap from retrieve leaves retrieve running',from:'r.retPh=null;r.retMan=-1;r.retDir=0;',to:'r.retMan=-1;r.retDir=0;'},
  {n:'the tap from retrieve never starts the run',from:'r.retCd=AIC.retrieve.cd;\n tapStart(r);',to:'r.retCd=AIC.retrieve.cd;'},
