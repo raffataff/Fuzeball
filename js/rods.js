@@ -95,12 +95,26 @@ function resetRodRotation(){
   r.pivot.rotation.z=0;
  }
 }
+// the snake (shots.js shotSnakeFire): from the forward pin over the top of the rod, round and through the ball from behind
+// r.angle stays within ±π, so the turn is one wrap: prevAngle moves with it (angVel and physics' substeps read it as continuous) and lerpAng draws across it
+function snakeStep(r,dt){
+ r.kickT+=dt;const T=r.kickT,KS=kickStyleCfg(r),a0=r.kickA0||0,a1=2*Math.PI+KS.strikeA,t1=KS.spin+KS.follow,t2=t1+KS.back;let a;
+ r.heldFwd=false;
+ if(T<KS.spin)a=a0+(a1-a0)*Math.pow(T/KS.spin,KS.ease);
+ else if(T<t1)a=a1;
+ else if(T<t2)a=a1+(2*Math.PI-a1)*((T-t1)/KS.back);
+ else{a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;shotDisarm(r);}
+ if(a>Math.PI)a-=2*Math.PI;
+ r.angle=a*r.kickDir;
+ if((r.angle-r.prevAngle)*r.kickDir<-Math.PI)r.prevAngle-=2*Math.PI*r.kickDir;
+}
 function updateRods(dt){
  if(dt<=0)return;
  const HF=AIC.heldFwd;                               // drop-sweep zone (its own tunable section)
  const clearZ=FOOT_BOX.z+BALL_R+HF.zMargin;          // z-depth of the drop-sweep (matches the held-evade escape)
  for(const r of rods){
-   if(r.kickT>=0){
+   if(r.kickT>=0&&r.kickStyle==='snake')snakeStep(r,dt);
+   else if(r.kickT>=0){
      r.kickT+=dt;const T=r.kickT;let a;
      const KS=kickStyleCfg(r);                       // trapShot / passShot / normal — one source of truth
      // the swing ramps from the rod's angle at kick time (r.kickA0), not the fixed windupA: a kick off a raised rod crossed ~1.5 rad in one step (angVel ~85 vs ~22), teleporting the foot past the ball
@@ -156,8 +170,8 @@ function updateRods(dt){
    let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
    // carrying a held ball is a shuffle, not a slide (the boot only drags the ball as fast as holdGrip transfers velocity); holdCfg is null mid-swing
    // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry
-   const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),slow=!!(r.pinB||H);   // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
-   if(r.pinB)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;
+   const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),snk=r.kickStyle==='snake'&&!r.kickHit,slow=!!(r.pinB||H||snk);   // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
+   if(r.pinB||snk)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;   // a snake slides as the pin did until it strikes, so the man stays with the ball it let go
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(uSeat){                                          // human hand: instant/responsive, speed-capped only

@@ -105,6 +105,7 @@ on:true,
    ownGoal:['INTO HIS OWN NET','OH NO','DISASTER','WHAT HAS HE DONE'],
    woodwork:['OFF THE POST AND IN','IN OFF THE UPRIGHT','VIA THE WOODWORK','THE POST COULD NOT SAVE HIM'],
    curler:['CURLER','BENT IT ROUND','SWERVED IN','WHIPPED IT'],
+   snake:['SNAKE SHOT','ROLLED IT OVER','SNAKE BITE','OFF THE ROLLOVER'],
    screamer:['SCREAMER','UNSTOPPABLE','RIPPED IT','ABSOLUTE ROCKET'],
    topBins:['TOP BINS','UPPER 90','ROOF OF THE NET','POSTAGE STAMP'],
    longRange:['FROM DISTANCE','ALL THE WAY','FROM DOWNTOWN','HE SAW HIM OFF HIS LINE'],
@@ -275,7 +276,7 @@ physics:{
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
    contactEps:0.35,                       // gap below which the roll probe counts a ball as touching
-   floorFric:0.2, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
+   floorFric:0.08, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
    wallRest:0.52,                         // side + end wall restitution
    postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution
    ballRest:0.9,                          // ball-vs-ball restitution
@@ -321,6 +322,7 @@ kick:{
       shot:0.75,     // a player shot adds this x its power trim (r.shotPow-1): finesse lowers the ceiling, a timed charge raises it
       boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
       pin:0.30,      // ceiling added to EVERY contact of a pin / trap-shot swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
+      snake:0.40,    // ...and of a snake (shots.snake)
       min:0.2,      // a contact can never be capped below this...
       max:1.1,      // ...nor above it. OVER 1 ON PURPOSE
       // a charge beats the cap, scaled by its worth (r.shotOver); the ball's overspeed only ratchets down (stepBall)
@@ -414,12 +416,12 @@ kick:{
    carryOut:0.8,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
    ctl:0.6,            // pin shot control (r.shotCtl): no spray
-   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; kick does nothing while it holds a ball
+   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, kick pressed twice is the snake (shots.snake)
    fwd:{
     on:true,        // false = finesse + kick is the assisted pass swing again (shots.pass)
     assist:true,    // beside a slow ball lying ahead (ai.catch.fetch near..far) the leg is up and clear, over it it lowers onto the top; false = always `angle`
     angle:0.9,      // rod-local forward tilt with no ball there: the foot comes down on a ball lying 3 ahead (a ball from behind takes ai.catch.recv.angle, assist.recv)
-    lerp:8,         // ease rate into the pose, and so the speed of the stroke through a ball lying in the way: about 6 u/s per unit (4 = 23, 8 = 47, 14 = 83); the old soft pass left at ~50
+    lerp:14,         // ease rate into the pose, and so the speed of the stroke through a ball lying in the way: about 6 u/s per unit (4 = 23, 8 = 47, 14 = 83); the old soft pass left at ~50
     stroke:1.5,     // a leg going forward through a ball faster than this (rad/s) is a stroke: a swing touch for the pass ledger
     holdNear:0.5,   // let go with a ball lying holdNear to holdFar ahead the leg goes up and forward off it and drops once it is clear (the toe presses a ball out to ~7 back toward the rod)
     holdFar:7.5,
@@ -494,6 +496,24 @@ kick:{
     inT:0.12, outT:0.2,
     gap:8           // clear space between the plate and the rod chips under it (px at 1440x900, scales with the HUD)
     }
+   },
+
+  // THE SNAKE (shots.js shotSnakeFire, rods.js updateRods): kick pressed twice with a ball held under the forward leg; the man rolls over the top of the rod and strikes it from behind
+  snake:{
+   on:true,
+   dbl:0.25,         // the second kick press within this of the first (s)
+   spin:0.25,         // from the pin pose over the top, round and through the ball to strikeA past a full turn (s); quicker = a faster shot, but past ~20 rad/s at the ball the foot overtakes it and scoops it
+   ease:1.2,           // 1 = an even spin; higher leaves the ball slower and arrives faster
+   strikeA:1.1,      // rod-local follow-through past the full turn
+   follow:0.06,      // ...held there this long after the spin (s)
+   back:0.12,        // ...then eased back to rest over this long (s)
+   powFrom:0, powTo:0.36,   // swing time in which restPower is used instead of rest: keep it past spin
+   rest:0.01, restPower:0.8,
+   loft:0.12,        // the most a snake's contact launches the ball above the pitch (rad), turned down without losing speed: a ball held deep (4.5+ ahead) is met late in the foot's arc and left at up to 24 degrees, over the bar; null = the raw contact
+   pow:1.15,         // power trim (r.shotPow), as the pin shot
+   ctl:0.6,          // control (r.shotCtl): no spray
+   carry:1,          // the ball keeps this much of the slide it was carried at (the man keeps pin.carry of his until the strike, so the two stay together)
+   exert:3.5         // stamina charged, in plain swings (a full-power swing is mod.hardExert)
    },
 
   charge:{

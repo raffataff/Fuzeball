@@ -2,6 +2,7 @@
 /* ================= FUZEBALL — global helpers ================= */
 const $=i=>document.getElementById(i);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
+const lerpAng=(a,b,t)=>{let d=b-a;if(d>Math.PI)d-=2*Math.PI;else if(d<-Math.PI)d+=2*Math.PI;return a+d*t;};   // the short way round (a rod's angle wraps in a snake)
 // ---- inline icon set ----
 // shared SVG marks for the menus (replacing OS colour emoji); they draw on `currentColor` and are sized by CSS (`.ico svg{width:...}`)
 const ICO={

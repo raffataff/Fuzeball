@@ -47,6 +47,7 @@ function shotHoldUpdate(r,lt){
 function shotPinInput(r,I,dt){
  const P=SHOTC.pin,H=P&&P.assist&&P.assist.hop,R=P&&P.assist&&P.assist.recv;
  r.fwdR=false;                                                 // shotFwdAngle sets it again while the forward pose receives
+ if(!r.pinB||!r.pinFwd)r.snPT=-1e9;                            // a snake's two presses both land on a ball held forward
  if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinMag=null;r.sqA=null;r.pinKh=false;r.fwdStk=0;return;}
  // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
  const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
@@ -298,9 +299,20 @@ function shotPinFire(r){
 }
 // what the pin shows the player: the ring under the caught ball (fx.js pinMarkUpdate) and the kick plate (hud.js hudPinHint) both ask these
 function shotPinBall(s){const r=s&&seatRod(s),b=r&&r.pinB;return b&&!b.scored?b:null;}
-function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&!seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // the plate is for a ball the kick would shoot: held under the forward leg, kick does nothing
+function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&!seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // the plate is for a ball one kick would shoot, so not one under the forward leg
+function shotSnakeSeat(){if(!shotSnakeOn())return null;for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // ...held under the forward leg, two presses are the snake
 // the plate is live play only, off for a player who switched it off, and off in the tutorial (its own prompt says it)
 function shotPinHintOn(){const P=SHOTC.pin,H=P&&P.hint;return !!(shotsOn()&&P&&P.on&&H&&H.on&&cfg.pinHint!==false&&S.phase==='play'&&!S.tut);}
+// the snake (CONFIG.shots.snake): the ball under the forward leg is let go with the slide it was carried at, and the man rolls over the top of the rod onto it from behind (rods.js)
+function shotSnakeOn(){const K=SHOTC.snake;return !!(K&&K.on);}
+function shotSnakeFire(r){
+ const K=SHOTC.snake;
+ r.snPT=-1e9;
+ pinRelease(r,false,K.carry);
+ r.pinPose=false;r.pinFwd=false;r.fwdOut=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;
+ r.shotOn=true;r.shotPow=K.pow;r.shotCtl=K.ctl;r.shotExert=K.exert;r.shotOver=0;   // kickRod charges the stamina off shotExert
+ kickRod(r,'snake',null,K);
+}
 
 // swing curve for a button kick at axis m: blends CONFIG.kick toward mod.soft / mod.hard key by key; null at m~0
 const SHOT_CURVE_KEYS=['windup','windupA','strike','strikeA','hold','drop','powFrom','powTo','rest','restPower'];
@@ -368,7 +380,7 @@ function shotReset(r){
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
  r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.fwdOut=false;r.rzWas=false;r.pinKh=false;r.pinMag=null;r.sqA=null;r.stlT=0;r.stlW=null;
- r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;r.fwdR=false;   // timestamps too: S.time restarts with the match
+ r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;r.fwdR=false;r.snPT=-1e9;   // timestamps too: S.time restarts with the match
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
@@ -538,8 +550,13 @@ function shotSeatsUpdate(dt){
 // a kick press from any device: plain = shotFire on the live axis, with a wind-up live it releases it; Total Control's stick charge is judged at contact
 function shotKickEdge(r,m){
  const k=shotCharge(r),C=SHOTC.charge;
- // a ball on the pin: the kick is the pin shot whatever the axis says; held under the forward leg it is control, not a shot
- if(r.pinB&&r.kickT<0){if(!r.pinFwd)shotPinFire(r);return;}
+ // a ball on the pin: the kick is the pin shot whatever the axis says; held under the forward leg, the second of two quick presses is the snake
+ if(r.pinB&&r.kickT<0){
+  if(!r.pinFwd)shotPinFire(r);
+  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);
+  else r.snPT=S.time;
+  return;
+ }
  if(k>=0&&r.chgSrc&&r.chgSrc!=='stick'&&r.kickT<0){
   shotVerdict(r,k);
   shotFire(r,(r.chgMod!=null?r.chgMod:m),k);

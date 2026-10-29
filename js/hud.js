@@ -14,7 +14,7 @@ const HUD={
  tabs:null,ord:null,
  chips:[],chipSig:NaN,chipU:0,chipY:0,chipK:0,hov:-1,hl:new Map(),cur:false,hp:null,
  hint:null,hintP:null,hintUse:null,hintT:-9,skipP:null,
- pin:{a:0,on:false,t:-9,s:null,tok:null,tokP:null},
+ pin:{a:0,on:false,t:-9,s:null,tok:null,tokP:null,snk:false},
  rep:{on:false,t:-99,team:0,save:'off',tok:null,tokP:null},
  dev:Object.create(null)
 };
@@ -446,9 +446,10 @@ function hudHintDraw(a){
 // ===== pin shot hint =====
 // while a seat's rod holds a ball on the pin, the key that shoots it: a slim plate bottom centre with a slab in the seat's colour; it settles back after CONFIG.shots.pin.hint.hold (Options > Display, cfg.pinHint)
 function hudPinHint(a,rdt){
- const H=SHOT.pin.hint,P=HUD.pin,s=shotPinHintOn()?shotPinSeat():null;
+ const H=SHOT.pin.hint,P=HUD.pin,on=shotPinHintOn(),bk=on?shotPinSeat():null,s=bk||(on?shotSnakeSeat():null),snk=!bk;
  if(s){
-  if(!P.on){P.on=true;P.t=HUD.t;P.tok=hudTok(bindHint('kick','pin shot',2)||'pin shot');P.tokP=hudTok('{A} pin shot');}   // rebuilt per catch, so a rebind shows
+  if(!P.on||P.snk!==snk){P.on=true;P.snk=snk;P.t=HUD.t;   // rebuilt per catch, so a rebind shows; under the forward leg it is the snake's two presses
+   P.tok=hudTok(snk?(bindHint('kick','x2 snake',2)||'x2 snake'):(bindHint('kick','pin shot',2)||'pin shot'));P.tokP=hudTok(snk?'{A} x2 snake':'{A} pin shot');}
   P.s=s;
  }else P.on=false;
  P.a=P.on?Math.min(1,P.a+rdt/Math.max(.01,H.inT)):Math.max(0,P.a-rdt/Math.max(.01,H.outT));

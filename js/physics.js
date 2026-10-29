@@ -101,12 +101,12 @@ function pinBallStep(b,h){
 // the swing played from the pin (shots.js shotPinFire, ai.js pinPlay / pinFire): the trapShot curve with shots.pin.swing over it, or for a pass the passShot curve with shots.pin.pass
 const PIN_SW={},PIN_PS={};
 function pinSwing(pass){return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);}
-// let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide; a player's rod's slide over the last four steps, since a mouse or pad moves it once a frame
-function pinRelease(r,ext){
+// let go: ext = something else already moved it (keep that velocity), else it keeps carryOut (or k) of the slide; a player's rod's slide over the last four steps, since a mouse or pad moves it once a frame
+function pinRelease(r,ext,k){
  const b=r.pinB;r.pinB=null;
  if(!b)return;
  b.pinR=null;
- if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*SHOT.pin.carryOut;}
+ if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*(k!=null?k:SHOT.pin.carryOut);}
 }
 // ================= contact AUDIO gating =================
 // an impact is an event, a roll is a state (js/audio.js); hitFresh is the event half: the surface must have been clear for PHY.contactHold and the hit hard enough
@@ -371,6 +371,7 @@ function capSpeed(b,r,sweet,in2){
  if(sweet)f+=C.sweet;
  if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's own power trim: a finesse touch lowers the ceiling, a timed charge raises it
  if(r.kickStyle==='trapShot')f+=C.pin||0;   // the pin / trap shot: every contact of the swing, not just the first (which spends the trim)
+ if(r.kickStyle==='snake')f+=C.snake||0;
  // a charge beats the cap: raises the ceiling and the most any ceiling may be
  const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
  if(w>0){f+=(C.charge||0)*w;mx+=(C.chargeTop||0)*w;}
@@ -386,6 +387,13 @@ function capSpeed(b,r,sweet,in2){
  const inSp=Math.sqrt(in2);
  if(out<inSp)out=Math.min(sp,inSp);     // the cap limits what this contact ADDED, never the speed it arrived with
  const k=out/sp;v.x*=k;v.y*=k;v.z*=k;   // components, not multiplyScalar: collideRod writes b.v by hand and the harnesses stub it as a plain object
+}
+// a snake leaves low: its contact turns the ball's climb down to shots.snake.loft above the pitch, a rotation in the vertical plane (no energy)
+function snakeLoft(b){
+ const L=SHOT.snake&&SHOT.snake.loft,v=b.v,h=Math.hypot(v.x,v.z);
+ if(L==null||h<1e-6||v.y<=h*Math.tan(L))return;
+ const sp=Math.hypot(h,v.y),k=sp*Math.cos(L)/h;
+ v.x*=k;v.z*=k;v.y=sp*Math.sin(L);
 }
 function collideRod(b,r){
  if(r.trnHidden)return;                   // training sandbox: hidden rods are ghosts — no contact
@@ -441,6 +449,7 @@ function collideRod(b,r){
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);   // the back of a man does not carry a ball along with the slide
     if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling (see the banner above); a held contact is exempt
+    if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
@@ -512,6 +521,7 @@ function collideRod(b,r){
     const g=trapping?clamp(HLD.holdGrip,0,1):(dead?stGrip(r):KICK.capGrip);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);
     if(!trapping)capSpeed(b,r,false,in2);
+    if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact

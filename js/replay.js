@@ -323,7 +323,7 @@ function replayUpdate(rdt){
  const j0=Math.floor(j),j1=Math.min(j0+1,RB.n-1),a=j-j0,r0=rbIdx(j0)*rods.length*2,r1=rbIdx(j1)*rods.length*2;
  for(let ri=0;ri<rods.length;ri++){const r=rods[ri];
   r.pivot.position.z=lerp(RB.rod[r0+ri*2],RB.rod[r1+ri*2],a);
-  r.pivot.rotation.z=lerp(RB.rod[r0+ri*2+1],RB.rod[r1+ri*2+1],a);
+  r.pivot.rotation.z=lerpAng(RB.rod[r0+ri*2+1],RB.rod[r1+ri*2+1],a);
  }
  /* ghost balls + trails off the live sprite pool */
  let focusSet=false;

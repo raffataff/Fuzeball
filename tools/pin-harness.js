@@ -185,7 +185,7 @@ const muts=[
  ['physics','if(Math.abs(v.x-b.pinVx)+Math.abs(v.z-b.pinVz)+Math.abs(v.y)>P.breakV){pinRelease(r,true);return false;}','','another ball cannot knock it loose'],
  ['physics','if(Math.abs(p.x-b.pinPx)+Math.abs(p.z-b.pinPz)>1){pinRelease(r,true);return false;}','','a re-dropped ball is yanked back to the rod'],
  ['physics','if(Math.abs(cz-tz)>P.zSlip){pinRelease(r);return false;}','','a ball squeezed into the wall stays pinned'],
- ['physics','if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*SHOT.pin.carryOut;}','if(!ext){b.v.set(0,0,0);}','a released ball forgets the slide'],
+ ['physics','if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*(k!=null?k:SHOT.pin.carryOut);}','if(!ext){b.v.set(0,0,0);}','a released ball forgets the slide'],
  ['physics','b.v.z=(H&&isUserRod(r)?','b.v.z=(false?','a player\'s release keeps only the last step\'s slide'],
  ['physics','v.set((tx-p.x)/h,0,(cz-p.z)/h);','v.set(0,0,0);','a carried ball reports no velocity'],
  ['shots','r.pinOn=fin&&r.chg<0&&r.kickT<0;','r.pinOn=fin&&r.kickT<0;','a wind-up and a pin at once'],

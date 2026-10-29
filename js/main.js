@@ -89,7 +89,7 @@ function loop(t){
      if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
     r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
     // r.trem (the overcharge tremble, js/shots.js) goes on the display pose, not r.angle: angVel is differenced from r.angle, so a shaking sim boot would kick the ball
-    r.pivot.rotation.z=lerp(r.iPrevAng,r.iAng,alpha)+(r.trem||0);
+    r.pivot.rotation.z=lerpAng(r.iPrevAng,r.iAng,alpha)+(r.trem||0);
    }
    // casters moved: the frozen shadow map (CONFIG.render.shadow.autoUpdate:false) needs a redraw; gated on a sim step or alpha moving, so a photo/training freeze holds the map
    if(stepped||alpha!==lastAlpha){shadowDirty();lastAlpha=alpha;}

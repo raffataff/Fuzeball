@@ -207,6 +207,7 @@ function kbRender(){
  }).join('')
   +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
   +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&fl.length&&kl.length?fixed('Forward pin',bindLabel(fl[0])+' + '+bindLabel(kl[0])):'')
+  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&SHOT.snake&&SHOT.snake.on&&kl.length?fixed('Snake shot',bindLabel(kl[0])+' x2'):'')
   +fixed('Camera views','NUM 1-9')+fixed('Rod camera','NUM 0')
   +fixed('Pause','ESC');
 }

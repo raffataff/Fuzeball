@@ -15,15 +15,16 @@ const AI_SRC=read('js/ai.js'),aiCut=a=>{const i=AI_SRC.indexOf(a),j=AI_SRC.index
 const AI_GEO=aiCut('const _fb={')+aiCut('function clearOffset(r,bz,cz,prefer){');
 
 function build(srcShots,srcBinds){
- const rec={kicks:[],fire:[],fed:0};
+ const rec={kicks:[],fire:[],fed:0,rel:[]};
  const ctx={console,Math,Date,JSON,Object,Array,String,Number,Boolean,Map,Set,isNaN,isFinite,
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
   kickRod(r,style,aimAt,curve){
    if(r.kickT>=0)return;
    r.kickT=0;r.kickStyle=style||null;r.kickCurve=curve||null;r.passTo=aimAt||null;
    r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;
-   rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pow:r.shotPow,on:r.shotOn});
+   rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pow:r.shotPow,on:r.shotOn,ex:r.shotExert});
   },
+  pinRelease(r,ext,k){rec.rel.push({ext:!!ext,k});r.pinB=null;},
   gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);},
   sweepClips(){return false;},
   passPick(){return null;},laneObs(){return [];},lineClr(){return 9;},manLive(){return true;},
@@ -54,7 +55,7 @@ function build(srcShots,srcBinds){
  vm.runInContext(srcShots,ctx,{filename:'shots.js'});
  vm.runInContext(srcBinds,ctx,{filename:'binds.js'});
  vm.runInContext('globalThis.__c={CONFIG,SHOT,KICK,cfg,rngSeed,shotsOn,shotBlend,shotReset,shotInNew,shotPadRead,'+
-  'shotSeatsUpdate,shotKickEdge,shotKbmAxis,shotCharge,shotPadAxis,shotFwdAngle,shotFwdHold,shotFwdLead,shotPinSeat,AIC,bindList,bindDev,bindIs,bindActs,bindHeld,bindLabel,'+
+  'shotSeatsUpdate,shotKickEdge,shotKbmAxis,shotCharge,shotPadAxis,shotFwdAngle,shotFwdHold,shotFwdLead,shotPinSeat,shotSnakeSeat,AIC,bindList,bindDev,bindIs,bindActs,bindHeld,bindLabel,'+
   'bindCap,bindHint,bindAdd,bindRemove,bindReset,bindSet,bindReserved};',ctx,{filename:'export.js'});
  ctx.__c.rngSeed(777);
  return ctx;
@@ -80,7 +81,7 @@ const HUDCAP=/\[[^\]]+\]/g;   // hud.js hudTok's keycap token
 function run(srcShots,srcBinds){
  pass=0;fail=0;fails.length=0;
  const ctx=build(srcShots,srcBinds),C=ctx.__c,B=C.CONFIG.binds,CH=C.SHOT.charge,rec=ctx.__rec,S=ctx.S,keys=ctx.keys;
- const reset=()=>{for(const k in keys)delete keys[k];rec.kicks.length=0;rec.fire.length=0;C.cfg.keyBinds={};S.seats.length=0;S.phase='play';S.time=0;};
+ const reset=()=>{for(const k in keys)delete keys[k];rec.kicks.length=0;rec.fire.length=0;rec.rel.length=0;C.cfg.keyBinds={};S.seats.length=0;S.phase='play';S.time=0;};
  const solo=(r)=>{const s={team:0,devs:['kbd','mouse','pad*'],rods:[r],ctrl:0,shotRod:null,shotPad:null,kbmFin:0};S.seats.push(s);return s;};
  const frames=(n,fn)=>{for(let i=0;i<n;i++){S.time+=1/60;if(fn)fn(i);C.shotSeatsUpdate(1/60);}};
 
@@ -662,6 +663,52 @@ function run(srcShots,srcBinds){
   ok(C.shotPinSeat()===s,'a ball on the back pin shows the pin shot plate');
   a.pinFwd=true;
   ok(C.shotPinSeat()===null,'a ball under the forward leg does not');
+  ok(C.shotSnakeSeat()===s,'...it shows the snake plate instead');
+  a.pinFwd=false;ok(C.shotSnakeSeat()===null,'...which a ball on the back pin does not');
+  a.pinFwd=true;C.SHOT.snake.on=false;ok(C.shotSnakeSeat()===null,'...nor with the snake off');C.SHOT.snake.on=true;
+ }
+ reset();
+
+ // ===== 8b. THE SNAKE (CONFIG.shots.snake): kick pressed twice with a ball held under the forward leg =====
+ {
+  const K=C.SHOT.snake,step=Math.max(1,Math.floor(K.dbl*60)-2);
+  const held=(r)=>{r.pinB={scored:false};r.pinAt=0.97;r.pinPose=true;r.pinFwd=true;};
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);
+   C.shotKickEdge(r,C.shotKbmAxis(s));
+   ok(rec.kicks.length===0&&r.pinB&&r.pinFwd,'one kick press with a ball under the forward leg is no shot: the ball stays held');
+   frames(step);C.shotKickEdge(r,C.shotKbmAxis(s));
+   const k=rec.kicks[0];
+   ok(rec.kicks.length===1&&k.style==='snake'&&k.curve===K,'a second press within snake.dbl is the snake, on its own curve');
+   ok(k&&k.on&&k.pow===K.pow&&k.ex===K.exert,'...armed as a shot, charging snake.exert of stamina');
+   ok(K.exert>C.SHOT.mod.hardExert,'...more than a full-power swing ('+K.exert+' against '+C.SHOT.mod.hardExert+')');
+   ok(rec.rel.length===1&&rec.rel[0].k===K.carry&&!rec.rel[0].ext,'...the ball is let go keeping snake.carry of the slide');
+   ok(!r.pinPose&&!r.pinFwd&&!r.fwdOut,'...the forward pose and its guard are off: the swing has the leg');}
+  reset();
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);
+   C.shotKickEdge(r,-1);frames(Math.ceil(K.dbl*60)+3);C.shotKickEdge(r,-1);
+   ok(rec.kicks.length===0,'two presses further apart than snake.dbl: no snake');
+   frames(1);C.shotKickEdge(r,-1);
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='snake','...the late one starts a new pair');}
+  reset();
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);
+   C.shotKickEdge(r,C.shotKbmAxis(s));
+   ok(r.pinPose&&r.pinFwd&&rec.kicks.length===0,'(finesse + kick with nothing held poses the forward pin)');
+   frames(2);held(r);frames(1);C.shotKickEdge(r,C.shotKbmAxis(s));
+   ok(rec.kicks.length===0,'the press that posed the leg does not count toward the pair');}
+  reset();
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);
+   C.shotKickEdge(r,-1);r.pinB=null;frames(1);held(r);frames(1);C.shotKickEdge(r,-1);
+   ok(rec.kicks.length===0,'a press on a ball since let go does not count');}
+  reset();
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);r.pinFwd=false;r.pinPose=true;frames(1);
+   C.shotKickEdge(r,-1);
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','on the back pin one press is still the pin shot');}
+  reset();
+  {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);K.on=false;
+   C.shotKickEdge(r,-1);frames(2);C.shotKickEdge(r,-1);K.on=true;
+   ok(rec.kicks.length===0&&r.pinB,'snake.on false: a ball under the forward leg is kept whatever kick does');}
+  reset();
+  {const r=rod({snPT:5});C.shotReset(r);ok(r.snPT<-1e8,'shotReset forgets a half-made pair (S.time restarts with the match)');}
  }
  reset();
  {
@@ -822,7 +869,16 @@ mutate('shots',' if(!W||!W.on||!P.on||m>SHOTC.pass.modAt||r.chg>=0||r.kickT>=0)r
 mutate('shots',' else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}',' else if(I.rz){r.pinPose=true;if(!r.pinB){r.pinFwd=false;r.fwdStk=0;}}','a held raise undoes the forward pose asked for after it');
 mutate('shots',' else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}',' else if(I.rz){r.pinPose=true;if(rzUp){r.pinFwd=false;r.fwdStk=0;}}','a raise press turns a held ball\'s forward pin into the back pin');
 mutate('shots',' else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}',' else if(I.rz){r.pinPose=true;}','a raise press never takes the pin back');
-mutate('shots',' if(r.pinB&&r.kickT<0){if(!r.pinFwd)shotPinFire(r);return;}',' if(r.pinB&&r.kickT<0){shotPinFire(r);return;}','kick fires a shot from under the forward leg');
+mutate('shots','  if(!r.pinFwd)shotPinFire(r);','  if(true)shotPinFire(r);','kick fires a shot from under the forward leg');
+mutate('shots','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);','  else if(shotSnakeOn())shotSnakeFire(r);','one press under the forward leg is the snake');
+mutate('shots','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl*4)shotSnakeFire(r);','the double press window is ignored');
+mutate('shots',' if(!r.pinB||!r.pinFwd)r.snPT=-1e9;',' ','a press on a ball since let go still counts');
+mutate('shots','r.shotExert=K.exert;','r.shotExert=1;','the snake costs a plain swing stamina');
+mutate('shots',' pinRelease(r,false,K.carry);',' pinRelease(r);','the ball is let go with the roll carryOut');
+mutate('shots',' r.pinPose=false;r.pinFwd=false;r.fwdOut=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;',' r.pinPose=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;','the forward flag outlives the snake');
+mutate('shots','function shotSnakeOn(){const K=SHOTC.snake;return !!(K&&K.on);}','function shotSnakeOn(){const K=SHOTC.snake;return !!K;}','snake.on false is ignored');
+mutate('shots','if(shotPinBall(S.seats[i])&&seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}','if(shotPinBall(S.seats[i]))return S.seats[i];return null;}','the snake plate shows over a back pin');
+mutate('shots','r.fwdR=false;r.snPT=-1e9;','r.fwdR=false;','shotReset keeps a half-made pair');
 mutate('shots',' if(r.pinPose&&!r.pinB)r.pinA=r.pinFwd?(r.fwdStk>S.time?P.fwd.angle:shotFwdAngle(r))*r.kickDir:shotBackAngle(r);',' if(r.pinPose&&!r.pinB)r.pinA=shotBackAngle(r);','the forward pose targets the back pin angle');
 mutate('shots',' if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}',' if(!r.pinOn){r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}','letting go of the forward pin sets no guard');
 mutate('shots',' if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}',' if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinFwd=false;r.fwdStk=0;}','the pose outlives finesse');

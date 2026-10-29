@@ -42,7 +42,7 @@ function momContact(b,r){
  if(!momOn())return;
  const p=b.m.position,sw=r.kickT>=0;
  momSaveTest(b,r,p);                      // reads b.tc — must run BEFORE it's overwritten
- const rec={team:r.team,role:r.role,swing:sw,x:p.x,z:p.z,t:S.time};
+ const rec={team:r.team,role:r.role,swing:sw,snake:sw&&r.kickStyle==='snake',x:p.x,z:p.z,t:S.time};
  // a swing starts a new shot, so the bend accumulator restarts; a passive touch doesn't reset it
  b.tc=rec;if(sw){b.shot=rec;b.curl=0;}
 }
@@ -88,6 +88,7 @@ function momKind(team,b,sp,p){
  // own goal = the last contact was a swing by the conceding side; a passive deflection is the attacker's goal ('deflected')
  if(tc&&tc.swing&&tc.team===1-team)return'ownGoal';
  if(b.wood&&S.time-b.wood<MOM.wood.recall)return'woodwork';
+ if(sh&&sh.snake&&sh.team===team&&!(tc&&tc.t>sh.t))return'snake';   // untouched since the snake struck it
  // curl is the path's total bend (b.curl, banked by the Magnus term in stepBall), not b.spin: a late graze leaves big spin on a straight ball
  if(Math.abs(b.curl)*57.2958>G.curlDeg)return'curler';
  if(sp>G.spFast)return'screamer';

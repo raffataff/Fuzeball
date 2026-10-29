@@ -137,6 +137,13 @@ function suite(X,quiet){
  fresh(X,[so]);X.setPad(false);frame(X,0.5);ok(caps(X.LINES[0].L)==='SPACE+LMB','…and the keys when the keyboard was');
  fresh(X,[seat('#00f',['kbd'],rodOf(ball(1,1)))]);X.setPad(true);frame(X,0.5);
  ok(caps(X.LINES[0].L)==='SPACE+LMB','a keyboard-only seat never reads pad glyphs, whoever touched what');
+ // under the forward leg the plate is the snake's two presses, and it changes over with the pin it shows
+ {const rf=rodOf(ball(1,1));rf.pinFwd=true;const sf=seat('#f00',['kbd','mouse'],rf);fresh(X,[sf]);X.LINES.length=0;frame(X,0.5);
+  ok(X.LINES.length===1&&words(X.LINES[0].L)==='X2 SNAKE'&&caps(X.LINES[0].L)==='SPACE+LMB','a ball under the forward leg: the kick keys and "x2 snake"');
+  rf.pinFwd=false;X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','...back on the back pin it reads "pin shot" again');
+  rf.pinFwd=true;X.C.shots.snake.on=false;X.LINES.length=0;frame(X,0.5);frame(X,0.5);ok(X.LINES.length===0,'...and with the snake off nothing is offered');X.C.shots.snake.on=true;
+  const pf=rodOf(ball(1,1));pf.pinFwd=true;fresh(X,[seat('#00f',['pad2'],pf)]);X.LINES.length=0;frame(X,0.5);
+  ok(pads(X.LINES[0].L)==='A'&&words(X.LINES[0].L)==='X2 SNAKE','a pad seat reads A x2 snake');}
  fresh(X,[so]);X.S.tut={};frame(X,0.5);ok(X.LINES.length===0,'no plate in the tutorial');
 
  if(!quiet){console.log('assertions: '+pass+' passed, '+fail+' failed');for(const f of fails)console.log('  FAIL  '+f);}
@@ -162,13 +169,16 @@ const muts=[
  ['fx',' rdt=rdt>0?rdt:0;',' ','a clock that steps back hides the ring for a second'],
  ['fx','if(u.col!==c){u.col=c;m.material.color.set(c);}','','a ring ignores its seat colour'],
  ['hud','else P.on=false;','','the plate never goes away'],
- ['hud','if(!P.on){P.on=true;P.t=HUD.t;P.tok=','if(!P.on){P.on=true;P.tok=','a long-held catch is never dimmed afresh'],
+ ['hud','P.on=true;P.snk=snk;P.t=HUD.t;','P.on=true;P.snk=snk;','a long-held catch is never dimmed afresh'],
  ['hud','(hasPad&&(!hasKb||hudPadNow())?P.tokP:P.tok)[0]','P.tok[0]','a pad player is shown keyboard keys'],
  ['hud','(hasPad&&(!hasKb||hudPadNow())?P.tokP:P.tok)[0]','P.tokP[0]','a keyboard player is shown pad buttons'],
  ['hud','(age<H.hold?1:1-(1-H.dim)*hO3(hC((age-H.hold)/1.2)))','1','the plate never settles back'],
  ['hud','X.globalAlpha=a*ei*','X.globalAlpha=ei*','the plate ignores the chrome fade'],
  ['hud','y=HUD.chipY-H.gap*u-h+','y=HUD.chipY-h+','the plate sits on the rod chips'],
- ['hud','P.tok=hudTok(bindHint(\'kick\',\'pin shot\',2)||\'pin shot\');','P.tok=hudTok(\'[SPACE] pin shot\');','the plate ignores a rebind']
+ ['hud','(bindHint(\'kick\',\'pin shot\',2)||\'pin shot\')','(\'[SPACE] pin shot\')','the plate ignores a rebind'],
+ ['hud','P.tok=hudTok(snk?','P.tok=hudTok(false?','the forward pin\'s plate says pin shot'],
+ ['hud','if(!P.on||P.snk!==snk){','if(!P.on){','the plate keeps the last pin\'s words'],
+ ['shots','function shotSnakeSeat(){if(!shotSnakeOn())return null;','function shotSnakeSeat(){','the snake plate shows with the snake off']
 ];
 let caught=0;
 for(const [file,find,repl,name] of muts){

@@ -265,6 +265,15 @@ eq('high but CENTRAL is not top bins',
   eq('a recent post -> in off the woodwork',kind(0,{tc:near,shot:near,wood:ctx.S.time-MOM.wood.recall*.5},40),'woodwork');
   eq('...and it beats a curler',kind(0,{tc:near,shot:near,wood:ctx.S.time-.1,spin:2},40),'woodwork');
   eq('a stale post does not',kind(0,{tc:near,shot:near,wood:ctx.S.time-MOM.wood.recall*2},40),'default'); }
+{ // the snake: a goal straight off one is named for it, ahead of pace and bend; touched on the way it is not
+  const sn=Object.assign(swing(0,30,0,100),{snake:true});
+  eq('a snake straight in -> snake',kind(0,{tc:sn,shot:sn},G.spFast+40),'snake');
+  eq('...even one that bent',kind(0,{tc:sn,shot:sn,curl:(G.curlDeg+3)/57.2958},40),'snake');
+  eq('...but a snake that rang the post is woodwork',kind(0,{tc:sn,shot:sn,wood:ctx.S.time-.1},40),'woodwork');
+  eq('a snake deflected on its way is deflected',kind(0,{tc:touch(1,50,0,101),shot:sn},40),'deflected');
+  const osn=Object.assign(swing(1,50,0),{snake:true});
+  eq('a conceder\'s snake is still an own goal',kind(0,{tc:osn,shot:osn},40),'ownGoal');
+  ok('the snake has its own lines',Array.isArray(MOM.lines.snake)&&MOM.lines.snake.length>0); }
 { // scoring at the OTHER end: an own goal is now team 0's swing, not team 1's
   const og=swing(0,-50,0);
   eq('own goal detection follows the conceding side',kind(1,{tc:og,shot:og},40),'ownGoal');
@@ -326,6 +335,14 @@ group('momContact / momReset');
  ok('a passive touch updates tc only',b.tc.team===1&&b.shot.team===0,{tc:b.tc,shot:b.shot});
  eq(' ...and leaves the bend alone',b.curl,0.7);
  ok(' ...and is later than the shot',b.tc.t>b.shot.t); }
+{ resetS();
+ const b=ball(20,BALL_R,3,60,0,0);
+ ctx.momContact(b,Object.assign(rod(0,'ATT',0.2),{kickStyle:'snake'}));
+ ok('a snake\'s swing marks its shot record',b.shot&&b.shot.snake===true,b.shot);
+ ctx.momContact(b,Object.assign(rod(0,'ATT',0.05),{kickStyle:'trapShot'}));
+ ok(' ...another swing does not',b.shot&&!b.shot.snake,b.shot);
+ ctx.momContact(b,Object.assign(rod(0,'ATT',-1),{kickStyle:'snake'}));
+ ok(' ...nor a touch with no swing in flight',!b.tc.snake,b.tc); }
 { resetS();
  const b=ball(20,BALL_R,3,60,0,0);
  b.onT={sx:1};b.savePend={};b.tc={};b.shot={};b.wood=5;b.woodCd=5;b.saveCd=5;b.curl=1;
