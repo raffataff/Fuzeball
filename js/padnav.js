@@ -14,7 +14,7 @@ const NAV_LAYERS=[
  {id:'lgForfeit',def:['btnForfeitCancel'],back:'btnForfeitCancel'},
  {id:'options',def:['optTabBtnDisplay'],back:'optDone'},
  {id:'pause',def:['btnResume'],back:'btnResume',backLbl:'Resume'},
- {id:'lgSeasonEnd',def:['lgSEContinue']},
+ {id:'lgSeasonEnd',def:['lgSECup','lgSEContinue']},
  {id:'lgTape',def:['lgTape'],back:'lgTape',backLbl:'Skip'},
  {id:'win',def:['btnWinContinue','btnRematch']},
  {id:'trlCard',def:['trlRetry'],back:'trlQuit',backLbl:'Trials'},

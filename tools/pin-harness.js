@@ -10,7 +10,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
  const b=src.indexOf(to,a);if(b<0)throw new Error('slice end miss: '+to);return src.slice(a,b);};
 
 const stubs=[
-"var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;",
+"var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;function isUserRod(r){return !!r.user;}",
 "var KICKS=[];function kickRod(r,style,aim,curve){if(r.kickT>=0)return;if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:curve||null});}",
 "var CAP=null;function shotPullCap(r,a0,a1){return CAP==null?a1:CAP;}",
 "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
@@ -127,6 +127,13 @@ function suite(X,quiet){
  pinned();r.vz=20;r.offset+=20*H;X.pinBallStep(b,H);r.pinOn=false;X.pinUpdate();
  ok(!r.pinB&&!b.pinR,'finesse let go: released');
  ok(Math.abs(b.v.z-20*P.carryOut)<1e-6,'…keeping carryOut of the slide');
+ // a mouse or pad moves a player's rod once a frame, so at 60 fps it slides on one sim step of two: the ball keeps the slide of the last four steps, not of the last one
+ pinned();r.user=true;r.vzH=[40,0,40,0];r.vz=0;X.pinBallStep(b,H);r.pinOn=false;X.pinUpdate();
+ ok(Math.abs(b.v.z-20*P.carryOut)<1e-6,'a player\'s rod that moved on one step of two lets go at its average slide');
+ pinned();r.vzH=[40,0,40,0];r.vz=20;r.offset+=20*H;X.pinBallStep(b,H);r.pinOn=false;X.pinUpdate();
+ ok(Math.abs(b.v.z-20*P.carryOut)<1e-6,'…an AI rod at its last step\'s, as before');
+ pinned();r.user=true;r.vz=20;r.offset+=20*H;X.pinBallStep(b,H);r.pinOn=false;X.pinUpdate();
+ ok(Math.abs(b.v.z-20*P.carryOut)<1e-6,'…and a player\'s rod with no history yet at its last step\'s');
  pinned();r.kickT=0;X.pinUpdate();ok(!r.pinB,'a swing in flight releases it');
  pinned();r.angle+=P.releaseA*1.5;X.pinUpdate();ok(!r.pinB,'the rod turned off the pin (a stick flick) releases it');
  pinned();r.angle+=P.releaseA*0.5;X.pinUpdate();ok(r.pinB===b,'…but a small wobble does not');
@@ -178,7 +185,8 @@ const muts=[
  ['physics','if(Math.abs(v.x-b.pinVx)+Math.abs(v.z-b.pinVz)+Math.abs(v.y)>P.breakV){pinRelease(r,true);return false;}','','another ball cannot knock it loose'],
  ['physics','if(Math.abs(p.x-b.pinPx)+Math.abs(p.z-b.pinPz)>1){pinRelease(r,true);return false;}','','a re-dropped ball is yanked back to the rod'],
  ['physics','if(Math.abs(cz-tz)>P.zSlip){pinRelease(r);return false;}','','a ball squeezed into the wall stays pinned'],
- ['physics','if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}','if(!ext){b.v.set(0,0,0);}','a released ball forgets the slide'],
+ ['physics','if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*SHOT.pin.carryOut;}','if(!ext){b.v.set(0,0,0);}','a released ball forgets the slide'],
+ ['physics','b.v.z=(H&&isUserRod(r)?','b.v.z=(false?','a player\'s release keeps only the last step\'s slide'],
  ['physics','v.set((tx-p.x)/h,0,(cz-p.z)/h);','v.set(0,0,0);','a carried ball reports no velocity'],
  ['shots','r.pinOn=fin&&r.chg<0&&r.kickT<0;','r.pinOn=fin&&r.kickT<0;','a wind-up and a pin at once'],
  ['shots',' const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;',' const fin=I.lt>SHOTC.hold.from;','the pin waits for the finesse grip to ease in'],

@@ -132,7 +132,7 @@ function userControlUpdate(dt){
  }
  // auto rod-switch, per seat, silent: the zone the threat to this seat's goal (focusBall) is in, else the nearest rod in x
  // skips rods another seat holds and the keeper autoHoldRod (ai.js) withholds mid-save
-  if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){
+  if((cfg.auto||(S.tut&&S.tut.auto))&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay&&S.balls.length){   // a tutorial lesson can switch it on for itself (js/tutorial.js)
    S.seats.forEach(s=>{
     if(s.rods.length<2)return;
     const fb=focusBall(s.team);if(!fb)return;

@@ -1,4 +1,4 @@
-// audio-harness.js: headless tests for js/audio.js (samples, routing, room, crowd, stand-ins). Run: node tools/audio-harness.js
+// audio-harness.js: headless tests for js/audio.js (samples, routing, room, crowd, stand-ins, menu music). Run: node tools/audio-harness.js
 // boots three.js + core.js + config.js + audio.js in one vm against a MOCK WebAudio that records every node and connection, so routing is checked as a graph (does this sound reach the UI bus? through a panner? into the room?); the pure DSP (auVox, auIR, auClaps) is measured on its real output
 // every assertion also runs against MUTANTS of audio.js; each must break one, and a drifted anchor reports itself
 'use strict';
@@ -19,7 +19,7 @@ function mockAudio(made){
   this.createGain=()=>node('gain',{gain:P(1)});
   this.createBiquadFilter=()=>node('biquad',{type:'lowpass',frequency:P(350),Q:P(1),gain:P(0)});
   this.createOscillator=()=>node('osc',{type:'sine',frequency:P(440),start(){},stop(){}});
-  this.createBufferSource=()=>node('src',{buffer:null,loop:false,playbackRate:P(1),start(t,off){this.at=t;this.startedAt=t;},stop(){}});
+  this.createBufferSource=()=>node('src',{buffer:null,loop:false,playbackRate:P(1),start(t,off){this.at=t;this.startedAt=t;this.started=true;},stop(t){this.stopAt=t;}});
   this.createStereoPanner=()=>node('pan',{pan:P(0)});
   this.createConvolver=()=>node('conv',{buffer:null,normalize:true});
   this.createDynamicsCompressor=()=>node('comp',{threshold:P(0),knee:P(0),ratio:P(1),attack:P(0),release:P(0)});
@@ -83,6 +83,11 @@ function suite(src,verbose){
   const firsts=new Set();for(let i=0;i<200;i++)firsts.add(ctx.auPick(4,-1,i/200));
   ok('with no previous take every take can come first',firsts.size===4,[...firsts]);
   ok('a single take is always take 0',ctx.auPick(1,0,.7)===0);}
+ {const j={loop_start_sample:360000,loop_end_sample:3240000,sample_rate:48000},pts=(j,d)=>JSON.stringify(ctx.auLoopPts(j,d));
+  ok('a track\'s sidecar gives its loop in seconds',pts(j,67.5)==='[7.5,67.5]',pts(j,67.5));
+  ok('no sidecar loops the whole track',pts(null,30)==='[0,30]');
+  ok('a sidecar past the end of the file is ignored',pts(j,40)==='[0,40]');
+  ok('a backwards sidecar is ignored',pts({loop_start_sample:9,loop_end_sample:3,sample_rate:1},20)==='[0,20]');}
  ok('auLin interpolates',Math.abs(ctx.auLin([[0,0],[1,10]],.25)-2.5)<1e-9);
  ok('auLin clamps past the end',ctx.auLin([[0,0],[1,10]],3)===10);
  /* 2. pan follows the screen */
@@ -136,6 +141,7 @@ function suite(src,verbose){
  cfg.sound=true;cfg.ambience=true;Au.init();
  ok('init built the buses',!!(Au.mg&&Au.cb&&Au.ub&&Au.sum));
  ok('menus reach the output',reach(Au.ub,Au.sum));ok('the crowd reaches the output through the room band-limit',path2(Au.cb,Au.sum,'biquad'));
+ ok('music reaches the output on a bus of its own',reach(Au.mu,Au.sum)&&Au.mu!==Au.ub&&Au.mu!==Au.mg&&Au.mu!==Au.cb);
  ok('a room was applied at init',Au.rv&&Au.rv.id==='pub',Au.rv&&Au.rv.id);
  const osc=()=>A.made.filter(n=>n.kind==='osc').length,srcs=()=>A.made.filter(n=>n.kind==='src').length;
  {const o0=osc();Au.kick(60,{},ball(40,0));
@@ -205,6 +211,23 @@ function suite(src,verbose){
  {Au.ctx.currentTime+=5;Au.bank.ball_goal=[buf(A)];const s0=srcs();Au.goalIn(ball(55,0));
   ok('the ball dropping into the goal plays its take, panned',srcs()===s0+1&&path2(A.made.filter(n=>n.kind==='src').pop(),Au.mg,'pan'));
   const s1=srcs();Au.drop(ball(0,0));ok('recorded-only sounds are silent without a file',srcs()===s1);delete Au.bank.ball_goal;}
+ /* 7c. the menu music */
+ {const m=Au.mx,b=buf(A,4),MU=AUMIX.music,live=()=>A.made.filter(n=>n.kind==='src'&&n.buffer===b);
+  ctx.S.phase='menu';Au.tick(1/60);ok('no track decoded: nothing plays',live().length===0);
+  m.buf=b;m.ls=1;m.le=3;
+  ctx.S.phase='play';Au.tick(1/60);ok('no music in a match',live().length===0);
+  ctx.introLeft=false;ctx.S.phase='menu';Au.tick(1/60);ok('…nor behind the intro',live().length===0);
+  ctx.introLeft=true;Au.tick(1/60);const s=live()[0];
+  ok('the menus play the track',live().length===1&&s.started===true);
+  ok('…on the music bus',!!s&&reach(s,Au.mu)&&!reach(s,Au.mg)&&!reach(s,Au.ub));
+  ok('…the intro once, then its loop',!!s&&s.loop===true&&s.loopStart===1&&s.loopEnd===3,s&&[s.loop,s.loopStart,s.loopEnd]);
+  ok('…at the configured level',!!m.g&&Math.abs(m.g.gain.value-MU.vol)<1e-9,m.g&&m.g.gain.value);
+  Au.tick(1/60);ok('one voice, not one a frame',live().length===1,live().length);
+  const g=m.g,t=Au.ctx.currentTime;ctx.S.phase='count';Au.tick(1/60);
+  ok('a match fades it out and stops it',!!g&&g.gain.target===0&&!!s&&Math.abs(s.stopAt-t-MU.fadeOut)<1e-6,[g&&g.gain.target,s&&s.stopAt]);
+  ctx.S.phase='menu';Au.tick(1/60);ok('back in the menus it starts again from the top',live().length===2&&live()[1]!==s,live().length);
+  cfg.volMusic=.5;Au.mix();ok('the Music slider sets its bus (square curve)',Math.abs(Au.mu.gain.value-.25)<1e-9,Au.mu.gain.value);cfg.volMusic=1;Au.mix();
+  ctx.S.phase='play';Au.tick(1/60);m.buf=null;}
  }catch(e){fails.push('threw: '+(e.stack||e.message).split('\n').slice(0,3).join(' | '));}
  return{fails,pass};
 }
@@ -238,6 +261,13 @@ function staticChecks(){
  {const r=MF.build([path.join(ROOT,'assets/audio/b/ball_kick_02.ogg'),path.join(ROOT,'assets/audio/a/ball_kick_01.ogg'),path.join(ROOT,'assets/audio/oops.ogg')],CONFIG);
   ok('manifest: takes are grouped and sorted',JSON.stringify(r.sounds)==='{"ball_kick":["a/ball_kick_01.ogg","b/ball_kick_02.ogg"]}',r.sounds);
   ok('manifest: an unknown name is reported, not shipped',r.bad.length===1&&r.bad[0]==='oops.ogg',r.bad);}
+ // the menu track on disk
+ {const M=CONFIG.audioMix.music,f=path.join(ROOT,'assets/audio',M.menu),j=f.replace(/\.\w+$/,'.loop.json');
+  ok('the menu track exists',fs.existsSync(f),M.menu);
+  const sc=fs.existsSync(j)&&JSON.parse(fs.readFileSync(j,'utf8'));
+  ok('…with its loop sidecar, the intro before the loop',!!sc&&sc.loop_start_sample>0&&sc.loop_end_sample>sc.loop_start_sample,sc);
+  const r=MF.build([f],CONFIG);
+  ok('manifest: music is listed as music, not as a sound or a bad name',r.music.length===1&&!r.bad.length&&!Object.keys(r.sounds).length,r);}
  return{fails,pass};
 }
 
@@ -273,6 +303,15 @@ const MUTS=[
  mutate("if(k==='goal'){this.exc=1;","if(k==='goal'){",'a goal does not lift the room'),
  mutate('if(ok)this.exc=Math.min(1,this.exc+(D.exc||0));','','reactions do not lift the room'),
  mutate('B.lvl+=((live?lerp(C.volLo,C.volHi,B.x):0)-B.lvl)','B.lvl+=((lerp(C.volLo,C.volHi,B.x))-B.lvl)','the crowd plays in the menus'),
+ mutate("musicWant(){return typeof S!=='undefined'&&S.phase==='menu'&&","musicWant(){return typeof S!=='undefined'&&",'the music plays in matches'),
+ mutate("&&(typeof introLeft==='undefined'||introLeft);}",';}','the music starts behind the intro'),
+ mutate('s.loop=true;s.loopStart=m.ls;s.loopEnd=m.le;','s.loop=true;','the intro loops with the body'),
+ mutate('g.connect(this.mu);s.onended','g.connect(this.ub);s.onended','music lands on the menu-sound bus'),
+ mutate('this.ub.connect(this.sum);this.mu.connect(this.sum);','this.ub.connect(this.sum);','music never reaches the output'),
+ mutate("set(this.mu,v('volMusic'));",'','the Music slider does nothing'),
+ mutate('m.src.stop(t+M.fadeOut);','','the music is never stopped after its fade'),
+ mutate('if(want&&!m.src){','if(want){','a new music voice every frame'),
+ mutate('return a>=0&&b>a&&b<=dur+.01?','return a>=0?','a sidecar past the end of the file is trusted'),
 ];
 let caught=0;console.log('\nmutations (each must fail something):');
 for(const M of MUTS){

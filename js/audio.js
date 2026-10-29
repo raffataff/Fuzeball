@@ -19,6 +19,9 @@ function auLin(p,t){if(t<=p[0][0])return p[0][1];
  return p[p.length-1][1];}
 // Round-robin that never plays the same take twice running: uniform over the OTHERS.
 function auPick(n,last,r){if(n<2)return 0;if(!(last>=0&&last<n))return Math.floor(r*n)%n;let k=Math.floor(r*(n-1));if(k>=last)k++;return k;}
+// a track's [loopStart, loopEnd] in seconds from its TuneTrack .loop.json; a missing or impossible sidecar loops the whole buffer
+function auLoopPts(j,dur){const sr=j&&j.sample_rate,a=j&&j.loop_start_sample/sr,b=j&&j.loop_end_sample/sr;
+ return a>=0&&b>a&&b<=dur+.01?[a,Math.min(b,dur)]:[0,dur];}
 // -1..1 across the screen, from the camera so a sound follows the ball through every camera mode and the replay
 const _auV=typeof THREE!=='undefined'?new THREE.Vector3():null;
 function auPanOf(s){
@@ -166,7 +169,7 @@ const AU_STING={
  trophy:{v:.045,bell:[[1174.66,0,1.4],[1567.98,.09,1.4],[1760,.18,1.6],[2349.32,.27,2]],brass:[[146.83,.27,1.4],[293.66,.27,1.4],[440,.27,1.4]]},
  medal: {v:.05,bell:[[1174.66,0,1.2],[1567.98,.08,1.2],[1760,.16,1.6]]}};
 
-const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
+const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
  dst:null, // beep/noise/wood/bell/brass route here instead of mg while set (route() / ui point it)
  bg:false, // window is unfocused / hidden — silenced when cfg.muteBg
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
@@ -180,8 +183,9 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
  irs:{},      // room id → generated impulse
  bed:null,    // the crowd bed: {layers, x (excitement heard), ten (tension), lvl, g, s}
  rv:null,     // the room: {rm, id, A (its acoustic), f / c (fx / crowd convolvers)}
+ mx:null,     // the menu music: {buf, ls / le (loop points, s), src / g (the voice playing, or null)}
 
- // BUSES (Options > Audio): mg = effects, cb = crowd, ub = menu clicks; all sum into `sum` (the clip recorder's tap), then `out` (master + Sound switch), limiter, speakers
+ // BUSES (Options > Audio): mg = effects, cb = crowd, ub = menu clicks, mu = music; all sum into `sum` (the clip recorder's tap), then `out` (master + Sound switch), limiter, speakers
  // the crowd bus passes the room's band-limit first (cHp / cLp)
  init(){if(this.ctx)return;try{
   this.ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -193,10 +197,11 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
    this.lim.attack.value=L.attack;this.lim.release.value=L.release;this.lim.connect(c.destination);}
   this.out=c.createGain();this.out.connect(this.lim||c.destination);
   this.sum=c.createGain();this.sum.connect(this.out);
-  this.mg=c.createGain();this.cb=c.createGain();this.ub=c.createGain();
+  this.mg=c.createGain();this.cb=c.createGain();this.ub=c.createGain();this.mu=c.createGain();
   this.cHp=c.createBiquadFilter();this.cHp.type='highpass';this.cHp.frequency.value=20;
   this.cLp=c.createBiquadFilter();this.cLp.type='lowpass';this.cLp.frequency.value=20000;
-  this.mg.connect(this.sum);this.cb.connect(this.cHp);this.cHp.connect(this.cLp);this.cLp.connect(this.sum);this.ub.connect(this.sum);
+  this.mg.connect(this.sum);this.cb.connect(this.cHp);this.cHp.connect(this.cLp);this.cLp.connect(this.sum);this.ub.connect(this.sum);this.mu.connect(this.sum);
+  this.mx={buf:null,ls:0,le:0,src:null,g:null};
   this.mix();
   this.nbuf=this.mkNoise(3);
   this.bed={layers:[],x:0,ten:0,lvl:0,g:c.createGain(),s:null};this.bed.g.gain.value=0;this.bed.g.connect(this.cb);
@@ -211,14 +216,14 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
   const t=this.ctx.currentTime,v=k=>{const x=clamp(+cfg[k],0,1);return x===x?x*x:1;},
    set=(n,g)=>n.gain.setTargetAtTime(g,t,.015);
   set(this.out,cfg.sound&&!(cfg.muteBg&&this.bg)?AUMIX.master*v('volMaster'):0);
-  set(this.mg,v('volFx'));set(this.cb,v('volCrowd'));set(this.ub,v('volUi'));},
+  set(this.mg,v('volFx'));set(this.cb,v('volCrowd'));set(this.ub,v('volUi'));set(this.mu,v('volMusic'));},
 
  inMatch(){return typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win';},
 
  // ---- recorded takes ----
  // tools/build_audio_manifest.js writes the manifest (a browser can't list a folder); no manifest, file://, a 404 or an undecodable file leaves that id synthesized
  // stand-ins are queued once the manifest is read, so a long decode never leaves the room silent
- load(){const M=AUMIX.samples;this.bank={};this.listed=new Set();
+ load(){const M=AUMIX.samples;this.bank={};this.listed=new Set();this.musicLoad();
   const after=()=>{this.bedSync();if(this.rv&&this.has('ir_'+this.rv.id))this.rvSet(this.rv.id,this.rv.rm);};
   if(!M||!M.on||typeof fetch!=='function'){this.synthQueue();return;}
   fetch(M.folder+M.manifest).then(r=>r.ok?r.json():null).catch(()=>null).then(j=>{
@@ -262,6 +267,19 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
   if(cv&&send>0){const Rv=AUMIX.reverb,s=c.createGain();
    s.gain.value=send*(cr?Rv.crowd*(rv.A.crowd??1):Rv.fx*(rv.A.fx??1));n.connect(s);s.connect(cv);}
   return n;},
+
+ // ---- the menu music ----
+ // polled like the room: the menus only, and not before the intro's press; a match fades it out, the menus start it again from its intro
+ musicLoad(){const M=AUMIX.music,F=AUMIX.samples;if(!M||!M.on||!M.menu||!F||typeof fetch!=='function')return;
+  const u=F.folder+M.menu,get=(f,k)=>fetch(f).then(r=>r.ok?r[k]():null).catch(()=>null);
+  Promise.all([get(u,'arrayBuffer').then(a=>a?this.ctx.decodeAudioData(a):null).catch(()=>null),get(u.replace(/\.\w+$/,'.loop.json'),'json')])
+   .then(([b,j])=>{if(!b)return;const p=auLoopPts(j,b.duration);Object.assign(this.mx,{buf:b,ls:p[0],le:p[1]});});},
+ musicWant(){return typeof S!=='undefined'&&S.phase==='menu'&&(typeof introLeft==='undefined'||introLeft);},
+ musicTick(){const m=this.mx;if(!m||!m.buf)return;const c=this.ctx,M=AUMIX.music,want=this.musicWant();
+  if(want&&!m.src){const s=c.createBufferSource(),g=c.createGain();
+   s.buffer=m.buf;s.loop=true;s.loopStart=m.ls;s.loopEnd=m.le;g.gain.value=M.vol;
+   s.connect(g);g.connect(this.mu);s.onended=()=>g.disconnect();s.start();m.src=s;m.g=g;}
+  else if(!want&&m.src){const t=c.currentTime;m.g.gain.setTargetAtTime(0,t,M.fadeOut/5);m.src.stop(t+M.fadeOut);m.src=m.g=null;}},
 
  // ---- the room ----
  // polled, not hooked (activeRoom); a new convolver per room so old tails ring out and are disconnected when done
@@ -450,7 +468,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,sum:null,out:null,lim:null,nbuf:null,
 
  tick(dt){if(!this.ctx)return;
   this.exc=Math.max(0,this.exc-dt*(AUC.excDecay??.3));
-  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.chargeVoice(dt);},
+  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.chargeVoice(dt);this.musicTick();},
 
  // physics reports rolling contact here per ball per surface per frame (rollProbe, and the arena's inelastic branch); MAX not sum
  // k: 0 = floor, 1 = wall; aC = the ball type's audio block (.roll picks the character)

@@ -1,6 +1,6 @@
 // Writes assets/audio/manifest.json, the index js/audio.js reads to find recorded takes (a browser can't list a folder).
 // Run after adding, renaming or removing a sound:  node tools/build_audio_manifest.js
-// naming: <id>_01.ogg, <id>_02.ogg ... or <id>.ogg, anywhere under assets/audio/ (subfolders are only for you); the id is the file name minus its take number and must be:
+// naming: <id>_01.ogg, <id>_02.ogg ... or <id>.ogg, anywhere under assets/audio/ (subfolders are only for you, except music/: tracks named by CONFIG.audioMix.music, never indexed); the id is the file name minus its take number and must be:
 //   - a sound in CONFIG.audioMix.sounds                          ball_kick_03.ogg
 //   - a variant: <id>_hard, or <id>_<ballType>                   ball_kick_hard_01.ogg, ball_wall_fire.ogg
 //   - a room impulse: ir_<roomId>                                ir_pub.wav
@@ -35,20 +35,21 @@ function walk(d,out){
   if(e.isDirectory())walk(p,out);else if(EXT.test(e.name))out.push(p);}
  return out;
 }
-/* files: absolute paths. Returns {sounds:{id:[relative paths, sorted]}, bad:[relative paths]}. */
+/* files: absolute paths. Returns {sounds:{id:[relative paths, sorted]}, bad:[relative paths], music:[relative paths]}. */
 function build(files,C){
- const sounds={},bad=[];
+ const sounds={},bad=[],music=[];
  for(const f of files){const rel=path.relative(DIR,f).split(path.sep).join('/'),id=idOf(f);
+  if(rel.startsWith('music/')){music.push(rel);continue;}
   if(!validId(id,C)){bad.push(rel);continue;}
   (sounds[id]=sounds[id]||[]).push(rel);}
  const sorted={};for(const id of Object.keys(sounds).sort())sorted[id]=sounds[id].sort();
- return {sounds:sorted,bad};
+ return {sounds:sorted,bad,music:music.sort()};
 }
 
 if(require.main===module){
  const C=loadConfig();
  fs.mkdirSync(DIR,{recursive:true});
- const {sounds,bad}=build(walk(DIR,[]),C);
+ const {sounds,bad,music}=build(walk(DIR,[]),C);
  fs.writeFileSync(OUT,JSON.stringify({v:1,note:'written by tools/build_audio_manifest.js, do not edit',sounds},null,1)+'\n');
  const S=C.audioMix.sounds,pad=(s,n)=>(s+' '.repeat(n)).slice(0,n);
  console.log('\nassets/audio/manifest.json  ('+Object.keys(sounds).length+' ids, '+Object.values(sounds).reduce((a,b)=>a+b.length,0)+' files)\n');
@@ -61,6 +62,8 @@ if(require.main===module){
  const irs=Object.keys(sounds).filter(k=>k.startsWith('ir_'));
  if(irs.length)console.log('\n  room impulses: '+irs.join(', '));
  console.log('\n  '+rec+' recorded · '+syn+' synthesized · '+sil+' silent');
+ const Mu=C.audioMix.music;
+ if(music.length||Mu)console.log('\n  music: '+(music.join(', ')||'none')+(Mu&&Mu.menu?'   (menu plays '+Mu.menu+(music.includes(Mu.menu)?'':', NOT FOUND')+')':''));
  if(bad.length){console.log('\n  NOT a sound id, left out (check the name against CONFIG.audioMix.sounds):');for(const b of bad)console.log('    '+b);}
  console.log('');
 }

@@ -212,6 +212,24 @@ RD.maxBall=0;
   ok('with the foot reach switched off only a ball the team touched last readies a rod',nf.rvReady!==true);RD.feet=true;X.S.lastTouch=0;
   RD.possession=false;const off=world(X).r;X.recvPossess(off,b);
   ok('with possession off the rods are left as they were',off.rvReady!==true);RD.possession=true;
+  // a human on the team holding finesse and kick (shots.js shotRecvAsk): its mates stand ready for any ball coming up at them
+  const ask=(ball,o)=>{o=o||{};X.S.seats=[{team:o.seat==null?0:o.seat,rcvAsk:true}];const w=world(X,o);if(o.cd)w.r.rvCd=X.S.time+1;if(o.force)w.r.force=true;X.S.lastTouch=o.lt==null?0:o.lt;X.recvPossess(w.r,ball);X.S.seats=undefined;X.S.lastTouch=0;return w.r;};
+  const up=ballAt(-30,14,60,undefined,60);up.real=up;
+  ok('a human asking: ready for a ball coming up at the rod even straight after a kick let it go (cooldown)',ask(up,{cd:true}).rvReady===true);
+  ok('...even when the other team touched it last',ask(up,{lt:1}).rvReady===true);
+  RD.maxBall=40;ok('...even over the speed limit',ask(up).rvReady===true);RD.maxBall=0;
+  RD.possession=false;ok('...even with possession off',ask(up).rvReady===true);RD.possession=true;
+  const hop=ballAt(-30,14,60,X.AIC.lowY+0.5,60);hop.real=hop;
+  ok('...and a pass hopping off the boot (under recv.maxY)',ask(hop).rvReady===true);
+  const sky=ballAt(-30,14,60,X.AIC.catch.recv.maxY+1,60);sky.real=sky;
+  ok('...not one higher than recv.maxY',ask(sky).rvReady!==true);
+  const crawl=ballAt(-30,14,5,undefined,RD.trackV-5);crawl.real=crawl;
+  ok('...a ball slower than trackV is not asked for (the cooldown stands)',ask(crawl,{cd:true}).rvReady!==true);
+  ok('...the other team\'s human asking does nothing for this rod',ask(up,{seat:1,cd:true}).rvReady!==true);
+  ok('...nor for the keeper',ask(up,{role:'GK'}).rvReady!==true);
+  ok('...nor with the whistle close',ask(up,{force:true}).rvReady!==true);
+  const cl=ballAt(-7.5-PSS.minAhead+2,14,60,undefined,60);cl.real=cl;
+  ok('...nor a ball already too close to stand ready for',ask(cl).rvReady!==true);
   RD.on=false;const off2=world(X).r;X.recvPossess(off2,b);
   ok('…and with the ready state off',off2.rvReady!==true);RD.on=true;}
  {const {from,r}=world(X);X.recvReady(from,[{rod:r,man:3,z:12,score:5}]);
@@ -405,23 +423,31 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 const MUT=[
  {n:'a rod keeps waiting for a pass the whistle is about to end',part:'catch',from:"if(r.force){recvEnd(r,'force');return;}",to:''},
  {n:'possession never readies a rod',part:'catch',from:'r.rvReady=true;r.rvUntil=S.time+RD.hold;r.rvFl=RD.wait;\n}',to:'\n}'},
- {n:'…the other team\'s ball readies it too',part:'catch',from:'||(S.lastTouch!==r.team&&!recvOwn(r,p)))return;',to:')return;'},
+ {n:'…the other team\'s ball readies it too',part:'catch',from:'||(S.lastTouch!==r.team&&!recvOwn(r,p))))return;',to:'))return;'},
  {n:'…a ball too close (past, or nearly there) readies it',part:'catch',from:'if(ahead<PS.minAhead||ahead>RD.reach||',to:'if(ahead>RD.reach||'},
- {n:'…a ball too far behind readies it',part:'catch',from:'||ahead>RD.reach||b.v.x*r.kickDir<-RD.awayV||',to:'||b.v.x*r.kickDir<-RD.awayV||'},
- {n:'…a ball running away fast readies it',part:'catch',from:'||b.v.x*r.kickDir<-RD.awayV||(RD.maxBall',to:'||(RD.maxBall'},
+ {n:'…a ball too far behind readies it',part:'catch',from:'||ahead>RD.reach||p.y>(ask',to:'||p.y>(ask'},
+ {n:'…a ball running away fast readies it',part:'catch',from:'if(!ask&&(b.v.x*r.kickDir<-RD.awayV||(RD.maxBall',to:'if(!ask&&((RD.maxBall'},
  {n:'…the speed limit is ignored',part:'catch',from:'||(RD.maxBall>0&&b.v.length()>RD.maxBall)||',to:'||'},
  {n:'…a limit of 0 is a limit of nothing',part:'catch',from:'(RD.maxBall>0&&b.v.length()>RD.maxBall)',to:'(b.v.length()>RD.maxBall)'},
  {n:'…a ball drifting back slowly does not',part:'catch',from:'b.v.x*r.kickDir<-RD.awayV',to:'b.v.x*r.kickDir<0'},
  {n:'…a fast ball coming at the rod does not',part:'catch',from:'b.v.x*r.kickDir<-RD.awayV',to:'Math.abs(b.v.x)>RD.awayV'},
- {n:'…a ball in the air readies it',part:'catch',from:'||p.y>AIC.lowY||(S.lastTouch',to:'||(S.lastTouch'},
+ {n:'…a ball in the air readies it',part:'catch',from:'||p.y>(ask?RV.maxY:AIC.lowY))return;',to:')return;'},
  {n:'a ready rod ignores the ball coming at it',part:'catch',from:'if(b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY){tAr=',to:'if(false){tAr='},
  {n:'…follows a slow ball too',part:'catch',from:'if(b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY){tAr=',to:'if(b&&b.v.x*dir>=-1e9&&b.m.position.y<=RV.maxY){tAr='},
  {n:'…follows a ball in the air',part:'catch',from:'&&b.m.position.y<=RV.maxY){tAr=',to:'){tAr='},
  {n:'…goes to where the ball is, not where its line will be',part:'catch',from:'za=b.m.position.z+b.v.z*tAr;}',to:'za=b.m.position.z;}'},
- {n:'…the whistle does not stop it',part:'catch',from:'RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil||0)>S.time&&!r.rvReady)||(r.rvCd||0)>S.time)return;',to:'RV.roles.indexOf(r.role)<0||((r.rvUntil||0)>S.time&&!r.rvReady)||(r.rvCd||0)>S.time)return;'},
- {n:'…the keeper is readied',part:'catch',from:'!RD.possession||RV.roles.indexOf(r.role)<0||r.force||',to:'!RD.possession||r.force||'},
- {n:'…a pass already on its way is re-aimed',part:'catch',from:'||((r.rvUntil||0)>S.time&&!r.rvReady)||(r.rvCd||0)>S.time)return;\n const b=',to:'||(r.rvCd||0)>S.time)return;\n const b='},
- {n:'…a rod on cooldown is readied',part:'catch',from:'((r.rvUntil||0)>S.time&&!r.rvReady)||(r.rvCd||0)>S.time)return;\n const b=',to:'((r.rvUntil||0)>S.time&&!r.rvReady))return;\n const b='},
+ {n:'…the whistle does not stop it',part:'catch',from:'RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil||0)>S.time&&!r.rvReady))return;',to:'RV.roles.indexOf(r.role)<0||((r.rvUntil||0)>S.time&&!r.rvReady))return;'},
+ {n:'…the keeper is readied',part:'catch',from:'!RD.on||RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil',to:'!RD.on||r.force||((r.rvUntil'},
+ {n:'…a pass already on its way is re-aimed',part:'catch',from:'||((r.rvUntil||0)>S.time&&!r.rvReady))return;\n const b=',to:')return;\n const b='},
+ {n:'…a rod on cooldown is readied',part:'catch',from:'if(!ask&&(!RD.possession||(r.rvCd||0)>S.time))return;',to:'if(!ask&&!RD.possession)return;'},
+ {n:'a human\'s ask is never read',part:'catch',from:'const ask=recvAsk(r.team)&&',to:'const ask=false&&'},
+ {n:'…a slow ball is asked for too',part:'catch',from:'const ask=recvAsk(r.team)&&b.v.x*r.kickDir>=RD.trackV;',to:'const ask=recvAsk(r.team);'},
+ {n:'…the other team\'s human asks',part:'catch',from:'if(ss[i].team===t&&ss[i].rcvAsk)return true;',to:'if(ss[i].rcvAsk)return true;'},
+ {n:'…the ask still waits out the cooldown',part:'catch',from:'if(!ask&&(!RD.possession||(r.rvCd||0)>S.time))return;',to:'if((r.rvCd||0)>S.time||(!ask&&!RD.possession))return;'},
+ {n:'…the ask still needs the team to have touched it',part:'catch',from:'if(!ask&&(b.v.x*r.kickDir<-RD.awayV||',to:'if((S.lastTouch!==r.team&&!recvOwn(r,p))||!ask&&(b.v.x*r.kickDir<-RD.awayV||'},
+ {n:'…the ask keeps the speed limit',part:'catch',from:'if(!ask&&(b.v.x*r.kickDir<-RD.awayV||',to:'if((RD.maxBall>0&&b.v.length()>RD.maxBall)||!ask&&(b.v.x*r.kickDir<-RD.awayV||'},
+ {n:'…the ask drops a pass hopping off the boot',part:'catch',from:'p.y>(ask?RV.maxY:AIC.lowY)',to:'p.y>AIC.lowY'},
+ {n:'…the ask takes a ball high in the air',part:'catch',from:'p.y>(ask?RV.maxY:AIC.lowY)',to:'p.y>(ask?1e9:AIC.lowY)'},
  {n:'…a holder\'s lane is overridden by the ball\'s',part:'catch',from:'if(S.time-(r.rvLaneT||-9)>=RD.hold)r.rvZ=p.z;',to:'r.rvZ=p.z;'},
  {n:'…the ball\'s lane is never taken',part:'catch',from:'if(S.time-(r.rvLaneT||-9)>=RD.hold)r.rvZ=p.z;',to:''},
  {n:'…it is held only for the moment',part:'catch',from:'r.rvReady=true;r.rvUntil=S.time+RD.hold;r.rvFl=RD.wait;\n}',to:'r.rvReady=true;r.rvFl=RD.wait;\n}'},

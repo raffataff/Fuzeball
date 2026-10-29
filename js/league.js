@@ -543,7 +543,7 @@ function lgFinalize(){ // freeze final standings + promotion/relegation + apply 
   saveLG();
 }
 function lgSeasonEarn(){
-  const pd=playerDiv(),dv=LG.divs[pd],pid=LG.playerId;
+  const pd=playerDiv(),dv=LG.divs[pd],pid=LG.playerId,se=LG.seasonEnd;
   let w=0,l=0,gf=0,ga=0,cs=0;
   for(let r=0;r<dv.results.length;r++){
    const fix=dv.fixtures[r],res=dv.results[r];
@@ -556,117 +556,87 @@ function lgSeasonEarn(){
     }
    }
   }
-  const se=LG.seasonEnd;
   const promoteBonus=se.playerFate==='promoted'?(se.playerPos===1?LGC.upPromote1:LGC.upPromote2):0;
   const champBonus=se.playerFate==='champion'?LGC.upChampTop:0;
-  const earned=w*LGC.upWin+l*LGC.upLoss+cs*LGC.upCleanSheet+promoteBonus+champBonus;
-  const pid2=LG.playerId;
-  return {w,l,gf,ga,cs,earned,promoteBonus,champBonus,avail:LG.teams[pid2].up,
-   titles:trophyCount((trophyDef(2)||{}).id)};
+  return {w,l,gf,ga,cs,earned:w*LGC.upWin+l*LGC.upLoss+cs*LGC.upCleanSheet+promoteBonus+champBonus,avail:LG.teams[pid].up};
 }
 // ---- the season-end screen ----
-// one screen at 1280x800, no scrolling: result (trophy, fate plate) | your division's table | rewards with what promotion or relegation did to the squad
-// under them 'Around the league': the other two divisions, one line each
-function lgSEName(e){return '<span class="lgSENm'+(e.i===LG.playerId?' me':'')+'"><i class="dot" style="background:'+e.col+'"></i>'+e.name+'</span>';}
-function lgSEDivCard(d){
-  let rows='';
-  d.order.forEach((e,pi)=>{
-   let cls='lgSERow';
-   if(e.i===LG.playerId)cls+=' me';
-   if(e.promoted)cls+=' pro';
-   if(e.relegated)cls+=' rel';
-   const mark=e.promoted?'<span class="lgSEUp">▲</span>':e.relegated?'<span class="lgSEDn">▼</span>':'<span class="lgSEBlank"></span>';
-   rows+='<div class="'+cls+'">'+mark+
-    '<span class="pos">'+(pi+1)+'</span>'+
-    '<span class="nm"><i class="dot" style="background:'+e.col+'"></i>'+e.name+'</span>'+
-    '<span class="num">'+e.w+'</span><span class="num">'+e.l+'</span>'+
-    '<span class="num">'+e.gf+'</span><span class="num">'+e.ga+'</span>'+
-    '<span class="num pts">'+e.p+'</span></div>';
-  });
-  return '<div class="lgSEDiv">'+
-   '<div class="lgSEDivHead">'+d.name+'</div>'+
-   '<div class="lgSEChamp">'+trophyFig(d.tier,'troSm')+' '+d.champ+'</div>'+
-   '<div class="lgSEHead"><span></span><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GF</span><span>GA</span><span>PTS</span></div>'+
-   rows+'</div>';
-}
-// Another division, in a line each: its champion, who went up, who went down.
-function lgSEDivMini(d){
-  const up=d.order.filter(e=>e.promoted),dn=d.order.filter(e=>e.relegated);
-  return '<div class="lgSEMini"><div class="lgSEMiniHead">'+d.name+'</div>'+
-   '<div class="lgSEMiniRow"><span class="k">'+trophyFig(d.tier,'troSm')+'</span>'+lgSEName(d.order[0])+'</div>'+
-   (up.length?'<div class="lgSEMiniRow"><span class="k lgSEUp">▲</span>'+up.map(lgSEName).join('')+'</div>':'')+
-   (dn.length?'<div class="lgSEMiniRow"><span class="k lgSEDn">▼</span>'+dn.map(lgSEName).join('')+'</div>':'')+
-   '</div>';
-}
-function lgSEFate(se){
-  const map={
-   champion:['champ',ico('trophy','icoInline')+'CHAMPIONS','#ffcf4d'],   // .lgSEFateLab's gap is the separator
-   promoted:['pro','▲ PROMOTED','#7dff8a'],
-   relegated:['rel','▼ RELEGATED','#ff4d5a'],
-   stayed:['stay','STAYED IN '+LGC.divisions[se.playerDiv].name,'#93a5c6']
-  };
-  // finishing top (not `playerFate`) lifts the silverware: 'champion' is Premier only, so a lower title is labelled 'promoted'; tier picks the trophy
-  const won=se.playerPos===1, d=won?trophyDef(se.playerDiv):null;
-  const m=map[se.playerFate].slice();
-  // Won a lower division: champions AND promoted, on two lines rather than one that wraps at the dot.
-  const sub=won&&se.playerFate==='promoted'?'<span class="lgSEFateLab lgSEFate2">▲ PROMOTED</span>':'';
-  if(sub)m[1]=ico('trophy','icoInline')+'CHAMPIONS';
-  const hero=d?'<div class="troHero" style="--tc:'+(d.col||'var(--gold)')+'">'+
-   trophyFig(se.playerDiv,'troBig',true)+
-   '<div class="troHeroName">'+d.name+'</div></div>':'';
-  return hero+'<div class="lgSEFate '+m[0]+'" style="--fc:'+m[2]+'"><span class="lgSEFateLab">'+m[1]+'</span>'+sub+
-   '<span class="lgSEPos">FINISHED '+lgOrd(se.playerPos)+'</span></div>';
-}
-function lgSERewards(r,se){
-  let h='<div class="lgSEPanelHead">Season rewards</div>'+
-   '<div class="lgSERewGrid">'+
-    '<div class="lgSERew"><span class="k">RECORD</span><span class="v">'+r.w+'–'+r.l+'</span><span class="sub">'+r.gf+' GF · '+r.ga+' GA</span></div>'+
-    '<div class="lgSERew"><span class="k">PARTS EARNED</span><span class="v">+'+r.earned+' '+ico('cog','icoInline')+'</span><span class="sub">'+r.w+'W · '+r.l+'L · '+r.cs+' CS</span></div>'+
-    '<div class="lgSERew"><span class="k">AVAILABLE</span><span class="v">'+r.avail+' '+ico('cog','icoInline')+'</span><span class="sub">spend in squad</span></div>'+
-    '<div class="lgSERew"><span class="k">TITLES</span><span class="v">'+r.titles+'×</span><span class="sub">Premier wins</span></div>'+
-   '</div>';
-   if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified)
-    h+='<div class="lgSECup">'+ico('trophy','icoInline')+' Qualified for the Champions Cup</div>'+
-       '<button class="btn gold lgSEEnterCup" id="lgSEEnterCup">Enter Champions Cup</button>';
-  return '<div class="lgSEPanel">'+h+'</div>';
-}
-// what promotion or relegation did to the squad, one line per position: promotion raises stats still at the old floor, relegation takes a point off every stat above it
-function lgSEChanges(se){
-  const rel=se.playerFate==='relegated',list=rel?se.playerLosses:se.playerFate==='promoted'?se.playerGains:null;
-  if(!list||!list.length)return '';
-  let rows='';
-  for(const role of LG_ROLES){
-   const ch=list.filter(x=>x.role===role);if(!ch.length)continue;
-   const d=x=>x.to-x.from,same=ch.every(x=>d(x)===d(ch[0])),sg=v=>(v>0?'+':'–')+Math.abs(v);
-   const keys=same&&ch.length===LG_KEYS.length?'All stats':ch.map(x=>x.key.toUpperCase()+(same?'':' '+sg(d(x)))).join(' · ');
-   rows+='<div class="lgSEChgRow"><span class="r">'+role+'</span><span class="d">'+(same?sg(d(ch[0])):'')+'</span><span class="ks">'+keys+'</span></div>';
+// one screen at 1280x800, no scrolling: the verdict (where you play next season) | your season's numbers, the three final tables top tier first, the squad's stats
+function lgSEDot(c){return '<i class="lgSEDot" style="background:'+c+'"></i>';}
+function lgSEGd(v){return (v>0?'+':v<0?'–':'')+Math.abs(v);}
+function lgSEPts(n){return n+' pt'+(n===1?'':'s');}
+// k = colour, word, next = next season, gap = how near the nearer line was; the emblem is the division's trophy (tro) or a glyph
+function lgSEVerdict(se){
+  const d=se.playerDiv,pos=se.playerPos,f=se.playerFate,o=se.divs.find(x=>x.tier===d).order,me=o[pos-1],gap=[];
+  const cup=se.cupQualified==null?f==='champion':se.cupQualified,up=d<2?LGC.divisions[d+1].name:'',dn=d>0?LGC.divisions[d-1].name:'';
+  if(f==='stayed'&&!cup){
+   const hi=o[d<2?LGC.promoteN-1:1].p-me.p,lo=d>0?me.p-o[o.length-LGC.relegateN].p:1e9;
+   if(hi<=lo)gap.push(hi?lgSEPts(hi)+(d<2?' off promotion':' off the Cup places'):d<2?'missed promotion on goal difference':'missed the Cup on goal difference');
+   else gap.push(lo?lgSEPts(lo)+' clear of the drop':'stayed up on goal difference');
   }
-  return '<div class="lgSEPanel lgSEChg '+(rel?'rel':'pro')+'"><div class="lgSEPanelHead">'+(rel?'▼ Relegation · stats lost':'▲ Promotion · stat floor raised')+'</div>'+rows+'</div>';
+  const cupLine=ico('trophy','icoInline')+'Qualified for the Champions Cup';
+  if(f==='champion')return{k:'gold',word:'CHAMPIONS',next:cupLine,tro:d,gap};
+  if(f==='promoted')return pos===1?{k:'gold',word:'CHAMPIONS',next:'▲ Promoted to '+up,nk:'pro',tro:d,gap}:{k:'pro',word:'PROMOTED',next:'▲ Up to '+up,glyph:ico('chev'),gap};
+  if(f==='relegated')return{k:'rel',word:'RELEGATED',next:'▼ Down to '+dn,glyph:ico('chev','dn'),gap};
+  if(cup)return{k:'gold',word:'RUNNERS-UP',next:cupLine,glyph:lgOrd(pos),gap};
+  return{k:'stay',word:lgOrd(pos)+' PLACE',next:'Staying in '+LGC.divisions[d].name,glyph:lgOrd(pos),gap};
+}
+function lgSEBanner(se,v){
+  const d=se.playerDiv,o=se.divs.find(x=>x.tier===d).order;
+  return '<div class="lgSEBan '+v.k+'">'+
+   (v.tro!=null?'<div class="lgSEEmb tro">'+trophyFig(v.tro,'troBig',true)+'</div>':'<div class="lgSEEmb"><span>'+v.glyph+'</span></div>')+
+   '<div class="lgSEBanTx"><div class="lgSEWord">'+v.word+'</div><div class="lgSENext '+(v.nk||v.k)+'">'+v.next+'</div>'+
+   '<div class="lgSEMeta">'+[LGC.divisions[d].name,lgOrd(se.playerPos)+' of '+o.length,lgSEPts(o[se.playerPos-1].p)].concat(v.gap).join(' · ')+'</div></div></div>';
+}
+function lgSETiles(r){
+  const t=(k,v,s,c)=>'<div class="lgSETile'+(c?' '+c:'')+'"><span class="k">'+k+'</span><span class="v">'+v+'</span><span class="s">'+s+'</span></div>';
+  return '<div class="lgSEPanel lgSETiles">'+t('RECORD',r.w+'–'+r.l,'won '+r.w+' · lost '+r.l)+t('GOALS',r.gf+'–'+r.ga,'difference '+lgSEGd(r.gf-r.ga))+
+   t('CLEAN SHEETS',r.cs,'wins to nil')+t('PARTS EARNED','+'+r.earned+' '+ico('cog','icoInline'),r.avail+' to spend in Squad','gold')+'</div>';
+}
+// a division's final table, a line where promotion and relegation fall saying where those clubs go
+function lgSETable(d,mine){
+  const n=d.order.length,up=d.tier<2?LGC.divisions[d.tier+1].name:'',dn=d.tier>0?LGC.divisions[d.tier-1].name:'';
+  let h='<div class="lgSEDiv'+(mine?' mine':'')+'"><div class="lgSEPH">'+d.name+(mine?'<em>Your division</em>':'')+'</div>'+
+   '<div class="lgSETh"><span>#</span><span>TEAM</span><span>W</span><span>L</span><span>GD</span><span>PTS</span></div>';
+  d.order.forEach((e,pi)=>{
+   if(dn&&pi===n-LGC.relegateN)h+='<div class="lgSECap rel">▼ Relegated to '+dn+'</div>';
+   h+='<div class="lgSETr'+(e.promoted?' pro':'')+(e.relegated?' rel':'')+(e.i===LG.playerId?' me':'')+'"><span class="pos">'+(pi?pi+1:trophyFig(d.tier,'troSm'))+'</span>'+
+    '<span class="nm">'+lgSEDot(e.col)+'<b>'+e.name+'</b></span><span>'+e.w+'</span><span>'+e.l+'</span><span>'+lgSEGd(e.gf-e.ga)+'</span><span class="pts">'+e.p+'</span></div>';
+   if(up&&pi===LGC.promoteN-1)h+='<div class="lgSECap pro">▲ Promoted to '+up+'</div>';
+  });
+  return h+'</div>';
+}
+// the squad's stats after the season; a cell promotion or relegation changed shows by how much
+function lgSESquad(se){
+  const b=LG.teams[LG.playerId].bld,rel=se.playerFate==='relegated',list=(rel?se.playerLosses:se.playerFate==='promoted'?se.playerGains:null)||[],ch={};
+  let tot=0;for(const x of list){ch[x.role+x.key]=x.to-x.from;tot+=Math.abs(x.to-x.from);}
+  let h='<span></span>'+LG_KEYS.map(k=>'<span class="h">'+k.toUpperCase()+'</span>').join('');
+  for(const role of LG_ROLES){
+   h+='<span class="r">'+role+'</span>';
+   for(const k of LG_KEYS){const c=ch[role+k]||0;h+='<span class="c'+(c>0?' up':c<0?' dn':'')+'">'+b[role][k]+(c?'<i>'+(c>0?'+':'–')+Math.abs(c)+'</i>':'')+'</span>';}
+  }
+  const note=!list.length?'Stats change only on promotion or relegation':rel?'Relegation cost the squad '+tot+' points':'Promotion lifted '+list.length+' stats still at the old floor';
+  return '<div class="lgSEPanel lgSESquad"><div class="lgSEPH">Squad<em class="'+(!list.length?'':rel?'rel':'pro')+'">'+note+'</em></div><div class="lgSESq">'+h+'</div></div>';
 }
 function renderLgSeasonEnd(){
   const se=LG.seasonEnd;if(!se)return;
-  const r=lgSeasonEarn(),mine=se.divs.find(d=>d.tier===se.playerDiv);
-  const others=se.divs.filter(d=>d!==mine).sort((a,b)=>b.tier-a.tier);
+  const cup=se.cupQualified==null?se.playerFate==='champion':se.cupQualified;
   $('lgSEBody').innerHTML=
-   '<h2 class="lgTitle">'+LG.name+'</h2>'+
-   '<div class="lgSub">Season '+se.season+' · complete</div>'+
-   '<div class="lgSEGrid">'+
-    '<div class="lgSEHero">'+lgSEFate(se)+'</div>'+
-    lgSEDivCard(mine)+
-    '<div class="lgSESide">'+lgSERewards(r,se)+lgSEChanges(se)+'</div>'+
-   '</div>'+
-   '<div class="lgSEAround"><div class="lgSEPanelHead">Around the league</div><div class="lgSEMinis">'+others.map(lgSEDivMini).join('')+'</div></div>';
-  if(se.cupQualified==null?se.playerFate==='champion':se.cupQualified){
-    const b=$('lgSEEnterCup');
-    if(b)b.onclick=()=>{if(!cupLive())cupCreate();openCup();};
-  }
+   '<div class="lgSETitle">'+LG.name+'</div><div class="lgSESub">Season '+se.season+' · final standings</div>'+
+   '<div class="lgSETop">'+lgSEBanner(se,lgSEVerdict(se))+lgSETiles(lgSeasonEarn())+'</div>'+
+   '<div class="lgSEDivs">'+se.divs.slice().sort((a,b)=>b.tier-a.tier).map(d=>lgSETable(d,d.tier===se.playerDiv)).join('')+'</div>'+
+   lgSESquad(se);
+  $('lgSECup').classList.toggle('hidden',!cup);
+  $('lgSEContinue').classList.toggle('ghost',cup);
 }
 function showSeasonEnd(){
+  const se=LG.seasonEnd;
   $('win').classList.add('hidden');
   $('league').classList.add('hidden');
+  hudShow(false);   // the last match's scoreboard and rod chips draw over it otherwise
   $('lgSeasonEnd').classList.remove('hidden');
   renderLgSeasonEnd();
-  confetti(0);
+  if(se&&(se.playerPos===1||se.playerFate==='promoted'||se.cupQualified))confetti(0);   // no shower for staying put or going down
   S.lgChampDone=true;
 }
 function lgWinContinue(){
@@ -1388,6 +1358,7 @@ function bindLeague(){
    $('lgCup').onclick=openCup;
    $('btnWinContinue').onclick=lgWinContinue;
    $('lgSEContinue').onclick=lgReturn;
+   $('lgSECup').onclick=()=>{if(!cupLive())cupCreate();openCup();};
    $('cupPlay').onclick=cupPlayTie;
    $('cupDone').onclick=cupReturn;   
    $('cupBack').onclick=cupReturn;

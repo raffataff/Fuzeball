@@ -62,6 +62,7 @@ function pinUpdate(){
     r.pinB=b;r.pinAt=pa!=null?pa:r.angle;
     b.pinR=r;b.pinMan=i;b.pinDx=rel;b.pinDz=p.z-mz;
     b.v.set(0,0,r.vz);b.spin=0;b.pinVx=0;b.pinVz=r.vz;b.pinPx=p.x;b.pinPz=p.z;
+    if(S.trial)trialTouch(r);   // a catch is a touch: it starts a trial's clock (js/trials.js)
     break;
    }
    if(r.pinB)break;
@@ -100,12 +101,12 @@ function pinBallStep(b,h){
 // the swing played from the pin (shots.js shotPinFire, ai.js pinPlay / pinFire): the trapShot curve with shots.pin.swing over it, or for a pass the passShot curve with shots.pin.pass
 const PIN_SW={},PIN_PS={};
 function pinSwing(pass){return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);}
-// let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide
+// let go: ext = something else already moved it (keep that velocity), else it keeps carryOut of the slide; a player's rod's slide over the last four steps, since a mouse or pad moves it once a frame
 function pinRelease(r,ext){
  const b=r.pinB;r.pinB=null;
  if(!b)return;
  b.pinR=null;
- if(!ext){b.v.x=0;b.v.y=0;b.v.z*=SHOT.pin.carryOut;}
+ if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*SHOT.pin.carryOut;}
 }
 // ================= contact AUDIO gating =================
 // an impact is an event, a roll is a state (js/audio.js); hitFresh is the event half: the surface must have been clear for PHY.contactHold and the hit hard enough
@@ -459,6 +460,7 @@ function collideRod(b,r){
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
      if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
+    if(S.trial)trialTouch(r);                             // a trial's clock starts on your side's first touch (js/trials.js)
     if(typeof boostTouch==='function')boostTouch(b,r,trapping);   // js/boost.js: a boosted strike's flash, sparks and comet
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
      {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}  // debug: mark first contact of this swing
@@ -521,6 +523,7 @@ function collideRod(b,r){
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;
+   if(S.trial)trialTouch(r);
    if(typeof boostTouch==='function')boostTouch(b,r,trapping);
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,
     {bn:dbgBN,fn:cvx*nx+cvy*ny+cvz*nz,sw:Math.hypot(cvx,cvy),sl:cvz,w:r.angVel,jm:jm,kt:r.kickT,rest:rest});}

@@ -199,6 +199,12 @@ function buildTrnPanel(){
  $('trnScore').onchange=e=>{TRN.score=e.target.checked;};
  $('trnDead').onchange=e=>{TRN.deadball=e.target.checked;};
 }
+// the sandbox's bottom hint, [keyboard lines, pad lines]: its own keys, then the rod clauses off the bindings
+function trainingHint(){
+ const H=bindHintRods(false,true);
+ return [['[T] panel · [P] freeze · [O] step · [G] place ball',H.act,bindJoin([H.mod,bindHint('camera','camera'),'[C] debug'])].filter(Boolean).join('\n'),
+  '{START} pause · {Y} camera\n{A} kick · {X} raise · {LB} {RB} switch rod'];
+}
 // called by startMatch('training') after the normal reset: skips the countdown, drops a ball and takes over the phase; re-entrant (pause > Restart), keeping the last panel setup
 function trainingEnter(){
  TRN.on=true;S.trn=TRN;
@@ -214,9 +220,7 @@ function trainingEnter(){
  trnSetPlacing(false);trnRefreshSpots();
  $('trnPanel').classList.remove('hidden');
  hudCount('');
- const H=bindHintRods(false,true);
- hudHint(['[T] panel · [P] freeze · [O] step · [G] place ball',H.act,bindJoin([H.mod,bindHint('camera','camera'),'[C] debug'])].filter(Boolean).join('\n'),
-  '{START} pause · {Y} camera\n{A} kick · {X} raise · {LB} {RB} switch rod');
+ hudHint(...trainingHint());
  S.phase='play';S.lastTouch=-1;
  trnSpawnBall(TRN.ballType,TRNC.spawn.x,TRNC.spawn.z);
  // a queued Skill Trial (js/trials.js) takes the sandbox over from here; trialArm returns true only when it armed one, keeping this a one-line typeof guard

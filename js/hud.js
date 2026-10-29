@@ -647,7 +647,7 @@ function hudShow(on){
  else{HUD.chromeA=0;HUD.ntc=HUD.bnr=null;}
 }
 // `pad` is the same hint for a controller; with both given, the one drawn follows the device last used (js/padnav.js inputKind)
-function hudHint(src,pad){HUD.hint=src?hudTok(src):null;HUD.hintP=pad?hudTok(pad):null;HUD.hintUse=null;HUD.hintT=HUD.t;}
+function hudHint(src,pad){HUD.hint=src?hudTok(src):null;HUD.hintP=pad?hudTok(pad):null;HUD.hintSrc=src||null;HUD.hintSrcP=pad||null;HUD.hintUse=null;HUD.hintT=HUD.t;}   // the source lines are kept so hintRefresh (flow.js) can tell a change
 function hudCount(v){
  v=v?String(v):'';const c=HUD.cnt;if((c?c.v:'')===v)return;
  if(c&&!c.hid)HUD.cntOut={v:c.v,t:HUD.t};HUD.cnt=v?{v,t:HUD.t,hid:false}:null;   // a READY the banner held back never shows, so it never leaves either

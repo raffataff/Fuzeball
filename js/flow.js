@@ -76,6 +76,22 @@ function venueLoad(run,opts){
   try{run(settle);}catch(e){console.warn('venue load threw',e);settle();}
  },veil?fade:0);
 }
+// --- the bottom hint ---
+// [keyboard lines, pad lines]: it speaks to the devices actually seated and offers switching only if someone can; the pad line says what the triggers do in this mode; the keyboard line comes off the bindings (js/binds.js)
+function matchHint(){
+ const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
+ const sw=S.seats.some(s=>s.rods.length>1);
+ const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin'+(SHOT.pin.fwd.on?' · {LT}+{A} forward pin':''):''):'';
+ const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
+ return [!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
+  !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} kick · {X} raise'+trg:null];
+}
+// Options closed over the pause menu: a rebind or a pad mode change reaches the hint without a restart; handed over only when it changed (hudHint restarts the fade)
+function hintRefresh(){
+ if(S.tut)return;   // the tutorial rebuilds its own every frame (js/tutorial.js)
+ const h=(S.trial&&typeof trialHint==='function')?trialHint():(S.trn&&typeof trainingHint==='function')?trainingHint():matchHint();
+ if(h[0]!==HUD.hintSrc||h[1]!==HUD.hintSrcP)hudHint(h[0],h[1]);
+}
 function startMatchNow(mode,rodLockRole){
  // the menu is clickable before boot() has run (skipped intro, reduced motion); starting then threw on S.ctrlRods[S.ctrl]; boot() is idempotent, so force it
  if(!rods.length){
@@ -121,14 +137,7 @@ function startMatchNow(mode,rodLockRole){
   seatBindRods();
   // the camera persists between matches: step off a shot that's no longer offerable
   if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
-  // the hint speaks to the devices actually seated and offers switching only if someone can; the pad line says what the triggers do in this mode
-  {const kb=S.seats.some(s=>s.devs.some(d=>d==='kbd'||d==='mouse')),pd=S.seats.some(s=>s.devs.some(d=>/^pad/.test(d)));
-   const sw=S.seats.some(s=>s.rods.length>1);
-   const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin'+(SHOT.pin.fwd.on?' · {LT}+{A} forward pin':''):''):'';
-   // the keyboard line comes off the bindings (js/binds.js), so a rebind shows
-   const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
-   hudHint(!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
-    !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} kick · {X} raise'+trg:null);}
+  hudHint(...matchHint());
  // remember where this match launched from so quitting returns there (league/cup have their own return paths, a bare quit goes home)
  S.fromScreen=S.lg?'home':screenId();
  hideScreens();                                                        // every registered screen down (js/screens.js)

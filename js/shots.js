@@ -45,7 +45,8 @@ function shotHoldUpdate(r,lt){
 // the input half (CONFIG.shots.pin): may this rod pin, and is it being posed; physics.js pinUpdate / pinBallStep do the catch, carry and releases
 // r.pinA is sweep-capped like a wind-up and frozen while a ball is pinned; the forward pose is not (it lies over a ball, which the cap would hold off)
 function shotPinInput(r,I,dt){
- const P=SHOTC.pin,H=P&&P.assist&&P.assist.hop;
+ const P=SHOTC.pin,H=P&&P.assist&&P.assist.hop,R=P&&P.assist&&P.assist.recv;
+ r.fwdR=false;                                                 // shotFwdAngle sets it again while the forward pose receives
  if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinMag=null;r.sqA=null;r.pinKh=false;r.fwdStk=0;return;}
  // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
  const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
@@ -59,15 +60,17 @@ function shotPinInput(r,I,dt){
  r.pinOn=fin&&r.chg<0&&r.kickT<0;
  if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}
  else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}   // a ball held under the forward leg keeps its pose
+ // kick held with no pose of its own (a rod just taken over, the AI's receiving pose with it, or kick held before finesse with no swing frozen), or a stroke's receive (I.rcv) on a rod with no forward pose: the forward pose, a hold
+ else if(!r.pinB&&(I.kh?!r.pinKh:I.rcv&&!(r.pinPose&&r.pinFwd))&&R&&R.on&&R.take&&P.fwd.on&&I.m<=SHOTC.pass.modAt){r.pinPose=true;r.pinFwd=true;r.pinKh=!!I.kh;r.fwdKT=-1e9;r.fwdStk=0;}
  const stk=r.fwdStk>S.time&&r.pinPose&&r.pinFwd&&!r.pinB;      // a tapped kick's stroke runs on through the ball
- // unlatched: the pose lasts while its button is held (the other one, still held, takes over), then the leg relaxes to the square, held where it is over a ball in a man's lane
+ // unlatched: the pose lasts while its button is held (the other one, still held, takes over), then the leg relaxes to the square, held where it is over a ball in a man's lane; a stroke's receive holds it like the kick
  if(r.pinOn&&r.pinPose&&!r.pinB&&!P.latch&&!stk){
   if(r.pinFwd&&!r.pinKh){
    if(I.rz)r.pinFwd=false;
    else if(H&&H.on&&S.time-(r.fwdKT||0)<H.tap&&(shotFwdAngle(r),r.fwdBlk)){r.fwdStk=S.time+H.stroke;r.fwdBlk=false;}   // tapped while the leg was held below a ball: the stroke, the pass
-   else{r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.sqA=r.angle;}
+   else if(!I.rcv){r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.sqA=r.angle;}
   }
-  else if(!r.pinFwd&&!I.rz){if(r.pinKh)r.pinFwd=true;else{r.pinPose=false;r.sqA=r.angle;}}
+  else if(!r.pinFwd&&!I.rz){if(r.pinKh||I.rcv)r.pinFwd=true;else{r.pinPose=false;r.sqA=r.angle;}}
  }
  if(r.pinPose&&!r.pinB)r.pinA=r.pinFwd?(r.fwdStk>S.time?P.fwd.angle:shotFwdAngle(r))*r.kickDir:shotBackAngle(r);
  r.pinMag=(r.pinOn&&!r.pinPose)?shotStickPin(r):null;
@@ -94,12 +97,13 @@ function shotFwdBall(r,rel0,rel1,vmax,zw){
  }
  return _fwb.b?_fwb:null;
 }
-// the forward leg's angle: up and clear beside a slow ball lying ahead, onto its top once over it and slow (the AI's fetch, from where the man stands); up for a ball rolling in under the toe; else the pose angle
+// the forward leg's angle: the AI's receiving pose for a ball coming from behind (r.fwdR: shotSettle draws the man onto its line); up and clear beside a slow ball lying ahead, onto its top once over it and slow (the AI's fetch, from where the man stands); up for a ball rolling in under the toe; else the pose angle
 // a rise that would sweep the ball is held where the leg is (r.fwdBlk: shotSettle steps the man off it)
 function shotFwdAngle(r){
  const W=SHOTC.pin.fwd,A=SHOTC.pin.assist,on=!!(A&&A.on);
- r.fwdBlk=false;r.fwdU=false;
+ r.fwdBlk=false;r.fwdU=false;r.fwdR=false;
  if(!W.assist||typeof footAngle!=='function')return W.angle;
+ if(on&&shotFwdRecv(r)){const to=AIC.catch.recv.angle,a=r.angle*r.kickDir;r.fwdR=true;return (A.hop&&A.hop.on&&to>a&&shotFwdSweep(r,a,to,_fwr.b))?a:to;}
  const FE=AIC.catch.fetch,h=shotFwdBall(r,FE.near,FE.far,FE.bailV,on?shotFwdZ():0);
  let to;
  if(h){
@@ -109,15 +113,41 @@ function shotFwdAngle(r){
  if(on&&A.hop&&A.hop.on){const a=r.angle*r.kickDir;if(to>a&&shotFwdSweep(r,a,to)){r.fwdBlk=!!h;return a;}}
  return to;
 }
+// a low ball coming at the rod from behind: the man whose slide reaches the line it arrives on at the foot (fwdBack), the soonest ball first; null = none (scratch reused)
+const _fwr={r:null,b:null,i:-1,o:0,t:0};
+function shotFwdRecv(r){
+ const P=SHOTC.pin,R=P.assist.recv,zl=F.W/2-BALL_R;
+ _fwr.b=null;_fwr.r=r;
+ if(!R||!R.on)return null;
+ let bt=1e9;
+ for(const b of S.balls){
+  if(b.scored||b.pinR)continue;
+  const p=b.m.position,rel=(p.x-r.x)*r.kickDir,vf=b.v.x*r.kickDir;
+  if(rel<-R.far||rel>=P.fwdBack||vf<R.minV||p.y>AIC.catch.recv.maxY)continue;
+  const t=(P.fwdBack-rel)/vf;
+  if(t>=bt)continue;
+  const z=clamp(p.z+b.v.z*t,-zl,zl);
+  let bi=-1,bo=0,bd=1e9;
+  for(let i=0;i<r.baseZ.length;i++){
+   if(!manLive(r,i))continue;
+   const o=z-r.baseZ[i];
+   if(o<-r.maxOff||o>r.maxOff||Math.abs(o-r.offset)>=bd)continue;
+   bd=Math.abs(o-r.offset);bi=i;bo=o;
+  }
+  if(bi<0)continue;
+  bt=t;_fwr.b=b;_fwr.i=bi;_fwr.o=bo;_fwr.t=t;
+ }
+ return _fwr.b?_fwr:null;
+}
 // where a rolling ball will be once the leg has caught up with it (the ease lag, 1/pin.lower s), either way along x, no nearer than the window
 function shotFwdLead(r,b,rel){return Math.max(AIC.catch.fetch.near,rel+b.v.x*r.kickDir/SHOTC.pin.lower);}
 // how far off a man's z the forward assist looks: as far as the slide settle draws him (0 = his clearance)
 function shotFwdZ(){const T=SHOTC.pin.assist.settle;return T&&T.on?T.z:0;}
-// would turning the leg forward from a0 to a1 (rod-local) touch a low ball, foot box or shin?
-function shotFwdSweep(r,a0,a1){
+// would turning the leg forward from a0 to a1 (rod-local) touch a low ball (not skip), foot box or shin?
+function shotFwdSweep(r,a0,a1,skip){
  const pad=SHOTC.pin.assist.hop.pad,reach=BALL_R*FOOT_BOX_REACH+pad,leg=BALL_R+PRAD+pad,yMax=BALL_R+SHOTC.pin.yTol,n=Math.max(1,Math.ceil((a1-a0)/0.04));
  for(const b of S.balls){
-  if(b.scored||b.pinR)continue;
+  if(b.scored||b.pinR||b===skip)continue;
   const p=b.m.position;
   if(p.y>yMax)continue;
   for(let i=0;i<r.baseZ.length;i++){
@@ -192,14 +222,22 @@ function shotStickPin(r){
 }
 // the slide settle: a posed leg up beside a ball or over it, the slide input still for `still` s, and the man is drawn onto the ball's z (a ball rolling in from ahead: the z it arrives at, r.fwdU)
 // the hop: a forward leg held below a ball it would sweep (r.fwdBlk) steps the man off its z instead, until the leg can go up; the forward leg comes back over at the hop's speed until he is near
+// the receive: a ball coming from behind (r.fwdR) draws the man onto its line on every frame the player leaves the slide alone, no wait
 function shotSettle(r,dt){
  const A=SHOTC.pin.assist,T=A&&A.settle;
  if(!A||!A.on||!T||!T.on||!r.pinOn||r.pinB){r.stlT=0;r.stlW=null;return;}
- r.stlT=(r.stlW!=null&&Math.abs(r.target-r.stlW)<1e-6)?(r.stlT||0)+dt:0;   // the target is ours until the player moves it
+ const mv=!(r.stlW!=null&&Math.abs(r.target-r.stlW)<1e-6);   // the target is ours until the player moves it
+ r.stlT=mv?0:(r.stlT||0)+dt;
  r.stlW=r.target;
+ const fwd=r.pinPose&&r.pinFwd;
+ if(fwd&&r.fwdR&&_fwr.b&&_fwr.r===r){
+  if(mv)return;
+  const R=A.recv;r.target+=clamp(_fwr.o-r.target,-R.v*dt,R.v*dt);r.stlW=r.target;
+  return;
+ }
  const g=r.pinPose?(r.pinFwd?1:-1):((r.padAngleOn&&A.stick.on)?(r.padAngleTarget*r.kickDir<0?-1:1):0);
  if(!g||r.stlT<T.still)return;
- const h=shotPinAim(r,g),fwd=r.pinPose&&r.pinFwd,hop=!!(A.hop&&A.hop.on);
+ const h=shotPinAim(r,g),hop=!!(A.hop&&A.hop.on);
  let o,v;
  if(h&&h.over){
   if(h.dz>T.z)return;
@@ -249,6 +287,8 @@ function shotPinFwdPress(r,m){
  r.pinPose=true;r.pinFwd=true;r.pinKh=true;r.fwdKT=S.time;r.fwdStk=0;r.pinA=shotFwdAngle(r)*r.kickDir;
  return true;
 }
+// finesse and kick held: this seat's team-mates stand ready for a ball coming up at them (ai.js recvPossess, assist.recv.mates)
+function shotRecvAsk(I){const P=SHOTC.pin,R=P&&P.assist&&P.assist.recv;return !!(R&&R.on&&R.mates&&P.on&&P.fwd.on&&I.fin&&(I.kh||I.rcv)&&I.m<=SHOTC.pass.modAt);}
 // a kick from the pin is the pin shot: the AI's trapShot curve, no spray, ignores the finesse axis; kickRod keeps carryOut of the slide
 function shotPinFire(r){
  const P=SHOTC.pin;
@@ -328,7 +368,7 @@ function shotReset(r){
  r.shotTrack=1;r.kickCurve=null;shotDisarm(r);
  if(r.hold)r.hold.on=false;
  r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.fwdOut=false;r.rzWas=false;r.pinKh=false;r.pinMag=null;r.sqA=null;r.stlT=0;r.stlW=null;
- r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;   // timestamps too: S.time restarts with the match
+ r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;r.fwdR=false;   // timestamps too: S.time restarts with the match
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
@@ -430,7 +470,7 @@ function shotSpray(b,r){
 // every device writes a record (source, depth, its half of the axis, hold depth) and one step per seat per frame reads the merge
 // a source already holding keeps it; sources: stick (Total Control chord + stick back), rt, kick (cfg.padChargeBtn), key (power binding)
 const SHOT_SRCS=['stick','rt','kick','key'];
-function shotInNew(){return {live:false,m:0,lt:0,TC:false,stick:0,rt:0,kick:false,key:0,rz:false,fin:false,kh:false};}   // rz: raise held (the pin pose) · fin: finesse DOWN (not its eased grip) · kh: kick held (the forward pose, unlatched)
+function shotInNew(){return {live:false,m:0,lt:0,TC:false,stick:0,rt:0,kick:false,key:0,rz:false,fin:false,kh:false,rcv:false};}   // rz: raise held (the pin pose) · fin: finesse DOWN (not its eased grip) · kh: kick held (the forward pose, unlatched) · rcv: a stroke's receive, finesse alone holding the forward pose
 function shotSrcDepth(I,k){return k==='stick'?I.stick:k==='rt'?I.rt:k==='kick'?(I.kick?1:0):k==='key'?I.key:0;}
 // one pad read into o; stickD = the right-stick value, -1 fully back .. +1
 function shotPadRead(o,gp,TC,stickD){
@@ -467,9 +507,9 @@ function shotSeatsUpdate(dt){
  for(const s of S.seats){
   const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
   if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}
-  s.shotRod=r;
+  s.shotRod=r;s.rcvAsk=false;
   const P=s.shotPad;
-  if(!r||!shotsOn()){if(r)shotReset(r);if(P)P.live=false;s.kbmFin=0;s.rzEdge=false;continue;}
+  if(!r||!shotsOn()){if(r)shotReset(r);if(P)P.live=false;s.kbmFin=0;s.rzEdge=false;s.rcvT=0;continue;}
   const pw=kOn&&bindHeld('power',s),fn=kOn&&bindHeld('finesse',s),rz=kOn&&bindHeld('raise',s),kh=kOn&&bindHeld('kick',s);
   // a button has no squeeze, so the grip eases in over holdRamp
   s.kbmFin=fn?Math.min(1,(s.kbmFin||0)+dt/Math.max(1e-3,K.holdRamp)):0;
@@ -485,7 +525,13 @@ function shotSeatsUpdate(dt){
   I.rz=rz||(pl&&P.rz)||!!s.rzEdge;s.rzEdge=false;
   I.fin=fn||(pl&&P.fin);
   I.kh=kh||(pl&&P.kh);
+  // a stroke is a pass: finesse alone keeps the receive on (recv.strokeT) until the ball is pinned or the other team touches it
+  const RC=SHOTC.pin&&SHOTC.pin.assist&&SHOTC.pin.assist.recv;
+  if(!I.fin||S.lastTouch!==s.team||r.pinB)s.rcvT=0;
+  I.rcv=(s.rcvT||0)>S.time;
+  s.rcvAsk=shotRecvAsk(I);
   shotStep(dt,r,I);
+  if(r.fwdStk>S.time&&RC&&RC.on&&RC.strokeT>0)s.rcvT=S.time+RC.strokeT;
   if(P)P.live=false;                             // a pad that stops reporting (unplugged) stops counting
  }
 }

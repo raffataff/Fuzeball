@@ -1,6 +1,7 @@
 'use strict';
 // ================= skill trials harness =================
 // boots core + config + rng + state + trials.js in one vm against stubs for the sandbox (training.js, balls, audio, DOM) and asserts the objective evaluator and the trial data itself (an unwinnable trial fails as 'I couldn't do it', not an error)
+// the drills (goal.kind 'drill') are driven here by setting the ball and the rod by hand; whether a person can do them is tools/trials-soak.js (a bot on the real sim)
 // Run: node tools/trials-harness.js
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
@@ -17,7 +18,8 @@ function boot(mutate){
   +'\n;globalThis.__api={CONFIG,F,PHY,TRL,TRLC,S,cfg,rods,TRN,SCREENS,'
   +'trialById,trialBest,trialMedal,trialStart,trialArm,trialReset,trialGoal,trialTick,trialFinish,'
   +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC,'
-  +'trialDir,trialBetter,trialScoreText,trialServe,trialAttemptEnd,trialSpawnFor,trialServeDelay,RODRST};';
+  +'trialDir,trialBetter,trialScoreText,trialServe,trialAttemptEnd,trialSpawnFor,trialServeDelay,RODRST,trialTouch,trialGo,trialHome,'
+  +'DRC,SHOT,FOOT_BOX,BALL_R,drillProg,drillObjText,drillLose,drillLaneSpot,trialSets,trialSetOf,trialSetsIn,trialSetPick};';
  const sb={console:{log(){},warn(){}},Math,Date,JSON,Object,Array,String,Number,Map,Set,isFinite,
   localStorage:{getItem:()=>null,setItem(){}},addEventListener(){},setTimeout(){},
   navigator:{},
@@ -27,9 +29,12 @@ function boot(mutate){
  sb.globalThis=sb;
  sb.document={getElementById:id=>EL(sb,id),createElement:()=>EL(sb,'_new'),body:{appendChild(){}}};
  vm.runInNewContext(src,sb,{filename:'trials-boot'});
+ EL_SB=sb;
  return sb.__api;
 }
 // A DOM stub whose classList records state, so "is the result card up" is readable.
+let EL_SB=null;
+function globalThisEl(id){return EL(EL_SB,id);}
 function EL(sb,id){
  const m=sb.__els||(sb.__els={});
  return m[id]||(m[id]={id,cls:new Set(),textContent:'',innerHTML:'',className:'',
@@ -46,12 +51,14 @@ var RODDEF=[[0,'GK',-52.5,1],[0,'DEF',-37.5,2],[1,'ATT',-22.5,3],[0,'MID',-7.5,5
 var rods=RODDEF.map(function(d,i){
  var sp=d[3]===2?CONFIG.rods.spacing.two:d[3]===3?CONFIG.rods.spacing.three:CONFIG.rods.spacing.other;
  var bz=[];for(var k=0;k<d[3];k++)bz.push((k-(d[3]-1)/2)*sp);
- return{idx:i,team:d[0],role:d[1],x:d[2],men:d[3],baseZ:bz,trnHidden:false,pivot:{visible:true}};});
+ var mo=(F.W-CONFIG.rods.margin-(d[3]-1)*sp)/2;if(d[1]==='GK')mo=Math.min(mo,CONFIG.rods.gkSlide);
+ return{idx:i,team:d[0],role:d[1],x:d[2],men:d[3],baseZ:bz,trnHidden:false,pivot:{visible:true,position:{z:0}},
+  kickDir:d[0]===0?1:-1,maxOff:mo,offset:0,target:0,kickT:-1,kickStyle:null,angle:0,pinB:null,pinFwd:false,vz:0,removedUntil:[]};});
 var TRN={freeze:false,stepQ:0,ai:[false,false],score:false,deadball:false,ballType:'classic',lastSpot:null,placing:false,hidden:[]};
 var LAST_BALL=null;
 function trnSetRodShown(i,v){var r=rods[i];if(!r)return;r.trnHidden=!v;r.pivot.visible=v;TRN.hidden[i]=!v;}
 function trnSetPlacing(v){TRN.placing=v;}
-function trnSpawnBall(k,x,z){LAST_BALL={key:k,cur:{x:x,y:1.9,z:z},v:{set:function(a,b,c){this.x=a;this.y=b;this.z=c;},x:0,y:0,z:0},mss:null};TRN.lastSpot={x:x,z:z};return LAST_BALL;}
+function trnSpawnBall(k,x,z){LAST_BALL={key:k,cur:{x:x,y:1.9,z:z},m:{position:{x:x,y:BALL_R,z:z}},v:{set:function(a,b,c){this.x=a;this.y=b;this.z=c;},x:0,y:0,z:0},pinR:null,mss:null};S.balls.push(LAST_BALL);TRN.lastSpot={x:x,z:z};return LAST_BALL;}
 function clearBalls(){S.balls.length=0;}
 var RODRST={resets:0};
 function resetRodRotation(){RODRST.resets++;}
@@ -131,8 +138,12 @@ let API=null;
 // move the MATCH rng somewhere arbitrary — the daily must not be able to notice
 function rngSeedNoise(A){A.S.seed=987654321;}
 
+// the solo seat startMatch hands a trial: every team-0 rod, opening on the MID (seats.js seatBindRods)
+function soloSeat(A){const mine=A.rods.filter(r=>r.team===0).sort((a,b)=>a.x-b.x);return{team:0,rods:mine,ctrl:mine.findIndex(r=>r.role==='MID')};}
+function heldRole(A){const s=A.S.seats[0],r=s&&s.rods[s.ctrl];return r?r.role:null;}
 /* Put a live trial on the table without going through startMatch. */
 function arm(A,id,seed){
+ A.S.seats=[soloSeat(A)];
  A.TRL.pending=A.trialById(id);
  A.S.seed=(seed===undefined?A.trialById(id).seed:seed)>>>0;
  A.trialArm();
@@ -150,6 +161,7 @@ function drain(A,saved){
 function suite(A){
  const R=new Run();
  const {CONFIG,F,PHY,TRLC,TRL,S,cfg,rods,TRN}=A;
+ const ME={team:0},THEM={team:1};   // what physics.js hands trialTouch: the rod that touched the ball
 
  /* ================= A. the trial DATA ================= */
  const ids={};
@@ -157,7 +169,7 @@ function suite(A){
   R.ok(!ids[d.id],'A-id "'+d.id+'" is unique');ids[d.id]=1;
   R.ok(typeof d.seed==='number'&&d.seed>0,'A-seed "'+d.id+'" declares a seed');
   R.ok(!!CONFIG.tables[d.table],'A-table "'+d.id+'" table exists','table='+d.table);
-  R.ok(d.goal&&['goals','roleGoals','stat','saveRun'].includes(d.goal.kind),'A-kind "'+d.id+'" objective kind is supported',
+  R.ok(d.goal&&['goals','roleGoals','stat','saveRun','drill'].includes(d.goal.kind),'A-kind "'+d.id+'" objective kind is supported',
    'kind='+(d.goal&&d.goal.kind));
   // a 'stat' objective names a match ledger counter; check it against a real freshStats(), not a hand-kept list
   if(d.goal.kind==='stat'){
@@ -187,7 +199,8 @@ function suite(A){
     'gap '+footGap(r,s.x,s.z).toFixed(2)+' < BALL_R '+PHY.ballR);
   }
   // ...and it must be within reach of a rod you control: too close is inside the boot, too far can't be reached; CONFIG.ai.inFrontMax is the config-derived stand-in for a human's reach
-  for(const s of SPW)
+  if(d.goal.kind==='drill')drillData(A,R,d);
+  else for(const s of SPW)
    R.ok(reachOK(A,d,s),'A-reach "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside a striking rod\'s window',
     'rel='+relOf(A,d,s).toFixed(2)+' max='+A.AIC.inFrontMax);
   const show=d.rods&&d.rods.show;
@@ -260,24 +273,44 @@ function suite(A){
  R.eq(S.phase,'play','C7 phase is play');
  R.eq(S.lastTouch,-1,'C8 lastTouch cleared so the clock cannot pre-start');
  R.ok(!!S.stats,'C9 the ledger is fresh');
+ // every attempt opens with the rod the ball lies in front of in hand, whatever the seat held before
+ for(const [id,role] of [['snap','ATT'],['distro','GK'],['onetwo','MID'],['fullset','DEF'],['longball','DEF'],['lastline','GK'],['aTtLane','ATT'],['mPlace','MID'],['dBackPin','DEF']]){
+  arm(A,id);R.eq(heldRole(A),role,'C10 "'+id+'" opens on the '+role);
+ }
+ arm(A,'snap');
 
  /* ================= D. the clock ================= */
+ // one rule for every kind: your side's first TOUCH of the ball (physics.js calls trialTouch at a contact or a pin catch, whatever the device or the verb), stamped at that sim step; a saveRun starts on its first serve (SR7)
  S.time=100;A.trialTick();
  R.eq(TRL.run,false,'D1 clock does not run before you play the ball');
  R.eq(TRL.secs,0,'D2 elapsed stays 0');
- // D3/D4 are the regression for the clock: a trial spawns the ball at the feet, inside the resting foot's contact radius, so S.lastTouch fires on step one; the clock must key off a swing (S.stats.kicks, via msKick)
- S.lastTouch=0;A.trialTick();
- R.eq(TRL.run,false,'D3 a PASSIVE contact does not start the clock');
+ // the old rule polled the swing count, so a ball moved by a pin, a stroke, a side tap or the pad's stick finished at 0.00s
+ S.stats.kicks[0]=1;S.lastTouch=0;A.trialTick();
+ R.eq(TRL.run,false,'D3 a swing that never meets the ball does not start it');
  R.eq(TRL.secs,0,'D4 ...and banks no time');
- S.stats.kicks[0]=1;A.trialTick();
- R.eq(TRL.run,true,'D5 your first SWING starts it');
- S.time=103.5;A.trialTick();
- R.ok(Math.abs(TRL.secs-3.5)<1e-9,'D6 elapsed is SIM time since the swing','secs='+TRL.secs);
- // an OPPONENT swing must not start your clock either
- arm(A,'keeper');S.time=0;A.trialTick();S.stats.kicks[1]=3;S.time=9;A.trialTick();
- R.eq(TRL.run,false,'D7 an opponent swing does not start your clock');
- // D7 left KEEPER'S NIGHTMARE armed — put SNAP SHOT back, running, for the goals series below.
- arm(A,'snap');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=3.5;A.trialTick();
+ S.time=100.25;A.trialTouch(THEM);A.trialTick();
+ R.eq(TRL.run,false,'D5 an opponent touch does not start your clock');
+ S.time=100.5;A.trialTouch(ME);
+ R.eq(TRL.run,true,'D6 your first touch starts it');
+ R.eq(TRL.t0,100.5,'D7 ...stamped at the touch, not at the next frame');
+ S.time=101;A.trialTouch(ME);
+ R.eq(TRL.t0,100.5,'D8 a later touch does not restart it');
+ S.time=104;A.trialTick();
+ R.ok(Math.abs(TRL.secs-3.5)<1e-9,'D9 elapsed is SIM time since the touch','secs='+TRL.secs);
+ // a touch and a goal inside one frame (no trialTick between them) still time the run
+ cfg.trials=null;
+ arm(A,'snap');S.time=0;A.trialTick();S.time=2;A.trialTouch(ME);S.time=2.4;A.trialGoal(0,{mss:null});
+ R.ok(Math.abs(TRL.secs-0.4)<1e-9,'D10 a touch and a goal in one frame time the run','secs='+TRL.secs);
+ R.eq(best(cfg,'snap'),0.4,'D11 ...and bank that time');
+ S.time=5;A.trialTouch(ME);
+ R.eq(TRL.t0,2,'D12 a touch after the result changes nothing');
+ cfg.trials=null;
+ // the hook sites: both contact passes of collideRod and the pin catch (physics.js)
+ const phy=rd('js/physics.js'),pinFn=phy.slice(phy.indexOf('function pinUpdate('),phy.indexOf('function footBoxD('));
+ R.eq((phy.match(/S\.lastTouch=r\.team;[^\n]*\n\s*if\(S\.trial\)trialTouch\(r\);/g)||[]).length,2,'D13 both contact passes of collideRod hand the touch to the clock');
+ R.ok(/b\.pinR=r;[^]*if\(S\.trial\)trialTouch\(r\);[^]*break;/.test(pinFn),'D14 ...and so does the pin catch');
+ // put SNAP SHOT back, running, for the goals series below
+ arm(A,'snap');S.time=0;A.trialTouch(ME);A.trialTick();S.time=3.5;A.trialTick();
 
  /* ================= E. objective: goals ================= */
  R.eq(TRL.done,false,'E1 not done yet');
@@ -293,14 +326,14 @@ function suite(A){
  R.eq(TRL.secs,at,'E7 a goal after the result does not re-finish it');
 
  // multi-goal
- arm(A,'keeper');S.stats.kicks[0]=1;S.time=0;A.trialTick();
+ arm(A,'keeper');S.time=0;A.trialTouch(ME);A.trialTick();
  S.time=5;A.trialTick();A.trialGoal(0,{mss:null});
  R.eq(TRL.done,false,'E8 1 of 3 does not complete');
  A.trialGoal(0,{mss:null});A.trialGoal(0,{mss:null});
  R.eq(TRL.done,true,'E9 3 of 3 completes');
 
  /* ================= F. objective: roleGoals ================= */
- arm(A,'fullset');S.stats.kicks[0]=1;S.time=0;A.trialTick();
+ arm(A,'fullset');S.time=0;A.trialTouch(ME);A.trialTick();
  R.eq(TRL.roles.length,3,'F1 three roles outstanding');
  A.trialGoal(0,{mss:{role:'MID'}});
  R.eq(TRL.roles.length,2,'F2 a MID goal clears MID');
@@ -316,7 +349,7 @@ function suite(A){
  R.eq(TRL.ok,true,'F8 marked complete');
 
  /* ================= G. the time limit ================= */
- arm(A,'keeper');S.stats.kicks[0]=1;S.time=0;A.trialTick();
+ arm(A,'keeper');S.time=0;A.trialTouch(ME);A.trialTick();
  S.time=39.9;A.trialTick();
  R.eq(TRL.done,false,'G1 inside the limit');
  S.time=40.0;A.trialTick();
@@ -325,39 +358,39 @@ function suite(A){
  R.eq(TRL.secs,40,'G4 elapsed is clamped to the limit');
  R.eq(TRL.medal,null,'G5 a failure earns no medal');
  // a stopwatch trial has no failure state
- arm(A,'snap');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=9999;A.trialTick();
+ arm(A,'snap');S.time=0;A.trialTouch(ME);A.trialTick();S.time=9999;A.trialTick();
  R.eq(TRL.done,false,'G6 limit 0 never times out');
 
  /* ================= H. personal bests ================= */
  cfg.trials=null;
- arm(A,'snap');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=1.5;A.trialTick();
+ arm(A,'snap');S.time=0;A.trialTouch(ME);A.trialTick();S.time=1.5;A.trialTick();
  A.trialGoal(0,{mss:null});
  R.ok(!!cfg.trials&&!!cfg.trials.snap,'H1 a completion writes a best');
  R.eq(best(cfg,'snap'),1.5,'H2 the best is the elapsed time');
  R.eq(medal(cfg,'snap'),'gold','H3 ...with its medal');
  R.eq(TRL.pb,true,'H4 flagged as a new best');
  // slower run must NOT overwrite
- arm(A,'snap');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=5;A.trialTick();
+ arm(A,'snap');S.time=0;A.trialTouch(ME);A.trialTick();S.time=5;A.trialTick();
  A.trialGoal(0,{mss:null});
  R.eq(best(cfg,'snap'),1.5,'H5 a SLOWER run does not overwrite the best');
  R.eq(TRL.pb,false,'H6 ...and is not flagged as one');
  // faster run must
- arm(A,'snap');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=1.1;A.trialTick();
+ arm(A,'snap');S.time=0;A.trialTouch(ME);A.trialTick();S.time=1.1;A.trialTick();
  A.trialGoal(0,{mss:null});
  R.eq(best(cfg,'snap'),1.1,'H7 a faster run does overwrite');
- // an UNTIMED run (completed without ever swinging) must never write one either — otherwise it
- // banks a 0.00s gold that nothing can beat
- const beforeUntimed=JSON.stringify(cfg.trials);
- arm(A,'snap');S.time=0;A.trialTick();S.time=4;A.trialTick();   // no swing, so the clock never ran
+ // a run that completes before your side ever touched the ball (nothing in the game should allow it) is timed from the setup: never a 0.00s record nothing can beat
+ const keepBest=cfg.trials;cfg.trials=null;
+ S.time=10;arm(A,'snap');S.time=14;A.trialTick();
  R.eq(TRL.run,false,'H9 the clock never started');
  A.trialGoal(0,{mss:null});
  R.eq(TRL.done,true,'H10 it still completes');
- R.eq(TRL.medal,null,'H11 ...but an untimed run earns no medal');
- R.eq(TRL.pb,false,'H12 ...and is not a personal best');
- R.eq(JSON.stringify(cfg.trials),beforeUntimed,'H13 ...and writes nothing');
+ R.ok(Math.abs(TRL.secs-4)<1e-9,'H11 ...timed from the setup, not 0.00s','secs='+TRL.secs);
+ R.eq(best(cfg,'snap'),4,'H12 ...and that is the record it banks');
+ R.eq(TRL.medal,'bronze','H13 ...with the medal that time earns');
+ cfg.trials=keepBest;
  // a FAILED run must never write one
  const before=JSON.stringify(cfg.trials);
- arm(A,'keeper');S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=40;A.trialTick();
+ arm(A,'keeper');S.time=0;A.trialTouch(ME);A.trialTick();S.time=40;A.trialTick();
  R.eq(JSON.stringify(cfg.trials),before,'H8 a failed run writes no best');
 
  /* ================= O. the objective sentence ================= */
@@ -510,7 +543,7 @@ function suite(A){
  cfg.daily=null;cfg.trials=null;
  const dsp=A.dailyBuild('2026-06-01');
  TRL.pending=dsp;S.seed=dsp.seed;A.trialArm();
- S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=2;A.trialTick();
+ S.time=0;A.trialTouch(ME);A.trialTick();S.time=2;A.trialTick();
  A.trialFinish(true);
  R.ok(!!cfg.daily&&cfg.daily.date==='2026-06-01','P35 a daily completion writes cfg.daily');
  R.ok(!cfg.trials||!cfg.trials.daily,'P36 ...and NOT the per-trial best map');
@@ -520,7 +553,7 @@ function suite(A){
  cfg.daily=null;cfg.trials=null;
 
  /* ================= M. the 'stat' objective ================= */
- arm(A,'frame');S.stats.kicks[0]=1;S.time=0;A.trialTick();
+ arm(A,'frame');S.time=0;A.trialTouch(ME);A.trialTick();
  R.eq(TRL.statKey,'woodwork','M1 the stat key is taken from the spec');
  R.eq(TRL.done,false,'M2 not done at zero');
  S.stats.woodwork[0]=2;S.time=5;A.trialTick();
@@ -535,7 +568,7 @@ function suite(A){
  R.eq(TRL.ok,true,'M8 ...as a success');
  R.ok(Math.abs(TRL.secs-9)<1e-9,'M9 timed off sim seconds like any other kind','secs='+TRL.secs);
  // the OPPONENT's counter must not count for you
- arm(A,'frame');S.stats.kicks[0]=1;S.time=0;A.trialTick();
+ arm(A,'frame');S.time=0;A.trialTouch(ME);A.trialTick();
  S.stats.woodwork[1]=9;S.time=4;A.trialTick();
  R.eq(TRL.done,false,'M10 the opponent hitting the woodwork does not complete your trial');
  // a stat trial still fails on its limit
@@ -554,10 +587,13 @@ function suite(A){
  R.eq(TRL.serveAt,SRG.serveDelay,'SR4 ...after the same beat every other attempt gets');
  A.trialTick();
  R.eq(TRL.att,0,'SR5 nothing is served before the beat');
+ R.eq(TRL.run,false,'SR5b ...and the clock waits for it');
+ const rstWas=A.RODRST.resets;
  S.time=SRG.serveDelay;A.trialTick();
  R.eq(TRL.att,1,'SR6 the first attempt lands after it');
- R.eq(TRL.run,true,'SR7 the clock starts on the SERVE — a keeper never swings');
- R.eq(A.RODRST.resets>0,true,'SR8 every attempt opens from rest');
+ R.eq(TRL.run,true,'SR7 the clock starts on the SERVE — the attackers touch the ball first');
+ R.eq(TRL.t0,SRG.serveDelay,'SR7b ...at the serve');
+ R.eq(A.RODRST.resets>rstWas,true,'SR8 every attempt opens from rest');
  R.eq(TRN.lastSpot.x,SRG.spawns[0].x,'SR9 attempt 1 uses the first authored spawn');
  R.eq(TRL.spawn.x,SRG.spawns[0].x,'SR10 ...and redropBall is pointed at it');
  // a SAVE settles the attempt and arms the next
@@ -607,7 +643,7 @@ function suite(A){
  S.time=0;arm(A,'lastline');drain(A,false);
  R.eq(best(cfg,'lastline'),SRG.n,'SR34 a WORSE score does not overwrite it');
  R.eq(TRL.pb,false,'SR35 ...and is not flagged');
- // a 0-save run is an honest record, not the untimed-run hole (a saveRun completes only by playing out its attempts)
+ // a 0-save run is an honest record (a saveRun completes only by playing out its attempts)
  cfg.trials={};
  S.time=0;arm(A,'lastline');drain(A,false);
  R.eq(TRL.saves,0,'SR36 standing still saves nothing');
@@ -668,17 +704,304 @@ function suite(A){
  /* ================= K. retry replays, it does not re-roll ================= */
  arm(A,'snap');
  const seedWas=A.S.seed;
- S.stats.kicks[0]=1;S.time=0;A.trialTick();S.time=3;A.trialTick();
+ S.time=0;A.trialTouch(ME);A.trialTick();S.time=3;A.trialTick();
  A.trialRestart();
  R.eq(TRL.run,false,'K1 retry resets the clock');
  R.eq(TRL.secs,0,'K2 elapsed cleared');
  R.eq(TRL.done,false,'K3 result cleared');
  R.eq(A.S.seed,seedWas,'K4 retry keeps the SAME seed — a retry must replay, not re-roll');
  R.eq(S.lastTouch,-1,'K5 lastTouch cleared');
- R.eq(S.stats.kicks[0],0,'K6 the swing count is reset, so the clock genuinely re-arms');
+ R.eq(S.stats.kicks[0],0,'K6 the ledger is reset');
+ // a retry opens on the same table as the first attempt: rods home and at rest, fresh legs, the same rod in hand
+ arm(A,'fullset');
+ for(const r of rods){r.offset=5;r.target=6;r.slideV=40;r.exert=3;r.pivot.position.z=5;}
+ S.matchTime=150;S.seats[0].ctrl=S.seats[0].rods.findIndex(r=>r.role==='ATT');
+ const rstK=A.RODRST.resets;
+ A.trialRestart();
+ R.ok(rods.every(r=>r.offset===0&&r.target===0&&r.slideV===0&&r.pivot.position.z===0),'K7 a retry puts every rod back in the middle of its slide');
+ R.ok(rods.every(r=>r.exert===0),'K8 ...with fresh legs');
+ R.eq(A.RODRST.resets>rstK,true,'K9 ...and at rest');
+ R.eq(S.matchTime,0,'K10 the stamina ramp starts again');
+ R.eq(heldRole(A),'DEF','K11 ...and the rod the ball lies in front of is in hand again');
+ S.matchTime=200;A.trialTick();
+ R.eq(S.matchTime,0,'K12 the stamina ramp never runs in a trial');
  A.trialExit();
-
+ drillSuite(A,R);
+ setSuite(A,R);
  return R;
+}
+/* ---- the drills' DATA: a drill can only be what its move needs ---- */
+const MOVES={tictac:['n','per','lane'],pin:['n','pin','serve'],place:['n','hold','lane'],walk:[],roll:['n'],pinShot:['n','serve'],rollShot:['n'],ttShot:['n','rally']};
+function drillData(A,R,d){
+ const {CONFIG,F,PHY,rods}=A,g=d.goal,id=d.id,r=rods.find(q=>q.team===0&&q.role===d.hold),P=A.SHOT.pin,DC=A.DRC;
+ R.ok(!!MOVES[g.move],'DA-move "'+id+'" is a known move','move='+g.move);
+ if(!MOVES[g.move]||!r){R.ok(!!r,'DA-hold "'+id+'" holds a rod');return;}
+ for(const k of MOVES[g.move])R.ok(g[k]!=null,'DA-field "'+id+'" declares goal.'+k);
+ if(g.move!=='walk')R.ok(g.n>0,'DA-n "'+id+'" needs a positive count');
+ const zl=F.W/2-PHY.ballR,men=r.baseZ,face=A.FOOT_BOX.z+A.BALL_R,clear=face+A.CONFIG.ai.clearMargin+A.CONFIG.ai.catch.fetch.clearPad;
+ const reach=z=>men.some(b=>Math.abs(z-b)<=r.maxOff);
+ // the placed ball: on the row between two men for a tic-tac; lying behind, where a back foot can come down on it and beside every man (a leg cannot go up through a ball in its own lane), for the rest
+ const b=d.ball,rel=(b.x-r.x)*r.kickDir;
+ if(!g.serve){
+  if(g.move==='tictac'||g.move==='ttShot'){
+   R.ok(Math.abs(rel)<=DC.rowBand,'DA-row "'+id+'" its ball starts on the rod\'s row','rel='+rel);
+   R.ok(men.some((m,i)=>i+1<men.length&&b.z>m+face&&b.z<men[i+1]-face),'DA-gap "'+id+'" ...between two men, clear of both');
+  }else{
+   R.ok(rel>=P.back&&rel<=P.assist.near,'DA-behind "'+id+'" its ball lies behind the rod where a back foot comes down on it','rel='+rel);
+   R.ok(men.every(m=>Math.abs(b.z-m)>=clear),'DA-beside "'+id+'" ...beside every man, not in his lane','z='+b.z);
+   R.ok(reach(b.z),'DA-reach "'+id+'" ...within a man\'s slide');
+  }
+ }
+ // every serve: inside the walls, its line reachable by a man; a ball lying ahead inside the forward pin's reach; a rolled one coming at the rod
+ for(const sv of g.serve||[]){
+  R.ok(sv.z&&sv.z[0]>=-zl&&sv.z[1]<=zl,'DA-serve "'+id+'" z range is inside the walls',JSON.stringify(sv.z));
+  for(const z of sv.z)R.ok(reach(z),'DA-serve "'+id+'" a ball at z '+z+' is within a man\'s slide');
+  const v=sv.v?sv.v[0]:0;
+  if(v>0)R.ok(sv.rel[0]>DC.rowBand&&sv.rel[0]>0,'DA-roll "'+id+'" a rolled ball starts ahead of the row','rel='+sv.rel);
+  else R.ok(sv.rel[0]>=A.CONFIG.ai.catch.fetch.near&&sv.rel[1]<=A.CONFIG.ai.catch.fetch.far,'DA-lie "'+id+'" a ball lying ahead is inside the forward pin\'s reach','rel='+sv.rel);
+ }
+ // lanes: inside the walls, a range the min can be drawn in, and every centre reachable (a pair's gap for a tic-tac, a man for a placement)
+ if(g.lane){
+  const L=g.lane;
+  R.ok(L.w>0&&L.z[0]-L.w/2>=-zl&&L.z[1]+L.w/2<=zl,'DA-lane "'+id+'" its lanes lie inside the walls');
+  R.ok(L.min>0&&L.min<L.z[1]-L.z[0]&&(!L.max||L.max>=L.min),'DA-lane "'+id+'" min..max can be drawn in the range',JSON.stringify(L));
+  let ok=true,worst=null;
+  for(let i=0;i<=40;i++){
+   const c=L.z[0]+(L.z[1]-L.z[0])*i/40;
+   const can=g.move==='tictac'?men.some((m,j)=>j+1<men.length&&Math.abs(c-(m+men[j+1])/2)<=r.maxOff+L.w/2-(men[j+1]-m-2*face)/2):men.some(m=>Math.abs(c-m)<=r.maxOff+L.w/2);
+   if(!can){ok=false;worst=c;}
+  }
+  R.ok(ok,'DA-lane "'+id+'" every lane can be reached','worst c='+worst);
+ }
+}
+// the drills, driven by hand: the ball and the rod are set, trialTick reads them
+function drillSuite(A,R){
+ const {CONFIG,PHY,TRL,S,cfg,rods,TRN,DRC}=A,trialById=A.trialById;
+ const att=rods.find(r=>r.team===0&&r.role==='ATT');
+ const ball=()=>S.balls[0];
+ const put=(b,x,z,vx,vz)=>{b.m.position.x=x;b.m.position.y=PHY.ballR;b.m.position.z=z;b.v.x=vx||0;b.v.y=0;b.v.z=vz||0;};
+ const tick=dt=>{S.time+=dt;A.trialTick();};
+ const clean=()=>{att.pinB=null;att.pinFwd=false;att.kickT=-1;att.kickStyle=null;att.offset=0;};
+ cfg.trials={};
+
+ /* ---- tictac: touches in a lane ---- */
+ clean();S.time=0;arm(A,'aTtLane');
+ let D=TRL.dr;
+ R.ok(!!D&&D.mv==='tictac','DR1 a drill trial arms its drill state');
+ R.eq(D&&D.r,att,'DR2 ...on the rod it holds');
+ R.ok(!!(D&&D.lane)&&D.lane.w===trialById('aTtLane').goal.lane.w,'DR3 ...and draws its first lane');
+ const L0=D.lane.c;
+ R.ok(L0>=-16&&L0<=16,'DR4 the lane centre is inside lane.z','c='+L0);
+ R.eq(S.balls.length,1,'DR5 a placed drill has its ball down at once');
+ R.eq(TRL.serving,false,'DR6 ...and is not waiting to serve');
+ R.eq(TRL.run,false,'DR7 ...and its clock waits for your first touch');
+ A.trialRestart();
+ R.eq(TRL.dr.lane.c,L0,'DR8 a retry draws the same lane');
+ D=TRL.dr;D.lane={c:9.25,w:14};
+ let b=ball();
+ put(b,21,4.5,0,10);tick(0.05);
+ R.eq(D.ch,1,'DR9 a ball sent along the row is a touch');
+ R.eq(D.lk,1,'DR10 ...inside the lane it counts toward it');
+ put(b,21,14,0,-10);tick(0.05);
+ R.eq(D.ch,2,'DR11 the other man sending it back is the next touch');
+ R.eq(D.lk,2,'DR12 ...and counts');
+ put(b,21,14.2,0,10);tick(0.05);
+ R.eq(D.lk,1,'DR13 the same man touching it twice starts the lane\'s count again');
+ R.eq(D.ch,1,'DR13b ...and the rally');
+ put(b,21,4.5,0,-10);tick(0.05);put(b,21,14,0,10);tick(0.05);put(b,21,4.5,0,-10);tick(0.05);
+ R.eq(D.li,1,'DR14 `per` touches in a row clear the lane');
+ R.eq(D.lk,0,'DR14b ...and the next lane starts at none');
+ const dj=Math.abs(D.lane.c-9.25),LG=trialById('aTtLane').goal.lane;
+ R.ok(dj>=LG.min&&dj<=LG.max,'DR15 the next lane is min..max from the last','moved '+dj.toFixed(2));
+ D.lane={c:20,w:6};D.lk=2;D.man=-1;D.dir=0;D.ch=0;
+ put(b,21,4.5,0,10);tick(0.05);
+ R.eq(D.lk,0,'DR16 a touch outside the lane starts it again');
+ R.eq(D.fl,-1,'DR16b ...and the lane flashes the miss');
+ D.lane={c:9.25,w:14};D.lk=2;D.ch=2;D.dir=0;
+ put(b,21,9,0,0);tick(DRC.breakT+0.1);
+ R.eq(D.ch,0,'DR17 a ball stopped breakT after the last touch breaks the rally');
+ R.eq(D.lk,0,'DR17b ...and the lane\'s count');
+ D.lk=2;D.ch=2;D.tT=S.time;
+ put(b,att.x+DRC.rowBand+1,9,0,10);tick(0.05);
+ R.eq(D.ch,0,'DR18 a ball off the row breaks it');
+ D.man=-1;D.dir=0;D.ch=0;
+ put(b,21,9,10,6);tick(0.05);
+ R.eq(D.ch,0,'DR19 a ball heading up the table is not a touch along the row');
+ const G=trialById('aTtLane').goal;
+ D.lane={c:9.25,w:14};D.li=G.n-1;D.lk=G.per-1;D.man=1;D.dir=1;D.ch=3;D.tT=S.time;
+ put(b,21,14,0,-10);tick(0.05);
+ R.eq(TRL.done,true,'DR20 the last lane completes the trial');
+ R.eq(TRL.ok,true,'DR20b ...as a success');
+
+ /* ---- pin: served balls ---- */
+ clean();cfg.trials={};S.time=0;arm(A,'aBackPin');
+ D=TRL.dr;
+ R.eq(TRL.serving,true,'DR21 a served drill waits to serve');
+ R.eq(S.balls.length,0,'DR22 ...with nothing on the table');
+ tick(DRC.first+0.01);
+ R.eq(S.balls.length,1,'DR23 the first ball is served after the beat');
+ R.eq(TRL.run,true,'DR24 ...and starts the clock');
+ b=ball();
+ const s0={x:b.m.position.x,z:b.m.position.z,vx:b.v.x},SV=trialById('aBackPin').goal.serve[0],rel0=s0.x-att.x;
+ R.ok(rel0>=SV.rel[0]&&rel0<=SV.rel[1],'DR25 it is served from the spec\'s range ahead of the rod','rel='+rel0);
+ R.ok(-s0.vx>=SV.v[0]&&-s0.vx<=SV.v[1],'DR26 ...rolling at the rod at the spec\'s speed','vx='+s0.vx);
+ A.trialRestart();tick(DRC.first+0.01);
+ b=ball();
+ R.ok(b.m.position.z===s0.z&&b.v.x===s0.vx,'DR27 a retry serves the same ball');
+ D=TRL.dr;
+ att.pinB=b;tick(0.05);
+ R.eq(D.n,0,'DR28 a pin is not counted before it has held pinHold');
+ tick(DRC.pinHold+0.01);
+ R.eq(D.n,1,'DR29 ...and is once it has');
+ R.eq(TRL.serving,true,'DR30 then the next ball is served');
+ R.eq(D.si,1,'DR31 ...the next one');
+ att.pinB=null;tick(DRC.gap+0.01);
+ b=ball();const s1={x:b.m.position.x,z:b.m.position.z};
+ att.pinB=b;att.pinFwd=true;tick(0.05);tick(DRC.pinHold+0.05);
+ R.eq(D.n,1,'DR32 a forward pin in a back-pin drill is not counted');
+ att.pinB=null;att.pinFwd=false;tick(0.02);
+ put(b,att.x-12,0,0,0);tick(0.05);tick(DRC.lostT+0.05);
+ R.eq(TRL.serving,true,'DR33 a ball dead out of reach is lost');
+ R.eq(D.si,1,'DR34 ...and the same ball comes again');
+ tick(DRC.gap+0.01);
+ R.ok(ball().m.position.z===s1.z&&ball().m.position.x===s1.x,'DR35 ...from the same spot');
+ put(ball(),att.x+30,0,40,0);for(let i=0;i<10&&!TRL.serving;i++)tick(DRC.awayT/8);
+ R.eq(TRL.serving,true,'DR36 a ball out of reach too long is lost however fast it goes');
+
+ /* ---- place: a pinned ball held in a lane ---- */
+ clean();S.time=0;arm(A,'aPlace');
+ D=TRL.dr;D.lane={c:0,w:6};b=ball();
+ put(b,att.x-3.6,1,0,0);att.pinB=b;tick(0.05);tick(0.6);
+ R.eq(D.li,0,'DR37 a placement needs the whole hold');
+ put(b,att.x-3.6,5,0,0);tick(0.05);
+ R.eq(D.lh,0,'DR38 out of the lane the hold starts again');
+ put(b,att.x-3.6,-1,0,0);tick(0.05);tick(trialById('aPlace').goal.hold);
+ R.eq(D.li,1,'DR39 held `hold` s in the lane clears it');
+ R.ok(D.lane.c!==0,'DR40 ...and the lane moves');
+ att.pinB=null;tick(0.05);D.lane={c:-1,w:6};tick(1.5);
+ R.eq(D.li,1,'DR41 a ball lying in the lane but not pinned is not held');
+
+ /* ---- walk: every man in turn ---- */
+ clean();S.time=0;arm(A,'aWalk');
+ D=TRL.dr;b=ball();
+ R.eq(JSON.stringify(D.seq),'[0,1,2,1,0]','DR42 the walk is every man, there and back, from the end its ball starts at');
+ const pinAt=z=>{att.pinB=null;tick(0.02);put(b,att.x-3.6,z,0,0);att.pinB=b;tick(0.02);tick(DRC.pinHold+0.02);};
+ pinAt(-18.5);R.eq(D.n,1,'DR43 the first man pins it');
+ pinAt(18.5);R.eq(D.n,1,'DR44 a man out of turn does not count');
+ pinAt(0);R.eq(D.n,2,'DR45 the next man does');
+ pinAt(18.5);pinAt(0);pinAt(-18.5);
+ R.eq(TRL.done,true,'DR46 ...and back again completes it');
+ clean();
+
+ /* ---- roll: let go, rolled along the row, pinned by another man ---- */
+ S.time=0;arm(A,'aRoll');
+ D=TRL.dr;b=ball();
+ put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);tick(DRC.pinHold+0.01);
+ R.eq(D.n,0,'DR47 a pin no roll reached is not one');
+ att.pinB=null;tick(0.02);
+ put(b,att.x-3.6,-10,0,12);tick(0.02);
+ put(b,att.x-3.6,-1,0,10);att.pinB=b;tick(0.02);tick(DRC.pinHold+0.01);
+ R.eq(D.n,1,'DR48 let go by one man, rolled along the row, pinned by the next: a roll');
+ att.pinB=null;tick(0.02);put(b,att.x-3.6,3,0,8);tick(0.02);put(b,att.x-3.6,6,0,8);att.offset=6;att.pinB=b;tick(0.02);tick(DRC.pinHold+0.01);
+ R.eq(D.n,1,'DR49 a ball rolled away and caught again by the man who let it go is not a roll');
+ att.offset=0;
+ put(b,att.x-3.6,0.5,0,0);att.pinB=null;tick(0.02);tick(0.02);
+ att.offset=0.5-18.5;att.pinB=b;tick(0.02);tick(DRC.pinHold+0.01);
+ R.eq(D.n,1,'DR50 the next man brought over a still ball is a walk, not a roll');
+ att.pinB=null;att.offset=0;tick(0.02);put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);
+ att.pinB=null;tick(0.02);put(b,att.x-3.6,-10,0,12);att.kickT=0;tick(0.02);att.kickT=-1;
+ put(b,att.x-3.6,-1,0,10);att.pinB=b;tick(0.02);tick(DRC.pinHold+0.01);
+ R.eq(D.n,1,'DR51 a ball swung at on the way is not a roll');
+ clean();
+
+ /* ---- the shots out of a move ---- */
+ S.time=0;arm(A,'aPinShot');
+ D=TRL.dr;tick(DRC.first+0.01);b=ball();
+ att.pinB=b;tick(0.02);
+ att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR52 a goal struck from the back pin counts');
+ R.eq(TRL.serving,true,'DR53 ...and brings the next ball');
+ R.eq(D.si,1,'DR54 ...the next one');
+ tick(DRC.gap+0.01);
+ att.kickT=0;att.kickStyle=null;tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR55 a goal that did not come from the pin does not');
+ R.eq(D.si,1,'DR56 ...and the same ball comes again');
+ tick(DRC.gap+0.01);b=ball();
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ const old=S.time;tick(DRC.swingT+0.1);
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR57 a goal from a later touch is not the pin shot\'s');
+ tick(DRC.gap+0.01);b=ball();
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ A.trialGoal(1,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR58 a goal at your own end is not one');
+ R.eq(TRL.serving,true,'DR58b ...but it does bring the ball back');
+ const other=rods.find(r=>r.team===0&&r.role==='MID');
+ tick(DRC.gap+0.01);b=ball();
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:other,t:S.time}});
+ R.eq(D.n,1,'DR59 a goal another rod struck is not one');
+ clean();
+ S.time=0;arm(A,'aTtShot');
+ D=TRL.dr;const RL=trialById('aTtShot').goal.rally;
+ D.ch=RL;D.tT=S.time;att.kickT=0;tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR60 a goal struck with the rally at `rally` touches counts');
+ tick(DRC.gap+0.01);
+ D.ch=RL-1;D.tT=S.time;att.kickT=0;tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR61 ...one touch short does not');
+ clean();
+ S.time=0;arm(A,'aRollShot');
+ D=TRL.dr;b=ball();
+ put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);att.kickT=0;att.kickStyle='trapShot';att.pinB=null;tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,0,'DR62 a pin shot no roll led to is not one');
+ tick(DRC.gap+0.01);b=ball();
+ put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);att.pinB=null;tick(0.02);
+ put(b,att.x-3.6,-10,0,12);tick(0.02);put(b,att.x-3.6,-1,0,10);att.pinB=b;tick(0.02);
+ att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ A.trialGoal(0,{mss:{rod:att,t:S.time}});
+ R.eq(D.n,1,'DR63 a pin shot from the pin a roll reached is');
+ clean();
+
+ /* ---- a lost ball comes back where it belongs ---- */
+ S.time=0;arm(A,'aWalk');
+ att.offset=5;A.drillLose(TRL.dr);tick(DRC.gap+0.01);
+ R.eq(ball().m.position.z,trialById('aWalk').ball.z+5,'DR64 a placed ball comes back by the same men wherever the rod has slid');
+ clean();
+ S.time=0;arm(A,'aTtLane');
+ D=TRL.dr;D.lane={c:0,w:14};A.drillLose(D);tick(DRC.gap+0.01);
+ const lz=ball().m.position.z,lc=A.FOOT_BOX.z+A.BALL_R+DRC.clear;
+ R.ok(Math.abs(lz)<=7&&att.baseZ.every(m=>Math.abs(lz-m)>=lc),'DR65 a lost tic-tac ball comes back inside the lane, clear of every foot','z='+lz);
+
+ /* ---- the words ---- */
+ R.ok(/LANE/.test(A.drillProg())&&/TOUCHES/.test(A.drillProg()),'DR66 a tic-tac shows its lane and touches');
+ for(const d of CONFIG.trials.list)if(d.goal.kind==='drill')
+  R.ok(!!A.drillObjText(d.goal),'DR67 "'+d.id+'" has an objective line');
+ A.trialExit();
+ R.eq(TRL.dr,null,'DR68 leaving the trial drops the drill');
+ clean();cfg.trials=null;
+}
+// the sets inside a discipline
+function setSuite(A,R){
+ const {CONFIG,TRL,TRLC}=A,ids=TRLC.sets.map(x=>x.id);
+ for(const d of TRLC.list)R.ok(ids.includes(A.trialSetOf(d)),'S1 "'+d.id+'" is in a declared set','set='+A.trialSetOf(d));
+ R.eq(A.trialSetOf({}),ids[0],'S2 a trial with no set is in the first');
+ R.eq(A.trialSetsIn('ATT').map(x=>x.id).join(','),'match,tictac,pin,walk','S3 a discipline shows the sets it has trials in, in order');
+ R.eq(A.trialSetsIn('GK').length,1,'S4 ...the keeper has one');
+ TRL.cat='ATT';TRL.set='pin';A.renderTrials();
+ const h=globalThisEl('trialsPanel').innerHTML;
+ R.ok(/data-trial="aBackPin"/.test(h)&&!/data-trial="snap"/.test(h),'S5 the list shows the set picked, not the whole discipline');
+ R.ok(/data-set="pin"/.test(h)&&/trlSets/.test(h),'S6 ...under a strip of the discipline\'s sets');
+ TRL.cat='GK';TRL.set='pin';A.renderTrials();
+ R.eq(TRL.set,'match','S7 a set the discipline does not have falls back to its first');
+ R.ok(!/trlSets/.test(globalThisEl('trialsPanel').innerHTML),'S8 a discipline with one set shows no strip');
+ TRL.cat='ATT';TRL.set='match';A.trialExit();TRL.pending=null;A.trialStart('aRoll');
+ R.eq(TRL.set,'walk','S9 starting a trial remembers its set, so quitting comes back to it');
+ A.trialExit();TRL.pending=null;
 }
 /* ---- main ---- */
 const A=boot();API=A;
@@ -718,12 +1041,25 @@ const MUTANTS=[
  // neither cost the player a medal nor hand them one.
  ['the clock runs on wall time instead of sim time',
   s=>s.replace('TRL.secs=S.time-TRL.t0;','TRL.secs=(Date.now()/1000)-TRL.t0;')],
- ['the clock starts on entry rather than on your first swing',
-  s=>s.replace('if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0))','if(!TRL.run)')],
- // the SHIPPED bug, kept as a mutation: a trial spawns the ball touching a boot, so any-contact
- // is indistinguishable from "the player has started"
- ['the clock keys off any contact instead of a swing',
-  s=>s.replace('if(!TRL.run&&S.stats&&(S.stats.kicks[0]>0||S.stats.saves[0]>0))','if(!TRL.run&&S.lastTouch>=0)')],
+ ['the clock starts on entry rather than on your first touch',
+  s=>s.replace('TRL.run=false;TRL.t0=0;TRL.r0=S.time;','TRL.run=true;TRL.t0=S.time;TRL.r0=S.time;')],
+ // the shipped bug (2026-10-21): only a counted swing started the clock, so a pin, a stroke, a side tap or the pad's stick finished at 0.00s
+ ['a touch never starts the clock',
+  s=>s.replace('function trialTouch(r){if(r&&r.team===0)trialGo();}','function trialTouch(r){}')],
+ ['the clock still starts on a swing that never meets the ball',
+  s=>s.replace(" S.matchTime=0;   // a trial is base stats",' if(S.stats&&S.stats.kicks[0]>0)trialGo();\n S.matchTime=0;   // a trial is base stats')],
+ ['an opponent touch starts your clock',
+  s=>s.replace('function trialTouch(r){if(r&&r.team===0)trialGo();}','function trialTouch(r){if(r)trialGo();}')],
+ ['the clock is started on the next frame, not at the touch',
+  s=>s.replace('function trialTouch(r){if(r&&r.team===0)trialGo();}','function trialTouch(r){if(r&&r.team===0)TRL.pend=1;}')
+      .replace(" S.matchTime=0;   // a trial is base stats",' if(TRL.pend){TRL.pend=0;trialGo();}\n S.matchTime=0;   // a trial is base stats')],
+ // the same table for every attempt
+ ['a retry keeps the table the last attempt left',
+  s=>s.replace(' trialHome(trialSpawnFor(0).x);\n','\n')],
+ ['the stamina ramp runs through a trial',
+  s=>s.replace(" S.matchTime=0;   // a trial is base stats",' //')],
+ ['a retry opens on whatever rod the seat last held',
+  s=>s.replace('s.ctrl=k;s.holdRod=null;','s.holdRod=null;')],
  ['the sandbox hide list is not restored on exit',
   s=>s.replace('if(TRL.hidWas){TRN.hidden=TRL.hidWas;TRL.hidWas=null;}','')],
  ['a stat trial completes on goals instead of its counter',
@@ -742,9 +1078,8 @@ const MUTANTS=[
   s=>s.replace("c.streak=(c.date&&dailyPrev(date)===c.date)?(c.streak||0)+1:1;","c.streak=(c.streak||0)+1;")],
  ['a daily writes into the per-trial best map',
   s=>s.replace('if(d.daily)TRL.pb=dailyRecord(val,TRL.medal,d.date,trialDir(d)>0);','if(false){}')],
- ['an untimed run banks a 0.00s record',
-  s=>s.replace('const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;',
-               'const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=true;')],
+ ['an untouched run banks a 0.00s record',
+  s=>s.replace('if(!TRL.run){TRL.run=true;TRL.t0=TRL.r0;}','if(!TRL.run){TRL.run=true;TRL.t0=S.time;}')],
 
  /* ---- the 'saveRun' (GK) kind ---- */
  // THE invariant the score rests on: settle on the FIRST outcome, or a rebound banks a second
@@ -755,8 +1090,8 @@ const MUTANTS=[
   s=>s.replace('if(TRL.saveRun){if(team!==0)trialAttemptEnd(false);trialHudSync();return;}',
                'if(TRL.saveRun){trialHudSync();return;}')],
  ['a saveRun is scored on the clock like every other kind',
-  s=>s.replace('const sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs,keep=sr||TRL.run;',
-               'const sr=false,val=TRL.secs,keep=TRL.run;')],
+  s=>s.replace('const d=TRL.def,sr=!!TRL.saveRun,val=sr?TRL.saves:TRL.secs;',
+               'const d=TRL.def,sr=false,val=TRL.secs;')],
  // one direction for every kind is the state this file was in before the GK work; it makes a
  // saveRun's thresholds read backwards and hands gold to the worst run.
  ['medal thresholds are read in one direction only',
@@ -766,13 +1101,66 @@ const MUTANTS=[
   s=>s.replace('return (sp&&sp.length)?sp[i%sp.length]:TRL.def.ball;','return TRL.def.ball;')],
  ['a stalled attempt never settles',
   s=>s.replace('else if(TRL.att>0&&g.attemptT>0&&S.time-TRL.attT0>=g.attemptT)trialAttemptEnd(false);','')],
- // the gap this whole kind exists to close: a keeper never swings, so a clock keyed on kicks
- // alone leaves the run untimed and banking nothing.
- ['the clock never starts for a keeper who does not swing',
-  s=>s.replace('if(!TRL.run){TRL.run=true;TRL.t0=S.time;}','')],
+ // the attackers touch the ball first, so the serve is what starts a saveRun's clock
+ ['the clock never starts on a saveRun serve',
+  s=>s.replace('trialGo();\n trialHudSync();\n}','trialHudSync();\n}')],
  ['the next ball is served the instant the attempt settles',
   s=>s.replace('TRL.serving=true;TRL.serveAt=S.time+trialServeDelay();\n trialHudSync();',
-               'TRL.serving=true;TRL.serveAt=S.time;\n trialHudSync();')]
+               'TRL.serving=true;TRL.serveAt=S.time;\n trialHudSync();')],
+ /* ---- the drills ---- */
+ ['a touch by the same man counts as the next',
+  s=>s.replace('if(m===D.man){D.ch=1;return 2;}','')],
+ ['a touch outside the lane keeps its count',
+  s=>s.replace('if(t<0||!drillInLane(D,b.m.position.z)){','if(t<0){')],
+ ['a lane is drawn anywhere',
+  s=>s.replace('if(d>=L.min&&!(L.max&&d>L.max))break;','break;')],
+ ['a retry draws different lanes',
+  s=>s.replace("'|'+tag+'|'+i,S.seed));}","'|'+tag+'|'+i,(Math.random()*1e9)|0));}")],
+ ['a rally never breaks',
+  s=>s.replace('(Math.abs(vz)<1&&S.time-D.tT>DRC.breakT)','false')],
+ ['a pin counts the moment it catches',
+  s=>s.replace('S.time-P.t<DRC.pinHold','false')],
+ ['a back-pin drill takes any pin',
+  s=>s.replace("(g.pin==='fwd'?P.fwd:g.pin==='back'?!P.fwd:true)",'true')],
+ ['the walk takes any man',
+  s=>s.replace('P.man===D.seq[D.n]','true')],
+ ['a roll is any pin after a let-go',
+  s=>s.replace('roll:!!(L&&L.on&&L.man!==m&&Math.abs(p.z-L.z)>=DRC.rollDz&&L.v>=DRC.rollV)','roll:!!L')],
+ ['a roll back to the same man counts',
+  s=>s.replace('L.man!==m&&','')],
+ ['a swing on the way does not break a roll',
+  s=>s.replace('||r.kickT>=0)L.on=false;',')L.on=false;')],
+ ['a placement counts a ball held outside the lane',
+  s=>s.replace('&&drillInLane(D,b.m.position.z));',');')],
+ ['any goal counts in a shot drill',
+  s=>s.replace("(sw.pin&&(D.mv!=='rollShot'||sw.roll))",'true')],
+ ['a tic-tac strike needs no rally',
+  s=>s.replace('sw.ch>=g.rally&&','')],
+ ['a goal is credited to an old swing',
+  s=>s.replace('&&rec.t-sw.t<=DRC.swingT','')],
+ ['the swing reads the pin after this frame let it go',
+  s=>s.replace(' drillPins(D,r,b);\n const mv=D.mv;',' const mv=D.mv;').replace(' // the swing first: it reads the pin as it stood before this frame let go of it\n const k=r.kickT>=0;',' drillPins(D,r,b);\n const k=r.kickT>=0;')],
+ ['a missed ball moves on to the next serve',
+  s=>s.replace('D.lk=0;D.lh=0;D.deadT=0;D.awayT=0;D.lost=true;','D.lk=0;D.lh=0;D.deadT=0;D.awayT=0;D.lost=true;D.si++;')],
+ ['a pinned ball brings the same serve again',
+  s=>s.replace("if(D.mv==='pin'){D.si++;","if(D.mv==='pin'){")],
+ ['a served drill does not start the clock',
+  s=>s.replace(' if(sv)trialGo();\n','\n')],
+ ['a re-placed ball ignores where the rod is',
+  s=>s.replace('z=d.ball.z+r.offset','z=d.ball.z')],
+ ['a lost tic-tac ball comes back where it started',
+  s=>s.replace("else if(D.mv==='tictac'&&D.lane&&D.lost){const lz=drillLaneSpot(D);if(lz!=null)z=lz;}",'')],
+ ['a lost ball is never put back',
+  s=>s.replace('if(D.deadT>=DRC.lostT||D.awayT>=(row?DRC.lostT:DRC.awayT))drillLose(D);','')],
+ ['the drill outlives the trial',
+  s=>s.replace('TRL.def=null;TRL.pending=null;TRL.dr=null;drillDraw();','TRL.def=null;TRL.pending=null;drillDraw();')],
+ /* ---- the sets ---- */
+ ['the list shows the whole discipline whatever the set',
+  s=>s.replace('list=sets.length>1?all.filter(d=>trialSetOf(d)===TRL.set):all','list=all')],
+ ['starting a trial forgets its set',
+  s=>s.replace('if(d.cat){TRL.cat=d.cat;TRL.set=trialSetOf(d);}','if(d.cat)TRL.cat=d.cat;')],
+ ['a set the discipline lacks is kept',
+  s=>s.replace('if(sets.length&&!sets.some(x=>x.id===TRL.set))TRL.set=sets[0].id;','')],
  // not mutated: trialFinish's own `if(TRL.done)return;` (both callers gate on TRL.done, so it's unreachable and a mutation changes nothing observable)
 ];
 console.log('\nmutation checks (each must FAIL something):');

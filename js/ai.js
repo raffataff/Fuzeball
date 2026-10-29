@@ -863,14 +863,23 @@ function recvOwn(r,p){
  return false;
 }
 // the team has the ball behind this rod: the rod stands ready for it, the pose up and a man on the ball's lane, instead of being left raised; at any speed, a pass is pinged fast
-// a lane a holder is looking at (recvReady) keeps its say
+// a lane a holder is looking at (recvReady) keeps its say; a human on the team holding finesse and kick (recvAsk) gets it ready for any ball coming up at it, whoever touched it last, straight after a kick that let it go
 function recvPossess(r,best){
  const RV=AIC.catch.recv,RD=RV.ready,PS=AIC.dribble.pass;
- if(!RV.on||!RD.on||!RD.possession||RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil||0)>S.time&&!r.rvReady)||(r.rvCd||0)>S.time)return;
+ if(!RV.on||!RD.on||RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil||0)>S.time&&!r.rvReady))return;
  const b=best.real||best,p=b.m.position,ahead=(r.x-p.x)*r.kickDir;
- if(ahead<PS.minAhead||ahead>RD.reach||b.v.x*r.kickDir<-RD.awayV||(RD.maxBall>0&&b.v.length()>RD.maxBall)||p.y>AIC.lowY||(S.lastTouch!==r.team&&!recvOwn(r,p)))return;
+ const ask=recvAsk(r.team)&&b.v.x*r.kickDir>=RD.trackV;
+ if(!ask&&(!RD.possession||(r.rvCd||0)>S.time))return;
+ if(ahead<PS.minAhead||ahead>RD.reach||p.y>(ask?RV.maxY:AIC.lowY))return;
+ if(!ask&&(b.v.x*r.kickDir<-RD.awayV||(RD.maxBall>0&&b.v.length()>RD.maxBall)||(S.lastTouch!==r.team&&!recvOwn(r,p))))return;
  if(S.time-(r.rvLaneT||-9)>=RD.hold)r.rvZ=p.z;
  r.rvReady=true;r.rvUntil=S.time+RD.hold;r.rvFl=RD.wait;
+}
+// a human seat of this team holds finesse and kick (shots.js shotRecvAsk): its mates take a ball coming up at them
+function recvAsk(t){
+ const ss=S.seats;if(!ss)return false;
+ for(let i=0;i<ss.length;i++)if(ss[i].team===t&&ss[i].rcvAsk)return true;
+ return false;
 }
 // is the mate a pin pass is for ready: his pose up and a man on the lane (or nothing the holder could wait for: a rod a human holds, one busy with something else)
 function recvReadyNow(pk){

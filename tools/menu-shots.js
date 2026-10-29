@@ -5,7 +5,7 @@
 // writes to tools/build/menu-shots/ (gitignored): a PNG per screen, contact-sheet.jpg and notes.txt; exit 1 if any screen or box overflows (no menu screen scrolls at 1280x800)
 // needs Chrome or Edge (CHROME=path to pick one); serves the repo on a free port, runs headless with a fresh profile, drives screens through their own functions, builds a league with three rounds played, draws the cup straight away (cupCreate)
 // also lists, per screen, the characters FuzeClip does not draw (informational)
-// not covered: pause / win overlays, the match HUD
+// not covered: pause / win overlays, the match HUD (the tutorial's lesson panel and finish card are)
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),{spawn}=require('child_process'),{pathToFileURL}=require('url');
 const ROOT=path.resolve(__dirname,'..'),OUT=path.join(ROOT,'tools','build','menu-shots');
@@ -44,8 +44,14 @@ const STEPS=[
  ['08-options-kbm',`openOptions('home');optSetTab('kbm')`],
  ['09-training',`showScreen('training')`],
  ['10-trials',`showScreen('trials')`],
+ // the disciplines with the most trials, one set each
+ ['10b-trials-att-match',`showScreen('trials');trialCatSet('ATT');trialSetPick('match')`],
+ ['10c-trials-att-pins',`showScreen('trials');trialCatSet('ATT');trialSetPick('pin')`],
+ ['10d-trials-mid-walk',`showScreen('trials');trialCatSet('MID');trialSetPick('walk')`],
+ ['10e-trials-def-tictac',`showScreen('trials');trialCatSet('DEF');trialSetPick('tictac')`],
  ['11-daily',`showScreen('daily')`],
  ['12-tutorial',`tutOpen('training')`],
+ ['12b-tutorial-advanced',`tutOpen('training',null,null,'adv')`],
  ['13-league-slots',`openSlots()`],
  ['14-league-setup',`openSetup(0)`],
  ['15-league-season',LEAGUE+`lgSetTab('season')`],
@@ -65,6 +71,11 @@ const STEPS=[
  // the layout editor open on Kick Off, with one own preset saved: the bar has to fit at this width
  ['27-layout-editor',`showScreen('menu');menuSetTab('team');await wait(300);layEditStart('menu');await wait(400);
   const t=$('menuTeamPanel');t.style.top=(parseFloat(t.style.top)+32)+'px';laySave('menu');laySavePreset()`],
+ // a tutorial lesson's panel over the table (the longest text), then the finish card of the basics with its way on to the advanced course
+ ['28-tutorial-lesson',`if(typeof layCancel==='function')layCancel();TUT.course='adv';TUT.kind='kbm';TUT.pending=true;startMatchNow('training');tutGo(TUTC.advanced.length-1)`],
+ ['29-tutorial-card',`TUT.course='basic';tutFinish()`],
+ // a drill trial in play: the HUD's progress line and the lane on the pitch
+ ['30-trial-drill',`if(typeof layCancel==='function')layCancel();if(S.tut)tutExit();const d=trialById('aTtLane');TRL.pending=d;S.seedNext=d.seed;startMatchNow('training',d.hold);await wait(800)`],
 ];
 /* Every scrollable box on the live screen whose content is bigger than it, and the screen itself; with
    the layout editor open, only that its bar fits the window. */

@@ -7,7 +7,7 @@ const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleS
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,mouseLock:true,
  padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
  padChargeBtn:'rt',
- sound:true,ambience:true,volMaster:1,volFx:1,volCrowd:1,volUi:1,muteBg:false};
+ sound:true,ambience:true,volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,muteBg:false};
 
 // Standard-layout button map for the live tester (index → label).
 const OPT_BTNS=[[0,'A'],[1,'B'],[2,'X'],[3,'Y'],[4,'LB'],[5,'RB'],[6,'LT'],[7,'RT'],
@@ -63,13 +63,13 @@ function syncDisplayUI(){                                     // push cfg → di
 const OPT_TABS={display:'Display',audio:'Audio',controls:'Controls',kbm:'Kbm'};
 
 // ---- Audio tab ----
-// four bus volumes (js/audio.js Au.mix) and three switches; Sound and Crowd share cfg keys with the Kick Off lobby's Audio panel
-const OPT_VOL=[['optVolMaster','volMaster'],['optVolFx','volFx'],['optVolCrowd','volCrowd'],['optVolUi','volUi']];
+// five bus volumes (js/audio.js Au.mix) and three switches; Sound and Crowd share cfg keys with the Kick Off lobby's Audio panel
+const OPT_VOL=[['optVolMaster','volMaster'],['optVolFx','volFx'],['optVolCrowd','volCrowd'],['optVolUi','volUi'],['optVolMusic','volMusic']];
 const optVolT={};
-function optVolSample(k){                                  // hear the bus you're setting; throttled so a drag doesn't machine-gun
+function optVolSample(k){                                  // hear the bus you're setting; throttled so a drag doesn't machine-gun; the menu music is its own sample
  const t=performance.now();if(t-(optVolT[k]||0)<140)return;optVolT[k]=t;
  Au.init();Au.mix();
- if(k==='volCrowd')Au.react('ooh');else if(k==='volUi')Au.ui();else Au.kick(45);
+ if(k==='volCrowd')Au.react('ooh');else if(k==='volUi')Au.ui();else if(k!=='volMusic')Au.kick(45);
 }
 function syncAudioUI(){
  for(const [id,k] of OPT_VOL){const v=clamp(+cfg[k],0,1);$(id).value=v===v?v:1;}
@@ -298,6 +298,7 @@ function closeOptions(){
  kbCapEnd();                                        // a pad's B can close Options with a key capture still waiting
  if(optFrom==='pause'){$('options').classList.add('hidden');if(optRAF){cancelAnimationFrame(optRAF);optRAF=0;}$('pause').classList.remove('hidden');}
  else showScreen(SCREENS.options.back||'menu');   // onHide above kills the rAF
+ if(optFrom==='pause')hintRefresh();                // a rebind made from the pause menu shows in the match's hint
  Au.ui();
 }
 function bindOptions(){

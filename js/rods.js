@@ -144,7 +144,7 @@ function updateRods(dt){
    else r.angle=r.padAngleTarget;
   }
   // THE PIN POSE (shots.js shotPinInput): finesse + raise, or finesse + kick for the forward pin; below the stick, above the raise; r.pinA is sweep-capped (not the forward one)
-  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:seatOf(r)?(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle)?SHOT.pin.lower:r.pinFwd?SHOT.pin.fwd.lerp:SHOT.pin.lerp):SHOT.pin.lerp)*dt));}   // a player's leg comes down onto a ball at pin.lower
+  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:seatOf(r)?(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle)?SHOT.pin.lower:r.pinFwd?(r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.fwd.lerp):SHOT.pin.lerp):SHOT.pin.lerp)*dt));}   // a player's leg comes down onto a ball at pin.lower, rises to receive at recv.lerp
   // a human's forward pin let go with a ball under the leg: up and forward off it, down only once it is clear (shots.js shotFwdHold)
   else if(r.fwdOut&&shotFwdHold(r)){r.heldFwd=false;r.angle=lerp(r.angle,AIC.catch.recv.lift.angle*r.kickDir,Math.min(1,SHOT.pin.fwd.lerp*dt));}
   // finesse held, leg down: the foot squared onto a ball beside a man (shots.js shotSquare)
@@ -156,13 +156,13 @@ function updateRods(dt){
    let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
    // carrying a held ball is a shuffle, not a slide (the boot only drags the ball as fast as holdGrip transfers velocity); holdCfg is null mid-swing
    // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry
-   const H=holdCfg(r),slow=!!(r.pinB||H);
+   const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),slow=!!(r.pinB||H);   // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
    if(r.pinB)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(uSeat){                                          // human hand: instant/responsive, speed-capped only
    r.offset+=clamp(r.target-r.offset,-ms*dt,ms*dt);
-   if(slow&&SHOT.hold.lead!=null)r.target=clamp(r.target,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man
+   if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
    const want=clamp((r.target-r.offset)/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped
    const acc=AIC.slideAccel*stAgil(r)*dt;             // spd stat scales direction-change agility (+ stamina fade)
@@ -174,6 +174,7 @@ function updateRods(dt){
   r.slideV=(r.offset-prevOff)/dt;                     // keep slideV in sync across control handoff
   r.angVel=(r.angle-r.prevAngle)/dt;
   r.vz=(r.offset-r.prevOffset)/dt;
+  (r.vzH||(r.vzH=[0,0,0,0]))[r.vzI=((r.vzI|0)+1)&3]=r.vz;   // the last four steps' slide (physics.js pinRelease): a hand that moves once a frame (mouse, pad) moves the rod on one step in two
   r.tgV=lerp(r.tgV||0,(r.target-(r.tgP==null?r.target:r.tgP))/dt,Math.min(1,dt*8));r.tgP=r.target;   // where the rod is heading, smoothed (ai.js ttObs): its slide speed flips every few steps, its target holds
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);

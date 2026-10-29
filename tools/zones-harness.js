@@ -11,7 +11,7 @@ const SE=rd('js/seats.js'),IN=rd('js/input.js'),AI=rd('js/ai.js'),DB=rd('js/debu
 const parts={
  zones:slice(SE,'const ZONE_CH=','const _seatCol='),
  seat:slice(SE,'function seatRod(s){','function seatForDev(tok){'),
- sw:slice(IN,"  if(cfg.auto&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay",' S.seats.forEach(s=>{const r=seatRod(s);if(r&&r.raiseKeep'),
+ sw:slice(IN,"  if((cfg.auto||(S.tut&&S.tut.auto))&&S.phase==='play'&&S.time-S.lastSwitch>CTRL.autoDelay",' S.seats.forEach(s=>{const r=seatRod(s);if(r&&r.raiseKeep'),
  focus:slice(AI,'function focusBall(t){','function pickActiveRods('),
  hold:slice(AI,'function autoHoldRod(s,r,b){','const CVB=new Float64Array(6)'),
  dbg:slice(DB,'const DBG_ZCOL=','function buildZonePanel(){')

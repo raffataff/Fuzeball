@@ -418,7 +418,7 @@ kick:{
    fwd:{
     on:true,        // false = finesse + kick is the assisted pass swing again (shots.pass)
     assist:true,    // beside a slow ball lying ahead (ai.catch.fetch near..far) the leg is up and clear, over it it lowers onto the top; false = always `angle`
-    angle:0.9,      // rod-local forward tilt with no ball there: the foot comes down on a ball lying 3 ahead, and one rolling under the man from behind stops there
+    angle:0.9,      // rod-local forward tilt with no ball there: the foot comes down on a ball lying 3 ahead (a ball from behind takes ai.catch.recv.angle, assist.recv)
     lerp:8,         // ease rate into the pose, and so the speed of the stroke through a ball lying in the way: about 6 u/s per unit (4 = 23, 8 = 47, 14 = 83); the old soft pass left at ~50
     stroke:1.5,     // a leg going forward through a ball faster than this (rad/s) is a stroke: a swing touch for the pass ledger
     holdNear:0.5,   // let go with a ball lying holdNear to holdFar ahead the leg goes up and forward off it and drops once it is clear (the toe presses a ball out to ~7 back toward the rod)
@@ -462,6 +462,17 @@ kick:{
      on:true,
      far:14,        // from this far ahead (dir-relative x)
      minV:1.5       // ...rolling toward the rod at least this fast
+     },
+    // forward pin and a ball coming at the man from behind (a pass up the table): the AI's receiving pose (ai.catch.recv.angle) and the man drawn onto the line it arrives on, so it rolls under him and stops under the foot
+    recv:{
+     on:true,
+     far:45,        // from this far behind the rod (dir-relative x)
+     minV:3,        // ...coming forward at least this fast (u/s): a lofted pin shot clips the man's hip behind the rod and rolls on at ~8, still to be lined up
+     v:80,          // the man is drawn onto its line at up to this speed (u/s), on every frame the player leaves the slide alone (the finesse grip does not slow a receiving rod)
+     lerp:30,       // the leg rises into the pose at this rate (fwd.lerp is the stroke's; 14, the AI's, is ~0.07 s slower to be posed: a plain kick from the DEF is at the MID ~0.25 s after it)
+     take:true,     // finesse and kick held with no pose (a rod the seat has just taken over, or kick held before finesse with no swing frozen) is the forward pose; false = only a kick press poses it
+     strokeT:1.5,   // a stroke (finesse + a tapped kick) is a pass: finesse alone, kick let go, keeps the receive on this long after it (s), until the ball is pinned or the other team touches it; 0 = kick must be held again
+     mates:true     // with finesse and kick held (or a stroke's receive), the team's AI rods ahead stand ready for a ball coming up at them (ai.catch.recv.ready), even straight after a kick that let them go
      }
     },
    // the ring on the pitch under a pinned ball, in the holding seat's colour (fx.js pinMarkUpdate)
@@ -1950,6 +1961,16 @@ deadball:{
    // variants: <id>_<ballType>, <id>_hard (above hardFrom); a recorded ir_<roomId>.wav replaces a room's reverb
    samples:{on:true, folder:'assets/audio/', manifest:'manifest.json'},
 
+   // ---- music ----
+   // the menus only, never in a match; a track is an Ogg under samples.folder + its TuneTrack .loop.json (the intro plays once, then loop_start..loop_end); no sidecar = the whole file loops
+   // music/ is not a sound id folder: the manifest builder leaves it alone
+   music:{
+    on:true,
+    menu:'music/menu_anthem.ogg',   // the main menu track (music/menu_theme.ogg is the first, calmer one)
+    vol:0.7,                        // under the Options > Audio > Music slider; the file is mastered to -17 LUFS
+    fadeOut:1.2                     // s to fade out when a match starts; back in the menus it starts again from its intro
+   },
+
    // stereo placement from the ball's on-screen position; width 1 = hard left/right, keep it well under 1
    pan:{on:true, width:0.5},
 
@@ -2054,7 +2075,7 @@ deadball:{
    },
    fire:   
       {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1.5,maxV:150,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+      mass:1.0,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -2068,7 +2089,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:10,maxV:100,w:120,trail:'#000000',
+      mass:10,maxV:110,w:120,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2082,7 +2103,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.75,maxV:110,w:10,splits:true,trail:'#c39bff',
+      mass:1.75,maxV:160,w:10,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -2099,7 +2120,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.75,maxV:110,w:12,trail:'#8fffda',light:0x33cfff,
+      mass:1.75,maxV:160,w:12,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -2114,7 +2135,7 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:9,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:2,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2390,10 +2411,10 @@ deadball:{
      puffs:{ n:5, size:[5,17], life:[0.5,0.95], power:1.5, spread:[1,6] },      // energy billboards in the team colour: size at birth / at death
      ring:{ size:30, life:0.85, power:1.0 },                                    // the shockwave rolling off the pitch
      sparks:{ n:170, speed:[30,115], drag:[1.3,2.2], life:[0.7,1.7], size:[0.14,0.3], tail:0.055, power:3.6, cone:0.9 },
-     glitter:{ n:120, speed:[5,40], drag:[0.8,1.6], life:[1.2,2.6], size:[0.14,0.26], power:3.8 },
+     glitter:{ n:30, speed:[5,40], drag:[0.8,1.6], life:[1.2,2.6], size:[0.14,0.26], power:3.8 },
      embers:{ n:36, speed:[3,14], life:[1.4,2.8], size:[0.35,0.8], power:1.0 },   // big soft glows lifting off
      fountain:{ n:34, speed:[34,58], life:[0.8,1.3], size:[0.14,0.26], tail:0.06, power:3.4, over:1.1 },   // gold cold-spark fountains off the goal posts (over = seconds they run)
-     confetti:{ n:210, speed:[40,100], life:[2.8,4.2], size:[0.3,0.7] },
+     confetti:{ n:50, speed:[40,100], life:[2.8,4.2], size:[0.1,0.2] },
      light:{ goal:2.6, flash:2.2, decay:3 },
      net:{ pulse:2.4, ripple:1.0, speed:34 },       // the net lights in the team colour and a wave runs across it
      punch:1
@@ -2454,7 +2475,7 @@ deadball:{
     opacity:0.5, back:0.36,  // front faces / back faces
     rough:0.12, env:1.4,     // surface roughness, strength of the room's reflection
     rim:{ col:0xd8f6ff, power:2.2, k:0.9 },   // the bright edge: colour, how tight it hugs the silhouette, how strong
-    grow:0.28,               // seconds a block takes to form
+    grow:0.38,               // seconds a block takes to form
     warn:2.0, flicker:24,    // the last seconds it flickers and glows hotter (flicker in rad/s)
 
     fit:{
@@ -2575,7 +2596,9 @@ deadball:{
  // ---- the tutorial (js/tutorial.js) ----
  // training with a lesson plan; offered once before the first Kick Off or League match (cfg.tutSeen), finishing sets cfg.tutDone
  // lesson text: [act] = first binding as a keycap, [mouse] = the mouse, {A} {LT+X} {LB/RB} = pad glyphs
- // `rods` = your rods shown, `start` = the one you hold, `ball` = placement (vx = rolled at you, re-served when it dies), `check` = the tutCheck test
+ // `rods` = your rods shown, `start` = the one you hold, `ball` = placement (vx = rolled at you, re-served when it dies; zRod = z from the rod's centre), `check` = the tutCheck test
+ // `auto` = auto rod-switch on for the lesson whatever Options says, `row` = a ball lying along the rod is still in play (worked there, not lost), `centre` = its rods start centred
+ // `lessons` is the course offered before the first match; `advanced` is its own course, from the Training screen
  tutorial:{
   on:true,
   firstMatch:true,   // offer it before the first Kick Off / League match
@@ -2583,6 +2606,10 @@ deadball:{
   stuckT:25,         // after this long on one lesson the skip is offered (s)
   serveEvery:3.0,    // a rolled ball is re-served once it has been dead this long (s)
   slideDist:36,      // SLIDE: table units of rod travel to pass
+  ttTouches:4,       // TIC-TAC: touches in a row, each by the other man
+  ttV:6,             // ...a touch sends the ball along the row at least this fast (u/s)
+  rowBand:6,         // a `row` lesson's ball is on the row within this far either side of the rod
+  rowIdle:8,         // ...and is re-served only once it has lain there this long (s)
   lessons:[
    {id:'slide',name:'SLIDE',rods:['ATT'],ball:null,check:'slide',
     kbm:'Move the [mouse], or hold [slideUp] and [slideDown], to slide your players across the table.',
@@ -2608,6 +2635,26 @@ deadball:{
    {id:'pinShot',name:'PIN SHOT',rods:['ATT'],ball:{x:36,z:0,vx:-17},keep:true,check:'pinShot',
     kbm:'Keep [finesse] held and kick with [kick]. Slide first and it goes in at an angle.',
     pad:'Keep {LT} held and kick with {A}. Slide first and it goes in at an angle.'}
+  ],
+  advanced:[
+   {id:'fwdPin',name:'FORWARD PIN',rods:['ATT'],ball:{x:26.5,z:0},centre:true,check:'fwdPin',
+    kbm:'Hold [finesse], then hold [kick] too. Your man reaches over the ball in front of him and pins it under his toe.',
+    pad:'Hold {LT}, then hold {A} too. Your man reaches over the ball in front of him and pins it under his toe.'},
+   {id:'fwdCatch',name:'FORWARD CATCH',rods:['ATT'],ball:{x:34.5,z:0,vx:-8},centre:true,check:'fwdPin',
+    kbm:'A ball is rolling at you. Hold [finesse] and [kick]: the toe lifts, the ball rolls under it, and the foot comes down on it.',
+    pad:'A ball is rolling at you. Hold {LT} and {A}: the toe lifts, the ball rolls under it, and the foot comes down on it.'},
+   {id:'recv',name:'PASS AND RECEIVE',rods:['MID','ATT'],start:'MID',ball:{x:-4.9,z:0},lift:false,auto:true,centre:true,check:'recv',
+    kbm:'Hold [finesse] and tap [kick] to pass. Keep [finesse] held: control jumps to your attack, and its foot comes down on the ball.',
+    pad:'Hold {LT} and tap {A} to pass. Keep {LT} held: control jumps to your attack, and its foot comes down on the ball.'},
+   {id:'pinPass',name:'PIN PASS',rods:['MID','ATT'],start:'MID',ball:{x:6,z:0,vx:-17},lift:false,auto:true,centre:true,check:'pinPass',
+    kbm:'Pin the ball with [finesse] and [raise], then keep [finesse] held and hold [kick]. A held kick from the pin is a pass: your attack takes it.',
+    pad:'Pin the ball with {LT} and {X}, then keep {LT} held and hold {A}. A held kick from the pin is a pass: your attack takes it.'},
+   {id:'tictac',name:'TIC-TAC',rods:['ATT'],ball:{x:21,z:9.25,zRod:true},row:true,centre:true,check:'tictac',
+    kbm:'Hold [finesse] and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.',
+    pad:'Hold {LT} and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.'},
+   {id:'walk',name:'WALK THE BALL',rods:['ATT'],ball:{x:19,z:26},row:true,centre:true,check:'walk',
+    kbm:'Keep [raise] held. Press [finesse] to pin the ball and slide it along, let go to lift off, slide the next man over it and pin again. Use all three.',
+    pad:'Keep {X} held. Squeeze {LT} to pin the ball and slide it along, let go to lift off, slide the next man over it and pin again. Use all three.'}
   ]
  },
 
@@ -2616,6 +2663,36 @@ deadball:{
   on:true,
   pinTable:true,    
   resultDelay:0.8,
+
+  // ---- drills: goal.kind 'drill', one rod (hold) and one move, read off the ball and the rod each frame (trials.js drillTick) ----
+  // goal.move: tictac · pin · place · walk · roll · pinShot · rollShot · ttShot; n how many (tictac: lanes of `per` touches, place: lanes held `hold` s, ttShot: goals after `rally` touches)
+  // lane {w, z:[from,to], min, max}: width and the range its centre is drawn in, each lane min..max from the last; serve: a list cycled per ball, each {rel, z, v (toward the rod), vz} as [from,to] ranges, rel/v dir-relative
+  drill:{
+   rowBand:6,      // a ball within this far either side of the rod (dir-relative x) is on its row
+   touchV:6,       // TIC-TAC: a touch sends the ball along the row at least this fast (u/s)
+   breakT:2.0,     // ...a ball stopped (under 1 u/s) this long after the last touch ends the rally (s)
+   strikeT:1.5,    // ...a shot is out of the tic-tac if its swing starts within this of the last touch (s)
+   swingT:0.6,     // a goal belongs to a swing whose last contact came within this of the swing's start (s)
+   pinHold:0.3,    // a pin counts once it has held the ball this long (s)
+   rollV:5,        // ROLL: the ball let go rolls along the row at least this fast (u/s)...
+   rollDz:4,       // ...and is pinned at least this far from where it was let go
+   first:0.8,      // beat before a served drill's first ball (s)
+   gap:0.7,        // beat between a ball dealt with (or lost) and the next (s)
+   reach:1.5,      // a ball inside the pin's windows (shots.pin.back..fwdFront) or this beyond them is in reach
+   clear:0.6,      // a lost tic-tac ball is put back in the lane at least this clear of a man's foot
+   deadV:3,        // a ball out of reach slower than this (u/s)...
+   lostT:1.0,      // ...for this long is lost and put down again (s)
+   awayT:3.0,      // ...as is one out of reach this long however fast (s)
+   lane:{ color:0xF0B24A, miss:0xef6a4a, y:0.08, mid:0, len:12, edge:0.6, fill:0.3, hold:0.62, pulse:0.35, edgeA:1, flash:0.45 }
+   //     the lane on the pitch: colour and its flash on a miss · height · centre (dir-relative x from the rod) and length along the row · edge width · fill alpha at rest, at a full hold, a touch's pulse · edge alpha · flash time (s)
+  },
+  // a discipline's trials are browsed in sets; a trial with no `set` is in the first
+  sets:[
+   {id:'match', name:'MATCH'},
+   {id:'tictac',name:'TIC-TAC'},
+   {id:'pin',   name:'PINS'},
+   {id:'walk',  name:'WALK & ROLL'}
+  ],
 
 /* ---- the five disciplines  */
    cats:[
@@ -2656,6 +2733,60 @@ deadball:{
     hold:'DEF',rods:{show:['0|DEF','1|GK']},
     goal:{kind:'goals',n:2},limit:60,
     medals:{gold:18,silver:30,bronze:48}},
+   {id:'dTtLane',name:'TIC-TAC LANE',cat:'DEF',set:'tictac',blurb:'Work the ball between your two defenders and keep every touch inside the lane. Four touches and it moves.',
+    seed:52203,table:'classic',
+    ball:{type:'classic',x:-39,z:0},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'tictac',n:3,per:4,lane:{w:20,z:[-12,12],min:9}},limit:75,
+    medals:{gold:18,silver:32,bronze:54}},
+   {id:'dTtShot',name:'TIC-TAC STRIKE',cat:'DEF',set:'tictac',blurb:'Three touches between your defenders, then shoot the length of the table. Two goals.',
+    seed:52229,table:'classic',
+    ball:{type:'classic',x:-35,z:0},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'ttShot',n:2,rally:3},limit:135,
+    medals:{gold:32,silver:57,bronze:97}},
+   {id:'dBackPin',name:'BACK PIN',cat:'DEF',set:'pin',blurb:'Balls come at your defence on different lines. Tilt back and pin five of them under the foot.',
+    seed:52251,table:'classic',
+    ball:{type:'classic',x:-24,z:0},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'pin',pin:'back',n:5,serve:[{rel:[12.5,14],z:[-26,26],v:[11,17],vz:[-1.5,1.5]}]},limit:60,
+    medals:{gold:15,silver:21,bronze:32}},
+   {id:'dFwdPin',name:'FORWARD PIN',cat:'DEF',set:'pin',blurb:'Reach over the ball in front of a defender and pin it under the toe. Some lie still, some roll in.',
+    seed:52277,table:'classic',
+    ball:{type:'classic',x:-33.5,z:6},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'pin',pin:'fwd',n:5,serve:[{rel:[3.6,4.6],z:[-24,24]},{rel:[11,13],z:[-24,24],v:[5,9]}]},limit:60,
+    medals:{gold:11,silver:15,bronze:23}},
+   {id:'dPlace',name:'PIN AND PLACE',cat:'DEF',set:'pin',blurb:'Pin the ball and carry it into the lane. Hold it there and the lane moves across the table.',
+    seed:52303,table:'classic',
+    ball:{type:'classic',x:-41.1,z:0},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-26,26],min:14}},limit:75,
+    medals:{gold:18,silver:31,bronze:53}},
+   {id:'dPinShot',name:'PIN SHOT',cat:'DEF',set:'pin',blurb:'Pin the ball as it comes, then shoot from the pin, the length of the table. Three goals.',
+    seed:52329,table:'classic',
+    ball:{type:'classic',x:-24,z:0},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'pinShot',n:3,serve:[{rel:[12.5,14],z:[-16,16],v:[11,16],vz:[-1,1]}]},limit:60,
+    medals:{gold:12,silver:16,bronze:25}},
+   {id:'dWalk',name:'WALK THE LINE',cat:'DEF',set:'walk',blurb:'Pin, lift off, pin with the other defender. Across and back again.',
+    seed:52351,table:'classic',
+    ball:{type:'classic',x:-41.1,z:-6},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'walk'},limit:60,
+    medals:{gold:6,silver:9,bronze:16}},
+   {id:'dRoll',name:'ROLL CALL',cat:'DEF',set:'walk',blurb:'Carry the ball on the pin, let it roll across the gap and pin it with the other defender. Three rolls.',
+    seed:52377,table:'classic',
+    ball:{type:'classic',x:-41.1,z:-6},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'roll',n:3},limit:60,
+    medals:{gold:15,silver:26,bronze:45}},
+   {id:'dRollShot',name:'ROLL AND FIRE',cat:'DEF',set:'walk',blurb:'Roll it to the other defender, pin it, shoot the length of the table. Two goals, each off a roll.',
+    seed:52399,table:'classic',
+    ball:{type:'classic',x:-41.1,z:-6},
+    hold:'DEF',rods:{show:['0|DEF']},
+    goal:{kind:'drill',move:'rollShot',n:2},limit:75,
+    medals:{gold:16,silver:28,bronze:49}},
 
 //  MID
    {id:'onetwo',name:'ONE-TWO',cat:'MID',blurb:'Five completed passes between your midfield and your attack.',
@@ -2664,6 +2795,60 @@ deadball:{
     hold:null,rods:{show:['0|MID','0|ATT']},
     goal:{kind:'stat',stat:'passes',n:5},limit:45,
     medals:{gold:18,silver:28,bronze:40}},
+   {id:'mTtLane',name:'TIC-TAC LANE',cat:'MID',set:'tictac',blurb:'Quick touches between two midfielders, every one inside the lane. Four touches and it moves.',
+    seed:63203,table:'classic',
+    ball:{type:'classic',x:-9,z:5.95},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'tictac',n:3,per:4,lane:{w:8,z:[-20,20],min:6,max:12}},limit:90,
+    medals:{gold:21,silver:36,bronze:62}},
+   {id:'mTtShot',name:'TIC-TAC STRIKE',cat:'MID',set:'tictac',blurb:'Three touches along the midfield, then shoot. Two goals.',
+    seed:63229,table:'classic',
+    ball:{type:'classic',x:-5,z:5.95},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'ttShot',n:2,rally:3},limit:60,
+    medals:{gold:8,silver:14,bronze:24}},
+   {id:'mBackPin',name:'BACK PIN',cat:'MID',set:'pin',blurb:'Balls roll into midfield on different lines. Tilt back and pin five of them under the foot.',
+    seed:63251,table:'classic',
+    ball:{type:'classic',x:6,z:0},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'pin',pin:'back',n:5,serve:[{rel:[12.5,14],z:[-26,26],v:[11,17],vz:[-1.5,1.5]}]},limit:60,
+    medals:{gold:15,silver:21,bronze:32}},
+   {id:'mFwdPin',name:'FORWARD PIN',cat:'MID',set:'pin',blurb:'Reach over the ball in front of a midfielder and pin it under the toe. Some lie still, some roll in.',
+    seed:63277,table:'classic',
+    ball:{type:'classic',x:-3.5,z:5.95},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'pin',pin:'fwd',n:5,serve:[{rel:[3.6,4.6],z:[-24,24]},{rel:[11,13],z:[-24,24],v:[5,9]}]},limit:60,
+    medals:{gold:11,silver:15,bronze:23}},
+   {id:'mPlace',name:'PIN AND PLACE',cat:'MID',set:'pin',blurb:'Pin the ball and carry it into the lane. Your midfielders only slide so far: hand it on along the row.',
+    seed:63303,table:'classic',
+    ball:{type:'classic',x:-11.1,z:5.95},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-24,24],min:12}},limit:75,
+    medals:{gold:20,silver:35,bronze:60}},
+   {id:'mPinShot',name:'PIN SHOT',cat:'MID',set:'pin',blurb:'Pin the ball as it comes, then shoot from the pin, from halfway. Three goals.',
+    seed:63329,table:'classic',
+    ball:{type:'classic',x:6,z:0},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'pinShot',n:3,serve:[{rel:[12.5,14],z:[-16,16],v:[11,16],vz:[-1,1]}]},limit:60,
+    medals:{gold:11,silver:15,bronze:23}},
+   {id:'mWalk',name:'WALK THE LINE',cat:'MID',set:'walk',blurb:'Pin, lift off, pin with the next man. All five midfielders hold it, across the row and back.',
+    seed:63351,table:'classic',
+    ball:{type:'classic',x:-11.1,z:-18.5},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'walk'},limit:90,
+    medals:{gold:20,silver:36,bronze:61}},
+   {id:'mRoll',name:'ROLL CALL',cat:'MID',set:'walk',blurb:'Carry the ball on the pin, let it roll along the row and pin it with the next man. Six rolls.',
+    seed:63377,table:'classic',
+    ball:{type:'classic',x:-11.1,z:-18.5},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'roll',n:6},limit:60,
+    medals:{gold:14,silver:24,bronze:41}},
+   {id:'mRollShot',name:'ROLL AND FIRE',cat:'MID',set:'walk',blurb:'Roll it from one midfielder to the next, pin it, shoot. Two goals, each off a roll.',
+    seed:63399,table:'classic',
+    ball:{type:'classic',x:-11.1,z:-18.5},
+    hold:'MID',rods:{show:['0|MID']},
+    goal:{kind:'drill',move:'rollShot',n:2},limit:60,
+    medals:{gold:11,silver:19,bronze:33}},
 
 // ATT
    {id:'snap',name:'SNAP SHOT',cat:'ATT',blurb:'One ball, one empty net. How fast can you put it away?',
@@ -2694,6 +2879,60 @@ deadball:{
     ai:[false,true],diff:'pro',
     goal:{kind:'goals',n:3},limit:45,
     medals:{gold:15,silver:25,bronze:40}},
+   {id:'aTtLane',name:'TIC-TAC LANE',cat:'ATT',set:'tictac',blurb:'Tic-tac between two men and keep every touch inside the lane. Four touches and it moves.',
+    seed:41203,table:'classic',
+    ball:{type:'classic',x:21,z:9.25},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'tictac',n:3,per:4,lane:{w:14,z:[-16,16],min:10,max:20}},limit:105,
+    medals:{gold:26,silver:45,bronze:77}},
+   {id:'aTtShot',name:'TIC-TAC STRIKE',cat:'ATT',set:'tictac',blurb:'Three touches along the row, then shoot. Three goals past a keeper who never moves.',
+    seed:41229,table:'classic',
+    ball:{type:'classic',x:25,z:9.25},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    goal:{kind:'drill',move:'ttShot',n:3,rally:3},limit:135,
+    medals:{gold:35,silver:60,bronze:104}},
+   {id:'aBackPin',name:'BACK PIN',cat:'ATT',set:'pin',blurb:'Balls roll at you on different lines. Tilt back and pin five of them under the foot.',
+    seed:41251,table:'classic',
+    ball:{type:'classic',x:36,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'pin',pin:'back',n:5,serve:[{rel:[12.5,14],z:[-22,22],v:[11,17],vz:[-1.5,1.5]}]},limit:60,
+    medals:{gold:15,silver:20,bronze:32}},
+   {id:'aFwdPin',name:'FORWARD PIN',cat:'ATT',set:'pin',blurb:'Reach over the ball in front of you and pin it under the toe. Some lie still, some roll in.',
+    seed:41277,table:'classic',
+    ball:{type:'classic',x:26.5,z:0},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'pin',pin:'fwd',n:5,serve:[{rel:[3.6,4.6],z:[-22,22]},{rel:[11,13],z:[-22,22],v:[5,9]}]},limit:60,
+    medals:{gold:11,silver:15,bronze:23}},
+   {id:'aPlace',name:'PIN AND PLACE',cat:'ATT',set:'pin',blurb:'Pin the ball and carry it into the lane. Hold it there and the lane moves on.',
+    seed:41303,table:'classic',
+    ball:{type:'classic',x:18.9,z:-6},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-24,24],min:12}},limit:90,
+    medals:{gold:21,silver:37,bronze:63}},
+   {id:'aPinShot',name:'PIN SHOT',cat:'ATT',set:'pin',blurb:'Pin the ball as it comes, then shoot from the pin. Three past a keeper who never moves.',
+    seed:41329,table:'classic',
+    ball:{type:'classic',x:36,z:0},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    goal:{kind:'drill',move:'pinShot',n:3,serve:[{rel:[12.5,14],z:[-14,14],v:[11,16],vz:[-1,1]}]},limit:60,
+    medals:{gold:14,silver:25,bronze:43}},
+   {id:'aWalk',name:'WALK THE LINE',cat:'ATT',set:'walk',blurb:'Pin, lift off, pin with the next man. Every man holds it, across the row and back.',
+    seed:41351,table:'classic',
+    ball:{type:'classic',x:18.9,z:-13},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'walk'},limit:60,
+    medals:{gold:11,silver:20,bronze:34}},
+   {id:'aRoll',name:'ROLL CALL',cat:'ATT',set:'walk',blurb:'Carry the ball on the pin, let it roll along the row and pin it with the next man. Four rolls.',
+    seed:41377,table:'classic',
+    ball:{type:'classic',x:18.9,z:-13},
+    hold:'ATT',rods:{show:['0|ATT']},
+    goal:{kind:'drill',move:'roll',n:4},limit:60,
+    medals:{gold:15,silver:27,bronze:46}},
+   {id:'aRollShot',name:'ROLL AND FIRE',cat:'ATT',set:'walk',blurb:'Roll it from one man to the next, pin it, shoot. Three goals, each off a roll.',
+    seed:41399,table:'classic',
+    ball:{type:'classic',x:18.9,z:-13},
+    hold:'ATT',rods:{show:['0|ATT','1|GK']},
+    goal:{kind:'drill',move:'rollShot',n:3},limit:75,
+    medals:{gold:19,silver:34,bronze:58}},
 
 // TEAM 
    {id:'fullset',name:'THE FULL SET',cat:'TEAM',blurb:'Score once with your defence, once with your midfield, once up front.',
@@ -2925,7 +3164,7 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
 // the in-menu options, distinct from the CONFIG tuning knobs above
 let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,atmos:'high',table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
  // Options > Audio: bus volumes 0..1 (square curve in Au.mix); muteBg silences an unfocused window
- volMaster:1,volFx:1,volCrowd:1,volUi:1,muteBg:false,
+ volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,muteBg:false,
  // the tutorial (js/tutorial.js): offered once before the first match, and finished at least once
  tutSeen:false,tutDone:false,
  // the "kick = pin shot" plate while a ball is pinned (js/hud.js); Options > Display
@@ -2970,7 +3209,7 @@ const CFG_MACHINE=new Set([
  'particles','marks','rodHoles','reflections','atmos','profiler',
  'layouts',        // per-screen panel arrangements (width-relative since v:2 so they'd survive syncing; kept local for now)
  'padDeadzone',    // stick calibration: a drifty pad on ONE machine, not a preference
- 'volMaster','volFx','volCrowd','volUi','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
+ 'volMaster','volFx','volCrowd','volUi','volMusic','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
 ]);
 // Follows the person. Identity, choices, progress.
 const CFG_PLAYER=new Set([

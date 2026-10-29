@@ -3,13 +3,14 @@
 // a lit-fuse boot splash: a spark snakes across the dark, detonates into a shockwave and embers, the logo slams in, "Click to start" waits for a press, then the logo morphs up into its menu spot; also the loading screen (holds until boot() fires)
 // pure canvas/CSS; knobs in CONFIG.intro
 let introReady=false;                 // flipped by main.js boot() via introGameReady()
+let introLeft=false;                  // the press (or no intro at all) handed over to the menu: js/audio.js starts the menu music on it
 let introSkipHook=null;               // for js/padnav.js — a pad button counts as a key press
 function introGameReady(){introReady=true;}
 (function(){
- const IN=CONFIG.intro,ov=$('intro');if(!ov)return;
+ const IN=CONFIG.intro,ov=$('intro');if(!ov){introLeft=true;return;}
  ov.dataset.live='1';                 // tells the loader failsafe we're in charge
  const home=$('home');   // the landing screen — what the intro reveals, and what the logo morph aims at
- const off=()=>{ov.remove();home.classList.remove('introHide');};
+ const off=()=>{introLeft=true;ov.remove();home.classList.remove('introHide');};
  if(!IN.on||matchMedia('(prefers-reduced-motion: reduce)').matches){off();return;}
  const stage=$('introStage'),cv=$('introFx'),ctx=cv.getContext('2d');
  const lw=$('introLogoWrap'),logo=$('introLogo'),gR=$('introGR'),gB=$('introGB'),
@@ -43,7 +44,7 @@ function introGameReady(){introReady=true;}
   trail.length=0;
  }
  function reveal(){
-  if(revealing)return;revealing=true;
+  if(revealing)return;revealing=true;introLeft=true;
   loadEl.classList.remove('on');skipEl.classList.add('off');tag.classList.add('off');shine.classList.add('off');
   if(asking){askEl.classList.remove('on');askEl.classList.add('go');ov.classList.remove('ask');}
   /* morph the intro logo onto the landing screen's logo spot (measure BEFORE un-hiding) */
@@ -142,7 +143,7 @@ function introGameReady(){introReady=true;}
  }
  function frame(now){
   if(done)return;
-  if(!ov.isConnected){done=true;home.classList.remove('introHide');return;}   // the tools (menu-shots, page-run) take the overlay away instead of clicking
+  if(!ov.isConnected){done=true;introLeft=true;home.classList.remove('introHide');return;}   // the tools (menu-shots, page-run) take the overlay away instead of clicking
   requestAnimationFrame(frame);
   const dt=Math.min(.05,(now-last)/1000);last=now;
   step((now-t0)/1000,dt);draw();
