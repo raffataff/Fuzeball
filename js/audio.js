@@ -183,7 +183,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
  irs:{},      // room id → generated impulse
  bed:null,    // the crowd bed: {layers, x (excitement heard), ten (tension), lvl, g, s}
  rv:null,     // the room: {rm, id, A (its acoustic), f / c (fx / crowd convolvers)}
- mx:null,     // the menu music: {buf, ls / le (loop points, s), src / g (the voice playing, or null)}
+ mx:null,     // the music: tr {menu, match} = {buf, ls / le (loop points, s)}, cur (the track playing), src / g (the voice, or null), lv (its level)
 
  // BUSES (Options > Audio): mg = effects, cb = crowd, ub = menu clicks, mu = music; all sum into `sum` (the clip recorder's tap), then `out` (master + Sound switch), limiter, speakers
  // the crowd bus passes the room's band-limit first (cHp / cLp)
@@ -201,7 +201,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   this.cHp=c.createBiquadFilter();this.cHp.type='highpass';this.cHp.frequency.value=20;
   this.cLp=c.createBiquadFilter();this.cLp.type='lowpass';this.cLp.frequency.value=20000;
   this.mg.connect(this.sum);this.cb.connect(this.cHp);this.cHp.connect(this.cLp);this.cLp.connect(this.sum);this.ub.connect(this.sum);this.mu.connect(this.sum);
-  this.mx={buf:null,ls:0,le:0,src:null,g:null};
+  this.mx={tr:{},cur:null,src:null,g:null,lv:-1};
   this.mix();
   this.nbuf=this.mkNoise(3);
   this.bed={layers:[],x:0,ten:0,lvl:0,g:c.createGain(),s:null};this.bed.g.gain.value=0;this.bed.g.connect(this.cb);
@@ -268,18 +268,25 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    s.gain.value=send*(cr?Rv.crowd*(rv.A.crowd??1):Rv.fx*(rv.A.fx??1));n.connect(s);s.connect(cv);}
   return n;},
 
- // ---- the menu music ----
- // polled like the room: the menus only, and not before the intro's press; a match fades it out, the menus start it again from its intro
- musicLoad(){const M=AUMIX.music,F=AUMIX.samples;if(!M||!M.on||!M.menu||!F||typeof fetch!=='function')return;
-  const u=F.folder+M.menu,get=(f,k)=>fetch(f).then(r=>r.ok?r[k]():null).catch(()=>null);
-  Promise.all([get(u,'arrayBuffer').then(a=>a?this.ctx.decodeAudioData(a):null).catch(()=>null),get(u.replace(/\.\w+$/,'.loop.json'),'json')])
-   .then(([b,j])=>{if(!b)return;const p=auLoopPts(j,b.duration);Object.assign(this.mx,{buf:b,ls:p[0],le:p[1]});});},
- musicWant(){return typeof S!=='undefined'&&S.phase==='menu'&&(typeof introLeft==='undefined'||introLeft);},
- musicTick(){const m=this.mx;if(!m||!m.buf)return;const c=this.ctx,M=AUMIX.music,want=this.musicWant();
-  if(want&&!m.src){const s=c.createBufferSource(),g=c.createGain();
-   s.buffer=m.buf;s.loop=true;s.loopStart=m.ls;s.loopEnd=m.le;g.gain.value=M.vol;
-   s.connect(g);g.connect(this.mu);s.onended=()=>g.disconnect();s.start();m.src=s;m.g=g;}
-  else if(!want&&m.src){const t=c.currentTime;m.g.gain.setTargetAtTime(0,t,M.fadeOut/5);m.src.stop(t+M.fadeOut);m.src=m.g=null;}},
+ // ---- the music ----
+ // polled like the room: the menu track in the menus (not before the intro's press), the match track in play, count, goal, and ducked in pause and the replay; training, trials, the tutorial and photo mode get none
+ musicLoad(){const M=AUMIX.music,F=AUMIX.samples;if(!M||!M.on||!F||typeof fetch!=='function')return;
+  for(const k of ['menu','match']){if(!M[k])continue;
+   const u=F.folder+M[k],get=(f,t)=>fetch(f).then(r=>r.ok?r[t]():null).catch(()=>null);
+   Promise.all([get(u,'arrayBuffer').then(a=>a?this.ctx.decodeAudioData(a):null).catch(()=>null),get(u.replace(/\.\w+$/,'.loop.json'),'json')])
+    .then(([b,j])=>{if(!b)return;const p=auLoopPts(j,b.duration);this.mx.tr[k]={buf:b,ls:p[0],le:p[1]};});}},
+ musicWant(){if(typeof S==='undefined'||S.trn||S.trial||S.tut||S.photo)return null;
+  if(S.phase==='menu')return typeof introLeft==='undefined'||introLeft?{tr:'menu',duck:false}:null;
+  if(S.phase==='play'||S.phase==='count'||S.phase==='goal')return{tr:'match',duck:false};
+  if(S.phase==='pause'||S.phase==='replay')return{tr:'match',duck:true};
+  return null;},
+ musicTick(){const m=this.mx;if(!m||!this.ctx)return;const c=this.ctx,M=AUMIX.music,w=this.musicWant(),tr=w&&m.tr[w.tr]?w.tr:null;
+  if(m.src&&m.cur!==tr){const t=c.currentTime;m.g.gain.setTargetAtTime(0,t,M.fadeOut/5);m.src.stop(t+M.fadeOut);m.src=m.g=m.cur=null;}
+  if(tr&&!m.src){const d=m.tr[tr],s=c.createBufferSource(),g=c.createGain();
+   s.buffer=d.buf;s.loop=true;s.loopStart=d.ls;s.loopEnd=d.le;
+   s.connect(g);g.connect(this.mu);s.onended=()=>g.disconnect();s.start();m.src=s;m.g=g;m.cur=tr;m.lv=-1;}
+  if(m.src){const lv=(tr==='menu'?M.vol:M.matchVol)*(w.duck?M.duck:1);
+   if(m.lv<0)m.g.gain.value=lv;else if(lv!==m.lv)m.g.gain.setTargetAtTime(lv,c.currentTime,M.duckT);m.lv=lv;}},
 
  // ---- the room ----
  // polled, not hooked (activeRoom); a new convolver per room so old tails ring out and are disconnected when done

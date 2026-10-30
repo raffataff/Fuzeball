@@ -6,7 +6,7 @@
 //      catchTry('push off',()=>{AIC.catch.push.on=false;},[9001,9201,9401])   // 36 matches with CONFIG.ai.catch overridden by the function, restored after; goals, pin shots, how each was fired, row / keeper touches
 // why: 'does the AI pin a ball from in front and from behind, carry it and play it' is a whole-match question; this drives the real aiUpdate / updateRods / physics (the loop's order, minus powerups)
 // per match: CAS tallies (enter / front / behind / pinned / handed to retrieve / shots / passes / refused), how long a pin was held, and for every swing the AI makes
-//   the share the other team touched within `look` s (blocked) and the goals, split into pin shots / passes / plain kicks; one call of the preview JS tool is capped at 45 s, so ~12 matches per call
+//   the share the other team touched within `look` s (blocked) and the goals, split into pin shots / snakes / passes / plain kicks; one call of the preview JS tool is capped at 45 s, so ~12 matches per call
 'use strict';
 (function(){
  const FIX=1/SIM.hz;
@@ -21,7 +21,7 @@
  const avg=(a)=>a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(2):0;
  window.kickRod=function(r,style,aim,curve){
   if(T&&r.kickT<0){
-   const k=style==='trapShot'?'pin':style==='pass'?'pass':'plain';
+   const k=style==='trapShot'?'pin':style==='pass'?'pass':style==='snake'?'snake':'plain';
    T.sw.push({t:S.time,team:r.team,k,sc:S.score[r.team]});
    T.n[k]=(T.n[k]||0)+1;
   }
@@ -73,7 +73,7 @@
   const C={},W={};for(const k in CAS)C[k]=pm(CAS[k]);for(const k in CAW)W[k]=pm(CAW[k]);
   return {on:o.on,diff:o.diff||cfg.diffRed,matches:T.m,wallS:+((performance.now()-t0)/1000).toFixed(1),goalsPerMatch:pm(T.goals),deadBallPerMatch:pm(T.whistles),
    catchPerMatch:C,endedBy:W,retrievePerMatch:{enter:pm(BGS.retEnter-R0.enter),pin:pm(BGS.retPin-R0.pin),shot:pm(BGS.retShot-R0.shot),drop:pm(BGS.retDrop-R0.drop)},pinHoldS:avg(T.holds),pinnedShare:+(T.pinSteps/Math.max(1,T.steps*rods.length)).toFixed(4),
-   pinShots:sh('pin'),passes:sh('pass'),plainKicks:sh('plain')};
+   pinShots:sh('pin'),snakes:sh('snake'),passes:sh('pass'),plainKicks:sh('plain')};
  }
  // one hand-placed ball at the red ATT: vx is dir-relative (negative = toward the rod from upfield), rel the start (negative = behind the rod); iq forces the roll
  function catchScene(o){

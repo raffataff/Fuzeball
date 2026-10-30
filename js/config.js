@@ -406,7 +406,7 @@ kick:{
    touch:0.1,        // the ball is under the foot when the foot box is within this of it (contact tolerance, not reach: the solver leaves a resting ball exactly touching)
    down:0.75,        // …and touches it from above: the contact normal at least this far down (1 = on top, 0.75 = within 41 degrees); a shin, or the foot's side, is not a pin
    yTol:0.6,         // …on the floor (centre no higher than BALL_R + this)
-   capV:14,          // relative speed under which a touching ball is caught (the finesse grip slows it first)
+   capV:35,          // relative speed under which a touching ball is caught (the finesse grip slows it first)
    carry:0.8,        // rod slide-speed multiplier while pinned (the hold's 0.45 is for a loose dribble)
    zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
    breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
@@ -1133,6 +1133,18 @@ ai:{
          room:3,          // slide left to carry on through the swing
          lead:0.3         // how far ahead (s of slide) the strike gate is told the boot is going
       },
+      // snake: a shot from a ball held under a forward leg is the player's snake (shots.snake), the slide carried through; off = the ball is let go and re-pinned from behind for the pin shot (reseat)
+      snake:{
+         on:true,
+         roles:['ATT'],   // a MID or DEF snake is a clearance into the row in front: at legend it added goalward knocks and dead balls and no goals (catchSoak / bsSoak)
+         use:{rookie:0.4, pro:0.8, legend:1},   // share of forward holds that shoot with it (drawn once a hold); the rest re-seat as before
+         relMin:2.5, relMax:5.7,  // the ball held this far ahead (dir-relative x): the foot comes round onto it from behind (asGrid: every forward pin from 2.55 to 5.7)
+         clear:1.5,       // the lane must clear the blockers by this much (catch.lineClear for the pin shot)
+         brake:false,     // true = fired standing only (catch.recv.fwdBrake), like a re-seat; false = the slide carried through
+         shotV:150,       // speed the rows are read at: 168-187 off the boot, less the spin before it (they keep sliding meanwhile)
+         drift:0.21,      // s of slide the ball is carried on before the foot meets it (z = drift x slide)
+         k:0.0055         // heading gained per u/s of slide (rad), measured with the aim assist off (asSlide)
+      },
       // recv: the rod a pass is aimed at holds a forward pin pose while it is in flight, so the ball is pinned where the front pin holds it
       recv:{
          on:true,           // false = a pass is received as before (the behind-catch, or a block)
@@ -1363,7 +1375,7 @@ ai:{
    errEvery:[1.7,6.],                        // how often a fresh wandering aim-error target is rolled (s)
 
    // --- active rods + anti-jitter ---------------------------------------
-   hands:4,                                   // rods per team the AI moves at once (not a cap on human seats)
+   hands:3,                                   // rods per team the AI moves at once (not a cap on human seats)
    pairCommit:0.3,                            // min seconds a rod stays active before it can be swapped
    manHyst:1.4,                               // z-units a different man must beat the current one by to steal aim
    retargetDead:0.1,                          // z the desired slide must differ by before re-aiming
@@ -1982,13 +1994,17 @@ deadball:{
    samples:{on:true, folder:'assets/audio/', manifest:'manifest.json'},
 
    // ---- music ----
-   // the menus only, never in a match; a track is an Ogg under samples.folder + its TuneTrack .loop.json (the intro plays once, then loop_start..loop_end); no sidecar = the whole file loops
+   // a track is an Ogg under samples.folder + its TuneTrack .loop.json (the intro plays once, then loop_start..loop_end); no sidecar = the whole file loops
    // music/ is not a sound id folder: the manifest builder leaves it alone
    music:{
     on:true,
     menu:'music/menu_anthem.ogg',   // the main menu track (music/menu_theme.ogg is the first, calmer one)
+    match:'music/match_void.ogg',  // in a match (play, count, goal); training, trials, the tutorial and photo mode get none
     vol:0.7,                        // under the Options > Audio > Music slider; the file is mastered to -17 LUFS
-    fadeOut:1.2                     // s to fade out when a match starts; back in the menus it starts again from its intro
+    matchVol:0.5,                   // the match track's level, times the slider
+    duck:0.35,                      // x matchVol in pause and the goal replay
+    duckT:0.3,                      // s to get to a new level
+    fadeOut:1.2                     // s to fade out when the music changes; back in the menus it starts again from its intro
    },
 
    // stereo placement from the ball's on-screen position; width 1 = hard left/right, keep it well under 1
@@ -2079,7 +2095,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.,maxV:200,w:50,trail:'#ffffff',
+      mass:1.,maxV:200,w:100,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -2095,7 +2111,7 @@ deadball:{
    },
    fire:   
       {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:1.0,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+      mass:0.9,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -2109,7 +2125,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:10,maxV:110,w:120,trail:'#000000',
+      mass:5,maxV:110,w:50,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2123,7 +2139,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.75,maxV:160,w:10,splits:true,trail:'#c39bff',
+      mass:1.25,maxV:200,w:6,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -2140,7 +2156,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.75,maxV:160,w:12,trail:'#8fffda',light:0x33cfff,
+      mass:1.25,maxV:200,w:6,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -2155,7 +2171,7 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:2,maxV:120,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:1.5,maxV:200,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},

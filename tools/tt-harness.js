@@ -591,7 +591,7 @@ const MUT=[
  {n:'the chance is rolled every look',part:'catch',from:'if(r.ttRoll==null)r.ttRoll=rngAi(r.idx)()<T.share;',to:'r.ttRoll=rngAi(r.idx)()<T.share;'},
  {n:'the chance is not asked',part:'catch',from:'if(!r.ttRoll)return false;',to:''},
  {n:'it always starts when it can',part:'catch',from:'if(r.ttRoll==null)r.ttRoll=rngAi(r.idx)()<T.share;',to:'r.ttRoll=true;'},
- {n:'a new hold does not roll again',part:'catch',from:'r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;r.ttRoll=null;}',to:'r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;}'},
+ {n:'a new hold does not roll again',part:'catch',from:'r.pcTurnT=0;r.ttRoll=null;r.pcSn=false;',to:'r.pcTurnT=0;r.pcSn=false;'},
  // pinPlay's hook
  {n:'retrieve is offered a tic-tac',part:'catch',from:'if(tap&&!fwd&&!mull&&r.pcTz==null&&r.pcOut<CA.lineClear&&ttWant(',to:'if(!fwd&&!mull&&r.pcTz==null&&r.pcOut<CA.lineClear&&ttWant('},
  {n:'a forward leg is offered a tic-tac',part:'catch',from:'if(tap&&!fwd&&!mull&&r.pcTz==null&&r.pcOut<CA.lineClear&&ttWant(',to:'if(tap&&!mull&&r.pcTz==null&&r.pcOut<CA.lineClear&&ttWant('},

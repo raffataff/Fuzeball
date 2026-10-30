@@ -214,8 +214,8 @@ function suite(src,verbose){
  /* 7c. the menu music */
  {const m=Au.mx,b=buf(A,4),MU=AUMIX.music,live=()=>A.made.filter(n=>n.kind==='src'&&n.buffer===b);
   ctx.S.phase='menu';Au.tick(1/60);ok('no track decoded: nothing plays',live().length===0);
-  m.buf=b;m.ls=1;m.le=3;
-  ctx.S.phase='play';Au.tick(1/60);ok('no music in a match',live().length===0);
+  m.tr.menu={buf:b,ls:1,le:3};
+  ctx.S.phase='play';Au.tick(1/60);ok('no match track decoded: no music in a match',live().length===0);
   ctx.introLeft=false;ctx.S.phase='menu';Au.tick(1/60);ok('…nor behind the intro',live().length===0);
   ctx.introLeft=true;Au.tick(1/60);const s=live()[0];
   ok('the menus play the track',live().length===1&&s.started===true);
@@ -227,7 +227,16 @@ function suite(src,verbose){
   ok('a match fades it out and stops it',!!g&&g.gain.target===0&&!!s&&Math.abs(s.stopAt-t-MU.fadeOut)<1e-6,[g&&g.gain.target,s&&s.stopAt]);
   ctx.S.phase='menu';Au.tick(1/60);ok('back in the menus it starts again from the top',live().length===2&&live()[1]!==s,live().length);
   cfg.volMusic=.5;Au.mix();ok('the Music slider sets its bus (square curve)',Math.abs(Au.mu.gain.value-.25)<1e-9,Au.mu.gain.value);cfg.volMusic=1;Au.mix();
-  ctx.S.phase='play';Au.tick(1/60);m.buf=null;}
+  // the match track: its own loop, the match level, ducked in pause, faded out by the full-time board
+  m.tr.match={buf:b,ls:2,le:3};ctx.S.phase='play';Au.tick(1/60);const t2=Au.ctx.currentTime,menu=live()[1];
+  ok('a match stops the menu track and plays the match track',live().length===3&&menu.stopAt>t2&&reach(live()[2],Au.mu)&&live()[2].loopStart===2,live().length);
+  const mm=live()[2];ok('…at the match level',!!m.g&&Math.abs(m.g.gain.value-MU.matchVol)<1e-9,m.g&&m.g.gain.value);
+  ctx.S.phase='pause';Au.tick(1/60);ok('pause ducks it, it does not stop',!!m.g&&Math.abs(m.g.gain.target-MU.matchVol*MU.duck)<1e-9&&!(mm.stopAt>0),m.g&&m.g.gain.target);
+  ctx.S.phase='play';Au.tick(1/60);ok('…and back up',Math.abs(m.g.gain.target-MU.matchVol)<1e-9,m.g&&m.g.gain.target);
+  ctx.S.phase='win';Au.tick(1/60);ok('the full-time board fades the match track out',mm.stopAt>0&&!m.src,mm.stopAt);
+  ctx.S.phase='play';Au.tick(1/60);const mt=live()[3];ok('the next match starts its track',live().length===4&&!!mt&&mt.started===true,live().length);
+  const trn=ctx.S.trn;ctx.S.trn={};Au.tick(1/60);ok('training gets no music: the match track stops',!!mt&&mt.stopAt>0,mt&&mt.stopAt);ctx.S.trn=trn;
+  m.tr.menu=null;m.tr.match=null;}
  }catch(e){fails.push('threw: '+(e.stack||e.message).split('\n').slice(0,3).join(' | '));}
  return{fails,pass};
 }
@@ -303,14 +312,15 @@ const MUTS=[
  mutate("if(k==='goal'){this.exc=1;","if(k==='goal'){",'a goal does not lift the room'),
  mutate('if(ok)this.exc=Math.min(1,this.exc+(D.exc||0));','','reactions do not lift the room'),
  mutate('B.lvl+=((live?lerp(C.volLo,C.volHi,B.x):0)-B.lvl)','B.lvl+=((lerp(C.volLo,C.volHi,B.x))-B.lvl)','the crowd plays in the menus'),
- mutate("musicWant(){return typeof S!=='undefined'&&S.phase==='menu'&&","musicWant(){return typeof S!=='undefined'&&",'the music plays in matches'),
- mutate("&&(typeof introLeft==='undefined'||introLeft);}",';}','the music starts behind the intro'),
- mutate('s.loop=true;s.loopStart=m.ls;s.loopEnd=m.le;','s.loop=true;','the intro loops with the body'),
+ mutate("if(typeof S==='undefined'||S.trn||S.trial||S.tut||S.photo)return null;","if(typeof S==='undefined')return null;",'training, trials and the tutorial get music'),
+ mutate("if(S.phase==='pause'||S.phase==='replay')return{tr:'match',duck:true};","if(S.phase==='pause'||S.phase==='replay')return{tr:'match',duck:false};",'pause does not duck the match track'),
+ mutate("return typeof introLeft==='undefined'||introLeft?{tr:'menu',duck:false}:null;","return {tr:'menu',duck:false};",'the music starts behind the intro'),
+ mutate('s.loop=true;s.loopStart=d.ls;s.loopEnd=d.le;','s.loop=true;','the intro loops with the body'),
  mutate('g.connect(this.mu);s.onended','g.connect(this.ub);s.onended','music lands on the menu-sound bus'),
  mutate('this.ub.connect(this.sum);this.mu.connect(this.sum);','this.ub.connect(this.sum);','music never reaches the output'),
  mutate("set(this.mu,v('volMusic'));",'','the Music slider does nothing'),
  mutate('m.src.stop(t+M.fadeOut);','','the music is never stopped after its fade'),
- mutate('if(want&&!m.src){','if(want){','a new music voice every frame'),
+ mutate('if(tr&&!m.src){','if(tr){','a new music voice every frame'),
  mutate('return a>=0&&b>a&&b<=dur+.01?','return a>=0?','a sidecar past the end of the file is trusted'),
 ];
 let caught=0;console.log('\nmutations (each must fail something):');

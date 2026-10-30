@@ -628,7 +628,7 @@ function passPick(r,bx,bz,mode){
  return r.passEv=passEval(r,bx,bz,mode);
 }
 // --- catch (CONFIG.ai.catch) ---
-const CAS={enter:0,front:0,behind:0,side:0,meet:0,meetOk:0,tap:0,tapOk:0,tapFail:0,retTap:0,back:0,pin:0,hand:0,shot:0,pass:0,steer:0,run:0,runFire:0,recv:0,recvPin:0,reseat:0,fwdCarry:0,fwdTap:0,carryFirst:0,tapFirst:0,stoppedFetch:0,fetch:0,fetchOk:0,ahead:0,hit:0,hitLoose:0,hitHit:0,hitSent:0,hitOk:0,fwdBrake:0,fwdLift:0,thru:0,thruOk:0,behindOk:0,take:0,rdyWait:0,rdyPass:0,lost:0,flip:0,tt:0,ttGo:0,ttTouch:0,ttLook:0,ttCommit:0,ttStraight:0,ttCut:0,ttShot:0,ttCatch:0,ttGate:0,ttLat:0,ttGoLat:0,ttLoose:0,ttRoll:0,ttBack:0,ttThru:0,ttFwd:0};   // soak tallies (tools/catch-soak.js)
+const CAS={snake:0,enter:0,front:0,behind:0,side:0,meet:0,meetOk:0,tap:0,tapOk:0,tapFail:0,retTap:0,back:0,pin:0,hand:0,shot:0,pass:0,steer:0,run:0,runFire:0,recv:0,recvPin:0,reseat:0,fwdCarry:0,fwdTap:0,carryFirst:0,tapFirst:0,stoppedFetch:0,fetch:0,fetchOk:0,ahead:0,hit:0,hitLoose:0,hitHit:0,hitSent:0,hitOk:0,fwdBrake:0,fwdLift:0,thru:0,thruOk:0,behindOk:0,take:0,rdyWait:0,rdyPass:0,lost:0,flip:0,tt:0,ttGo:0,ttTouch:0,ttLook:0,ttCommit:0,ttStraight:0,ttCut:0,ttShot:0,ttCatch:0,ttGate:0,ttLat:0,ttGoLat:0,ttLoose:0,ttRoll:0,ttBack:0,ttThru:0,ttFwd:0};   // soak tallies (tools/catch-soak.js)
 // the way forward from a ball at (bx,bz) leaving at slope sl (z gained per unit of x, 0 = dead ahead): ATT the line to goal and the mouth, everyone else the gap past the row in front
 function pinOutlet(r,bx,bz,obs,goalX,sl){
  sl=sl||0;
@@ -645,9 +645,18 @@ function pushSlope(r,sv){
  return (sv>0?r.maxOff-r.offset:r.offset+r.maxOff)>=P.room?P.k*sv:0;
 }
 // the way forward for a push at slide sv from (bx,bz): it leaves from `drift` of slide ahead, on the slope pushSlope gives; -1e9 = no push at this speed
+// a hold the snake will shoot (r.pcSn) leaves on the snake's own drift and slope, at any slide
 function pushOutlet(r,bx,bz,sv,obs,goalX){
+ if(r.pcSn){const SN=AIC.catch.snake;return pinOutlet(r,bx,bz+SN.drift*sv,obs,goalX,SN.k*sv);}
  const sl=pushSlope(r,sv);
  return sl?pinOutlet(r,bx,bz+AIC.catch.push.drift*sv,obs,goalX,sl):-1e9;
+}
+// a ball held under a forward leg is shot with the snake (CONFIG.ai.catch.snake): the role, the depth it is held at, and a draw once a hold
+function snakeHold(r,b){
+ const SN=AIC.catch.snake;
+ if(!SN||!SN.on||!SHOT.snake||!SHOT.snake.on||SN.roles.indexOf(r.role)<0||b.pinDx<SN.relMin||b.pinDx>SN.relMax)return false;
+ if(r.pcSnD==null){const u=SN.use[teamDiff(r.team)];r.pcSnD=u==null||u>=1||rngAi(r.idx)()<u;}
+ return r.pcSnD;
 }
 // ball z the carry heads for, from either side: each z in reach scores its way forward from there (standing, or pushed the way it would be carried: a push leaves at an angle),
 // a small pull to the middle and a cost per unit travelled; the z it already heads for gets flipGain, so it only turns round for something clearly better; r.pcOut = the way forward at the winner
@@ -668,7 +677,7 @@ function pinTarget(r,b,obs,goalX){
  }
  return bz;
 }
-function pinPlayStart(r){const p=r.pinB.m.position;r.pcZ0=p.z;r.pcTz=null;r.pcEv=0;r.pcOut=-1e9;r.pcDir=0;r.pcRdy=0;r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;r.ttRoll=null;}
+function pinPlayStart(r){const p=r.pinB.m.position;r.pcZ0=p.z;r.pcTz=null;r.pcEv=0;r.pcOut=-1e9;r.pcDir=0;r.pcRdy=0;r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;r.ttRoll=null;r.pcSn=false;r.pcSnD=null;}
 // the carry's and the tap's look at the lanes, on its own clock (pinPlay and the forward pin's preference both ask)
 // fwdTap: under a forward leg the tap is looked at whatever the carry finds (it lands as a back pin, which the carry cannot)
 function pinCarryEval(r,b,obs,goalX,tap,fwdTap){
@@ -687,15 +696,17 @@ function pinCarryEval(r,b,obs,goalX,tap,fwdTap){
 }
 // a pinned ball, t seconds held: 0 = keep holding (r.target is set), 1 = shoot it, 2 = pass it (to r.catPk), 3 = tap it along the row to a neighbouring man (r.tapPk; only when `tap` is passed), 4 = start a tic-tac with one (r.ttPk; the same)
 // a shot is still (rod slower than fireV, straight on) or a push (rod sliding at minV or more: it leaves at an angle, aimed at the lane it was judged on); r.catSv = the slide speed to keep through the swing
+// from under a forward leg a shot is the snake when snakeHold says so (r.pcSn): any slide is carried through it
 // lane open: shoot, or pass (CONFIG.ai.catch.open: the keeper and the defence would rather pass). Else carry, either way, to a z whose lane opens, else tap it to a neighbour whose lane is open, else pass to a better-placed mate, else wait for the lanes to move until holdT, then play it
 function pinPlay(r,best,t,dt,tap){
  const CA=AIC.catch,PS=AIC.dribble.pass,RV=CA.recv,b=r.pinB,p=b.m.position,goalX=r.kickDir>0?F.L/2:-F.L/2,sv=r.slideV;
- const fwd=r.angle*r.kickDir>RV.fwdMin,fwdTap=fwd&&RV.tap.on&&RV.lift.on&&RV.tap.first;   // under a forward leg a swing play is a re-seat; a tap to a neighbour whose lane is open lands as a back pin instead
+ const fwd=r.angle*r.kickDir>RV.fwdMin,fwdTap=fwd&&RV.tap.on&&RV.lift.on&&RV.tap.first;   // under a forward leg a swing play is a re-seat, or a snake; a tap to a neighbour whose lane is open lands as a back pin instead
+ const sn=r.pcSn=fwd&&snakeHold(r,b),SN=CA.snake;
  r.pcEv-=dt;r.target=r.offset;r.catSv=0;r.catSl=0;r.catHold=0;
  if(t<CA.settleT)return 0;
  const mull=fwd&&t<RV.settleT&&!r.force;                            // a forward pin is carried a while before anything is played: the AI is looking for a lane
- const obs=laneObs(r.team,p.x,goalX,CA.shotV),still=Math.abs(sv)<=CA.fireV,sl=still?0:pushSlope(r,sv);
- const now=still?pinOutlet(r,p.x,p.z,obs,goalX,0):pushOutlet(r,p.x,p.z,sv,obs,goalX),open=now>=CA.lineClear,late=t>=CA.holdT||r.force;   // mid-speed: no heading to judge
+ const obs=laneObs(r.team,p.x,goalX,sn?SN.shotV:CA.shotV),still=Math.abs(sv)<=CA.fireV,sl=sn?SN.k*sv:still?0:pushSlope(r,sv);
+ const now=(still&&!sn)?pinOutlet(r,p.x,p.z,obs,goalX,0):pushOutlet(r,p.x,p.z,sv,obs,goalX),open=now>=(sn?SN.clear:CA.lineClear),late=t>=CA.holdT||r.force;   // mid-speed: no heading to judge
  const OP=open&&CA.open?CA.open[r.role]:null;
  if(tap&&!open&&CA.tictac.first&&ttWant(r,b,t,obs,goalX))return 4;   // no shot open: the ball is worked between two men before anything else is tried (a forward pin too: the leg turns up to let it go)
  const pk=((open&&!OP)||mull)?null:passPick(r,p.x,p.z,'pin');
@@ -708,7 +719,7 @@ function pinPlay(r,best,t,dt,tap){
  else if(pk&&PS.on&&PS.roles.indexOf(r.role)>=0&&(late||pk.score>now*PS.shotBias+PS.bias)&&strikeOn(r,best,'pass',pinSwing(true))){v=2;r.pcWhy=late?'late-pass':'pass';}
  else if(late){v=1;r.pcWhy=r.force?'force':'late';}
  if(pk&&(!open||v===2))recvReady(r,pk.cands);                       // the mates it could pass to get their pose up and a man on the lane
- if(v&&fwd&&!still&&!late&&RV.fwdBrake){v=0;if(!r.pcBrk){r.pcBrk=1;CAS.fwdBrake++;}}   // a swing play from under a forward leg lets the ball go: not while it is carried at speed (it would roll away); the carry arrives first
+ if(v&&fwd&&(!sn||SN.brake)&&!still&&!late&&RV.fwdBrake){v=0;if(!r.pcBrk){r.pcBrk=1;CAS.fwdBrake++;}}   // a swing play from under a forward leg lets the ball go: not while it is carried at speed (it would roll away); the carry arrives first. The snake keeps its slide
  if(v&&fwdTap&&!late&&(v===2||RV.tap.open)){
   pinCarryEval(r,b,obs,goalX,tap,true);
   if(r.tapPk){if(!r.pcFwdN){r.pcFwdN=1;CAS.fwdTap++;}return 3;}
@@ -733,7 +744,8 @@ function pinPlay(r,best,t,dt,tap){
    }else if(!still)return 0;                                        // a pass is made standing: let the slide die first
    r.catPk=pk;return 2;
   }
-  if(sl){r.catSv=sv;r.catSl=sl;}
+  if(sn){r.catSv=sv;r.catSl=sl;r.catHold=SHOT.snake.spin+SHOT.snake.follow;}   // the snake carries the slide until it strikes, then the rod brakes
+  else if(sl){r.catSv=sv;r.catSl=sl;}
   return 1;
  }
  pinCarryEval(r,b,obs,goalX,mull?false:tap,fwdTap&&!mull);
@@ -751,14 +763,15 @@ function pinPlay(r,best,t,dt,tap){
 // the goal lanes with the aim point on the line the shot leaves on: aimAssist bends toward it, so it never pulls a judged lane back toward the middle
 function pinAim(r,b,sl){
  sl=sl||0;
- const p=b.m.position,ev=shotEval(r.team,p.x,p.z);
- ev.best={tz:p.z+(sl?AIC.catch.push.drift*r.catSv:0)+Math.abs(ev.goalX-p.x)*sl,clr:ev.best.clr};
+ const p=b.m.position,ev=shotEval(r.team,p.x,p.z),dr=r.pcSn?AIC.catch.snake.drift:AIC.catch.push.drift;
+ ev.best={tz:p.z+(sl?dr*r.catSv:0)+Math.abs(ev.goalX-p.x)*sl,clr:ev.best.clr};
  return ev;
 }
 // play a pinned ball: 1 = swing started, 0 = not yet (mid-swing), -1 = the strike gate says the boot would miss
 function pinFire(r,best,D,v){
  if(r.kickT>=0)return 0;
  if(v===2)kickRod(r,'pass',{x:r.catPk.x,z:r.catPk.z},pinSwing(true));
+ else if(r.pcSn)snakeFire(r);
  else{
   if(r.catSv)r.target=r.offset+r.catSv*AIC.catch.push.lead;       // the strike gate has to see the slide carrying on through the swing
   if(!strikeOn(r,best,'trapShot',pinSwing()))return -1;
@@ -766,11 +779,18 @@ function pinFire(r,best,D,v){
   r.aimEv=r.catAim;
   kickRod(r,'trapShot',null,pinSwing());
  }
- if(v===2)CAS.pass++;else CAS.shot++;
+ if(v===2)CAS.pass++;else if(r.pcSn)CAS.snake++;else CAS.shot++;
  CAW['fire:'+r.pcWhy]=(CAW['fire:'+r.pcWhy]||0)+1;
  r.catSw=true;                                                    // the rod keeps its slide speed through the swing, or stands still (aiUpdate)
  r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
  return 1;
+}
+// the snake from under a forward leg (shots.js shotSnakeFire, rods.js snakeStep): the ball let go with its slide, the man rolls over the top of the rod onto it from behind; it costs the player's stamina
+function snakeFire(r){
+ const K=SHOT.snake;
+ r.catAim=pinAim(r,r.pinB,r.catSl||0);r.aimEv=r.catAim;
+ pinRelease(r,false,K.carry);
+ r.shotExert=K.exert;kickRod(r,'snake',null,K);r.shotExert=1;
 }
 const CAW={};   // why a catch ended
 // the run-up for a free pass (r.act='run'): back off to the far side of the ball, slide at it at the speed that leaves on the line to the mate, fire when the man is predicted to be on the ball by the time the boot arrives
@@ -1729,8 +1749,8 @@ function catchStep(r,best,D){
   const v=pinPlay(r,best,r.catT,dt,true);
   if(v===3){tapStart(r);return;}
   if(v===4){ttStart(r);return;}
-  if((v===1||v===2)&&r.angle*dir>CA.recv.fwdMin){reseat(r);return;}
-  if(v){const f=pinFire(r,best,D,v);if(f){if(f<0)CAS.lost++;catchEnd(r,CA.cd,f<0?'gate':v===2?'passed':'shot');}}
+  if((v===1||v===2)&&r.angle*dir>CA.recv.fwdMin&&!(v===1&&r.pcSn)){reseat(r);return;}   // a shot from under a forward leg is the snake, anything else re-seats
+  if(v){const f=pinFire(r,best,D,v);if(f){if(f<0)CAS.lost++;catchEnd(r,CA.cd,f<0?'gate':v===2?'passed':r.pcSn?'snake':'shot');}}
   return;
  }
  if(r.catPh==='hold'){CAS.lost++;catchEnd(r,CA.cd,'knocked');return;}
