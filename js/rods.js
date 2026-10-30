@@ -158,7 +158,7 @@ function updateRods(dt){
    else r.angle=r.padAngleTarget;
   }
   // THE PIN POSE (shots.js shotPinInput): finesse + raise, or finesse + kick for the forward pin; below the stick, above the raise; r.pinA is sweep-capped (not the forward one)
-  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:seatOf(r)?(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle)?SHOT.pin.lower:r.pinFwd?(r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.fwd.lerp):SHOT.pin.lerp):SHOT.pin.lerp)*dt));}   // a player's leg comes down onto a ball at pin.lower, rises to receive at recv.lerp
+  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:seatOf(r)?(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle)?(r.pinRl?SHOT.pin.assist.roll.lerp:SHOT.pin.lower):r.pinFwd?(r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.fwd.lerp):SHOT.pin.lerp):SHOT.pin.lerp)*dt));}   // a player's leg comes down onto a ball at pin.lower (onto a rolling one at roll.lerp), rises to receive at recv.lerp
   // a human's forward pin let go with a ball under the leg: up and forward off it, down only once it is clear (shots.js shotFwdHold)
   else if(r.fwdOut&&shotFwdHold(r)){r.heldFwd=false;r.angle=lerp(r.angle,AIC.catch.recv.lift.angle*r.kickDir,Math.min(1,SHOT.pin.fwd.lerp*dt));}
   // finesse held, leg down: the foot squared onto a ball beside a man (shots.js shotSquare)

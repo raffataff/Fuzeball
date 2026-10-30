@@ -84,6 +84,13 @@ function suite(X,quiet){
  ok(Math.abs(b.pinDz-0.3)<1e-9,'…held where it lies across the foot: nothing pulls it onto the man');
  r=rod(X);posed(X,r);b=ball(X,r,U,0.3,-(P.capV+2),0);X.pinUpdate();
  ok(!r.pinB,'a ball quicker than capV is not caught');
+ // a player's back foot takes a ball rolling along the row up to assist.roll.capV (a roll from the next man)
+ {const W=P.assist.roll,v=P.capV+2;
+  r=rod(X);r.user=true;posed(X,r);b=ball(X,r,U,0.3,0,-v);X.pinUpdate();ok(r.pinB===b,'a player\'s back foot takes a ball rolling along the row quicker than capV');
+  r=rod(X);posed(X,r);b=ball(X,r,U,0.3,0,-v);X.pinUpdate();ok(!r.pinB,'...an AI rod does not (it cushions)');
+  r=rod(X);r.user=true;posed(X,r);b=ball(X,r,U,0.3,0,-(W.capV+2));X.pinUpdate();ok(!r.pinB,'...nor quicker than roll.capV');
+  r=rod(X);r.user=true;posed(X,r);b=ball(X,r,U,0.3,W.maxVX+1,-P.capV);X.pinUpdate();ok(!r.pinB,'...nor one crossing the row quicker than capV');
+  W.on=false;r=rod(X);r.user=true;posed(X,r);b=ball(X,r,U,0.3,0,-v);X.pinUpdate();W.on=true;ok(!r.pinB,'roll.on false: capV for a player too');}
  r=rod(X);posed(X,r);b=ball(X,r,U+0.5,0,0,0);X.pinUpdate();ok(!r.pinB,'a ball just short of the foot is not caught: no reach beyond the boot');
  r=rod(X);posed(X,r);b=ball(X,r,-0.6,0,0,0);X.pinUpdate();ok(!r.pinB,'a ball under the rod, against the shin, is not caught');
  {const a=-0.75;r=rod(X);r.pinOn=true;r.pinPose=true;r.pinA=a;r.angle=a;const u=footRel(X,a,false);b=ball(X,r,u==null?-0.7:u,0,0,0);X.pinUpdate();
@@ -98,6 +105,7 @@ function suite(X,quiet){
  const fwdPosed=(rr,a)=>{rr.pinOn=true;rr.pinPose=true;rr.pinFwd=true;rr.pinA=a*rr.kickDir;rr.angle=rr.pinA;};
  r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'a leg leaning forward holds a ball under its foot ahead of the rod');
  r=rod(X);fwdPosed(r,0.9);r.pinFwd=false;b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'...the window is the lean\'s, not a flag\'s');
+ r=rod(X);r.user=true;fwdPosed(r,0.9);b=ball(X,r,F9,0,0,-(P.capV+2));X.pinUpdate();ok(!r.pinB,'a player\'s forward foot keeps capV for a ball rolling along the row');
  {const ff=P.fwdFront;P.fwdFront=F9-0.5;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(!r.pinB,'...past fwdFront is out of the window');P.fwdFront=ff;}
  {const fb=P.fwdBack;P.fwdBack=F9+0.5;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(!r.pinB,'...nearer than fwdBack is out of it');P.fwdBack=fb;}
  {const bk=P.back;P.back=3;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'...and the back pin\'s rear edge does not cut it: the two are separate');P.back=bk;}
@@ -166,7 +174,12 @@ const base=suite(boot(PHYS,SHOTS),false);
 
 /* ---- mutations: each must break the suite ---- */
 const muts=[
- ['physics','if(Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;','','a ball at any speed is caught'],
+ ['physics','if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&!fwd&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;','','a ball at any speed is caught'],
+ ['physics','&&isUserRod(r)?Math.max(P.capV,W.capV)','?Math.max(P.capV,W.capV)','an AI rod takes a quick rolling ball'],
+ ['physics','(W&&!fwd&&Math.abs(b.v.x)','(W&&Math.abs(b.v.x)','a forward foot takes a quick rolling ball'],
+ ['physics','&&Math.abs(b.v.x)<=W.maxVX&&isUserRod','&&isUserRod','a ball crossing the row is taken quicker'],
+ ['physics','?Math.max(P.capV,W.capV):P.capV','?1e9:P.capV','no ceiling on a rolling ball'],
+ ['physics','&&P.assist.roll.on?P.assist.roll:null','?P.assist.roll:null','roll.on false is ignored'],
  ['physics','if(rel<back||rel>front||p.y>BALL_R+P.yTol)continue;','if(rel<back||rel>front)continue;','a ball in the air is caught'],
  ['physics','const fwd=la>0,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;','const fwd=la>0,back=P.back,front=fwd?P.fwdFront:P.front;','the forward window has the back pin\'s rear edge'],
  ['physics','const fwd=la>0,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;','const fwd=la>0,back=fwd?-99:P.back,front=fwd?P.fwdFront:P.front;','the forward window has no rear edge'],

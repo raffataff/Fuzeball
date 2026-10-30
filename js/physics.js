@@ -37,6 +37,7 @@ function physics(dt){
 // the input half is shots.js shotPinInput; one ball per rod (r.pinB <-> b.pinR); nothing here allocates
 function pinUpdate(){
  const P=SHOT.pin;if(!P||!P.on)return;
+ const W=P.assist&&P.assist.on&&P.assist.roll&&P.assist.roll.on?P.assist.roll:null;
  for(const r of rods){
   const pb=r.pinB;
   if(pb){
@@ -54,7 +55,7 @@ function pinUpdate(){
    if(b.scored||b.pinR)continue;
    const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
    if(rel<back||rel>front||p.y>BALL_R+P.yTol)continue;
-   if(Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;             // too quick to hold: the finesse grip slows it first
+   if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&!fwd&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;   // too quick to hold (a player's back foot takes a ball rolling along the row quicker: shots.pin.assist.roll)
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
     const mz=r.baseZ[i]+r.offset;

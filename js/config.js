@@ -444,6 +444,15 @@ kick:{
      win:0.35,      // the stick may sit this far short of the catch angle (rad) and still settle onto it
      keep:0.2       // a pinned ball is kept until the stick goes this far past upright the other way (rad), or finesse is let go
      },
+    // back pin and a ball rolling along the row behind the rod at a man (a roll from the next man): the foot is posed onto the top of it at its depth, so it rolls under the sole and is caught (the fixed `angle` fits only a ball 3.3-5 deep)
+    roll:{
+     on:true,
+     maxVX:4,       // |x speed| under this: rolling along the row
+     minV:3,        // ...at least this fast (u/s); slower is the slow-ball assist's
+     tMax:1.2,      // ...reaching a man's foot within this (s)
+     lerp:40,       // the leg comes down onto it at this rate (pin.lower 22 takes ~0.12 s from a raise to the touch: a late press missed)
+     capV:60       // a player's posed foot takes such a ball up to this speed against the rod (pin.capV for the rest): a keyboard roll leaves at ~51
+     },
     // the man is drawn onto the ball's z once the player stops sliding, while a posed leg is up beside it or over it
     settle:{
      on:true,

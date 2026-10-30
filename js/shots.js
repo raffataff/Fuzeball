@@ -46,7 +46,7 @@ function shotHoldUpdate(r,lt){
 // r.pinA is sweep-capped like a wind-up and frozen while a ball is pinned; the forward pose is not (it lies over a ball, which the cap would hold off)
 function shotPinInput(r,I,dt){
  const P=SHOTC.pin,H=P&&P.assist&&P.assist.hop,R=P&&P.assist&&P.assist.recv;
- r.fwdR=false;                                                 // shotFwdAngle sets it again while the forward pose receives
+ r.fwdR=false;r.pinRl=false;                                   // shotFwdAngle / shotBackAngle set them again while the pose receives / drops onto a rolling ball
  if(!r.pinB||!r.pinFwd)r.snPT=-1e9;                            // a snake's two presses both land on a ball held forward
  if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinMag=null;r.sqA=null;r.pinKh=false;r.fwdStk=0;return;}
  // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
@@ -205,12 +205,39 @@ function shotPinAim(r,g){
  h.over=h.fa0!=null&&(r.angle*r.kickDir-h.fa0)*g>=-A.overTol;
  return h;
 }
-// the back leg's angle: up and over beside a slow ball lying behind, onto its top once over it and slow; else the pose angle; never swept through a ball (shotPullCap)
+// the back leg's angle: up and over beside a slow ball lying behind, onto its top once over it and slow; onto the top of a ball rolling along the row at a man; else the pose angle; never swept through a ball (shotPullCap)
 function shotBackAngle(r){
  const P=SHOTC.pin,A=P.assist,h=(A&&A.on)?shotPinAim(r,-1):null;
- if(!h)return shotPullCap(r,r.angle,P.angle*r.kickDir);
+ if(!h){
+  const fa=(A&&A.on)?shotRollAngle(r):null;
+  if(fa!=null&&r.angle*r.kickDir-fa<=A.overTol){r.pinRl=true;return fa*r.kickDir;}   // the leg is up over it: down onto its top (rods.js drops it at roll.lerp)
+  return shotPullCap(r,r.angle,(fa==null?P.angle:fa)*r.kickDir);
+ }
  if(h.fa!=null&&h.over)return h.fa*r.kickDir;
  return shotPullCap(r,r.angle,A.up*r.kickDir);
+}
+// a low ball rolling along the row behind the rod at a man, or under his foot now: the angle (rod-local) that puts the foot on its top where it reaches him, the soonest first; null = none
+function shotRollAngle(r){
+ const P=SHOTC.pin,W=P.assist.roll;
+ if(!W||!W.on||typeof footAngle!=='function')return null;
+ let bt=W.tMax,fa=null;
+ for(const b of S.balls){
+  if(b.scored||b.pinR)continue;
+  const p=b.m.position,rel=(p.x-r.x)*r.kickDir,vz=b.v.z-r.vz,sp=Math.abs(vz);
+  if(rel<P.back||rel>P.assist.near||p.y>BALL_R+P.yTol||Math.abs(b.v.x)>W.maxVX||Math.abs(b.v.z)<W.minV||sp<1e-3)continue;
+  const sg=Math.sign(vz);
+  for(let i=0;i<r.baseZ.length;i++){
+   if(!manLive(r,i))continue;
+   const d=(r.baseZ[i]+r.offset-p.z)*sg;                        // z still to roll to this man's centre
+   if(d<-FOOT_BOX.z)continue;                                   // past his foot
+   const t=Math.max(0,d-FOOT_BOX.z)/sp;
+   if(t>bt)continue;
+   const a=footAngle(clamp(rel+b.v.x*r.kickDir*t,P.back,P.assist.near));
+   if(a==null)continue;
+   bt=t;fa=a;
+  }
+ }
+ return fa;
 }
 // the right stick with finesse: a pinned ball is held at its angle until the stick goes past upright the other way; a raised leg the stick brings toward a ball's top settles on it; null = the stick has the leg
 function shotStickPin(r){
