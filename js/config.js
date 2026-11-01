@@ -276,7 +276,7 @@ physics:{
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
    contactEps:0.35,                       // gap below which the roll probe counts a ball as touching
-   floorFric:0.08, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
+   floorFric:0.15, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
    wallRest:0.52,                         // side + end wall restitution
    postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution
    ballRest:0.9,                          // ball-vs-ball restitution
@@ -298,7 +298,8 @@ kick:{
    padAngleLerp:40,                // right-stick angle smoothing (0 = direct 1:1, no easing)
    userSpeed:80,                  // slide speed of the player-driven rod (u/s)
    aiOwnMult:1.,                // slide-speed multiplier for AI rods on the user's team
-   boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse), freeze (speed)
+   boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse, strikes only), freeze (speed)
+   boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0.01, restPower:0.8,      // passive touch / struck shot
    powFrom:0.008, powTo:0.08,       // swing-time window in which restPower is used instead of rest
@@ -323,6 +324,8 @@ kick:{
       boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
       pin:0.30,      // ceiling added to EVERY contact of a pin / trap-shot swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
       snake:0.40,    // ...and of a snake (shots.snake)
+      keep:true,     // true = a re-hit by a boot faster than the ball keeps the heading the strike gave it (speed and lift as before); false = every re-hit re-aims it (an off-centre kick comes off straight)
+      held:0.9,      // with keep: a clipped contact whose ball arrived at this share of the speed it leaves at or more is a re-hit, and aims nothing (no aim or wall assist)
       min:0.2,      // a contact can never be capped below this...
       max:1.1,      // ...nor above it. OVER 1 ON PURPOSE
       // a charge beats the cap, scaled by its worth (r.shotOver); the ball's overspeed only ratchets down (stepBall)
@@ -385,7 +388,7 @@ kick:{
    on:true,
    back:-5.0, front:5.0,   // a ball this deep behind / ahead of the rod (dir-relative x): the foot's face reaches it
    zMax:16,         // ...within this of a man's z, beside him (in his lane the leg is held where it is)
-   lerp:8,        // ease rate onto the angle
+   lerp:20,        // ease rate onto the angle
    dead:0.03       // the target only moves for a change bigger than this (rad)
    },
 
@@ -395,7 +398,7 @@ kick:{
    on:true,
    latch:false,       // false = the pose lasts while raise (back) or kick (forward) is held, then the leg relaxes to the square (a pinned ball keeps it); true = until finesse is let go
    angle:-1.1,       // rod-local pin tilt: a ball rolling under the rod comes to rest against the underside of the boot, 3.5 to 3.75 behind the rod
-   lerp:14,          // ease rate into the pose
+   lerp:20,          // ease rate into the pose
    lower:22,         // a player's leg coming down toward upright onto a ball, either pin (a rolling ball is aimed 1/lower s ahead, the leg's own lag)
    capA:0.12,        // rod within this of the pose's target (rad) = posed, so a ball can be caught
    band:[-1.3,-0.2], // rod-local angles a right stick can pin from without the pose
@@ -601,6 +604,7 @@ kick:{
    guide:    ['KeyB'],
    camera:   ['KeyV'],
    retry:    ['KeyR'],           // Skill Trials only
+   music:    ['KeyM'],           // the next in-match track (CONFIG.audioMix.music.match); also during the goal replay
    saveClip: ['KeyS']            // goal replay only — every other input skips it
   },
   // Options list order and wording; `grp` is where a clash counts (one input can't do two things in a group)
@@ -620,11 +624,12 @@ kick:{
    {act:'guide',    lab:'Sweet-spot guide',  grp:'play'},
    {act:'camera',   lab:'Camera view',       grp:'play'},
    {act:'retry',    lab:'Retry trial',       grp:'play'},
+   {act:'music',    lab:'Next music track',  grp:'play'},
    {act:'saveClip', lab:'Save replay clip',  grp:'replay'}
   ],
   max:4,              // inputs per action
-  // never bindable: Esc (pause), F1/F2 (photo mode, room editor), and the dev keys C L F M
-  reserved:['Escape','F1','F2','KeyC','KeyL','KeyF','KeyM','MetaLeft','MetaRight','ContextMenu','Tab']
+  // never bindable: Esc (pause), F1/F2 (photo mode, room editor), and the dev keys C L F and F3 (frame profiler)
+  reserved:['Escape','F1','F2','F3','KeyC','KeyL','KeyF','MetaLeft','MetaRight','ContextMenu','Tab']
  },
 
  /* ---- AI behaviour --------------------------------------------------- */
@@ -1020,8 +1025,8 @@ ai:{
          minHold:0.15,     // a pin is held this long before it may start one (s; catch.settleT is the longer wait)
          cd:0.3,           // a rod that has done one waits this long before the next (s)
          cdTime:2.5,       // ...and this long after one that ran out of time without a gap: the ball is played
-         relMin:-4.0,      // the ball is worked at these depths (dir-relative x): from under the back pin's boot (-3.5 to -3.75) to well ahead of the pivot, where a forward pin holds it (the foot squares onto a ball from about -4 to +4: hitAngle)
-         relMax:4.0,
+         relMin:-5.0,      // the ball is worked at these depths (dir-relative x): from under the back pin's boot (-3.5 to -3.75) to well ahead of the pivot, where a forward pin holds it (the foot squares onto a ball from about -4 to +4: hitAngle)
+         relMax:5.0,
          offMin:-4.6,      // a rally in progress is over once the ball is off these depths
          offMax:4.4,
          room:6,          // free run between the two faces, ball allowed for, at least this (u)
@@ -1152,7 +1157,7 @@ ai:{
          brake:false,     // true = fired standing only (catch.recv.fwdBrake), like a re-seat; false = the slide carried through
          shotV:150,       // speed the rows are read at: 168-187 off the boot, less the spin before it (they keep sliding meanwhile)
          drift:0.21,      // s of slide the ball is carried on before the foot meets it (z = drift x slide)
-         k:0.0055         // heading gained per u/s of slide (rad), measured with the aim assist off (asSlide)
+         k:0.0045         // heading gained per u/s of slide (rad), measured with the aim assist off (asSlide)
       },
       // recv: the rod a pass is aimed at holds a forward pin pose while it is in flight, so the ball is pinned where the front pin holds it
       recv:{
@@ -1346,6 +1351,17 @@ ai:{
       overlap:0.6,        // cost per unit of mouth two shadows cover twice: tied gaps resolve to side by side, not stacked
       travel:0.7,         // cost per unit of slide: ties keep their side, so the pair doesn't flip
       dumbBias:0.7,       // fraction of its slot a low-iq rod commits: a novice still splits the goal, but the AI's own sloppy strikes get through a thin middle more as this rises
+      // the keeper's and DEF's eyes on the ball's z: a ball the attacker carries sideways is shadowed, not seen through the reaction smoothing
+      track:{
+         on:true,          // false = the cover reads the ball through the reaction smoothing like every other rod
+         inc:true,         // a ball already coming at the rod is read this way too (false = only a ball that is not: held, carried, rolling along the row)
+         react:0.35,       // share of the difficulty's react smoothing the covering rods see the ball's z through
+         lead:1,           // share of the lag that leaves (reaction delay + that smoothing) they stand ahead of a moving ball, x the difficulty's pred
+         flight:0,         // …plus where a shot fired now would cross their rod (0 = where the ball is: the cover's shadows already take every angle from it)
+         shotV:110,        // speed that flight is timed at (u/s)
+         carry:0.65        // share of the ball's sideways speed a shot keeps
+      },
+      slide:1.3,          // the keeper's and DEF's slide speed and acceleration while covering, x the difficulty's (a player carries the ball at 64 u/s)
       grid:2,             // search step (u), halved down to refine
       refine:0.25,
       every:0.04          // re-solve cadence (s)
@@ -1384,7 +1400,7 @@ ai:{
    errEvery:[1.7,6.],                        // how often a fresh wandering aim-error target is rolled (s)
 
    // --- active rods + anti-jitter ---------------------------------------
-   hands:3,                                   // rods per team the AI moves at once (not a cap on human seats)
+   hands:4,                                   // rods per team the AI moves at once (not a cap on human seats)
    pairCommit:0.3,                            // min seconds a rod stays active before it can be swapped
    manHyst:1.4,                               // z-units a different man must beat the current one by to steal aim
    retargetDead:0.1,                          // z the desired slide must differ by before re-aiming
@@ -1431,7 +1447,7 @@ ai:{
    
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
-      src:'assets/fuzeball_rocko2.glb',scale:0.8,
+      src:'assets/fuzeball_rocko.glb',scale:0.8,
       mug:'assets/renders/render_rocko_mugshot.png',   
       renderTop:49,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
@@ -2008,7 +2024,14 @@ deadball:{
    music:{
     on:true,
     menu:'music/menu_anthem.ogg',   // the main menu track (music/menu_theme.ogg is the first, calmer one)
-    match:'music/match_void.ogg',  // in a match (play, count, goal); training, trials, the tutorial and photo mode get none
+    // in a match (play, count, goal); training, trials, the tutorial and photo mode get none
+    // the first plays unless the player picked another: the music key (M) or a pad's touchpad steps through them, kept in cfg.musicMatch
+    match:[
+     {f:'music/match_drive.ogg',   name:'Drive'},
+     {f:'music/match_strings.ogg', name:'Strings'},
+     {f:'music/match_pulse.ogg',   name:'Pulse'},
+     {f:'music/match_void.ogg',    name:'Void'}
+    ],
     vol:0.7,                        // under the Options > Audio > Music slider; the file is mastered to -17 LUFS
     matchVol:0.5,                   // the match track's level, times the slider
     duck:0.35,                      // x matchVol in pause and the goal replay
@@ -2553,7 +2576,6 @@ deadball:{
     col:0xfff04d,            // the boost colour (the pickup's)
     hot:0xfff6c8,            // the white-hot core of the flash and the brightest sparks
     min:50, full:120,        // the slowest exit speed that counts as a power hit / the speed that gets the whole effect
-    swingW:8,                // a swing is a kick in flight or a rod turning faster than this (rad/s): a slide or a shove is not a strike
     gap:0.5,                 // seconds before the same rod can fire again: one a swing
     flash:{ life:0.14, size:[3,7], power:2.2 },
     ring:{ life:0.38, size:[5,9], power:0.7 },
@@ -3210,6 +3232,8 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
 let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,atmos:'high',table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
  // Options > Audio: bus volumes 0..1 (square curve in Au.mix); muteBg silences an unfocused window
  volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,muteBg:false,
+ // the in-match track picked with the music key (a CONFIG.audioMix.music.match file); '' = the first
+ musicMatch:'',
  // the tutorial (js/tutorial.js): offered once before the first match, and finished at least once
  tutSeen:false,tutDone:false,
  // the "kick = pin shot" plate while a ball is pinned (js/hud.js); Options > Display
@@ -3272,6 +3296,7 @@ const CFG_PLAYER=new Set([
 'trials','daily','trnSpots','photoShots','photoPath','photoGroups','layoutPresets',  // progress + authored content
  'tutSeen','tutDone',                                            // the tutorial: offered once, and finished (an achievement reads tutDone)
  'pinHint',                                                      // an on-screen help preference, follows the person
+ 'musicMatch',                                                   // the in-match track they last picked
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);
 /* Bucket a key. Unlisted -> PLAYER, reported ONCE per key per session. */

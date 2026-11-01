@@ -189,7 +189,7 @@ function trialHome(bx){
  if(typeof resetRodRotation==='function')resetRodRotation();
  for(const r of rods){
   r.offset=0;r.target=0;r.prevOffset=0;r.slideV=0;r.vz=0;r.cd=0;r.exert=0;
-  r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
+  r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiTZ=null;r.aiTVZ=0;r.aiGoalZ=0;
   r.iOff=r.iPrevOff=0;r.iAng=r.iPrevAng=0;
   if(r.pivot&&r.pivot.position)r.pivot.position.z=0;
  }

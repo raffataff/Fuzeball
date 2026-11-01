@@ -36,7 +36,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.col,g.cap,g.style,g.kstyle,g.hold,g.hit,g.grip,g.frac,
-  ';globalThis.X={CONFIG:CONFIG,KICK:KICK,AIC:AIC,BALL_TYPES:BALL_TYPES,collideRod:collideRod,stGrip:stGrip};'].join(NL),ctx);
+  ';globalThis.X={CONFIG:CONFIG,KICK:KICK,AIC:AIC,BALL_TYPES:BALL_TYPES,S:S,collideRod:collideRod,stGrip:stGrip};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -60,8 +60,8 @@ function leg(X,y,v,o){
  return {vx:b.v.x,vz:b.v.z,sp:Math.hypot(b.v.x,b.v.z)};
 }
 // a swinging leg (inside the power window) runs into a ball resting against the shin: one contact
-function swingInto(X){
- const P=X.CONFIG.physics,r=mkRod({angle:0.05,angVel:20,kickT:0.02});
+function swingInto(X,o){
+ const P=X.CONFIG.physics,r=mkRod(Object.assign({angle:0.05,angVel:20,kickT:0.02},o||{}));
  const b={m:{position:{x:P.ballR+P.prad-0.15,y:P.rodH-1,z:0}},v:{x:0,y:0,z:0},t:X.BALL_TYPES.classic,spin:0,didSplit:false,scored:false};
  X.collideRod(b,r);return Math.hypot(b.v.x,b.v.y,b.v.z);
 }
@@ -102,6 +102,19 @@ function suite(X){
  {const trap={act:'trap'};K.capRest=0;const a=leg(X,LEGY,60,{rod:trap}).vx;K.capRest=0.6;const b2=leg(X,LEGY,60,{rod:trap}).vx;
   ok("the AI's trap hold (holdRest / holdGrip) outranks capRest",near(a,b2,1e-9),'0: '+a.toFixed(3)+'  0.6: '+b2.toFixed(3));}
  back();
+ // ---- boost powers strikes, not touches ----------------------------------------------------------------------------
+ {const E=X.S.eff[0],was=E.boost,on=()=>{E.boost=X.S.time+10;},off=()=>{E.boost=-1;};
+  const kick={angVel:20,kickT:0.02},tc=(y,v,rod)=>{off();const a=leg(X,y,v,{rod}).sp;on();const b2=leg(X,y,v,{rod}).sp;off();return [a,b2];};
+  let [a,b2]=tc(1.9,60);ok('boost: a ball run into a still foot stops as it does unboosted',near(a,b2,1e-9)&&b2<1,'off '+a.toFixed(3)+' on '+b2.toFixed(3));
+  [a,b2]=tc(LEGY,60);ok('boost: ...and bounces off a still shin as it does unboosted',near(a,b2,1e-9),'off '+a.toFixed(2)+' on '+b2.toFixed(2));
+  [a,b2]=tc(1.9,40,{pinPose:true,angVel:15});ok('boost: a pin pose lowering onto a ball is not a strike',near(a,b2,1e-9),'off '+a.toFixed(2)+' on '+b2.toFixed(2));
+  [a,b2]=tc(1.9,40,{kickT:0.2});ok('boost: a kick held forward that a ball runs into is not a strike',near(a,b2,1e-9),'off '+a.toFixed(2)+' on '+b2.toFixed(2));
+  [a,b2]=tc(1.9,20,kick);ok('boost: a kick swinging into a ball off the foot leaves faster',b2>a+5,'off '+a.toFixed(1)+' on '+b2.toFixed(1));
+  [a,b2]=tc(1.9,5,{angVel:4,kickT:0.02});ok('boost: a soft swing under the ceiling gets the stronger impulse itself',b2>a*1.5,'off '+a.toFixed(1)+' on '+b2.toFixed(1));
+  [a,b2]=tc(1.9,20,{angVel:20,padAngleOn:true,pinMag:null});ok('boost: ...and so does a pad stick swing',b2>a+5,'off '+a.toFixed(1)+' on '+b2.toFixed(1));
+  off();a=swingInto(X);on();b2=swingInto(X);off();ok('boost: a kick swinging into a ball off the shin leaves faster',b2>a*1.2,'off '+a.toFixed(1)+' on '+b2.toFixed(1));
+  on();a=swingInto(X,{kickT:-1});off();b2=swingInto(X,{kickT:-1});ok('boost: the same leg turning with no kick or stick is not powered',near(a,b2,1e-9),'on '+a.toFixed(2)+' off '+b2.toFixed(2));
+  E.boost=was;}
  return R;
 }
 
@@ -122,7 +135,12 @@ const MUTS=[
  {n:'the power window takes capRest',part:'col',from:'(pow?ks.restPower:(dead?ks.rest:KICK.capRest))',to:'(pow?KICK.capRest:(dead?ks.rest:KICK.capRest))'},
  {n:'a trap hold no longer outranks capRest',part:'col',from:'const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));',to:'const rest=(pow?ks.restPower:(dead?ks.rest:KICK.capRest));'},
  {n:'the foot box takes capRest',part:'col',from:'(pow?ks.restPower:ks.rest);',to:'(pow?ks.restPower:KICK.capRest);'},
- {n:'the foot box takes capGrip',part:'col',from:'const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);',to:'const g=trapping?clamp(HLD.holdGrip,0,1):KICK.capGrip;'}
+ {n:'the foot box takes capGrip',part:'col',from:'const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);',to:'const g=trapping?clamp(HLD.holdGrip,0,1):KICK.capGrip;'},
+ {n:'boost powers every touch of the foot',part:'col',from:'if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    // player shot',to:'if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    // player shot'},
+ {n:'boost powers every touch of the leg',part:'col',from:'if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    if(r.shotOn)jm*=r.shotPow;'+NL+'    b.v.x+=',to:'if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    if(r.shotOn)jm*=r.shotPow;'+NL+'    b.v.x+='},
+ {n:'boost powers no swing of the foot',part:'col',from:'if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    // player shot',to:'jm*=stHit(r);'+NL+'    // player shot'},
+ {n:'boost lifts the ceiling of every touch',part:'cap',from:'if(S.eff[r.team].boost>S.time&&boostSwing(r))f+=C.boost;',to:'if(S.eff[r.team].boost>S.time)f+=C.boost;'},
+ {n:'boost reads a swing at any speed or way',part:'cap',from:'const w=r.angVel*r.kickDir;',to:'const w=1;'}
 ];
 let missed=0;
 for(const m of MUTS){

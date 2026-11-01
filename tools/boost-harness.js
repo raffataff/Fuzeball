@@ -56,7 +56,7 @@ function ok(c,msg){if(c)pass++;else{fail++;fails.push(msg);}}
 const near=(a,b,e)=>Math.abs(a-b)<=(e===undefined?1e-6:e);
 
 const ball=(vx,vy,vz)=>({m:{position:{x:10,y:1.9,z:4}},v:{x:vx,y:vy||0,z:vz||0},pw:0});
-const rod=(team,o)=>Object.assign({team:team,kickT:0.05,shotOn:false,angVel:0,pwAt:0},o||{});
+const rod=(team,o)=>Object.assign({team:team,kickT:0.05,shotOn:false,angVel:20,kickDir:1,padAngleOn:false,pinMag:null,pwAt:0},o||{});
 function reset(X){
  X.S.time=100;X.S.phase='play';X.S.eff[0].boost=X.S.time+10;X.S.eff[1].boost=0;X.S.balls=[];
  X.cfg.particles=true;X.FXON=true;X.BO.on=true;
@@ -94,10 +94,25 @@ function suite(X){
  ok(X.log.au.length===0,'a slide or a shove (no swing) is not');
  reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,shotOn:true}),false);
  ok(X.log.au.length===1,'a charged stick swing (no kick timer) is');
- reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,angVel:BO.swingW+4}),false);
- ok(X.log.au.length===1,'a rod turning fast is');
- reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,angVel:BO.swingW-2}),false);
+ const SW=X.CONFIG.kick.boostSwingW;
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,padAngleOn:true,angVel:SW+4}),false);
+ ok(X.log.au.length===1,'a pad stick swinging the leg forward fast is');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,padAngleOn:true,angVel:SW-2}),false);
  ok(X.log.au.length===0,'one turning slowly is not');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,padAngleOn:true,angVel:-(SW+10)}),false);
+ ok(X.log.au.length===0,'nor one pulled back');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,padAngleOn:true,pinMag:-1.1,angVel:SW+10}),false);
+ ok(X.log.au.length===0,'nor the stick settling a pin');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:-1,angVel:SW+12}),false);
+ ok(X.log.au.length===0,'a leg turning fast with no kick or stick (a pin lowering, a drop from a raise) is not');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:0.2,angVel:0}),false);
+ ok(X.log.au.length===0,'a kick held forward (the ball runs into a still leg) is not');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickT:0.2,angVel:-10}),false);
+ ok(X.log.au.length===0,'nor a kick on its way back');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickDir:-1,angVel:-20}),false);
+ ok(X.log.au.length===1,'a kick turning toward -x is forward for a rod that kicks that way');
+ reset(X);b=ball(90);X.boostTouch(b,rod(0,{kickDir:-1,angVel:20}),false);
+ ok(X.log.au.length===0,'and the other way is its back-swing');
  reset(X);b=ball(90);X.boostTouch(b,rod(0),true);
  ok(X.log.au.length===0&&b.pw===0,'a held ball (trap, dribble, the player\'s hold) is not');
  reset(X);BO.on=false;b=ball(90);X.boostTouch(b,rod(0),false);BO.on=true;
@@ -454,7 +469,12 @@ function E_warn(X){return X.BO.end.warn;}
 
 function run(src){const X=boot(src);pass=0;fail=0;fails.length=0;suite(X);stateSuite(X);ringSuite(X);return {pass,fail,fails:fails.slice()};}
 
-const SRC=rd('js/boost.js');
+function sliceFn(src,name){
+ const s=src.indexOf('function '+name+'(');if(s<0)throw new Error('no '+name);
+ for(let d=0,j=src.indexOf('{',s);j<src.length;j++){const c=src[j];if(c==='{')d++;else if(c==='}'&&--d===0)return src.slice(s,j+1);}
+ throw new Error('unbalanced '+name);
+}
+const SRC=rd('js/boost.js')+NL+sliceFn(rd('js/physics.js'),'boostSwing');   // the strike test is physics.js's: the hit shows where the boost powered it
 const base=run(SRC);
 console.log('boost harness: '+base.pass+' assertions, '+base.fail+' failing');
 for(const f of base.fails)console.log('  FAIL '+f);
@@ -467,8 +487,15 @@ function mutate(from,to,label){
 const MUT=[
  ['if(!BO.on||hold||!(S.eff[r.team].boost>S.time))return;','if(!BO.on||hold)return;','an unboosted team fires'],
  ['if(!BO.on||hold||!(S.eff[r.team].boost>S.time))return;','if(!BO.on||!(S.eff[r.team].boost>S.time))return;','a held ball fires'],
- ['if(!(r.kickT>=0||r.shotOn||Math.abs(r.angVel)>BO.swingW))return;','','a slide fires'],
- ['if(!(r.kickT>=0||r.shotOn||Math.abs(r.angVel)>BO.swingW))return;','if(!(r.kickT>=0))return;','a stick swing is not a strike'],
+ ['if(!boostSwing(r))return;','','a slide fires'],
+ ['return w>0&&(r.kickT>=0||','return (r.kickT>=0||','a kick held forward or coming back is a strike'],
+ ['(r.kickT>=0||r.shotOn||','(r.shotOn||','a kick is not a strike'],
+ ['||r.shotOn||(','||(','a charged stick swing is not a strike'],
+ ['(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW)','(r.padAngleOn&&r.pinMag==null)','a slow stick is a strike'],
+ ['(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW)','(r.pinMag==null&&w>KICK.boostSwingW)','any fast turn is a strike (a pin lowering, a drop)'],
+ ['(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW)','(r.padAngleOn&&w>KICK.boostSwingW)','the stick settling a pin is a strike'],
+ ['const w=r.angVel*r.kickDir;','const w=r.angVel;','a rod kicking toward -x reads its swing backward'],
+ ['(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW)','false','a pad stick swing is not a strike'],
  ['if(w>0&&w<=BO.gap)return;','','every contact of a swing fires'],
  ['if(w>0&&w<=BO.gap)return;','if(w>0)return;','a stale stamp blocks the next match'],
  ['r.pwAt=S.time+BO.gap;','','the rod is never stamped'],

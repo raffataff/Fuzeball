@@ -123,7 +123,7 @@ function startMatchNow(mode,rodLockRole){
   rods.forEach(r=>{r.offset=0;r.target=0;r.slideV=0;r.angle=0;r.prevAngle=0;r.prevOffset=0;
    r.kickT=-1;r.raise=false;r.raiseKeep=false;r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;r.cd=0;r.exert=0;r.aiMan=-1;r.aiErr=0;r.aiErrT=0;r.aiErrTarget=0;
    // r.exert (swing fatigue) is cleared here only, not in resetRodRotation (that runs on every goal/dead ball/out)
-   r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiGoalZ=0;
+   r.aiBX=r.x;r.aiBZ=0;r.aiBVX=0;r.aiBVZ=0;r.aiTZ=null;r.aiTVZ=0;r.aiGoalZ=0;
    r.removedUntil=[];r.men.forEach(m=>{m.visible=true;});
    r.pivot.rotation.z=0;r.pivot.position.z=0;
    const mine=S.userTeam<0?r.team===0:r.team===S.userTeam;

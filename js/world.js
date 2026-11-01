@@ -622,7 +622,7 @@ function buildRods(){
      hold:{on:false,holdRest:KICK.rest,holdGrip:KICK.grip,carryMult:1,sideRest:KICK.sideRest},
     behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
-     aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiGoalZ:0,
+     aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiTZ:null,aiTVZ:0,aiGoalZ:0,
      // match stats (js/matchstats.js): msSw = one-attempt-per-swing latch, msB/msBFor = stat bucket cached against its S.stats
      msSw:false,msB:null,msBFor:null,
      removedUntil:[]};

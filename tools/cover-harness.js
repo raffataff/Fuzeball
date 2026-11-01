@@ -1,6 +1,6 @@
 // goal-cover harness. node tools/cover-harness.js
 // slices the real coverMen / coverGap / coverFit / coverMan / coverZ (ai.js) and runs them on live CONFIG
-// question: do the keeper and the defender split the mouth between them (the open width of the goal drops against both sitting on the ball-to-goal line), does the rod that plays the ball stay out of it while its mate covers, is a human or busy mate held where it stands, is the pair steady (no side flips, no jumps), and does the keeper go for a shot going in; each mutation must break an assertion
+// question: do the keeper and the defender split the mouth between them (the open width of the goal drops against both sitting on the ball-to-goal line), does the rod that plays the ball stay out of it while its mate covers, is a human or busy mate held where it stands, is the pair steady (no side flips, no jumps), does the keeper go for a shot going in, is a ball carried sideways read where it is now (coverEye), and does a covering rod slide at cover.slide (coverSlide); each mutation must break an assertion
 // the open width is measured here by testing real lines from the ball against every man, not by the shadow maths under test
 'use strict';
 const fs=require('fs'),vm=require('vm');
@@ -13,7 +13,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  cover:slice(AI,'const CVB=new Float64Array',NL+' function aiUpdate(')
 };
-const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(){return 'pro';} function stPred(){return 1;}";
+const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(){return 'pro';} function stPred(){return 1;} function stReact(){return 1;}";
 
 function boot(mut){
  const g=Object.assign({},parts);
@@ -22,7 +22,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,Float64Array,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.cover,
-  ';globalThis.X={S:S,AIC:AIC,F:F,setRods:function(v){rods=v;},coverZ:coverZ,coverMen:coverMen,coverGap:coverGap,coverFit:coverFit,coverReach:coverReach,DIFFS:DIFFS,CVB:CVB};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,F:F,setRods:function(v){rods=v;},coverZ:coverZ,coverMen:coverMen,coverGap:coverGap,coverFit:coverFit,coverReach:coverReach,coverEye:coverEye,coverSlide:coverSlide,DIFFS:DIFFS,CVB:CVB};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -166,7 +166,7 @@ function suite(X){
   const near=X.coverReach(Object.assign({},T.df,{aiBVX:0,aiBVZ:0}),E+3),farRest=X.coverReach(Object.assign({},T.df,{aiBVX:0,aiBVZ:0}),60),fast=X.coverReach(Object.assign({},T.df,{aiBVX:-90,aiBVZ:0}),E+4),inside=X.coverReach(T.df,E-1);
   ok('a ball at rest far out leaves the rod all the room there is',farRest===CV.reachMax,'R='+farRest);
   ok('a fast ball close in leaves it none',fast===0,'R='+fast);
-  ok('even a ball at rest, a few units out, leaves only a short slide (it gets there in a second)',near>0&&near<10&&Math.abs(near-sp*Math.max(0,3/CV.vFloor-CV.slack))<1e-9,'R='+near);
+  ok('even a ball at rest, a few units out, leaves only a short slide (it gets there in a second), at the covering rod\'s own slide speed',near>0&&near<10&&Math.abs(near-sp*CV.slide*Math.max(0,3/CV.vFloor-CV.slack))<1e-9,'R='+near);
   ok('a rod whose ball is already in its play zone is not budgeted (it is not the one covering)',inside===CV.reachMax);}
  {const T=table(X);const bx=-37.5+12,bz=14;const iz=bz*(1-clamp((T.df.x-bx)/(-60-bx),0,1));
   const zFast=call(X,T.df,bx,bz,DT,-90,0);ok('a fast ball close in puts the DEF back on the old ball-to-goal line',Math.abs(zFast-iz)<1e-9,'z='+zFast+' line '+iz);
@@ -222,6 +222,35 @@ function suite(X){
  {let over=null;
   for(const [bx,bz] of balls){const T=table(X);T.gk.maxOff=2;T.df.maxOff=3;const s=pairSolve(X,T,bx,bz);if(Math.abs(s.og)>2+1e-9||Math.abs(s.od)>3+1e-9)over=[bx,bz,s.og,s.od];}
   ok('a short slide limit is respected by the whole search (grid and polish)',over===null,'at '+over);}
+
+ // ---- the eyes on a ball carried sideways (coverEye) ---------------------------------------------------------
+ // a ball carried along at v and seen D.reactDelay late, both reads stepped the way aiUpdate steps them: the old one (r.aiBZ, the react smoothing) and the cover's
+ {const P=X.DIFFS.pro,TK=CV.track,dl=P.reactDelay,v=40,dt=DT,tr=P.react*TK.react;
+  const carry=(o)=>{o=Object.assign({pred:1,T:1.2,on:true,rel:17,set:{}},o);const keep={};for(const k in o.set){keep[k]=TK[k];TK[k]=o.set[k];}const on0=TK.on;TK.on=o.on;
+   const r={aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiTZ:null,aiTVZ:0};let eye=0,real=0;
+   for(let t=0;t<o.T;t+=dt){real=v*t;const seen=v*Math.max(0,t-dl),b={m:{position:{z:seen}},v:{z:t>=dl?v:0}};
+    const k=1-Math.exp(-dt/P.react);r.aiBZ+=(seen-r.aiBZ)*k;r.aiBVZ+=(b.v.z-r.aiBVZ)*k;
+    eye=X.coverEye(r,b,P,-1,o.pred,o.rel,dt);}
+   TK.on=on0;for(const k in keep)TK[k]=keep[k];return {eye,real,r};};
+  const a=carry({}),old=carry({on:false});
+  ok('A BALL CARRIED SIDEWAYS: the cover reads it where it is now, not where it was (full anticipation)',Math.abs(a.eye-a.real)<0.4,'eye '+a.eye.toFixed(2)+' ball '+a.real.toFixed(2));
+  ok('...where the old read stands (delay + react) x v behind it',Math.abs((old.real-old.eye)-v*(dl+P.react))<0.6,'lag '+(old.real-old.eye).toFixed(2)+' want '+(v*(dl+P.react)).toFixed(2));
+  const h=carry({pred:0.5});
+  ok('...and a rod that anticipates half as well makes up half the lag it is left with',Math.abs((h.real-h.eye)-0.5*v*(dl+tr))<0.4,'lag '+(h.real-h.eye).toFixed(2)+' want '+(0.5*v*(dl+tr)).toFixed(2));
+  const f=carry({set:{flight:1}});
+  ok('flight on: it also stands where a shot fired now would cross its rod (the ball keeps carry of its sideways speed)',Math.abs((f.eye-f.real)-v*17/TK.shotV*TK.carry)<0.4,'ahead '+(f.eye-f.real).toFixed(2)+' want '+(v*17/TK.shotV*TK.carry).toFixed(2));
+  const r={aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiTZ:null,aiTVZ:0},z1=X.coverEye(r,{m:{position:{z:9}},v:{z:0}},P,-1,1,17,dt);
+  ok('the first read starts on the ball (no slide in from z 0)',Math.abs(z1-9)<1e-9,'z '+z1);
+  const s=carry({}),r2=s.r;let zs=0;for(let i=0;i<240;i++)zs=X.coverEye(r2,{m:{position:{z:s.real}},v:{z:0}},P,-1,1,17,dt);
+  ok('a ball that stops is read on its z, nothing led',Math.abs(zs-s.real)<0.05,'z '+zs.toFixed(3)+' ball '+s.real.toFixed(2));
+  const r3={aiBX:0,aiBZ:3,aiBVX:0,aiBVZ:12,aiTZ:5,aiTVZ:20},ri=X.coverEye(r3,{m:{position:{z:5}},v:{z:20}},P,0.5,0.8,17,dt);
+  ok('a ball coming at the rod is read where it will cross it (its tta lead), with no lag lead on top',Math.abs(ri-(5+20*0.5*0.8))<1e-9,'z '+ri);
+  const inc0=TK.inc;TK.inc=false;const r4={aiBX:0,aiBZ:3,aiBVX:0,aiBVZ:12,aiTZ:5,aiTVZ:20},ro=X.coverEye(r4,{m:{position:{z:5}},v:{z:20}},P,0.5,0.8,17,dt);TK.inc=inc0;
+  ok('...and with inc off through the old read',Math.abs(ro-(3+12*0.5*0.8))<1e-9,'z '+ro);}
+ // ---- a covering rod slides at cover.slide (coverSlide, read by rods.js) ---------------------------------------
+ {const r={cvOn:true,act:null,kickT:-1};
+  ok('a keeper / DEF covering the goal slides at cover.slide',X.coverSlide(r,null)===CV.slide&&CV.slide>1,'got '+X.coverSlide(r,null));
+  ok('...not once a human holds it, an action owns it, it swings, or it is not covering',X.coverSlide(r,{})===1&&X.coverSlide(Object.assign({},r,{act:'catch'}),null)===1&&X.coverSlide(Object.assign({},r,{kickT:0.02}),null)===1&&X.coverSlide(Object.assign({},r,{cvOn:false}),null)===1);}
 
  // ---- steady ---------------------------------------------------------------------------------------------
  {const run=(zs,bx)=>{const T=table(X);T.gk.cvM=0;T.df.cvM=0;let prev=null,jump=0;
@@ -290,6 +319,19 @@ const MUT=[
  {n:'the polish steps ignore the slide limit',part:'cover',from:'o[j]=clamp(p[j]+sg*s,-mine[j].maxOff,mine[j].maxOff);',to:'o[j]=p[j]+sg*s;'},
  {n:'the slide limit is ignored in the search',part:'cover',from:'const m0=mine[0].maxOff,m1=n>1?mine[1].maxOff:0,',to:'const m0=mine[0].maxOff*2,m1=n>1?mine[1].maxOff*2:0,'},
  {n:'the blue DEF reads the wrong end of the table (goal x not mirrored)',part:'cover',from:'gx=dir>0?-F.L/2:F.L/2;',to:'gx=-F.L/2;'},
+ {n:'the eyes lead nothing (a carried ball is read where it was)',part:'cover',from:'(lag*TK.lead+',to:'(0*TK.lead+'},
+ {n:'the eyes look through the full react smoothing',part:'cover',from:'const tr=D.react*stReact(r)*TK.react,',to:'const tr=D.react*stReact(r),'},
+ {n:'the eyes ignore the reaction delay',part:'cover',from:'const lag=(D.reactDelay||0)*stReact(r)+tr;',to:'const lag=tr;'},
+ {n:'the eyes lead perfectly whatever the anticipation stat',part:'cover',from:'*TK.carry*TK.flight)*predL;',to:'*TK.carry*TK.flight);'},
+ {n:'the flight term is always on',part:'cover',from:'*TK.carry*TK.flight)*predL;',to:'*TK.carry)*predL;'},
+ {n:'a ball coming at the rod gets the lag lead too',part:'cover',from:'if(inc)return TK.inc?',to:'if(false)return TK.inc?'},
+ {n:'inc off still reads a ball coming at the rod the new way',part:'cover',from:'return TK.inc?r.aiTZ+r.aiTVZ*tta*predL:r.aiBZ+r.aiBVZ*tta*predL;',to:'return r.aiTZ+r.aiTVZ*tta*predL;'},
+ {n:'the first read slides in from z 0',part:'cover',from:'if(r.aiTZ==null){r.aiTZ=p.z;r.aiTVZ=b.v.z;}',to:'if(r.aiTZ==null){r.aiTZ=0;r.aiTVZ=0;}'},
+ {n:'track off is ignored',part:'cover',from:'if(!TK||!TK.on)return ',to:'if(!TK)return '},
+ {n:'the slide lift is not budgeted in the reach',part:'cover',from:'.speed*CV.slide*CV.speedMul*',to:'.speed*CV.speedMul*'},
+ {n:'a covering rod slides at its plain speed',part:'cover',from:'r.kickT<0?AIC.cover.slide:1;',to:'r.kickT<0?1:1;'},
+ {n:'a covering rod keeps the lift while an action owns it',part:'cover',from:'r.cvOn&&!r.act&&r.kickT<0?',to:'r.cvOn&&r.kickT<0?'},
+ {n:'a human-held rod gets the lift',part:'cover',from:'return !uSeat&&r.cvOn&&',to:'return r.cvOn&&'},
  {n:'a removed man still casts a shadow',part:'cover',from:'for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const c=oz+',to:'for(let i=0;i<r.baseZ.length;i++){const c=oz+'}
 ];
 let missed=0;

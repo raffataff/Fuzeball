@@ -9,8 +9,9 @@ function bindPress(code){
  const dev=bindDev(code),s=devSeat(dev),r=s?seatRod(s):null;
  for(const a of bindActs(code,'play')){
   if(a==='guide'){if(s)toggleSweetGuide(s);continue;}   // the guide follows whoever asked (controller ○ mirrors this)
-  // a key's camera and retry are taken earlier; only a mouse button bound to either lands here
+  // a key's camera, music and retry are taken earlier; only a mouse button bound to one lands here
   if(a==='camera'){if(dev==='mouse')cycleCam(1);continue;}
+  if(a==='music'){if(dev==='mouse')musicCycle();continue;}
   if(a==='retry'){if(dev==='mouse'&&S.trial&&typeof trialRestart==='function')trialRestart();continue;}
   if(!r)continue;
   // kick: shots.js decides plain swing, pass (finesse) or release of a wind-up (power)
@@ -38,19 +39,21 @@ function bindRelease(code){
  if(bindIs('raise',code)&&!bindHeld('raise',s)){r.raise=false;rodRaiseRelease(r);}
 }
 function inMatch(){return S.phase==='play'||S.phase==='count';}
+// the music key and a pad's touchpad: the next in-match track (js/audio.js), named on a toast; nothing outside a match's music
+function musicCycle(){const e=Au.musicNext();if(e)toast('MUSIC',e.name+' · '+(e.i+1)+' / '+e.n,1.4);}
 // Alt and F10 hand focus to the browser menu, dropping the pointer lock (read as Esc), so swallow keydown and keyup
 function menuKey(code){return code==='AltLeft'||code==='AltRight'||code==='F10';}
 addEventListener('keydown',e=>{
  // typing in a form control must never kick, slide or preventDefault
  if(e.target&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;
  // a bound key never reaches the browser in a match; Ctrl+W/T/N can't be blocked (the desktop shell must)
- if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)||(inMatch()&&!S.photo&&!S.freeRoam&&(bindActs(e.code,'play').length||menuKey(e.code))))e.preventDefault();
+ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','F3'].includes(e.code)||(inMatch()&&!S.photo&&!S.freeRoam&&(bindActs(e.code,'play').length||menuKey(e.code))))e.preventDefault();
  modSync(e);
  if(e.repeat)return;keys[e.code]=true;
  // photo mode (F1) takes the keyboard, after the keys[] write since photo.js reads that map
  if(S.photo)return;
  // the save key is tested first, before every other key skips the replay
- if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',e.code))replaySaveClip();else replaySkip();return;}
+ if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',e.code))replaySaveClip();else if(bindIs('music',e.code))musicCycle();else replaySkip();return;}
  if(e.code==='Escape'){
   // Chrome eats Esc while pointer-locked (the release is the pause, see pointerlockchange); de-dupe browsers that send both
   if(mlEsc>0&&performance.now()-mlEsc<300){mlEsc=0;return;}
@@ -64,10 +67,11 @@ addEventListener('keydown',e=>{
  }
  if(bindIs('camera',e.code)&&S.phase!=='menu'){cycleCam(1);}
  else if(/^Numpad\d$/.test(e.code)&&S.phase!=='menu'&&!bindActs(e.code,'play').length){camPick(CAM.numpad[+e.code[6]]);}
+ if(bindIs('music',e.code))musicCycle();          // in pause too
  if(e.code==='KeyC'&&S.phase!=='menu'){toggleDebug();return;}
  if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
- if(e.code==='KeyM'){togglePerf();return;}   // frame profiler overlay (js/perf.js) — works on the menu too, so a menu-side sag is measurable
+ if(e.code==='F3'){togglePerf();return;}   // frame profiler overlay (js/perf.js) — works on the menu too, so a menu-side sag is measurable
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(!S.seats.length)return;                       // nobody playing (AI showdown / spectate)
@@ -158,7 +162,7 @@ function userControlUpdate(dt){
 }
 // ---- gamepad (Steam controller) ----
 // standard-layout pad on the same controls, polled once per frame, edge-detected via gpPrev
-// left stick Y / d-pad = slide, A(0) kick, X(2) raise, LB/RB or d-pad = switch rod, B(1) sweet-spot guide, Y(3) camera, Start(9) pause
+// left stick Y / d-pad = slide, A(0) kick, X(2) raise, LB/RB or d-pad = switch rod, B(1) sweet-spot guide, Y(3) camera, Start(9) pause, touchpad(17, PlayStation pads) next music track
 // LT(6) and RT(7) are one axis, RT - LT (js/shots.js); with CONFIG.shots.on false they're duplicate kick/raise
 // Total Control (cfg.padControlMode='total'): triggers also scale the slide step; the right stick angles the rod, its other axis is the swerve line (r.tcSpin)
 const gpFree={};   // button edge state for pads NO seat has claimed — they can still hit Start/skip
@@ -186,16 +190,18 @@ function gamepadUpdate(dt){
  let first=-1;for(let i=0;i<pads.length;i++)if(pads[i]){first=i;break;}
  if(first<0)return;
  // global actions (pause, replay skip) fire from any pad but once per frame
- let didPause=false,didSkip=false;
+ let didPause=false,didSkip=false,didMusic=false;
  for(let idx=0;idx<pads.length&&idx<CONFIG.seats.maxPads;idx++){
   const gp=pads[idx];if(!gp)continue;
   const seat=padSeat(idx,first);
   // edge state lives on the seat so two pads can't share one gpPrev; unclaimed pads get a scratch slot
   const prev=seat?seat.padPrev:(gpFree[idx]||(gpFree[idx]={}));
   const just={};
-  for(const i of [0,1,3,4,5,7,8,9,14,15]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
+  for(const i of [0,1,3,4,5,7,8,9,14,15,17]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
   // a press a menu used is still down on the first frame of play and would arrive as a kick
   padNavFilter(idx,just);
+  // the touchpad works in the replay and pause too (padnav reads buttons 0-16 only)
+  if(just[17]&&!didMusic){didMusic=true;musicCycle();}
   // Y saves the clip (must beat the skip buttons); A/B/Start still skip
   if(S.phase==='replay'){if(just[REPLAY.save.pad])replaySaveClip();
    else if(!didSkip&&(just[0]||just[1]||just[9])){didSkip=true;replaySkip();}continue;}

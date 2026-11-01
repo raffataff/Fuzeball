@@ -236,6 +236,32 @@ function suite(src,verbose){
   ctx.S.phase='win';Au.tick(1/60);ok('the full-time board fades the match track out',mm.stopAt>0&&!m.src,mm.stopAt);
   ctx.S.phase='play';Au.tick(1/60);const mt=live()[3];ok('the next match starts its track',live().length===4&&!!mt&&mt.started===true,live().length);
   const trn=ctx.S.trn;ctx.S.trn={};Au.tick(1/60);ok('training gets no music: the match track stops',!!mt&&mt.stopAt>0,mt&&mt.stopAt);ctx.S.trn=trn;
+  // the music key steps through the match tracks; the next one plays once it has landed
+  {const l=Au.musicList(),b2=buf(A,4),asked=[],fw=Au.musicFetch;Au.musicFetch=(k,f)=>{asked.push(k+':'+f);};
+   ok('there is more than one match track to step through',l.length>1,l.length);
+   m.mi=0;m.tr.match={buf:b,ls:2,le:3,f:l[0].f};ctx.S.phase='menu';Au.tick(1/60);
+   ok('the music key does nothing in the menus',Au.musicNext()===null&&m.mi===0&&!asked.length,[m.mi,asked]);
+   ctx.S.phase='play';ctx.S.trn={};ok('…nor in training',Au.musicNext()===null&&m.mi===0);ctx.S.trn=trn;
+   Au.tick(1/60);const cur=m.src,e=Au.musicNext();
+   ok('in a match it picks the next track and asks for it',!!e&&e.i===1&&e.n===l.length&&m.mi===1&&asked.join()==='match:'+l[1].f,[e,asked]);
+   ok('…names it for the toast',!!e&&e.name===(l[1].name||l[1].f),e&&e.name);
+   ok('…and keeps the pick',cfg.musicMatch===l[1].f,cfg.musicMatch);
+   Au.tick(1/60);ok('the old track plays on until the new one lands',!!cur&&m.src===cur&&!(cur.stopAt>0));
+   ok('a track stepped past while it loaded is dropped',Au.musicLand('match',l[0].f,b2,null)===false&&m.tr.match.buf===b);
+   ok('the picked track lands',Au.musicLand('match',l[1].f,b2,null)===true&&m.tr.match.buf===b2);
+   const t=Au.ctx.currentTime;Au.tick(1/60);const nw=A.made.filter(n=>n.kind==='src'&&n.buffer===b2);
+   ok('…then the old one fades out and the new one starts',Math.abs(cur.stopAt-t-MU.fadeOut)<1e-6&&nw.length===1&&nw[0].started&&m.src===nw[0],[cur.stopAt,nw.length]);
+   ok('…at the match level, from its top',!!m.g&&Math.abs(m.g.gain.value-MU.matchVol)<1e-9&&nw[0].loopStart===0,m.g&&m.g.gain.value);
+   Au.tick(1/60);ok('…once',A.made.filter(n=>n.kind==='src'&&n.buffer===b2).length===1);
+   ctx.S.phase='pause';ok('the key works in pause',!!Au.musicNext()&&m.mi===2);
+   ctx.S.phase='replay';ok('…and in the goal replay',!!Au.musicNext()&&m.mi===3%l.length);
+   ctx.S.phase='play';while(m.mi!==0&&asked.length<20)Au.musicNext();ok('the last track wraps round to the first',m.mi===0&&asked.length===l.length,asked.length);
+   cfg.musicMatch=l[l.length-1].f;asked.length=0;Au.musicLoad();
+   ok('a new session starts on the track picked last',m.mi===l.length-1&&asked.includes('match:'+l[l.length-1].f),[m.mi,asked]);
+   cfg.musicMatch='music/gone.ogg';Au.musicLoad();ok('a pick no longer listed falls back to the first',m.mi===0);
+   const M0=MU.match;MU.match=[l[0]];ok('one track: nothing to step to',Au.musicNext()===null);
+   MU.match='music/x.ogg';ok('a single file still reads as a list',Au.musicList().length===1&&Au.musicList()[0].f==='music/x.ogg');
+   MU.match=M0;cfg.musicMatch='';m.mi=0;Au.musicFetch=fw;}
   m.tr.menu=null;m.tr.match=null;}
  }catch(e){fails.push('threw: '+(e.stack||e.message).split('\n').slice(0,3).join(' | '));}
  return{fails,pass};
@@ -277,6 +303,11 @@ function staticChecks(){
   ok('…with its loop sidecar, the intro before the loop',!!sc&&sc.loop_start_sample>0&&sc.loop_end_sample>sc.loop_start_sample,sc);
   const r=MF.build([f],CONFIG);
   ok('manifest: music is listed as music, not as a sound or a bad name',r.music.length===1&&!r.bad.length&&!Object.keys(r.sounds).length,r);}
+ // the match tracks on disk
+ for(const e of A.Au.musicList()){const f=path.join(ROOT,'assets/audio',e.f),j=f.replace(/\.\w+$/,'.loop.json');
+  ok('the match track '+e.f+' exists',fs.existsSync(f));ok(e.f+' has a name for the toast',!!e.name);
+  const sc=fs.existsSync(j)&&JSON.parse(fs.readFileSync(j,'utf8'));
+  ok(e.f+' has its loop sidecar',!!sc&&sc.loop_end_sample>sc.loop_start_sample,sc);}
  return{fails,pass};
 }
 
@@ -322,6 +353,13 @@ const MUTS=[
  mutate('m.src.stop(t+M.fadeOut);','','the music is never stopped after its fade'),
  mutate('if(tr&&!m.src){','if(tr){','a new music voice every frame'),
  mutate('return a>=0&&b>a&&b<=dur+.01?','return a>=0?','a sidecar past the end of the file is trusted'),
+ mutate('m.mi=(m.mi+1)%l.length;','m.mi=m.mi+1;','the music key runs off the end of the list'),
+ mutate("if(!m||l.length<2||!w||w.tr!=='match')return null;",'if(!m||l.length<2)return null;','the music key steps the list in the menus and training'),
+ mutate('||m.src.buffer!==d.buf','','a landed track never replaces the one playing'),
+ mutate("if(!b||(k==='match'&&(this.musicList()[this.mx.mi]||{}).f!==f))return false;",'if(!b)return false;','a track stepped past still lands'),
+ mutate('cfg.musicMatch=e.f;','','the pick is not kept'),
+ mutate('this.mx.mi=i<0?0:i;','this.mx.mi=0;','a new session forgets the pick'),
+ mutate("if(!m.tr.match||m.tr.match.f!==e.f)this.musicFetch('match',e.f);",'','the next track is never fetched'),
 ];
 let caught=0;console.log('\nmutations (each must fail something):');
 for(const M of MUTS){

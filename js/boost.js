@@ -1,6 +1,6 @@
 'use strict';
 // ================= BOOST: a power hit you can see, and a team you can see is boosted =================
-// boost (S.eff[team].boost) multiplies a rod's hit impulse and lifts the ball's speed ceiling (physics.js collideRod) and showed nothing on the table; this shows it in two layers
+// boost (S.eff[team].boost) multiplies a rod's strike impulse and lifts the ball's speed ceiling (physics.js collideRod) and showed nothing on the table; this shows it in two layers
 // THE HIT: a boosted strike that leaves the boot fast gets a flash, a ring and a fan of sparks off the ball and a small camera punch, and the ball keeps a gold comet behind it
 //   boostTouch is the one hook (collideRod, both contact passes), boostTrail rides spawnTrail (fx.js)
 // THE STATE: every boot of a boosted team glows (one Points draw a team), the handle knobs go gold, a wave runs the rods at pickup, the glow stutters out in the last seconds and ends in a pop,
@@ -26,7 +26,7 @@ function boHash(n){const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floo
 function boostTouch(b,r,hold){
  if(b.pw>0&&(b.pwRod!==r||(r.pwAt||0)<=S.time))b.pw=0;   // a touch by anyone but the swing that threw it ends the comet
  if(!BO.on||hold||!(S.eff[r.team].boost>S.time))return;
- if(!(r.kickT>=0||r.shotOn||Math.abs(r.angVel)>BO.swingW))return;   // a strike, not a slide or a shove
+ if(!boostSwing(r))return;   // only a contact the boost powered (physics.js): a strike, not a trap, pin, tap, slide or bounce
  const w=(r.pwAt||0)-S.time;
  if(w>0&&w<=BO.gap)return;                                // one a swing (a stamp left from the last match is further out than the gap)
  const v=b.v,sp=Math.hypot(v.x,v.y,v.z);

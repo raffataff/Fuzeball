@@ -1884,8 +1884,21 @@ function coverReach(r,relFront){
  const CV=AIC.cover,E=AIC.defend.engage;
  if(relFront<=E)return CV.reachMax;
  const T=(relFront-E)/Math.max(Math.hypot(r.aiBVX,r.aiBVZ),CV.vFloor);   // a ball at rest still gets there, slowly
- return Math.min(CV.reachMax,DIFFS[teamDiff(r.team)].speed*CV.speedMul*Math.max(0,T-CV.slack));
+ return Math.min(CV.reachMax,DIFFS[teamDiff(r.team)].speed*CV.slide*CV.speedMul*Math.max(0,T-CV.slack));
 }
+// the keeper's / DEF's read of the ball's z (CONFIG.ai.cover.track): a lighter smoothing than the reaction's, led by the lag that leaves (and, with flight on, by where a shot fired now would cross this rod)
+function coverEye(r,b,D,tta,predL,relFront,dt){
+ const TK=AIC.cover.track,p=b.m.position,inc=tta>0&&tta<AIC.ttaMax;
+ if(!TK||!TK.on)return r.aiBZ+(inc?r.aiBVZ*tta*predL:0);
+ const tr=D.react*stReact(r)*TK.react,k=1-Math.exp(-dt/Math.max(.01,tr));
+ if(r.aiTZ==null){r.aiTZ=p.z;r.aiTVZ=b.v.z;}
+ r.aiTZ=lerp(r.aiTZ,p.z,k);r.aiTVZ=lerp(r.aiTVZ,b.v.z,k);
+ if(inc)return TK.inc?r.aiTZ+r.aiTVZ*tta*predL:r.aiBZ+r.aiBVZ*tta*predL;   // coming at the rod: where it crosses (the lag is in tta's own clock)
+ const lag=(D.reactDelay||0)*stReact(r)+tr;
+ return r.aiTZ+r.aiTVZ*(lag*TK.lead+Math.max(0,relFront)/TK.shotV*TK.carry*TK.flight)*predL;
+}
+// rods.js: the AI hand's slide speed and acceleration multiplier, cover.slide while this keeper / DEF covers the goal with nothing else on
+function coverSlide(r,uSeat){return !uSeat&&r.cvOn&&!r.act&&r.kickT<0?AIC.cover.slide:1;}
 // z this keeper/DEF man takes to share the goal with its mate; NaN when this rod is the one playing the ball (or has no mate to share with)
 // the DEF only covers while the ball is out in front of it: a ball at or behind it is its to play, so it stays on the ball's z
 function coverZ(r,bzp,relFront,dt){
@@ -1925,6 +1938,7 @@ function coverZ(r,bzp,relFront,dt){
    if(isUserRod(r))continue;
    r.raiseKeep=false;                     // an inherited raise (js/seats.js) dies the moment the AI has the rod back
    r.force=false;                         // set below once the rod has its ball; slideBlocked reads it
+   r.cvOn=false;                          // covering the goal this step (rods.js slides it at cover.slide)
    // training: a hidden rod or an AI-off team never chases or swings
    // TRN.lift[team] picks flat obstacle (false) or the passive raise (true)
    if(S.trn&&(r.trnHidden||!S.trn.ai[r.team])){
@@ -2004,9 +2018,11 @@ function coverZ(r,bzp,relFront,dt){
   const relFront=(bp0.x-r.x)*dir;               // ball ahead(+)/behind(−) this rod, dir-relative
   const force=r.force=FC.on&&relFront>-DEAD.live.back&&relFront<DEAD.live.ahead&&deadzoneMult(best.real.cur)===1&&deadLeft(best.real)<FC.left;   // the whistle is close and the ball is in this rod's reach (not a dead zone): stop deliberating and play it
   const DEF=AIC.defend,CV=AIC.cover;
-  const cvz=(CV.on&&!force&&(r.role==='GK'||r.role==='DEF')&&bp0.y<AIC.lowY)?coverZ(r,r.aiBZ+((tta>0&&tta<AIC.ttaMax)?r.aiBVZ*tta*predL:0),relFront,dt):NaN;
+  const gd=r.role==='GK'||r.role==='DEF',cbz=gd?coverEye(r,best,D,tta,predL,relFront,dt):0;   // read every step, so it is current when the cover takes over
+  const cvz=(CV.on&&!force&&gd&&bp0.y<AIC.lowY)?coverZ(r,cbz,relFront,dt):NaN;
   if(cvz===cvz){
-   pz=lerp(pz,cvz,r.aiIQ||r.cvW?1:CV.dumbBias);   // cover: split the mouth with the other of keeper/DEF (a keeper never half-chases a ball it can't reach)
+   r.cvOn=true;
+   pz=lerp(cbz+r.aiErr,cvz,r.aiIQ||r.cvW?1:CV.dumbBias);   // cover: split the mouth with the other of keeper/DEF (a keeper never half-chases a ball it can't reach)
   }else if(DEF.on && (r.role==='GK'||r.role==='DEF') && bp0.y<AIC.lowY && relFront>DEF.engage){
    // --- defending an incoming ball ---
    // sit on the ball-to-own-goal line so GK and DEF cover the shot at two depths

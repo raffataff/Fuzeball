@@ -97,7 +97,7 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 const G='(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz';
 const MUTS=[
  {n:'the foot box carries the back again',part:'col',first:true,from:/b\.v\.z=lerp\(b\.v\.z,\(nx\*r\.kickDir<-KICK\.rearDot&&!r\.pinPose\)\?cvz\*KICK\.rearCarry:cvz,g\);/,to:'b.v.z=lerp(b.v.z,cvz,g);'},
- {n:'the leg carries the back again',part:'col',from:'b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,'+G+',g);\n    if(!trapping)capSpeed(b,r,false,in2);',to:'b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);\n    if(!trapping)capSpeed(b,r,false,in2);'},
+ {n:'the leg carries the back again',part:'col',from:'b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,'+G+',g);\n    const aim=!trapping&&capSpeed(b,r,false,in2);',to:'b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,cvz,g);\n    const aim=!trapping&&capSpeed(b,r,false,in2);'},
  {n:'the front is the one that does not carry',part:'col',from:'nx*r.kickDir<-KICK.rearDot',to:'nx*r.kickDir>KICK.rearDot'},
  {n:'a posed rod loses its grip too',part:'col',from:'&&!r.pinPose)?cvz*KICK.rearCarry:cvz',to:')?cvz*KICK.rearCarry:cvz'},
  {n:'rearCarry is ignored (always none)',part:'col',from:'?cvz*KICK.rearCarry:cvz',to:'?0:cvz'},

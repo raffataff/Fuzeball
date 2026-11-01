@@ -167,7 +167,8 @@ function updateRods(dt){
   else{r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,0,KICK.dropLerp,r.fwdOut),Math.min(1,KICK.dropLerp*dt));}   // a forward pose coming back to rest is a back-lift: held short of a ball it would sweep (a human's too, from the forward pin: r.fwdOut)
    // Total Control's slide multiplier is per seat (each pad has its own triggers)
    const uSeat=seatOf(r);
-   let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
+   const cvS=coverSlide(r,uSeat);                     // a keeper / DEF covering the goal (ai.js)
+   let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*cvS*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
    // carrying a held ball is a shuffle, not a slide (the boot only drags the ball as fast as holdGrip transfers velocity); holdCfg is null mid-swing
    // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry
    const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),snk=r.kickStyle==='snake'&&!r.kickHit,slow=!!(r.pinB||H||snk);   // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
@@ -179,7 +180,7 @@ function updateRods(dt){
    if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
    const want=clamp((r.target-r.offset)/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped
-   const acc=AIC.slideAccel*stAgil(r)*dt;             // spd stat scales direction-change agility (+ stamina fade)
+   const acc=AIC.slideAccel*cvS*stAgil(r)*dt;         // spd stat scales direction-change agility (+ stamina fade)
    r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
    r.offset+=r.slideV*dt;
   }

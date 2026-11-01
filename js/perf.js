@@ -1,5 +1,5 @@
 'use strict';
-// ================= frame profiler (M) =================
+// ================= frame profiler (F3) =================
 // catches intermittent sags an average hides and names the cause
 // ms = rAF to rAF (the true interval incl. compositing, GPU wait, uploads, GC); js = time inside loop() (sim / rend / refl / fx); gap = ms - js (a gap spiking while js is flat = not our code)
 // a spike log, not a graph: a frame over CONFIG.perf.spikeMs (or spikeMult x typical) writes one line with its breakdown, newest first; perfDump() prints them
@@ -123,7 +123,7 @@ function perfSet(on){
 }
 function togglePerf(){
  perfSet(!PERF.on);
- toast('FRAME PROFILER',PERF.on?'M to hide · perfDump() in console':'off',1.1);
+ toast('FRAME PROFILER',PERF.on?'F3 to hide · perfDump() in console':'off',1.1);
  Au.ui();
 }
 // restore the saved state once the renderer exists (perf.js parses before initThree runs)

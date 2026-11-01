@@ -365,9 +365,9 @@ function goalFrameCollide(b,h){
 // it only bounds what a boot adds, never slows a faster ball; stepBall's maxV clamp stays the last word (cap.max > 1 so the best strikes reach maxV)
 function capSpeed(b,r,sweet,in2){
  const C=KICK.cap;
- if(!C.on)return;
+ if(!C.on)return true;
  const v=b.v,sp2=v.x*v.x+v.y*v.y+v.z*v.z,lo=b.t.maxV*C.min*C.knee;
- if(sp2<=lo*lo)return;              // under the lowest knee any contact could have: skips the stat reads on passive touches
+ if(sp2<=lo*lo)return true;         // under the lowest knee any contact could have: skips the stat reads on passive touches
  let f=C.base+C.str*stCapFrac(r),mx=C.max;
  if(sweet)f+=C.sweet;
  if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's own power trim: a finesse touch lowers the ceiling, a timed charge raises it
@@ -376,18 +376,24 @@ function capSpeed(b,r,sweet,in2){
  // a charge beats the cap: raises the ceiling and the most any ceiling may be
  const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
  if(w>0){f+=(C.charge||0)*w;mx+=(C.chargeTop||0)*w;}
- if(S.eff[r.team].boost>S.time)f+=C.boost;
+ if(S.eff[r.team].boost>S.time&&boostSwing(r))f+=C.boost;
  // ...and for the whole swing: later contacts of the swing keep the charged ceiling (r.swF / r.swMx, cleared by kickRod)
  if(w>0){r.swF=f;r.swMx=mx;}
  else if(r.kickT>=0&&r.swOver>0&&r.swF>0){if(r.swF>f)f=r.swF;if(r.swMx>mx)mx=r.swMx;}
  const cap=b.t.maxV*clamp(f,C.min,mx),knee=cap*C.knee;
  if(cap>b.t.maxV&&(w>0||(r.kickT>=0&&r.swOver>0)))b.over=Math.max(b.over||0,cap);   // stepBall's maxV clamp lets this ball keep it (and ratchets it down)
- if(sp2<=knee*knee)return;
+ if(sp2<=knee*knee)return true;
  const sp=Math.sqrt(sp2),span=cap-knee;
  let out=knee+span*(1-Math.exp(-(sp-knee)/span));
  const inSp=Math.sqrt(in2);
  if(out<inSp)out=Math.min(sp,inSp);     // the cap limits what this contact ADDED, never the speed it arrived with
  const k=out/sp;v.x*=k;v.y*=k;v.z*=k;   // components, not multiplyScalar: collideRod writes b.v by hand and the harnesses stub it as a plain object
+ // keep: a re-hit (clipped, arriving at about the speed it leaves at, still going the way it came) keeps the heading it came on at the scaled speed and lift, and aims nothing
+ const v0=C.keep&&b.v0;
+ if(!v0||k>=1||inSp<out*C.held||v0.x*v.x+v0.z*v.z<=0)return true;
+ const hs=Math.sqrt(v.x*v.x+v.z*v.z),h0=Math.sqrt(v0.x*v0.x+v0.z*v0.z);
+ if(h0>1e-6){v.x=v0.x*hs/h0;v.z=v0.z*hs/h0;}
+ return false;
 }
 // a snake leaves low: its contact turns the ball's climb down to shots.snake.loft above the pitch, a rotation in the vertical plane (no energy)
 function snakeLoft(b){
@@ -395,6 +401,11 @@ function snakeLoft(b){
  if(L==null||h<1e-6||v.y<=h*Math.tan(L))return;
  const sp=Math.hypot(h,v.y),k=sp*Math.cos(L)/h;
  v.x*=k;v.z*=k;v.y=sp*Math.sin(L);
+}
+// boost powers only a strike: a kick or a player shot while the leg turns forward, or the pad stick swinging it faster than kick.boostSwingW; a trap, pin, tap, slide or bounce is an ordinary touch
+function boostSwing(r){
+ const w=r.angVel*r.kickDir;
+ return w>0&&(r.kickT>=0||r.shotOn||(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW));
 }
 function collideRod(b,r){
  if(r.trnHidden)return;                   // training sandbox: hidden rods are ghosts — no contact
@@ -440,8 +451,9 @@ function collideRod(b,r){
     const relR=(p.x-r.x)*r.kickDir;
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
+    const V0=b.v0||(b.v0={x:0,y:0,z:0});V0.x=b.v.x;V0.y=b.v.y;V0.z=b.v.z;   // ...and its velocity, for the ceiling's keep
     let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
-    if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
+    if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;
     jm*=stHit(r);
     // player shot (js/shots.js): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
     if(r.shotOn)jm*=r.shotPow;
@@ -449,22 +461,20 @@ function collideRod(b,r){
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);   // the back of a man does not carry a ball along with the slide
-    if(!trapping)capSpeed(b,r,sweet,in2);   // per-contact speed ceiling (see the banner above); a held contact is exempt
+    const hit=trapping||capSpeed(b,r,sweet,in2),aim=hit&&!trapping;   // per-contact speed ceiling (see the banner above); a held contact is exempt; hit false = a re-hit, which aims and jitters nothing
     if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    // tiny imperfection prevents pixel-perfect side-to-side oscillations
-    const jit=Math.abs(jm)*FOOT_JITTER;
+    // tiny imperfection prevents pixel-perfect side-to-side oscillations; a re-hit adds none, or it piles up over the swing
     // seeded on its own stream: it draws per man per substep, so sharing would tie other consumers to the contact count
-    const JR=RNG.jit;
-    b.v.x+=(JR()-.5)*jit;b.v.y+=(JR()-.5)*jit*.3;b.v.z+=(JR()-.5)*jit;
+    if(hit){const jit=Math.abs(jm)*FOOT_JITTER,JR=RNG.jit;b.v.x+=(JR()-.5)*jit;b.v.y+=(JR()-.5)*jit*.3;b.v.z+=(JR()-.5)*jit;}
     // aim-assist bends a shot goalward: humans on a clean strike, AI rods on every contact, only shots already moving goalward
     // passFaceOK (rods.js): a side/back clip is a deflection, so the pass assist skips it; r.shotOn joins the gate (a Total Control swing has kickT<0); one contact spends the shot
-    if(!trapping&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
-    if(!trapping)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
+    if(aim&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
+    if(aim)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
      if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
@@ -514,22 +524,23 @@ function collideRod(b,r){
     const dead=KICK.capDeadPosed&&(r.pinPose||r.pinOn);   // a posed rod's leg is the catch: dead and gripping, as the foot
     const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
+    const V0=b.v0||(b.v0={x:0,y:0,z:0});V0.x=b.v.x;V0.y=b.v.y;V0.z=b.v.z;
     let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
-    if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;
+    if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;
     jm*=stHit(r);
     if(r.shotOn)jm*=r.shotPow;
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):(dead?stGrip(r):KICK.capGrip);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);
-    if(!trapping)capSpeed(b,r,false,in2);
+    const aim=!trapping&&capSpeed(b,r,false,in2);
     if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
     b.spin=clamp(b.spin+tang*KICK.spinGain,-KICK.spinClamp,KICK.spinClamp);
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    if(!trapping&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);   // human: power window only; AI: every contact; never the pass assist
-    if(!trapping)wallAssist(b,r,true);
+    if(aim&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);   // human: power window only; AI: every contact; never the pass assist
+    if(aim)wallAssist(b,r,true);
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}

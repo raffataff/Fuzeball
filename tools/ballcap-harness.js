@@ -27,7 +27,8 @@ const STC=CONFIG.stats;
 const ST=(r,k)=>(r.stats&&r.stats[k]!=null)?r.stats[k]:STC.base;
 const stCapFrac=new Function('ST','STC','clamp','return '+slice(rd('stats.js'),'stCapFrac'))(ST,STC,clamp);
 const S={time:0,eff:[{boost:-1},{boost:-1}]};
-const capSpeed=new Function('KICK','clamp','stCapFrac','S','return '+slice(rd('physics.js'),'capSpeed'))(KICK,clamp,stCapFrac,S);
+const boostSwing=new Function('KICK','return '+slice(rd('physics.js'),'boostSwing'))(KICK);
+const capSpeed=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+slice(rd('physics.js'),'capSpeed'))(KICK,clamp,stCapFrac,S,boostSwing);
 
 const C=KICK.cap,MV=BALL_TYPES.classic.maxV;
 const rod=(str,o={})=>Object.assign({team:0,stats:{str},shotOn:false,shotPow:1},o);
@@ -38,7 +39,7 @@ function run(sp,r,sweet,inSp){
  return Math.hypot(b.v.x,b.v.y,b.v.z);
 }
 const ceilOf=(r,sweet)=>{let f=C.base+C.str*stCapFrac(r);if(sweet)f+=C.sweet;
- if(r.shotOn)f+=C.shot*(r.shotPow-1);if(S.eff[r.team].boost>S.time)f+=C.boost;return MV*clamp(f,C.min,C.max);};
+ if(r.shotOn)f+=C.shot*(r.shotPow-1);if(S.eff[r.team].boost>S.time&&boostSwing(r))f+=C.boost;return MV*clamp(f,C.min,C.max);};
 
 /* ---- A · the knee passes everything under it through UNCHANGED ------------------------------ */
 for(const str of [0,5,10]){
@@ -72,7 +73,8 @@ for(const str of [0,5,10]){
  ok(run(245,chg,true)>run(245,rod(10),true),'C: a well-timed charge raises the ceiling over a plain sweet hit');
  ok(run(245,fin)<run(245,rod(10)),'C: a FINESSE touch lowers its own ceiling');
  S.eff[0].boost=1;S.time=0;
- ok(run(184,rod(5))>b,'C: POWER HITS raises the ceiling too, so its 2.5x impulse is visible');
+ ok(run(184,rod(5,{kickT:0.01,angVel:30,kickDir:1}))>b,'C: POWER HITS raises the ceiling of a swing too, so its 2.5x impulse is visible');
+ ok(run(184,rod(5,{kickT:-1,angVel:0,kickDir:1}))===b,'C: ...and not of a touch that is not a strike (a trap, a pin, a bounce)');
  S.eff[0].boost=-1;
 }
 
@@ -145,7 +147,7 @@ for(const str of [0,5,10]){
 {
  const lo=MV*C.min*C.knee;
  const src=rd('physics.js');
- ok((src.match(/if\(!trapping\)capSpeed\(/g)||[]).length===2,'E2: BOTH call sites exempt a held contact - a trap/dribble is not a strike');
+ ok((src.match(/(=trapping\|\||=!trapping&&)capSpeed\(/g)||[]).length===2,'E2: BOTH call sites exempt a held contact - a trap/dribble is not a strike');
  ok(lo>CONFIG.shots.hold.grip*KICK.userSpeed*CONFIG.shots.hold.carry,'E2: ...and a full-speed carry would not have reached the lowest knee anyway');
  for(const sp of [5,12,20,32,39])near(run(sp,rod(0)),sp,1e-9,`E2: a ${sp} u/s carry is untouched at the weakest possible ceiling`);
 }
@@ -157,11 +159,60 @@ for(const str of [0,5,10]){
  C.on=was;
 }
 
+/* ---- H · keep: a re-hit by a boot faster than the ball keeps the strike's heading (cap.keep) ---- */
+// the boot's contact point runs at ~240 u/s against a ceiling of ~104, so it meets the ball ~20 times a swing; scaling the whole velocity let every re-hit re-aim it straight
+const DEG=180/Math.PI,hd=v=>Math.atan2(v.z,v.x)*DEG;
+function keepRun(fn,v,v0,inSp,r,keep){
+ const was=C.keep;C.keep=keep;
+ const b={v:Object.assign({},v),t:BALL_TYPES.classic};if(v0)b.v0=Object.assign({},v0);
+ try{const ret=fn(b,r||rod(5,{kickT:0.01}),false,(inSp==null?(v0?Math.hypot(v0.x,v0.y,v0.z):0):inSp)**2);return {v:b.v,ret};}finally{C.keep=was;}
+}
+function keepChecks(fn,tag){
+ const r=rod(5,{kickT:0.01}),cap=ceilOf(r),fails=[],chk=(c,m)=>{if(!c)fails.push(m);};
+ // a strike from rest: exactly the old rescale
+ {const v={x:4*cap,y:0.3*cap,z:1.5*cap},z0={x:0,y:0,z:0},a=keepRun(fn,v,z0,0,r,true),o=keepRun(fn,v,z0,0,r,false);
+  chk(Math.abs(a.v.x-o.v.x)+Math.abs(a.v.y-o.v.y)+Math.abs(a.v.z-o.v.z)<1e-9,'H: a strike from rest leaves exactly as the old rescale');
+  chk(a.ret===true,'H: ...and it aims (the assist may bend it)');}
+ // a re-hit at the ceiling: the boot dragged it forward and the ceiling threw that away
+ {const v0={x:0.95*cap*Math.cos(14/DEG),y:0,z:0.95*cap*Math.sin(14/DEG)},v={x:2.3*cap,y:0.2*cap,z:0.1*cap};
+  const a=keepRun(fn,v,v0,null,r,true),o=keepRun(fn,v,v0,null,r,false);
+  chk(hd(o.v)<4,'H: off, a re-hit re-aims the ball straight (the bug)');
+  chk(Math.abs(hd(a.v)-14)<1e-6,`H: on, a re-hit keeps the heading the strike gave it (${hd(a.v).toFixed(2)} of 14)`);
+  chk(Math.abs(Math.hypot(a.v.x,a.v.y,a.v.z)-Math.hypot(o.v.x,o.v.y,o.v.z))<1e-9,'H: ...at exactly the old speed');
+  chk(Math.abs(a.v.y-o.v.y)<1e-9,'H: ...and the old lift');
+  chk(a.ret===false,'H: ...and a re-hit aims nothing (no assist piling up over the swing)');
+  chk(o.ret===true,'H: off, every contact aims as before');}
+ // a re-hit that turns the ball's speed into lift: the old, lower horizontal speed on the kept heading
+ {const v0={x:0.98*cap*Math.cos(10/DEG),y:0,z:0.98*cap*Math.sin(10/DEG)},v={x:1.2*cap,y:2*cap,z:0.05*cap};
+  const a=keepRun(fn,v,v0,null,r,true),o=keepRun(fn,v,v0,null,r,false);
+  chk(Math.abs(hd(a.v)-10)<1e-6,`H: a lifting re-hit keeps the heading (${hd(a.v).toFixed(2)} of 10)`);
+  chk(Math.abs(Math.hypot(a.v.x,a.v.z)-Math.hypot(o.v.x,o.v.z))<1e-9&&Math.abs(a.v.y-o.v.y)<1e-9,'H: ...at the old horizontal speed and lift');}
+ // a ball rolling along the row, struck up: a strike, exactly as before
+ {const v0={x:0.1*cap,y:0,z:0.4*cap},v={x:3*cap,y:0,z:0.5*cap},a=keepRun(fn,v,v0,null,r,true),o=keepRun(fn,v,v0,null,r,false);
+  chk(a.ret===true&&a.v.x===o.v.x&&a.v.z===o.v.z,'H: a ball struck up from a slow roll is a strike: it aims and leaves as before');}
+ // a ball running at the boot is turned round, not held on its way in
+ {const v0={x:-0.4*cap,y:0,z:0.1*cap},v={x:2.5*cap,y:0.1*cap,z:0.2*cap},a=keepRun(fn,v,v0,null,r,true),o=keepRun(fn,v,v0,null,r,false);
+  chk(a.v.x>0.5*cap&&a.v.x===o.v.x,'H: a ball arriving head-on is sent back out as before');}
+ // ...and so is a FAST one, which arrives at more than the speed it leaves at
+ {const v0={x:-1.1*cap,y:0,z:0.2*cap},v={x:2*cap,y:0,z:0.3*cap},a=keepRun(fn,v,v0,null,r,true);
+  chk(a.v.x>0&&a.ret===true,'H: a fast ball running at the boot is struck back, not kept on its way in');}
+ // a deflection the ceiling lets through untouched keeps its new heading
+ {const v0={x:1.5*cap,y:0,z:0},v={x:1.2*cap,y:0,z:0.6*cap},a=keepRun(fn,v,v0,null,r,true);
+  chk(a.v.x===1.2*cap&&a.v.z===0.6*cap,'H: a glancing deflection the ceiling does not clip keeps its new heading');}
+ // a contact under the knee, and a ball with no arrival velocity, are untouched
+ {const a=keepRun(fn,{x:0.3*cap,y:0,z:0.1*cap},{x:0,y:0,z:0.2*cap},null,r,true);chk(a.v.x===0.3*cap&&a.v.z===0.1*cap&&a.ret===true,'H: a contact under the knee is passed through');}
+ {const v={x:2.3*cap,y:0.2*cap,z:0.1*cap},a=keepRun(fn,v,null,0.95*cap,r,true),o=keepRun(fn,v,null,0.95*cap,r,false);chk(a.v.x===o.v.x&&a.v.z===o.v.z,'H: a ball with no arrival velocity (b.v0) gets the old rescale');}
+ if(tag==null)for(const f of fails)ok(false,f);
+ return fails.length;
+}
+ok(C.keep===true,'H: keep is on');
+keepChecks(capSpeed);
+
 /* ---- G · mutations: each must break something ------------------------------------------------ */
 function mutate(label,src,find,repl,check){
  const m=src.replace(find,repl);
  if(m===src){fail++;fails.push('MUTATION DID NOT APPLY: '+label);return;}
- const f=new Function('KICK','clamp','stCapFrac','S','return '+m)(KICK,clamp,stCapFrac,S);
+ const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+m)(KICK,clamp,stCapFrac,S,boostSwing);
  const runM=(sp,r,sw,inSp)=>{const b={v:{x:sp,y:0,z:0},t:BALL_TYPES.classic};
   f(b,r,!!sw,(inSp||0)*(inSp||0));return Math.abs(b.v.x);};
  ok(check(runM),'G mutation caught: '+label);
@@ -183,6 +234,20 @@ mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle==='trapShot'\)f\+=C
  rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pass',kickT:0.12}),true)-rm(1e4,rod(5,{kickStyle:'trapShot',kickT:0.12}),true))<1e-9);
 mutate('a charge no longer raises the most a ceiling may be',CS,/mx\+=\(C\.chargeTop\|\|0\)\*w;/,'',
  rm=>rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true)<=MV*C.max+1e-9);
+mutate('boost raises the ceiling of a touch that is not a strike',CS,'if(S.eff[r.team].boost>S.time&&boostSwing(r))','if(S.eff[r.team].boost>S.time)',
+ rm=>{S.eff[0].boost=1;S.time=0;const v=rm(184,rod(5,{kickT:-1,angVel:0,kickDir:1}));S.eff[0].boost=-1;return v>rm(184,rod(5,{kickT:-1,angVel:0,kickDir:1}));});
+function mutateK(label,src,find,repl){
+ const m=src.replace(find,repl);
+ if(m===src){fail++;fails.push('MUTATION DID NOT APPLY: '+label);return;}
+ const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+m)(KICK,clamp,stCapFrac,S,boostSwing);
+ ok(keepChecks(f,label)>0,'G mutation caught: '+label);
+}
+mutateK('keep ignored: a re-hit is rescaled as before',CS,'const v0=C.keep&&b.v0;','const v0=null;');
+mutateK('a re-hit still aims',CS,'v.z=v0.z*hs/h0;}\n return false;','v.z=v0.z*hs/h0;}\n return true;');
+mutateK('the kept heading loses the old speed',CS,'if(h0>1e-6){v.x=v0.x*hs/h0;v.z=v0.z*hs/h0;}','if(h0>1e-6){v.x=v0.x;v.z=v0.z;}');
+mutateK('every clipped contact counts as a re-hit',CS,'||inSp<out*C.held','');
+mutateK('a contact the ceiling did not clip counts as a re-hit',CS,'k>=1||','');
+mutateK('a ball running at the boot counts as a re-hit',CS,'||v0.x*v.x+v0.z*v.z<=0','');
 mutate('overspeed paid on any charge, however overcooked',CS,/const w=\(r\.shotOn&&r\.shotOver>0\)\?r\.shotOver:0;/,'const w=r.shotOn?1:0;',
  rm=>Math.abs(rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:0}),true)-rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true))<1e-9);
 
