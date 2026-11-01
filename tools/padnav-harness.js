@@ -13,7 +13,7 @@ const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
 const rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8').replace(/\r\n/g,'\n');
 const CORE=rd('js/core.js'),NAVSRC=rd('js/padnav.js'),HUDSRC=rd('js/hud.js'),LAYSRC=rd('js/layout.js');
-const EXPORT=';globalThis.__nav={NAV,NAV_SCREENS,navFamily,navMove,navDir,navSet,navCands,navNudge,navActivate,navAdjEnd,navDropEnd,padNavFilter,navTick,'
+const EXPORT=';globalThis.__nav={NAV,NAV_SCREENS,navFamily,navMove,navDir,navSet,navCands,navNudge,navActivate,navAdjEnd,navDropOpen,navDropEnd,navHide,navHints,padNavFilter,navTick,'
  +'padGlyph,padKeyHTML,padLabels,inputKind};';
 
 /* ---- a fake DOM: just enough surface for padnav, with FIXED rectangles ---- */
@@ -179,6 +179,23 @@ function suite(src,lsrc){
   c.N.navDir(-1,0);ok(sel.selectedIndex===3,'left off the first wraps to the last',sel.selectedIndex);
   c.N.navAdjEnd(false);ok(sel.selectedIndex===0,'B puts the selector back',sel.selectedIndex);
   c.N.navActivate(sel);c.N.navDir(-1,0);c.N.navAdjEnd(true);ok(sel.selectedIndex===3&&c.N.NAV.adj===null,'A keeps it',sel.selectedIndex);}
+
+ // 4d · a PICK LIST (vsel.js data-vsel="list", the venue selectors, where every step was a load): A opens a list under the whole slot, never steps in place; closed, ◀▶ move on
+ //   a list the mouse opened outlives the cursor hiding, and the first pad press acts on it with the cursor on its owner
+ {const c=boot(src),E=c.E,root=E('div',{r:[0,0,800,600]});
+  const w=E('span',{cls:['vsel','list'],r:[10,10,200,34]}),sel=E('select',{id:'pl',dataset:{vsel:'list'},r:[40,10,140,34],sel:0,options:[{},{},{}]}),nx=E('button',{id:'nx4',r:[300,10,80,30]});
+  w.add(sel);root.add(w,nx);c.N.NAV.root={key:'x',el:root};c.N.NAV.show=true;c.N.navSet(sel);
+  c.N.navDir(1,0);ok(c.N.NAV.el===nx&&sel.selectedIndex===0&&!sel.events.length,'right on a closed pick list moves on',nm(c.N.NAV.el));
+  c.N.navSet(sel);c.N.navHints(c.N.NAV.root);ok(/A\|Open/.test(c.N.NAV.hintSig),'its prompt is Open, not Change',c.N.NAV.hintSig);
+  c.N.navActivate(sel);const D=c.N.NAV.drop;
+  ok(!!D&&D.el===sel&&c.N.NAV.adj===null,'A opens a pick list as a list, not in place');
+  ok(!!D&&D.L.classList.contains('vs')&&D.L.style.minWidth==='200px'&&D.L.style.left==='10px','…styled as the slot and as wide as it',D&&D.L.style.minWidth+' '+D.L.style.left);
+  c.N.navDir(1,0);ok(sel.selectedIndex===0&&!sel.events.length&&c.N.NAV.drop===D,'◀▶ never step it while open');
+  c.N.navDir(0,1);c.N.navDropEnd(true);ok(sel.selectedIndex===1&&sel.events.join()==='input,change','one pick, one change',sel.events.join());
+  sel.events.length=0;c.N.navSet(nx);c.N.NAV.show=false;
+  c.N.navDropOpen(sel);c.N.navHide();ok(!!c.N.NAV.drop&&c.N.NAV.drop.el===sel,'the mouse moving leaves a list it opened alone');
+  c.N.navDir(0,1);ok(c.N.NAV.show&&c.N.NAV.el===sel&&!!c.N.NAV.drop&&c.N.NAV.drop.i===2,'the first pad press walks a mouse-opened list, the cursor on its owner',nm(c.N.NAV.el)+' '+(c.N.NAV.drop&&c.N.NAV.drop.i));
+  c.N.navDropEnd(true);ok(sel.selectedIndex===2&&sel.events.join()==='input,change','…and A picks from it',sel.selectedIndex);}
 
  // 4b · ◀▶ go to the next panel or nowhere (right from a dropdown wandered down its own panel; the first fix fell back to Reset Controls at the edge)
  {const c=boot(src),E=c.E,root=E('div',{r:[0,0,1400,800]});
@@ -377,9 +394,15 @@ const MUT=[
  ['no container rule',()=>mutate("return c1.filter(a=>a.dataset.nav==='capture'||!c1.some(b=>b!==a&&a.contains(b)));",'return c1;')],
  ['memory used on a fresh entry',()=>mutate('if(!back)delete NAV.mem[R.key];','')],
  ['filter lets eaten presses through',()=>mutate('for(const k in just)if(just[k]&&e[k])just[k]=false;','')],
- ['first press acts instead of revealing',()=>mutate('else navDefault();\n return false;','else navDefault();\n return true;')],
+ ['first press acts instead of revealing',()=>mutate('else navDefault();\n return!!NAV.drop;','else navDefault();\n return true;')],
+ ['a mouse-opened list eats the first pad press',()=>mutate('else navDefault();\n return!!NAV.drop;','else navDefault();\n return false;')],
+ ['the reveal puts the cursor elsewhere with a list open',()=>mutate(' if(NAV.drop)navSet(NAV.drop.el);\n else if(',' if(')],
+ ['the mouse moving closes an open list',()=>mutate('navAdjEnd(true);if(!NAV.show)return;NAV.show=false;','navAdjEnd(true);navDropEnd(false);if(!NAV.show)return;NAV.show=false;')],
  ['◀▶ change a closed select again',()=>mutate('if(el&&NAV.adj===el){',"if(el&&(NAV.adj===el||el.tagName==='SELECT')){")],
- ['A on a select changes it instead of opening a list',()=>mutate("if(t==='SELECT'){if(navVsel(el))navAdjStart(el);else navDropOpen(el);return;}","if(t==='SELECT'){navAdjStart(el);return;}")],
+ ['A on a select changes it instead of opening a list',()=>mutate("if(t==='SELECT'){if(navVsel(el)&&!navVlist(el))navAdjStart(el);else navDropOpen(el);return;}","if(t==='SELECT'){navAdjStart(el);return;}")],
+ ['a pick list steps in place like a selector',()=>mutate('if(navVsel(el)&&!navVlist(el))navAdjStart(el)','if(navVsel(el))navAdjStart(el)')],
+ ['a pick list prompts Change',()=>mutate("navVsel(el)&&!navVlist(el)?'Change':'Open'","navVsel(el)?'Change':'Open'")],
+ ['a pick list sizes off the select, not its slot',()=>mutate('box=vs?el.parentElement:el','box=el')],
  ['a value selector opens as a list again',()=>mutate("function navVsel(el){return!!(el.parentElement&&el.parentElement.classList.contains('vsel'));}",'function navVsel(el){return false;}')],
  ['a selector clamps instead of wrapping',()=>mutate('i=(i+d+n)%n;if(!o[i].disabled','i=Math.max(0,Math.min(n-1,i+d));if(!o[i].disabled')],
  ['a selector stops at a disabled option instead of skipping it',()=>mutate('for(let k=0;k<n;k++){i=(i+d+n)%n;if(!o[i].disabled&&!o[i].hidden)break;}','i=(i+d+n)%n;')],

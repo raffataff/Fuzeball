@@ -105,7 +105,9 @@ function suite(X,quiet){
  const fwdPosed=(rr,a)=>{rr.pinOn=true;rr.pinPose=true;rr.pinFwd=true;rr.pinA=a*rr.kickDir;rr.angle=rr.pinA;};
  r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'a leg leaning forward holds a ball under its foot ahead of the rod');
  r=rod(X);fwdPosed(r,0.9);r.pinFwd=false;b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'...the window is the lean\'s, not a flag\'s');
- r=rod(X);r.user=true;fwdPosed(r,0.9);b=ball(X,r,F9,0,0,-(P.capV+2));X.pinUpdate();ok(!r.pinB,'a player\'s forward foot keeps capV for a ball rolling along the row');
+ r=rod(X);r.user=true;fwdPosed(r,0.9);b=ball(X,r,F9,0,0,-(P.capV+2));X.pinUpdate();ok(r.pinB===b,'a player\'s forward foot takes a ball rolling along the row quicker than capV too (a roll from under the raised forward leg)');
+ r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,-(P.capV+2));X.pinUpdate();ok(!r.pinB,'...an AI rod\'s does not');
+ r=rod(X);r.user=true;fwdPosed(r,0.9);b=ball(X,r,F9,0,0,-(P.assist.roll.capV+2));X.pinUpdate();ok(!r.pinB,'...nor quicker than roll.capV');
  {const ff=P.fwdFront;P.fwdFront=F9-0.5;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(!r.pinB,'...past fwdFront is out of the window');P.fwdFront=ff;}
  {const fb=P.fwdBack;P.fwdBack=F9+0.5;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(!r.pinB,'...nearer than fwdBack is out of it');P.fwdBack=fb;}
  {const bk=P.back;P.back=3;r=rod(X);fwdPosed(r,0.9);b=ball(X,r,F9,0,0,0);X.pinUpdate();ok(r.pinB===b,'...and the back pin\'s rear edge does not cut it: the two are separate');P.back=bk;}
@@ -174,9 +176,9 @@ const base=suite(boot(PHYS,SHOTS),false);
 
 /* ---- mutations: each must break the suite ---- */
 const muts=[
- ['physics','if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&!fwd&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;','','a ball at any speed is caught'],
+ ['physics','if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;','','a ball at any speed is caught'],
  ['physics','&&isUserRod(r)?Math.max(P.capV,W.capV)','?Math.max(P.capV,W.capV)','an AI rod takes a quick rolling ball'],
- ['physics','(W&&!fwd&&Math.abs(b.v.x)','(W&&Math.abs(b.v.x)','a forward foot takes a quick rolling ball'],
+ ['physics','(W&&Math.abs(b.v.x)','(W&&!fwd&&Math.abs(b.v.x)','a forward foot keeps capV for a quick rolling ball'],
  ['physics','&&Math.abs(b.v.x)<=W.maxVX&&isUserRod','&&isUserRod','a ball crossing the row is taken quicker'],
  ['physics','?Math.max(P.capV,W.capV):P.capV','?1e9:P.capV','no ceiling on a rolling ball'],
  ['physics','&&P.assist.roll.on?P.assist.roll:null','?P.assist.roll:null','roll.on false is ignored'],

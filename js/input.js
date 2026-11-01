@@ -123,6 +123,12 @@ addEventListener('mouseup',e=>{
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 // The wheel is a press with no release: WheelUp / WheelDown, rod switch by default.
 addEventListener('wheel',e=>{if(!S.photo&&!S.freeRoam&&S.phase==='play'&&e.deltaY&&devSeat('mouse'))bindPress(e.deltaY>0?'WheelDown':'WheelUp');});
+// --- the slide hand (keys, d-pad, stick) ---
+// u -1..1 of the rod's own top speed (rods.js rodSlideMax), so the whole throw of a stick is live; the target never leads the rod by more than CTRL.slideLead s (or one frame) of it, so letting go stops the man
+function slideBy(r,s,u,dt){
+ const v=rodSlideMax(r,s,1),L=v*Math.max(dt,CTRL.slideLead);
+ r.target=clamp(clamp(r.target+clamp(u,-1,1)*v*dt,r.offset-L,r.offset+L),-r.maxOff,r.maxOff);
+}
 function userControlUpdate(dt){
  if(S.photo||S.freeRoam)return;
  // slide off the bindings per seat: bindHeld only counts inputs on a device this seat owns
@@ -132,7 +138,7 @@ function userControlUpdate(dt){
   let dz=0;
   if(bindHeld('slideUp',s))dz-=1;
   if(bindHeld('slideDown',s))dz+=1;
-  if(dz)r.target=clamp(r.target+dz*CTRL.slideSpeed*cfg.kbdSens*dt,-r.maxOff,r.maxOff);
+  if(dz)slideBy(r,s,dz*cfg.kbdSens,dt);
  }
  // auto rod-switch, per seat, silent: the zone the threat to this seat's goal (focusBall) is in, else the nearest rod in x
  // skips rods another seat holds and the keeper autoHoldRod (ai.js) withholds mid-save
@@ -151,7 +157,7 @@ function userControlUpdate(dt){
     if(zok)bi=zi;
     if(bi!==s.ctrl){
      rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;
-     s.padAngleArm=false;                          // a stick already deflected re-centres before it drives the new rod
+     seatStickSwitch(s);                           // a stick already deflected carries over, or re-centres before it drives the new rod (js/seats.js)
      s.slideArm=S.time+(CTRL.handover?CTRL.handover.settle||0:0);  // …and the swipe in flight doesn't come with it
      updateChips();
     }
@@ -211,7 +217,7 @@ function gamepadUpdate(dt){
   // VIEW retries a Skill Trial (the pad's R); trials.js owns what a retry is
   if(just[8]&&S.trial&&S.phase==='play'&&typeof trialRestart==='function'){trialRestart();continue;}
   if(just[8]&&S.tut&&S.phase==='play'&&typeof tutSkip==='function'){tutSkip();continue;}   // the tutorial's skip-a-lesson
-  if(!seat)continue;
+  if(!seat){if(just[3]&&!S.seats.length&&(inMatch()||S.phase==='goal'))cycleCam(1);continue;}   // Y: an AI showdown's camera (no seat claims a pad)
   padSeatUpdate(dt,gp,seat,just);
  }
 }
@@ -220,7 +226,7 @@ function gamepadUpdate(dt){
 function padSeatUpdate(dt,gp,s,just){
  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
  // (the hand-off rule, a dropped rod keeps no wind-up, is shots.js shotSeatsUpdate's)
- if(!r){s.padRaise=false;return;}
+ if(!r){s.padRaise=false;s.kickW=-1;return;}
  const DZ=cfg.padDeadzone,TC=cfg.padControlMode==='total';
  // TC speed: triggers scale the slide step size, not rod speed (tcMult floored at 1); LT wins a tie, putting the charge chord on the fine step
  let slideMult=1;
@@ -233,21 +239,20 @@ function padSeatUpdate(dt,gp,s,just){
   const padLive=gp.buttons.some(b=>b.pressed||b.value>0.02)||gp.axes.some(a=>Math.abs(a)>DZ);
   slideMult=m;s.tcMult=padLive?Math.max(1,m):1;
  }else s.tcMult=1;
- // slide: 'ly' = left-stick up/down, 'lx' = left/right; past the deadzone rescaled to 0..1, shaped by padSlideCurve, optionally inverted, scaled by padSlideSens
- let ax=(cfg.padSlideAxis==='lx'?gp.axes[0]:gp.axes[1])||0,ay=0;
- if(Math.abs(ax)>DZ){
-  const n=(Math.abs(ax)-DZ)/(1-DZ);                  // 0 at deadzone edge → 1 at full deflection
-  ay=Math.pow(n,cfg.padSlideCurve)*Math.sign(ax);
-  if(cfg.padSlideInvert)ay=-ay;
- }
- if(gpDown(gp,12))ay-=1;if(gpDown(gp,13))ay+=1;      // d-pad ↕ always slides (digital)
- if(ay&&seatSlideOK(s))r.target=clamp(r.target+ay*CTRL.slideSpeed*cfg.padSlideSens*slideMult*dt,-r.maxOff,r.maxOff);  // frozen for a beat after an auto hand-over (js/seats.js)
+ // slide: the left stick past a radial deadzone, rescaled 0..1 and shaped by padSlideCurve, its share along the slide axis ('ly' up/down, 'lx' left/right); the d-pad ↕ always adds a full step (digital)
+ // padSlideSens and the TC step scale it against the rod's own top speed (slideBy): a full stick is that speed, whatever the stamina, frost or a carried ball leave it
+ const lx=gp.axes[0]||0,ly=gp.axes[1]||0,mag=Math.hypot(lx,ly);
+ let u=0;
+ if(mag>DZ){u=Math.pow(Math.min(1,(mag-DZ)/(1-DZ)),cfg.padSlideCurve)*(cfg.padSlideAxis==='lx'?lx:ly)/mag;if(cfg.padSlideInvert)u=-u;}
+ if(gpDown(gp,12))u-=1;if(gpDown(gp,13))u+=1;
+ if(u&&seatSlideOK(s))slideBy(r,s,u*cfg.padSlideSens*slideMult/s.tcMult,dt);   // frozen for a beat after an auto hand-over (js/seats.js)
  // angle: absolute tilt, stick position = target angle ('ry' = right stick up/down, 'rx' = left/right); forward eases to strike, back to raised, centre = feet down
  // sd is the same signed value for shots.js: -1 fully back .. +1 fully forward
  let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0,sd=0;
- // re-centre gate: a stick already forward at a switch would snap the new rod to the strike angle in one frame (the kickA0 spike, js/rods.js)
- // so a switch disarms the stick (padAngleArm) until it passes the deadzone
- if(!s.padAngleArm&&Math.abs(rs)<=DZ)s.padAngleArm=true;
+ // re-centre gate: a stick already forward at a switch would snap the new rod to the strike angle in one frame (the kickA0 spike, js/rods.js), so a switch disarms it (padAngleArm)
+ // until it is back inside the deadzone or has crossed centre since the last poll: a flick from back to forward often skips the deadzone between two frames
+ if(!s.padAngleArm&&(Math.abs(rs)<=DZ||rs*(s.padRs||0)<0))s.padAngleArm=true;
+ s.padRs=rs;
  if(s.padAngleArm&&Math.abs(rs)>DZ){
   if(cfg.padAngleInvert)rs=-rs;
   let d=(Math.abs(rs)-DZ)/(1-DZ)*Math.sign(rs);      // 0 at deadzone edge → ±1 at full deflection
@@ -257,13 +262,24 @@ function padSeatUpdate(dt,gp,s,just){
   r.padAngleOn=true;
   rodRaiseRelease(r);                                // the stick is driving the angle now — inherited raise done
  }else{r.padAngleTarget=0;r.padAngleOn=false;}
+ // a switch carried the stick over (seats.js seatStickSwitch): the new rod eases onto its angle until the leg gets there or the stick moves (rods.js)
+ const HC=CTRL.handover,mv=!HC||Math.abs(s.padRs-(s.carryRs||0))>HC.stickMove;
+ if(s.padCarry){s.padCarry=false;r.padCarry=r.padAngleOn&&!mv;}
+ else if(r.padCarry&&(!r.padAngleOn||mv))r.padCarry=false;
  // TC swerve: the right-stick axis not bound to angle, stored on the rod and added to side-spin on contact (physics.js)
  if(TC){r.tcSpin=tcSwerveFromAxes(gp);}
  else if(r.tcSpin)r.tcSpin=0;
  // shots: read the trigger axis and charge source into this seat's pad record; the step runs once per seat after all pads
- if(shotsOn())shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd);
+ const P=shotsOn()?shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd):null;
  // A: kick (RT is the alternate kick only while shots are off); with a wind-up live the kick button is a second release
- if((just[0]&&shotKickPress(TC))||(!TC&&just[7]&&!shotsOn()))shotKickEdge(r,shotPadAxis(gp));
+ // pressed while LT is still on its way down it waits a moment for the trigger (shotChordWait), so LT and A pressed together are the pass; a rod switch drops a waiting press
+ if(just[0]&&shotKickPress(TC)){s.kickW=0;s.kickR=r;}
+ if(s.kickW>=0){
+  if(s.kickR!==r)s.kickW=-1;
+  else if(shotChordWait(P,s.kickW))s.kickW+=dt;
+  else{s.kickW=-1;shotKickEdge(r,P?P.m:0);}
+ }
+ if(!TC&&just[7]&&!shotsOn())shotKickEdge(r,0);
  if(just[1])toggleSweetGuide(s);                     // ○ (B) — sweet-spot guide, on THIS seat's rod
  if(just[3])cycleCam(1);                             // Y
  if(just[4]||just[14])seatStep(s,-1);                // LB / d-pad ← (skips rods another seat holds)

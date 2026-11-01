@@ -135,8 +135,7 @@ function startMatchNow(mode,rodLockRole){
   S.seats=mode==='roster'?S.roster.map(p=>makeSeat(p.team,p.devs,p.lockRole))
    :S.userTeam<0?[]:[soloSeat(S.userTeam,rodLockRole)];
   seatBindRods();
-  // the camera persists between matches: step off a shot that's no longer offerable
-  if(typeof camModeOK==='function'&&!camModeOK(S.camMode))cycleCam(1);
+  if(typeof camMatchStart==='function')camMatchStart();   // playing and watching keep their own camera (js/fx.js)
   hudHint(...matchHint());
  // remember where this match launched from so quitting returns there (league/cup have their own return paths, a bare quit goes home)
  S.fromScreen=S.lg?'home':screenId();

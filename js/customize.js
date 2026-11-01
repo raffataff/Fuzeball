@@ -286,7 +286,7 @@ function pvLoadModel(){
   const sw=CONFIG.playerModel.hairSwatches;
   g.traverse(ch=>{if(!ch.isMesh)return;const nm=ch.material.name.toLowerCase();
    const cm=ch.material.clone();ch.material=cm;if(teamParts.has(nm))PV.mats.push(cm);
-   else if(hairParts.has(nm)){PV.hairMats.push(cm);cm.color.set(sw[Math.floor(Math.random()*sw.length)]);}});
+   else if(hairParts.has(nm)){PV.hairMats.push(cm);cm.color.set(sw[Math.floor(Math.random()*sw.length)]).convertSRGBToLinear();}});
   PV.model=g;PV.loadedId=am.id;PV.root.add(g);pvApply();
  };
  if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);show(PV.cache[am.id]);return;}

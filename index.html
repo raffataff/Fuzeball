@@ -53,7 +53,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.45</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.46</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -188,10 +188,10 @@
     </div>
     <div class="panel" id="menuTablePanel">
       <h3>Table &amp; Venue</h3>
-      <div class="row"><label>Table</label><select id="setTable"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
-      <div class="row"><label>Skin</label><select id="setSkin"></select></div>
-      <div class="row"><label>Pitch</label><select id="setPitch"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
-      <div class="row"><label>Location</label><select id="setRoom"></select></div>
+      <div class="row"><label>Table</label><select id="setTable" data-vsel="list"><option value="classic">CLASSIC</option><option value="arena">ARENA</option></select></div>
+      <div class="row"><label>Skin</label><select id="setSkin" data-vsel="list"></select></div>
+      <div class="row"><label>Pitch</label><select id="setPitch" data-vsel="list"><option value="grass1">Grass Field</option><option value="grass2">Royal Grass</option><option value="cyatron">Cyatron Grid</option><option value="verdantia">Verdantia</option></select></div>
+      <div class="row"><label>Location</label><select id="setRoom" data-vsel="list"></select></div>
       <div class="row"><label>Reflections</label><input type="checkbox" id="setReflect" checked></div>
     </div>
   </div>
@@ -717,7 +717,7 @@ if(DEV){
   {srcs:['vendor/KTX2Loader.js','https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/loaders/KTX2Loader.js']},
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
  /* CDN_FALLBACK (OFF BY DEFAULT for security in packaged builds) — local vendor first; the second

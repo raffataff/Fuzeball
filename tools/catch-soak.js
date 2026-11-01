@@ -22,7 +22,7 @@
  window.kickRod=function(r,style,aim,curve){
   if(T&&r.kickT<0){
    const k=style==='trapShot'?'pin':style==='pass'?'pass':style==='snake'?'snake':'plain';
-   T.sw.push({t:S.time,team:r.team,k,sc:S.score[r.team]});
+   T.sw.push({t:S.time,team:r.team,k,sc:S.score[r.team],why:k==='pin'?'pin:'+r.pcWhy:null});
    T.n[k]=(T.n[k]||0)+1;
   }
   return __kr0.apply(this,arguments);
@@ -31,10 +31,12 @@
   for(let i=T.sw.length-1;i>=0;i--){
    const s=T.sw[i];
    if(!final&&S.time-s.t<T.look)continue;
-   const q=T.out[s.k]||(T.out[s.k]={n:0,blocked:0,saved:0,stopped:0,goal:0});
-   q.n++;if(S.lastTouch>=0&&S.lastTouch!==s.team)q.blocked++;
-   if(s.opp==='GK')q.saved++;else if(s.opp)q.stopped++;
-   if(S.score[s.team]>s.sc)q.goal++;
+   for(const key of s.why?[s.k,s.why]:[s.k]){   // a pin shot is tallied under 'pin' and under why it was fired (pin:pull, pin:push...)
+    const q=T.out[key]||(T.out[key]={n:0,blocked:0,saved:0,stopped:0,goal:0});
+    q.n++;if(S.lastTouch>=0&&S.lastTouch!==s.team)q.blocked++;
+    if(s.opp==='GK')q.saved++;else if(s.opp)q.stopped++;
+    if(S.score[s.team]>s.sc)q.goal++;
+   }
    T.sw.splice(i,1);
   }
  }
@@ -73,7 +75,7 @@
   const C={},W={};for(const k in CAS)C[k]=pm(CAS[k]);for(const k in CAW)W[k]=pm(CAW[k]);
   return {on:o.on,diff:o.diff||cfg.diffRed,matches:T.m,wallS:+((performance.now()-t0)/1000).toFixed(1),goalsPerMatch:pm(T.goals),deadBallPerMatch:pm(T.whistles),
    catchPerMatch:C,endedBy:W,retrievePerMatch:{enter:pm(BGS.retEnter-R0.enter),pin:pm(BGS.retPin-R0.pin),shot:pm(BGS.retShot-R0.shot),drop:pm(BGS.retDrop-R0.drop)},pinHoldS:avg(T.holds),pinnedShare:+(T.pinSteps/Math.max(1,T.steps*rods.length)).toFixed(4),
-   pinShots:sh('pin'),snakes:sh('snake'),passes:sh('pass'),plainKicks:sh('plain')};
+   pinShots:sh('pin'),snakes:sh('snake'),passes:sh('pass'),plainKicks:sh('plain'),pinBy:Object.keys(T.out).filter(k=>k.indexOf('pin:')===0).reduce((o,k)=>(o[k.slice(4)]={n:T.out[k].n,goal:T.out[k].goal,keeper:T.out[k].saved},o),{})};
  }
  // one hand-placed ball at the red ATT: vx is dir-relative (negative = toward the rod from upfield), rel the start (negative = behind the rod); iq forces the roll
  function catchScene(o){
@@ -96,13 +98,16 @@
   return {fire,L};
  }
  // catchTry('push off',()=>{AIC.catch.push.on=false;},[3001,3201]) = catchSoak (12 matches a seed) with CONFIG.ai.catch overridden by the function, restored after; the pin-shot figures that matter
+ // the function must look AIC.catch up when it runs: the restore replaces its sub-objects, so one held from an earlier call is stale
  function catchTry(tag,ov,seeds){
   const CA=AIC.catch,keep=JSON.stringify(CA);ov();
-  const A={n:0,pin:0,bl:0,row:0,gk:0,goals:0,flip:0,pass:0,ends:{}};
-  try{for(const s0 of seeds||[3001]){const r=catchSoak({seeds:12,secs:120,on:true,seed0:s0});A.n++;A.pin+=r.pinShots.perMatch;A.bl+=r.pinShots.blocked*r.pinShots.perMatch;A.row+=r.pinShots.rowTouch*r.pinShots.perMatch;A.gk+=r.pinShots.keeperTouch*r.pinShots.perMatch;A.goals+=r.goalsPerMatch;A.flip+=r.catchPerMatch.flip;A.pass+=r.passes.perMatch;for(const k in r.endedBy)if(k.indexOf('fire:')===0)A.ends[k]=(A.ends[k]||0)+r.endedBy[k];}}
+  const A={n:0,pin:0,pg:0,bl:0,row:0,gk:0,goals:0,dead:0,flip:0,pass:0,ends:{},by:{}};
+  try{for(const s0 of seeds||[3001]){const r=catchSoak({seeds:12,secs:120,on:true,seed0:s0});A.n++;A.pin+=r.pinShots.perMatch;A.pg+=r.pinShots.goalPerMatch;A.dead+=r.deadBallPerMatch;
+   for(const k in r.pinBy){const q=A.by[k]||(A.by[k]={n:0,goal:0,keeper:0});q.n+=r.pinBy[k].n;q.goal+=r.pinBy[k].goal;q.keeper+=r.pinBy[k].keeper;}A.bl+=r.pinShots.blocked*r.pinShots.perMatch;A.row+=r.pinShots.rowTouch*r.pinShots.perMatch;A.gk+=r.pinShots.keeperTouch*r.pinShots.perMatch;A.goals+=r.goalsPerMatch;A.flip+=r.catchPerMatch.flip;A.pass+=r.passes.perMatch;for(const k in r.endedBy)if(k.indexOf('fire:')===0)A.ends[k]=(A.ends[k]||0)+r.endedBy[k];}}
   finally{const k=JSON.parse(keep);for(const x in k)CA[x]=k[x];}
   const f=(x)=>+(x/A.n).toFixed(2),E={};for(const k in A.ends)E[k.slice(5)]=f(A.ends[k]);
-  return {tag,matches:A.n*12,goals:f(A.goals),pinShots:f(A.pin),blocked:A.pin?+(A.bl/A.pin).toFixed(2):0,rowStopped:A.pin?+(A.row/A.pin).toFixed(2):0,keeperTouch:A.pin?+(A.gk/A.pin).toFixed(2):0,flips:f(A.flip),passes:f(A.pass),firedBy:E};
+  const B={};for(const k in A.by)B[k]=`${A.by[k].goal}/${A.by[k].n} goals, keeper ${A.by[k].keeper}`;   // every pin shot of the run by why it was fired
+  return {tag,matches:A.n*12,goals:f(A.goals),deadBalls:f(A.dead),pinShots:f(A.pin),pinGoals:f(A.pg),pinBy:B,blocked:A.pin?+(A.bl/A.pin).toFixed(2):0,rowStopped:A.pin?+(A.row/A.pin).toFixed(2):0,keeperTouch:A.pin?+(A.gk/A.pin).toFixed(2):0,flips:f(A.flip),passes:f(A.pass),firedBy:E};
  }
  window.catchSoak=catchSoak;window.catchScene=catchScene;window.catchTry=catchTry;
 })();

@@ -67,7 +67,7 @@ function slideStep(r,A,ms){const want=Math.max(-ms,Math.min(ms,(r.target-r.offse
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
  const CA=X.AIC.catch,T=CA.tictac,ST=T.strike,FB=X.FOOT_BOX,c0=FB.z+X.BALL_R,A=X.AIC.slideAccel;
- CA.recv.ready.on=false;X.setOut(null);
+ CA.recv.ready.on=false;CA.push.play.on=false;X.setOut(null);   // the pull (catch-harness) would take the wide holds these tests work
  const SQ=T.square,TH=T.thru,HT=Math.max(T.minHold,CA.settleT)+0.01;   // the rally's older rules first (a fixed foot, no let-through, no warm-up, no revert, no lunge room, tic-tac last); the newer ones have their own blocks below
  T.first=false;SQ.on=false;TH.on=false;ST.warm=0;ST.back=-1e9;T.lungeRoom=0;
  // ---- the pair ----

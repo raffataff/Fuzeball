@@ -4,8 +4,9 @@
 // one shared geometry per team (a few seeded shapes), two transparent draws a man while frozen and nothing otherwise; the break throws faceted chunks (one instanced draw, flown here) plus vfx.js's glints and mist; tuning in CONFIG.fx.ice
 
 const IC=CONFIG.fx.ice;
-const ICE={built:false,tex:null,mat:[null,null],geo:[[],[]],fit:[null,null],key:['',''],pal:[],hot:null,body:null,sh:null,
- tm:[{live:false,age:0,until:0,pulse:0,glint:0},{live:false,age:0,until:0,pulse:0,glint:0}]};
+// rp = the blocks follow a replay's footage, not the live match
+const ICE={built:false,rp:false,tex:null,mat:[null,null],geo:[[],[]],fit:[null,null],key:['',''],pal:[],hot:null,body:null,sh:null,
+ tm:[{live:false,age:0,left:0,pulse:0,glint:0},{live:false,age:0,left:0,pulse:0,glint:0}]};
 const _icV=new THREE.Vector3(),_icW=new THREE.Color(0xffffff);
 
 function iceHash(n){const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floor(s);}
@@ -328,10 +329,20 @@ function iceGlint(t){
 }
 
 // --- per frame ---
-function iceStart(t,T,e){
- T.live=true;T.age=0;T.until=e.frozen;T.pulse=1;T.glint=0.2;
+function iceAlive(r,mi){const ru=r.removedUntil[mi];return (!ru||ru<=S.time)&&r.men[mi].visible;}
+function iceStart(t,T,left){
+ T.live=true;T.age=0;T.left=left;T.pulse=1;T.glint=0.2;
  for(const r of rods)if(r.team===t&&r.ice)for(const it of r.ice)it.vis=false;
  Au.play('ice_form');
+}
+// into or out of a replay: the blocks take the new clock's frost as it stands, full grown, with no form or break
+function iceSnap(t,T,on,left){
+ T.live=on;T.left=left;T.pulse=0;
+ for(const r of rods)if(r.team===t&&r.ice)for(let mi=0;mi<r.ice.length;mi++){
+  const it=r.ice[mi];
+  it.vis=on&&iceAlive(r,mi);it.born=T.age-IC.grow;
+  if(!it.vis)it.g.visible=false;
+ }
 }
 // the frost ran out (shatter) or the match let go of it (just hide)
 function iceStop(t,T,fx){
@@ -354,33 +365,36 @@ function iceUpdate(rdt){
  else if(rods.length&&rods[0].ice===undefined){ICE.built=false;return;}   // the rods were rebuilt: dress the new ones next frame
  iceFitTeam(0);iceFitTeam(1);
  iceChunksUpdate(rdt);
- const hide=S.phase==='replay',live=S.phase!=='menu';
+ // a replay runs the blocks off the footage's frost and clock (js/replay.js)
+ const rp=S.phase==='replay'&&typeof replayIce==='function',cut=rp!==ICE.rp,live=S.phase!=='menu',dt=rp?RP.jDt:rdt;
+ ICE.rp=rp;
  for(let t=0;t<2;t++){
-  const T=ICE.tm[t],e=S.eff[t],on=live&&e.frozen>S.time;
-  if(on&&!T.live)iceStart(t,T,e);
+  const T=ICE.tm[t],left=rp?replayIce(t):S.eff[t].frozen-S.time,on=live&&left>0;
+  if(cut)iceSnap(t,T,on,left);
+  else if(on&&!T.live)iceStart(t,T,left);
   else if(!on&&T.live)iceStop(t,T,live);
   if(!on)continue;
-  T.age+=rdt;
-  if(e.frozen>T.until+0.5)T.pulse=1;   // frost picked up again while frozen
-  T.until=e.frozen;
-  const left=e.frozen-S.time,w=left<IC.warn?1-left/IC.warn:0,f=0.5+0.5*Math.sin(left*IC.flicker),m=ICE.mat[t];
-  T.pulse=Math.max(0,T.pulse-rdt*2.5);
+  T.age+=dt;
+  if(left>T.left+0.5)T.pulse=1;   // frost picked up again while frozen
+  T.left=left;
+  const w=left<IC.warn?1-left/IC.warn:0,f=0.5+0.5*Math.sin(left*IC.flicker),m=ICE.mat[t];
+  T.pulse=Math.max(0,T.pulse-dt*2.5);
   m.f.opacity=IC.opacity*(1-0.4*w*f);m.b.opacity=IC.back*(1-0.4*w*f);
   m.f.emissiveIntensity=IC.glowK*(1+T.pulse*1.5+w*1.2*f);m.b.emissiveIntensity=IC.glowK*0.5*(1+T.pulse*1.5+w*1.2*f);
   m.u.uIceK.value=IC.rim.k*(1+T.pulse+w*f);
   for(const r of rods){
    if(r.team!==t||!r.ice)continue;
    for(let mi=0;mi<r.ice.length;mi++){
-    const it=r.ice[mi],ru=r.removedUntil[mi],alive=(!ru||ru<=S.time)&&r.men[mi].visible;
+    const it=r.ice[mi],alive=iceAlive(r,mi);
     if(alive&&!it.vis){it.vis=true;it.born=T.age;iceForm(r,it);}
     else if(!alive&&it.vis)iceShatter(r,mi,it,true);
     if(!it.vis)continue;
     const u=clamp((T.age-it.born)/IC.grow,0,1),k=1+2.70158*Math.pow(u-1,3)+1.70158*Math.pow(u-1,2);
     it.g.scale.set(lerp(0.72,1,k),lerp(0.2,1,k),lerp(0.72,1,k));
-    it.g.visible=!hide;
+    it.g.visible=true;
    }
   }
-  T.glint-=rdt;
+  T.glint-=dt;
   if(T.glint<=0){T.glint=IC.glint.every*rand(0.6,1.5);iceGlint(t);}
  }
 }

@@ -3,6 +3,7 @@
 // every <select> on a menu screen is wrapped at boot; the select stays the source of truth (the wrapper only steps selectedIndex and fires input + change)
 // mouse: an arrow steps that way, a click on the value steps forward (its mousedown is eaten so the native list never opens); pad: A opens, ◀▶ cycle, A keeps, B puts back (see padnav.js)
 // steps wrap and skip disabled/hidden options; only selects inside a .screen are wrapped, dev panels keep plain dropdowns
+// data-vsel="list" = a pick list instead (anything that loads on change: rooms, pitches, tables): a click or A opens padnav's list, so one pick is one load
 function vselStep(sel,d){
  const o=sel.options,n=o.length;if(!n)return false;let i=sel.selectedIndex;
  for(let k=0;k<n;k++){i=(i+d+n)%n;if(!o[i].disabled&&!o[i].hidden)break;}
@@ -16,15 +17,24 @@ function vselSync(sel){
  let live=0;for(const o of sel.options)if(!o.disabled&&!o.hidden)live++;
  w.classList.toggle('one',live<2||sel.disabled);
 }
+// a second click on the owner closes it
+function vselOpen(sel){
+ if(sel.disabled||sel.parentElement.classList.contains('one'))return;
+ if(NAV.drop&&NAV.drop.el===sel)navDropEnd(false);else navDropOpen(sel);
+}
 function vselWrap(sel){
  if(!sel.parentNode||sel.parentNode.classList.contains('vsel'))return;
- const w=document.createElement('span');w.className='vsel';
+ const w=document.createElement('span'),list=sel.dataset.vsel==='list';w.className='vsel';
  if(!sel.closest('.row,.czRow'))w.classList.add('wide');   // a select standing alone in a panel spans it
  const arrow=d=>{const a=document.createElement('i');a.className='vsA'+(d>0?' r':'');
   a.addEventListener('mousedown',e=>{e.preventDefault();vselStep(sel,d);});
   return a;};
- sel.parentNode.insertBefore(w,sel);w.append(arrow(-1),sel,arrow(1));
- sel.addEventListener('mousedown',e=>{if(e.button!==0)return;e.preventDefault();vselStep(sel,1);});
+ const ic=c=>{const a=document.createElement('i');a.className='vsA '+c;return a;};
+ sel.parentNode.insertBefore(w,sel);
+ if(list){w.classList.add('list');w.append(ic('sp'),sel,ic('dn'));   // the spacer keeps the value centred
+  w.addEventListener('mousedown',e=>{if(e.button!==0)return;e.preventDefault();vselOpen(sel);});}
+ else{w.append(arrow(-1),sel,arrow(1));
+  sel.addEventListener('mousedown',e=>{if(e.button!==0)return;e.preventDefault();vselStep(sel,1);});}
  new MutationObserver(()=>vselSync(sel)).observe(sel,{childList:true,subtree:true,attributes:true});
  vselSync(sel);
 }

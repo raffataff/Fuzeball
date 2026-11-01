@@ -30,7 +30,7 @@ const stubs=[
 "function trnPlace(x,z){let b=S.balls[0];if(!b){b=mkBall(x,z);S.balls.push(b);}else{b.m.position.x=x;b.m.position.z=z;b.m.position.y=BALL_R;b.v.set(0,0,0);}return b;}",
 // input.js userControlUpdate's neighbours
 "function seatSlideOK(){return true;}function zonePick(){return -1;}function autoHoldRod(){return false;}function rodTaken(){return false;}",
-"function clearRodAI(){}function updateChips(){}function rodHoldRaise(){return false;}",
+"function clearRodAI(){}function updateChips(){}function rodHoldRaise(){return false;}function seatStickSwitch(){}",
 "function focusBall(){return S.balls[0]||null;}"
 ].join(NL);
 

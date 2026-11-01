@@ -628,7 +628,7 @@ function passPick(r,bx,bz,mode){
  return r.passEv=passEval(r,bx,bz,mode);
 }
 // --- catch (CONFIG.ai.catch) ---
-const CAS={snake:0,enter:0,front:0,behind:0,side:0,meet:0,meetOk:0,tap:0,tapOk:0,tapFail:0,retTap:0,back:0,pin:0,hand:0,shot:0,pass:0,steer:0,run:0,runFire:0,recv:0,recvPin:0,reseat:0,fwdCarry:0,fwdTap:0,carryFirst:0,tapFirst:0,stoppedFetch:0,fetch:0,fetchOk:0,ahead:0,hit:0,hitLoose:0,hitHit:0,hitSent:0,hitOk:0,fwdBrake:0,fwdLift:0,thru:0,thruOk:0,behindOk:0,take:0,rdyWait:0,rdyPass:0,lost:0,flip:0,tt:0,ttGo:0,ttTouch:0,ttLook:0,ttCommit:0,ttStraight:0,ttCut:0,ttShot:0,ttCatch:0,ttGate:0,ttLat:0,ttGoLat:0,ttLoose:0,ttRoll:0,ttBack:0,ttThru:0,ttFwd:0};   // soak tallies (tools/catch-soak.js)
+const CAS={snake:0,enter:0,front:0,behind:0,side:0,meet:0,meetOk:0,tap:0,tapOk:0,tapFail:0,retTap:0,back:0,pin:0,hand:0,shot:0,pass:0,steer:0,run:0,runFire:0,recv:0,recvPin:0,reseat:0,fwdCarry:0,fwdTap:0,carryFirst:0,tapFirst:0,stoppedFetch:0,fetch:0,fetchOk:0,ahead:0,hit:0,hitLoose:0,hitHit:0,hitSent:0,hitOk:0,fwdBrake:0,fwdLift:0,thru:0,thruOk:0,behindOk:0,take:0,puPlay:0,puWide:0,puFake:0,puFire:0,puMiss:0,rdyWait:0,rdyPass:0,lost:0,flip:0,tt:0,ttGo:0,ttTouch:0,ttLook:0,ttCommit:0,ttStraight:0,ttCut:0,ttShot:0,ttCatch:0,ttGate:0,ttLat:0,ttGoLat:0,ttLoose:0,ttRoll:0,ttBack:0,ttThru:0,ttFwd:0};   // soak tallies (tools/catch-soak.js)
 // the way forward from a ball at (bx,bz) leaving at slope sl (z gained per unit of x, 0 = dead ahead): ATT the line to goal and the mouth, everyone else the gap past the row in front
 function pinOutlet(r,bx,bz,obs,goalX,sl){
  sl=sl||0;
@@ -651,6 +651,44 @@ function pushOutlet(r,bx,bz,sv,obs,goalX){
  const sl=pushSlope(r,sv);
  return sl?pinOutlet(r,bx,bz+AIC.catch.push.drift*sv,obs,goalX,sl):-1e9;
 }
+// --- the pull (CONFIG.ai.catch.push.play): r.puPh sell|burst|stop, r.puS the burst's side (toward the middle), r.puO the offset the sell started at, r.puD its length, r.puT the phase clock, r.puN plays this hold
+// a held ball with no lane: whether to play the pull (drawn once a hold) and how wide to take it first; true = a play owns the slide
+function puWant(r,b){
+ const P=AIC.catch.push,PL=P.play;
+ if(r.puPh)return true;
+ if(!P.on||!PL||!PL.on||PL.roles.indexOf(r.role)<0||r.force||(r.puN|0)>=PL.tries)return false;
+ const d=teamDiff(r.team);
+ if(r.puRoll==null)r.puRoll=rngAi(r.idx)()<(PL.use[d]||0);
+ if(!r.puRoll)return false;
+ const z=b.m.position.z,reach=w=>w*z+Math.min(w>0?r.maxOff-r.offset:r.offset+r.maxOff,F.W/2-BALL_R-1-w*z);   // how far from the middle on side w the ball can be taken
+ const w=reach(1)>=reach(-1)?1:-1,zw=reach(w);
+ if(zw<PL.wide)return false;
+ const wz=w*z,fake=wz>=PL.wide&&rngAi(r.idx)()<(PL.fake[d]||0),tw=Math.min(zw,Math.max(PL.wide,wz+(fake?PL.sellD:0)));   // the width it sells out to
+ r.puS=-w;r.puO=r.offset;r.puT=0;r.puN=(r.puN|0)+1;CAS.puPlay++;
+ if(tw>wz+0.5){r.puPh='sell';r.puD=tw-wz;CAS[fake?'puFake':'puWide']++;}
+ else r.puPh='burst';
+ return true;
+}
+// one frame of the pull: the sell takes the ball out to its width; the burst runs it back toward the middle at the slide that lands it by the near post and fires (true) once the line it would leave on gets there
+// with no man well inside it; out of time or room, or past where the near post can be reached, the rod stops
+function puStep(r,b,dt,now){
+ const P=AIC.catch.push,PL=P.play,s=r.puS,p=b.m.position;
+ r.puT+=dt;
+ if(r.puPh==='stop'){r.target=r.offset;if(Math.abs(r.slideV)<=AIC.catch.fireV)r.puPh=null;return false;}
+ if(r.puPh==='sell'){
+  r.target=r.puO-s*r.puD;
+  if(Math.abs(r.offset-r.target)>0.3&&r.puT<PL.sellT)return false;
+  r.puPh='burst';r.puT=0;
+ }
+ const sv=r.slideV,c=P.drift+P.k*Math.abs((r.kickDir>0?F.L/2:-F.L/2)-p.x),post=-s*(p.z+sv*c);   // where the line it would leave on reaches the goal, out from the middle on the ball's side
+ if(s*sv>=P.minV&&post>=PL.post[0]&&post<=PL.post[1]&&now>=PL.clear&&pushSlope(r,sv))return true;
+ const room=s>0?r.maxOff-r.offset:r.offset+r.maxOff;
+ if(r.puT>=PL.burstT||room<P.room||-s*p.z<PL.post[0]){r.puPh='stop';r.puT=0;r.target=r.offset;CAS.puMiss++;return false;}
+ r.target=r.offset+s*clamp((-s*p.z-PL.aim)/c,P.minV,DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r)*PL.burst)*dt;
+ return false;
+}
+// rods.js: x the rod's top speed for a rod bursting with a held ball (in place of shots.pin.carry), kept through the swing the burst fires; 0 = none
+function pushBurst(r){return (r.puPh==='burst'&&r.pinB)||(r.puB&&r.kickT>=0)?AIC.catch.push.play.burst:0;}
 // a ball held under a forward leg is shot with the snake (CONFIG.ai.catch.snake): the role, the depth it is held at, and a draw once a hold
 function snakeHold(r,b){
  const SN=AIC.catch.snake;
@@ -677,7 +715,7 @@ function pinTarget(r,b,obs,goalX){
  }
  return bz;
 }
-function pinPlayStart(r){const p=r.pinB.m.position;r.pcZ0=p.z;r.pcTz=null;r.pcEv=0;r.pcOut=-1e9;r.pcDir=0;r.pcRdy=0;r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;r.ttRoll=null;r.pcSn=false;r.pcSnD=null;}
+function pinPlayStart(r){const p=r.pinB.m.position;r.pcZ0=p.z;r.pcTz=null;r.pcEv=0;r.pcOut=-1e9;r.pcDir=0;r.pcRdy=0;r.pcFwdN=0;r.pcBrk=0;r.pcSgn=0;r.pcTurnT=0;r.ttRoll=null;r.pcSn=false;r.pcSnD=null;r.puPh=null;r.puN=0;r.puRoll=null;r.puB=false;}
 // the carry's and the tap's look at the lanes, on its own clock (pinPlay and the forward pin's preference both ask)
 // fwdTap: under a forward leg the tap is looked at whatever the carry finds (it lands as a back pin, which the carry cannot)
 function pinCarryEval(r,b,obs,goalX,tap,fwdTap){
@@ -697,7 +735,8 @@ function pinCarryEval(r,b,obs,goalX,tap,fwdTap){
 // a pinned ball, t seconds held: 0 = keep holding (r.target is set), 1 = shoot it, 2 = pass it (to r.catPk), 3 = tap it along the row to a neighbouring man (r.tapPk; only when `tap` is passed), 4 = start a tic-tac with one (r.ttPk; the same)
 // a shot is still (rod slower than fireV, straight on) or a push (rod sliding at minV or more: it leaves at an angle, aimed at the lane it was judged on); r.catSv = the slide speed to keep through the swing
 // from under a forward leg a shot is the snake when snakeHold says so (r.pcSn): any slide is carried through it
-// lane open: shoot, or pass (CONFIG.ai.catch.open: the keeper and the defence would rather pass). Else carry, either way, to a z whose lane opens, else tap it to a neighbour whose lane is open, else pass to a better-placed mate, else wait for the lanes to move until holdT, then play it
+// lane open: shoot, or pass (CONFIG.ai.catch.open: the keeper and the defence would rather pass). Else the pull (CONFIG.ai.catch.push.play: wide, then a burst back, shot to the near post; it owns the shot while it runs), else carry, either way, to a z whose lane opens,
+// else tap it to a neighbour whose lane is open, else pass to a better-placed mate, else wait for the lanes to move until holdT, then play it
 function pinPlay(r,best,t,dt,tap){
  const CA=AIC.catch,PS=AIC.dribble.pass,RV=CA.recv,b=r.pinB,p=b.m.position,goalX=r.kickDir>0?F.L/2:-F.L/2,sv=r.slideV;
  const fwd=r.angle*r.kickDir>RV.fwdMin,fwdTap=fwd&&RV.tap.on&&RV.lift.on&&RV.tap.first;   // under a forward leg a swing play is a re-seat, or a snake; a tap to a neighbour whose lane is open lands as a back pin instead
@@ -707,6 +746,10 @@ function pinPlay(r,best,t,dt,tap){
  const mull=fwd&&t<RV.settleT&&!r.force;                            // a forward pin is carried a while before anything is played: the AI is looking for a lane
  const obs=laneObs(r.team,p.x,goalX,sn?SN.shotV:CA.shotV),still=Math.abs(sv)<=CA.fireV,sl=sn?SN.k*sv:still?0:pushSlope(r,sv);
  const now=(still&&!sn)?pinOutlet(r,p.x,p.z,obs,goalX,0):pushOutlet(r,p.x,p.z,sv,obs,goalX),open=now>=(sn?SN.clear:CA.lineClear),late=t>=CA.holdT||r.force;   // mid-speed: no heading to judge
+ if(!late&&!fwd&&(r.puPh||!open)&&puWant(r,b)){                     // the pull owns the slide and the shot while it runs
+  if(!puStep(r,b,dt,now))return 0;
+  r.pcWhy='pull';r.catSv=sv;r.catSl=sl;CAS.puFire++;return 1;
+ }
  const OP=open&&CA.open?CA.open[r.role]:null;
  if(tap&&!open&&CA.tictac.first&&ttWant(r,b,t,obs,goalX))return 4;   // no shot open: the ball is worked between two men before anything else is tried (a forward pin too: the leg turns up to let it go)
  const pk=((open&&!OP)||mull)?null:passPick(r,p.x,p.z,'pin');
@@ -782,6 +825,7 @@ function pinFire(r,best,D,v){
  if(v===2)CAS.pass++;else if(r.pcSn)CAS.snake++;else CAS.shot++;
  CAW['fire:'+r.pcWhy]=(CAW['fire:'+r.pcWhy]||0)+1;
  r.catSw=true;                                                    // the rod keeps its slide speed through the swing, or stands still (aiUpdate)
+ r.puB=r.puPh==='burst';r.puPh=null;                              // a burst keeps its speed through the swing (pushBurst)
  r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
  return 1;
 }
@@ -1040,7 +1084,7 @@ function catchEnd(r,cd,why){
  if(r.tapPend){CAS.tapFail++;r.tapPend=false;}                    // a tap that never ended in a pin
  if(r.ttOn){r.ttOn=false;r.ttPh=null;r.ttCd=S.time+AIC.catch.tictac.cd;}
  if(r.pinB)pinRelease(r);
- r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;
+ r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;r.puPh=null;
  r.act=null;r.catPh=null;r.catMan=-1;r.catCd=cd||0;
  r.tapN=0;r.tapPk=null;r.catCush=false;r.catDeep=false;r.tapF=false;r.catFwd=false;r.rvRestT=0;r.hPh=null;r.tapHit=false;
  r.aiMan=-1;                                                      // free the man-index hysteresis for the ordinary re-pick
@@ -2114,7 +2158,7 @@ function coverZ(r,bzp,relFront,dt){
   // --- catch (CONFIG.ai.catch) ---
   // a ball running at the rod from upfield or from the rod behind: pin it, carry it to a way forward, play it; owns r.target, the pose and the man
   const CA=AIC.catch;
-  if(r.catSw){if(r.kickT>=0){r.target=r.offset+(r.catHold&&r.kickT>=r.catHold?0:(r.catSv||0))*dt;r.aimEv=r.catAim;continue;}r.catSw=false;r.catSv=0;r.catHold=0;}   // a pin shot's swing: the slide it left on (a push) or none, no re-aim
+  if(r.catSw){if(r.kickT>=0){r.target=r.offset+(r.catHold&&r.kickT>=r.catHold?0:(r.catSv||0))*dt;r.aimEv=r.catAim;continue;}r.catSw=false;r.catSv=0;r.catHold=0;r.puB=false;}   // a pin shot's swing: the slide it left on (a push) or none, no re-aim
   if(r.act==='run'){runStep(r,best,D,dt);if(r.act==='run'||r.kickT>=0)continue;}   // the run-up for a free pass owns target + man
   if(!r.act&&r.kickT<0&&!r.pinB)recvPossess(r,best);                  // the ball is the team's and behind it: stand ready for it
   if(r.act==='recv'||(!r.act&&r.kickT<0&&!r.pinB&&(r.rvUntil||0)>S.time&&recvStart(r))){recvStep(r,best,D,dt);if(r.act==='recv')continue;}   // a pass is coming at this rod: the pin pose, the man on its line

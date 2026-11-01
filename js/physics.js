@@ -55,7 +55,7 @@ function pinUpdate(){
    if(b.scored||b.pinR)continue;
    const p=b.m.position,rel=(p.x-r.x)*r.kickDir;
    if(rel<back||rel>front||p.y>BALL_R+P.yTol)continue;
-   if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&!fwd&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;   // too quick to hold (a player's back foot takes a ball rolling along the row quicker: shots.pin.assist.roll)
+   if(Math.hypot(b.v.x,b.v.z-r.vz)>(W&&Math.abs(b.v.x)<=W.maxVX&&isUserRod(r)?Math.max(P.capV,W.capV):P.capV))continue;   // too quick to hold (a player's foot, back or forward, takes a ball rolling along the row quicker: shots.pin.assist.roll)
    for(let i=0;i<r.baseZ.length;i++){
     if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
     const mz=r.baseZ[i]+r.offset;

@@ -591,7 +591,7 @@ function makePlayer(team){
    else if(playerHairParts[team].has(name)){
     child.material=child.material.clone();
     const sw=CONFIG.playerModel.hairSwatches;
-    child.material.color.set(sw[Math.floor(Math.random()*sw.length)]);
+    child.material.color.set(sw[Math.floor(Math.random()*sw.length)]).convertSRGBToLinear();
    }
    child.castShadow=partCasts(child);   // sized by markShadowCasters, gated by the quality tier
   });

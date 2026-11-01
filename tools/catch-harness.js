@@ -38,7 +38,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,laneObs:laneObs,pushSlope:pushSlope,pushOutlet:pushOutlet,pinTarget:pinTarget,pinPlayStart:pinPlayStart,pinPlay:pinPlay,pinFire:pinFire,'+
+  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,DIFFS:DIFFS,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,laneObs:laneObs,pushSlope:pushSlope,pushOutlet:pushOutlet,puWant:puWant,puStep:puStep,pushBurst:pushBurst,pinTarget:pinTarget,pinPlayStart:pinPlayStart,pinPlay:pinPlay,pinFire:pinFire,'+
   'catchEnd:catchEnd,catchPick:catchPick,catchStep:catchStep,tapStart:tapStart,tapStep:tapStep,setTapEval:function(f){tapEval=f;},setRng:function(v){RNGV=v;},takeFwd:takeFwd,sidePick:sidePick,meetPick:meetPick,sideStep:sideStep,sideAngle:sideAngle,footAngle:footAngle,footBoxD:footBoxD,thruStep:thruStep,catchUp:catchUp,tapEval:tapEval,released:function(){return RELEASED;},setStrike:function(v){STRIKE=v;},setSweep:function(v){SWEEP=v;},setPick:function(v){PICK=v;},passed:function(){return PASSED;},seen:function(){return SEEN;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -548,6 +548,62 @@ function suite(X){
   {const r=hold(3.5,0);X.setPick({score:30,x:7.5,z:5,clr:4,onward:3,rod:{role:'MID'}});const ok1=reseated(r,0,3.5);X.setPick(null);   // world() clears the pick
    ok('a pass from a snake hold still re-seats (the snake is a shot)',ok1&&r.pcSn,'kicks='+JSON.stringify(X.KICKS.map(k=>k.style)));}
   Object.assign(SN,JSON.parse(K0));X.setRng(0.99);CA.tictac.first=TF;}
+ // ---- the pull (catch.push.play): wide, then a burst back toward the middle, shot to the near post ----------------------
+ {const PL=CA.push.play,P=CA.push,K0=JSON.stringify(PL),TF=CA.tictac.first;CA.tictac.first=false;
+  const c=P.drift+P.k*Math.abs(X.F.L/2-22.0),top=X.DIFFS.pro.speed*PL.burst;   // the ball sits at x 22 (pinned())
+  const hold=(off,z,o)=>{const r=world(X,Object.assign({gkOff:3.5},o||{}));r.offset=off;r.target=off;pinned(X,r,z);return r;};
+  X.setRng(0.1);
+  {const r=hold(-6,-18);r.role='MID';ok('a role not in play.roles never pulls',!X.puWant(r,r.pinB)&&r.puPh==null);}
+  {const r=hold(0,0);ok('a ball that cannot be taken wide enough is not pulled (the carry has it)',!X.puWant(r,r.pinB)&&r.puPh==null);}
+  {X.setRng(0.99);const r=hold(-6,-18);ok('a hold that rolls no pull plays as before',!X.puWant(r,r.pinB)&&r.puRoll===false);
+   X.setRng(0.1);ok('…and the roll is once a hold, not once a frame',!X.puWant(r,r.pinB));
+   X.pinPlayStart(r);ok('…a new hold draws again, with no pull left over',r.puRoll===null&&r.puPh===null&&r.puN===0&&X.puWant(r,r.pinB));}
+  {const r=hold(-6,-18),f0=X.CAS.puFake;
+   ok('a wide ball: the burst runs toward the middle, the fake sells it wider first (as far as the rod lets it)',X.puWant(r,r.pinB)&&r.puS===1&&r.puPh==='sell'&&Math.abs(r.puD-3)<1e-9&&X.CAS.puFake===f0+1,'puS='+r.puS+' ph='+r.puPh+' puD='+r.puD);
+   ok('…a play in hand is kept',X.puWant(r,r.pinB)&&r.puN===1);}
+  {const r=hold(4,-8),w0=X.CAS.puWide;
+   ok('a ball short of play.wide is taken out to it first, fake or not',X.puWant(r,r.pinB)&&r.puPh==='sell'&&Math.abs(r.puD-(PL.wide-8))<1e-9&&X.CAS.puWide===w0+1,'ph='+r.puPh+' puD='+r.puD);}
+  {PL.fake={rookie:0,pro:0,legend:0};const r=hold(-6,-18);
+   ok('a wide ball with no fake bursts at once',X.puWant(r,r.pinB)&&r.puPh==='burst');Object.assign(PL,JSON.parse(K0));}
+  {const r=hold(-6,-18);r.force=true;ok('the dead-ball push plays no pull',!X.puWant(r,r.pinB));}
+  {const r=hold(-6,-18);r.puN=PL.tries;ok('…nor does a hold that has made its tries',!X.puWant(r,r.pinB));}
+  // the sell and the burst
+  {const r=hold(-6,-18);X.puWant(r,r.pinB);
+   ok('the sell heads out its length, nothing fired',X.puStep(r,r.pinB,dt,0)===false&&Math.abs(r.target-(-9))<1e-9&&r.puPh==='sell');
+   r.offset=-9;X.puStep(r,r.pinB,dt,0);ok('…and turns into the burst once there',r.puPh==='burst'&&r.target>r.offset);}
+  {const r=hold(-6,-18);X.puWant(r,r.pinB);r.puT=PL.sellT;X.puStep(r,r.pinB,dt,0);ok('…or once its time is up',r.puPh==='burst');}
+  const burst=(z,sv,off)=>{const r=hold(off==null?-9:off,z);r.puPh='burst';r.puS=1;r.puN=1;r.puRoll=true;r.puT=0;r.slideV=sv;return r;};
+  {const r=burst(-21,0),f=X.puStep(r,r.pinB,dt,0),want=Math.min(top,Math.max(P.minV,(21-PL.aim)/c));
+   ok('the burst slides at the speed that lands the push by the near post',!f&&Math.abs((r.target-r.offset)/dt-want)<1e-6,'v='+((r.target-r.offset)/dt).toFixed(2)+' want='+want.toFixed(2));}
+  {const r=burst(-15,0),want=Math.max(P.minV,(15-PL.aim)/c);X.puStep(r,r.pinB,dt,0);
+   ok('…slower from a narrower ball',Math.abs((r.target-r.offset)/dt-want)<1e-6&&want<top);}
+  {const fire=(z,sv,now)=>{const q=burst(z,sv);return X.puStep(q,q.pinB,dt,now||0);},sv=(21-PL.aim)/c;
+   ok('the line reaching the goal by the near post fires',fire(-21,sv)===true);
+   ok('…not with a man standing well inside it',fire(-21,sv,PL.clear-0.1)===false);
+   ok('…nor on a slide the wrong way',fire(-21,-sv)===false);
+   ok('…nor past the band (nearer the middle)',fire(-21,(21-PL.post[0])/c+1)===false);
+   ok('…nor short of it (wide of the post)',fire(-21,(21-PL.post[1])/c-1)===false);
+   ok('…nor under a push\'s speed (at it, the same landing fires)',fire(-(PL.aim+(P.minV-1)*c),P.minV-1)===false&&fire(-(PL.aim+P.minV*c),P.minV)===true);}
+  {const r=burst(-6,30),m0=X.CAS.puMiss;X.puStep(r,r.pinB,dt,0);
+   ok('a ball come nearer the middle than the band can reach is given up: the rod stops',r.puPh==='stop'&&r.target===r.offset&&X.CAS.puMiss===m0+1);
+   r.slideV=CA.fireV+1;X.puStep(r,r.pinB,dt,0);ok('…held while it still slides',r.puPh==='stop');
+   r.slideV=0;X.puStep(r,r.pinB,dt,0);ok('…and over once it has stopped',r.puPh===null);}
+  {const r=burst(-21,0);r.puT=PL.burstT;X.puStep(r,r.pinB,dt,0);ok('the burst gives up at its time',r.puPh==='stop');}
+  // in pinPlay, and the swing
+  {const sv=(21-PL.aim)/c,r=burst(-21,sv),f0=X.CAS.puFire,v=X.pinPlay(r,view(X,-0.5,-21),1,dt);
+   ok('pinPlay shoots the pull, the slide carried through the swing',v===1&&r.pcWhy==='pull'&&r.catSv===sv&&Math.abs(r.catSl-X.pushSlope(r,sv))<1e-12&&X.CAS.puFire===f0+1,'v='+v+' why='+r.pcWhy);
+   r.kickT=-1;X.pinFire(r,view(X,-0.5,-21),D,1);ok('…and the burst keeps its speed through that swing',r.puB===true&&r.puPh===null);
+   ok('…pushBurst says so while it swings, and not after',X.pushBurst(r)===PL.burst&&(r.kickT=-1,X.pushBurst(r)===0));}
+  {const r=hold(-6,-6);r.puPh='sell';r.puS=1;r.puD=3;r.puO=-6;r.puN=1;r.puT=0;
+   ok('a running pull owns the shot: an open straight lane does not cut it short',X.pinPlay(r,view(X,-0.5,-6),1,dt)===0&&r.puPh==='sell');
+   ok('…unless the ball has been held too long',X.pinPlay(r,view(X,-0.5,-6),CA.holdT+0.01,dt)===1);}
+  {const r=hold(-6,-6);ok('an open lane before any pull is shot as before',X.pinPlay(r,view(X,-0.5,-6),1,dt)===1&&r.puPh==null);}
+  {const r=hold(-6,-18);r.angle=CA.recv.fwdMin+0.25;X.pinPlay(r,view(X,-0.5,-18),1,dt);ok('a forward pin plays no pull',r.puPh==null);}
+  {const r=burst(-21,0);ok('pushBurst: the burst speed while it bursts with the ball',X.pushBurst(r)===PL.burst);
+   r.puPh='sell';ok('…none while it sells',X.pushBurst(r)===0);
+   r.puPh='burst';r.pinB=null;ok('…none once the ball is gone with no swing of its own',X.pushBurst(r)===0);}
+  {const r=burst(-21,0);X.catchEnd(r,0);ok('ending the catch ends the pull',r.puPh===null);}
+  Object.assign(PL,JSON.parse(K0));X.setRng(0.99);CA.tictac.first=TF;}
  // ---- catchEnd -----------------------------------------------------------------------------------------------------
  {const r=world(X);pinned(X,r,0);r.pinOn=true;r.pinPose=true;r.pinA=-0.5;const n0=X.released();X.catchEnd(r,0.9,'x');
   ok('ending lets the pin go and puts every flag down',r.pinB===null&&X.released()===n0+1&&!r.pinOn&&!r.pinPose&&r.pinA===null&&r.act===null&&r.catPh===null&&r.catCd===0.9);
@@ -642,7 +698,7 @@ const MUT=[
  {n:'a ball knocked out of the pin keeps the catch alive',part:'catch',from:'if(r.catPh===\'hold\'){CAS.lost++;catchEnd(r,CA.cd,\'knocked\');return;}',to:''},
  {n:'the pose is not frozen once caught',part:'catch',from:'r.pinOn=true;r.pinPose=true;r.pinA=r.angle;                     // frozen where it caught',to:'r.pinOn=true;r.pinPose=true;r.pinA=CA.front.angle*dir;'},
  {n:'ending leaves the pin held',part:'catch',from:' if(r.pinB)pinRelease(r);\n r.pinOn=false;',to:' r.pinOn=false;'},
- {n:'ending leaves the pin flags up',part:'catch',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;\n r.act=null;r.catPh=null;',to:' r.act=null;r.catPh=null;'},
+ {n:'ending leaves the pin flags up',part:'catch',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;r.puPh=null;\n r.act=null;r.catPh=null;',to:' r.puPh=null;\n r.act=null;r.catPh=null;'},
  {n:'ending sets no cooldown',part:'catch',from:'r.catCd=cd||0;',to:'r.catCd=0;'},
  {n:"the re-seat lets the ball go in place, no lift",part:'catch',from:"if(AIC.catch.recv.lift.on){fliftStart(r,'retrieve');return;}",to:""},
  {n:"…even with the lift switched off",part:'catch',from:"if(AIC.catch.recv.lift.on)",to:"if(true)"},
@@ -750,7 +806,7 @@ const MUT=[
  {n:"every role snakes",part:'catch',from:"||SN.roles.indexOf(r.role)<0",to:""},
  {n:"the snake share is drawn every frame",part:'catch',from:"if(r.pcSnD==null){",to:"{"},
  {n:"the snake share is ignored",part:'catch',from:"rngAi(r.idx)()<u",to:"true"},
- {n:"a new hold keeps the last snake draw",part:'catch',from:"r.pcSn=false;r.pcSnD=null;}",to:"r.pcSn=false;}"},
+ {n:"a new hold keeps the last snake draw",part:'catch',from:"r.pcSn=false;r.pcSnD=null;r.puPh",to:"r.pcSn=false;r.puPh"},
  {n:"a sliding snake is braked",part:'catch',from:"(!sn||SN.brake)",to:"true"},
  {n:"the snake brake switch is ignored",part:'catch',from:"(!sn||SN.brake)",to:"!sn"},
  {n:"a snake hold judges the pin shot push",part:'catch',from:"if(r.pcSn){const SN=AIC.catch.snake;return pinOutlet(r,bx,bz+SN.drift*sv,obs,goalX,SN.k*sv);}",to:""},
@@ -773,6 +829,33 @@ const MUT=[
  {n:"the catch end is not called a snake",part:'catch',from:"v===2?'passed':r.pcSn?'snake':'shot'",to:"v===2?'passed':'shot'"},
  {n:"the carry turns round at once",part:'catch',from:"S.time<r.pcTurnT)nz=r.pcTz;",to:"false)nz=r.pcTz;"},
  {n:"...and is never held to the turn time",part:'catch',from:"else if(sg!==r.pcSgn){r.pcSgn=sg;r.pcTurnT=S.time+CA.turnT;}",to:"else if(sg!==r.pcSgn){r.pcSgn=sg;}"},
+ {n:"every role pulls",part:'catch',from:"||PL.roles.indexOf(r.role)<0||r.force",to:"||r.force"},
+ {n:"the pull is drawn every frame",part:'catch',from:"if(r.puRoll==null)r.puRoll=",to:"r.puRoll="},
+ {n:"a pull with its tries spent goes on",part:'catch',from:"||(r.puN|0)>=PL.tries)return false;",to:")return false;"},
+ {n:"the dead-ball push pulls",part:'catch',from:"PL.roles.indexOf(r.role)<0||r.force||",to:"PL.roles.indexOf(r.role)<0||"},
+ {n:"a ball that cannot get wide is pulled",part:'catch',from:"if(zw<PL.wide)return false;",to:""},
+ {n:"the burst runs away from the middle",part:'catch',from:"r.puS=-w;",to:"r.puS=w;"},
+ {n:"a narrow ball is never taken wide",part:'catch',from:"Math.max(PL.wide,wz+(fake?PL.sellD:0))",to:"wz+(fake?PL.sellD:0)"},
+ {n:"the fake is never sold",part:'catch',from:"if(tw>wz+0.5){",to:"if(false){"},
+ {n:"a new hold keeps the last pull",part:'catch',from:"r.puPh=null;r.puN=0;r.puRoll=null;r.puB=false;}",to:"r.puB=false;}"},
+ {n:"the sell goes the wrong way",part:'catch',from:"r.target=r.puO-s*r.puD;",to:"r.target=r.puO+s*r.puD;"},
+ {n:"the sell never turns",part:'catch',from:"if(Math.abs(r.offset-r.target)>0.3&&r.puT<PL.sellT)return false;",to:"return false;"},
+ {n:"the sell has no time limit",part:'catch',from:"&&r.puT<PL.sellT)return false;",to:")return false;"},
+ {n:"the burst runs flat out whatever the landing",part:'catch',from:"clamp((-s*p.z-PL.aim)/c,P.minV,",to:"clamp(1e9,P.minV,"},
+ {n:"the pull fires anywhere in the mouth",part:'catch',from:"post>=PL.post[0]&&post<=PL.post[1]&&",to:""},
+ {n:"the pull fires through a man",part:'catch',from:"&&now>=PL.clear&&",to:"&&"},
+ {n:"the pull fires on a slide either way",part:'catch',from:"if(s*sv>=P.minV&&",to:"if(Math.abs(sv)>=P.minV&&"},
+ {n:"the pull never gives up on a ball past the band",part:'catch',from:"||-s*p.z<PL.post[0]){",to:"){"},
+ {n:"the burst has no time limit",part:'catch',from:"if(r.puT>=PL.burstT||room<P.room",to:"if(room<P.room"},
+ {n:"the stop never ends",part:'catch',from:"if(Math.abs(r.slideV)<=AIC.catch.fireV)r.puPh=null;return false;}",to:"return false;}"},
+ {n:"an open lane cuts a running pull short",part:'catch',from:"(r.puPh||!open)&&puWant",to:"!open&&puWant"},
+ {n:"a forward pin pulls",part:'catch',from:"if(!late&&!fwd&&(r.puPh",to:"if(!late&&(r.puPh"},
+ {n:"a late hold keeps pulling",part:'catch',from:"if(!late&&!fwd&&(r.puPh",to:"if(!fwd&&(r.puPh"},
+ {n:"the pull's shot keeps no slide",part:'catch',from:"r.pcWhy='pull';r.catSv=sv;r.catSl=sl;",to:"r.pcWhy='pull';"},
+ {n:"the burst speed is dropped for its swing",part:'catch',from:"r.puB=r.puPh==='burst';",to:"r.puB=false;"},
+ {n:"pushBurst ignores the burst",part:'catch',from:"?AIC.catch.push.play.burst:0;}",to:"?0:0;}"},
+ {n:"pushBurst outlives the ball",part:'catch',from:"(r.puPh==='burst'&&r.pinB)",to:"(r.puPh==='burst')"},
+ {n:"the catch end leaves the pull running",part:'catch',from:"r.ftPh=null;r.puPh=null;\n",to:"r.ftPh=null;\n"},
 ];
 let missed=0;
 for(const m of MUT){

@@ -261,7 +261,7 @@ physics:{
    ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, grav:200,
    prad:0.6,                       // leg capsule radius: the figurines' legs are about 1.2 thick front to back, and the foot box's rear face is this far behind the leg
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
-   footBox:{x:1.8,y:1.0,z:1.35},     // foot box half-extents: x along leg, y perpendicular, z along rod
+   footBox:{x:1.6,y:1.0,z:1.05},     // foot box half-extents: x along leg, y perpendicular, z along rod
    footBoxOff:{x:-1.15,y:0.4},        // foot box centre offset from foot-base, rod-local (x raised with its height: the bottom face stays at -0.65, the top is at 2.95 up the leg)
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.005,                // random velocity nudge after a foot hit (stops perfect oscillations)
@@ -369,6 +369,8 @@ kick:{
   pass:{
    on:true,
    modAt:-0.55,      // axis at or below this turns the kick into an aimed pass
+   keep:true,        // a pad's LT squeezed that deep counts as full until it is let back past hold.from (a relaxing hand keeps its pass, forward pin and receive); false = the raw depth every frame
+   chord:0.06,       // a pad kick pressed while LT is still travelling down waits up to this long (s) for it to get that deep: LT and A pressed together are the pass, not a soft swing; 0 = off
 
    bendMult:1.4,
    bendCost:4        // how hard a straighter lane is preferred over a clearer one
@@ -410,13 +412,13 @@ kick:{
    down:0.75,        // …and touches it from above: the contact normal at least this far down (1 = on top, 0.75 = within 41 degrees); a shin, or the foot's side, is not a pin
    yTol:0.6,         // …on the floor (centre no higher than BALL_R + this)
    capV:35,          // relative speed under which a touching ball is caught (the finesse grip slows it first)
-   carry:0.8,        // rod slide-speed multiplier while pinned (the hold's 0.45 is for a loose dribble)
+   carry:0.9,        // rod slide-speed multiplier while pinned (the hold's 0.45 is for a loose dribble)
    zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
    breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
    releaseA:0.35,    // rod turned this far off the pin angle (a stick flick) lets the ball go
    swing:{strike:0.14,powTo:0.14},   // the pin shot is the trapShot curve with these: slower, or from the deep pose the boot overtakes the ball past upright and scoops it over the bar
    pass:{windup:0},  // a pass from the pin is the passShot curve with these: no wind-up, the leg is already back (passShot's pull-back to -0.35 would swing the boot forward past the ball)
-   carryOut:0.8,     // fraction of the carried slide velocity the ball keeps when let go
+   carryOut:0.9,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
    ctl:0.6,            // pin shot control (r.shotCtl): no spray
    // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, kick pressed twice is the snake (shots.snake)
@@ -430,13 +432,14 @@ kick:{
     holdFar:7.5,
     holdV:30,       // ...a ball slower than this against the rod (one stopped by the leg and carried along is at rest to it)
     lead:0.2,       // a man counts where the slide has him this many seconds on, so the leg is up before the rod arrives (a neighbouring man comes in as one leaves)
-    outA:0.15       // coming back to rest the leg is guarded like the AI's until it is within this of rest
+    outA:0.15,      // coming back to rest the leg is guarded like the AI's until it is within this of rest
+    raise:true      // finesse let go with kick still held: the leg goes up forward (ai.catch.recv.lift.angle) and stays while kick does, a ball rolls under the men, finesse again re-pins (the back pin's raise held); false = it comes down once the ball is clear
     },
    // the player's pin assist (shots.js shotPinAim): a posed leg goes up beside a slow ball and comes down onto its top once the man is over it
    assist:{
     on:true,        // false = the back pin is the fixed `angle`, the forward pin the fetch's own alignZ / slideV, no stick settle, no slide settle
     near:-1.5,      // back pin: a ball from shots.pin.back to this far behind the rod (nearer, no pose puts the foot on top of it)
-    v:8,            // ...slower than this to the table or to the rod
+    v:30,            // ...slower than this to the table or to the rod
     up:-1.45,       // back pin beside the ball: the leg this far back, over the top of a ball as deep as the window
     align:1.0,      // the man is over the ball within this z (the foot is 1.35 wide each side)
     slideV:12,      // ...and slides slower than this (u/s)
@@ -482,10 +485,11 @@ kick:{
      on:true,
      far:45,        // from this far behind the rod (dir-relative x)
      minV:3,        // ...coming forward at least this fast (u/s): a lofted pin shot clips the man's hip behind the rod and rolls on at ~8, still to be lined up
-     v:80,          // the man is drawn onto its line at up to this speed (u/s), on every frame the player leaves the slide alone (the finesse grip does not slow a receiving rod)
+     v:70,          // the man is drawn onto its line at up to this speed (u/s), on every frame the player leaves the slide alone (the finesse grip does not slow a receiving rod)
      lerp:30,       // the leg rises into the pose at this rate (fwd.lerp is the stroke's; 14, the AI's, is ~0.07 s slower to be posed: a plain kick from the DEF is at the MID ~0.25 s after it)
      take:true,     // finesse and kick held with no pose (a rod the seat has just taken over, or kick held before finesse with no swing frozen) is the forward pose; false = only a kick press poses it
      strokeT:1.5,   // a stroke (finesse + a tapped kick) is a pass: finesse alone, kick let go, keeps the receive on this long after it (s), until the ball is pinned or the other team touches it; 0 = kick must be held again
+     stick:0.5,     // finesse held and the right stick pushed at least this share of the way to kick.strikeA is the receive too, whatever the depth (a full stick lets a pass run under the toe); 0 = the stick only angles the leg
      mates:true     // with finesse and kick held (or a stroke's receive), the team's AI rods ahead stand ready for a ball coming up at them (ai.catch.recv.ready), even straight after a kick that let them go
      }
     },
@@ -707,12 +711,12 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.1,  strikeA:1.7,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:1.25,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
-      powFrom:0.05, powTo:0.1,     // power window (opens with the strike so it covers the contact)
-      restPower:0.9,                // restitution inside the power window
-      rest:0                      // passive touch outside it
+      powFrom:0.03, powTo:0.05,     // power window (opens with the strike so it covers the contact)
+      restPower:0.8,                // restitution inside the power window
+      rest:0.1                      // passive touch outside it
    },
 // dribble: ball at the feet, men down, no way forward: slide it instead of hitting it into the row opposite
    dribble:{
@@ -1142,10 +1146,27 @@ ai:{
       push:{
          on:true,
          minV:12,         // slide at or above this is a push; between fireV and this nothing is judged, the rod settles
-         k:0.003,         // heading gained per u/s of slide (rad), measured with the aim point on the line: ~5° at a full carry. A boot faster than the ball overruns it and the heading flips
-         drift:0.09,      // s of slide the ball gains before it leaves the boot (z = drift x slide)
+         k:0.0102,        // slope gained per u/s of slide (z per unit of x), measured with the aim assist off (pushpull-soak ppSlide): ~22° at a full pro carry
+         drift:-0.02,     // the line it leaves on starts this many s of slide off the ball (z = drift x slide; fitted through the DEF and keeper crossings)
          room:3,          // slide left to carry on through the swing
-         lead:0.3         // how far ahead (s of slide) the strike gate is told the boot is going
+         lead:0.3,        // how far ahead (s of slide) the strike gate is told the boot is going
+         // play: the pull. A held ball is taken wide (the sell), then burst back toward the middle and shot on the move to the near post, behind a keeper leading the ball across (pushpull-soak ppRows: 70-95% of such shots score at pro, 45-55% at legend)
+         play:{
+            on:true,
+            roles:['ATT'],
+            use:{rookie:0.3, pro:0.6, legend:0.8},    // share of holds played this way (drawn once a hold); the rest tic-tac or carry as before
+            fake:{rookie:0.5, pro:0.7, legend:0.85},  // ...of those already wide, the share that sell wider first (a narrower ball always goes wide first); every pull faked scored 54% / 26% at pro / legend, none 43% / 7% (ppVsAI)
+            wide:13,       // the ball must get at least this far from the middle (u): nearer, a push at minV already lands past the near post's band
+            sellD:5,       // a fake goes this much wider (u)
+            sellT:0.4,     // the sell's time limit (s)
+            post:[7,9.6],  // the pull fires when the line it leaves on reaches the goal this far from the middle on the ball's own side (u)
+            aim:8.5,       // ...the burst holds the slide that lands it here
+            clear:-2,      // ...unless a man stands this far inside that line (catch.lineClear is the still shot's)
+            burst:1.0,     // the burst: x the rod's top speed while it holds the ball (a carry is shots.pin.carry)
+            acc:1.5,       // ...and x its acceleration
+            burstT:0.5,    // the burst's time limit (s)
+            tries:2        // plays a hold may make before the ordinary carry
+         }
       },
       // snake: a shot from a ball held under a forward leg is the player's snake (shots.snake), the slide carried through; off = the ball is let go and re-pinned from behind for the pin shot (reseat)
       snake:{
@@ -1418,7 +1439,7 @@ ai:{
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
       src:'assets/fuzeball_cyborg.glb',scale:0.8,
       mug:'assets/renders/render_cyborg_mugshot.png',
-      renderTop:57,
+      renderTop:64,
       teamParts:['kit_cyborg', 'kit_cyborg_visor'],
       hairParts:['kit_cyborg_hair'],
       explosionSrc:'assets/animations/cyborg_explosion.glb'
@@ -1449,7 +1470,7 @@ ai:{
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.8,
       mug:'assets/renders/render_rocko_mugshot.png',   
-      renderTop:49,
+      renderTop:33,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
       explosionSrc:'assets/animations/rocko_explosion.glb'
    },
@@ -1521,6 +1542,14 @@ ai:{
       explosionSrc:'assets/animations/tanya_explosion.glb'   
       },      
     
+   {id:'womanFaye',name:'Faye',blurb:'Bold and fearless',
+      src:'assets/fuzeball_womanFaye.glb',scale:0.8,
+      mug:'assets/renders/render_faye_mugshot.png',
+      renderTop:125,
+      teamParts:['kit_faye'],hairParts:['kit_faye_hair'],
+      explosionSrc:'assets/animations/faye_explosion.glb'
+   },
+
    // ALIENS
    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
       src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
@@ -1755,8 +1784,9 @@ ai:{
   },
 
  /* ---- player control ------------------------------------------------- */
- control:{ slideSpeed:95, mouseSens:1.35, autoDelay:1.2, nameMaxLength:20,
+ control:{ mouseSens:1.35, autoDelay:1.2, nameMaxLength:20,
   mouseSpan:23,   // mouse slide: table units per screen-height of movement, the same on every rod (before the sens multipliers)
+  slideLead:0.02, // keys, d-pad, stick: a full press is the rod's own top speed (rods.js rodSlideMax) and the target runs at most this many s of it (or one frame) ahead of the rod, so the man stops when the hand does
   // auto-switch hand-over (ai.js autoHoldRod): a rod in `roles` is withheld while the AI deals with the shot
   handover:{
    on:true,
@@ -1765,7 +1795,11 @@ ai:{
    reach:6,        // z distance beyond the keeper's slide range at which it can't get there (out wide is yours at once)
    behind:2.5,     // how far behind the keeper the ball still counts as at its boot (a frame at 140 u/s is 2.3 units)
    maxHold:1.4,    // hard cap: however the save goes, the rod is yours after this (s)
-   settle:0.09     // slide input ignored for this long after a hand-over, so an in-flight swipe can't fling the new rod (s)
+   settle:0.09,    // slide input ignored for this long after a hand-over, so an in-flight swipe can't fling the new rod (s)
+   // any switch, manual or auto: the right stick's angle carries onto the new rod (a stick held forward through a pass stays a held kick on the rod that receives it)
+   stick:true,     // false = the new rod ignores the stick until it re-centres or flicks through centre
+   stickW:8,       // ...turned onto it at most this fast (rad/s), a backward turn held short of a ball it would sweep: the switch itself is never a swing (under kick.boostSwingW: no power hit)
+   stickMove:0.15  // ...until the leg gets there or the stick moves this far from where it was at the switch (a flick is the player's own, never capped)
   },
   // auto-switch zones (seats.js zonePick; painted in the C overlay, AI DEBUG > Rod Zones): which rod a ball's spot belongs to
   zones:{
@@ -1918,6 +1952,7 @@ deadball:{
   // each mode: [x,y,z, lookX,lookY,lookZ]
   modes:[
    [0,68,47,0,25,21],   // Close Side
+   [0.2,56,61,0.1,21,25], // Close Side 2
    [-70,75,0,-37,36,0], // RED MID CAM
    [0,92,86,0,0,2],     // Cam 1
    [0,100,2,0,0,0],     // Top-down
@@ -1927,12 +1962,13 @@ deadball:{
    [-66,44,41,31,-17,-14],  // Goal 1 Corner
    [-50,52,0,0,16,0], // RED MID CAM
    [-16,56,0,24,0,0],  // Your rod: x and lookX are from the rod you hold, toward its attack (rodModes)
+   [0,70,62,0,10,4],   // Cinematic (cine.mode): directed by js/cine.js; this row is only where the menu ease starts from
    ],
   rodModes:[9],   // modes placed on the primary seat's rod instead of the table; skipped while no seat holds a rod
   // NUMPAD: Numpad<n> picks modes[numpad[n]] (0 = your rod); a numpad key bound to a play action keeps that action instead
   numpad:[9,0,1,2,3,4,5,6,7,8],
   // Modes anchored to one end: these mirror when every human is on the blue team.
-  sideModes:[1,4,5,6,7,8],
+  sideModes:[1,2,4,5,6,7,8],
   // ...of those, the ones with no mirror partner, dropped from the cycle when no single team owns the camera
   soloOnly:[1,8],
   // MENU SHOTS: the camera eases to the current screen's shot (keyed by screen id, js/screens.js); unlisted = home
@@ -1951,6 +1987,48 @@ deadball:{
    championsCup:[62,70,64, 6,4,0]
   },
   menuLerp:1.4,   // ease rate toward a menu shot (a move, not a cut; a match uses lerp)
+  // CINEMATIC (js/cine.js): a directed camera for watching the AI; in the V / pad-Y cycle only while nobody plays
+  cine:{
+   mode:11,           // its row in modes
+   spectate:true,     // an AI showdown opens on it (a camera picked while watching is kept for the next showdown)
+   minT:5.5, maxT:12, // a shot is held at least this long, and is cut on the first calm beat after a random hold up to maxT (s)
+   lateT:5,           // past its hold this long, a shot is cut on any beat but a ball due at a goal
+   badT:0.8,          // an end shot whose play has left that end this long is cut (after minT/2)
+   lostT:0.35, lostMin:1,   // a ball outside the frame this long is found with a cut, once the shot has run lostMin (s)
+   calmV:30,          // ball speed under which play reads calm (a held ball is calm)
+   hotT:0.9,          // a ball due at a goal mouth within this long blocks every cut
+   hotLead:0.85,      // ...and pulls the subject out to this x the half-length on that end (the camera pans for where the shot is going)
+   attackX:20, attackHys:8,   // the subject past this |x| makes it an attack beat (end shots); it drops back under attackX - attackHys
+   dz:[6,8],          // subject dead zone x, z: the ball moves this far before the frame follows (a tic-tac doesn't rock it)
+   lead:0.18,         // the subject leads the ball by its velocity x this (s)
+   subW:[2.4,1.6],    // subject spring rate x, z (higher = tighter follow, quicker pans)
+   catchUp:{d:[10,35], k:1.5},   // a ball this far off the subject (from d[0] to d[1]) raises its spring rate up to x(1 + k)
+   posW:2.2, lookW:3.0, fovW:0.8,   // camera position / aim / zoom spring rates
+   room:6, roomW:0.7, // lead room: the aim sits this far ahead of the side that last held the ball, eased at roomW
+   blendD:40, blendA:30, blendW:1.1,   // a next shot within blendD of the camera and blendA deg of its aim glides there at blendW instead of cutting
+   tension:0.86,      // zoom while the attack holds the ball near the goal it attacks (a slow push in)
+   breath:1,          // hand-held drift amplitude (0 = locked off)
+   celeDelay:0.35,    // a goal: the shot that saw it holds this long (s), then cuts to the celebration
+   // shot weights by beat: count = a kickoff, mid = open play, attack = the play near a goal
+   pick:{
+    count: {establish:1, wide:0.5, high:0.3},
+    mid:   {wide:1, rail:1, drift:0.7, high:0.35},
+    attack:{rail:0.7, shoulder:1, goal:0.8, corner:0.8, wide:0.3}
+   },
+   // x/z multipliers of the subject unless named absolute; T = how long a shot's own move takes (s); fov = zoom x the base fov
+   shots:{
+    wide:     {x:0.55, y:62, z:76, lx:0.8, drift:4, fov:0.8},                    // broadcast: high on the near side, panning with the play
+    rail:     {x:0.9, y:30, z:58, bob:1.5, sway:3, lz:0.35, fov:0.95},          // low sideline dolly beside the ball
+    high:     {x:0.45, y0:84, y1:76, z:26, lx:0.6, T:12, fov:0.85},             // tactical: high over the play, sinking slowly (ceilings start at ~94)
+    drift:    {r:74, y:46, a:0.5, w:0.035, cx:0.65, fov:0.85},                  // slow arc round the play toward square-on (a = start angle, w = rad/s)
+    shoulder: {back:52, push:8, y:32, side:12, ahead:14, lz:0.5, maxX:95, T:10, fov:1},      // behind the attack, facing the goal it threatens, creeping in (closer or lower drops a ball left behind the play off the bottom)
+    goal:     {x:84, y:36, bob:2, sway:6, lx:0.8, lz:0.6, fov:0.85},           // behind the threatened goal, looking back at the play
+    corner:   {x0:58, x1:50, y0:54, y1:44, z0:50, z1:44, lx:0.8, lead:4, T:10, fov:0.9},    // crane over the threatened corner, descending
+    establish:{r:90, y0:70, y1:56, a0:0.8, a1:0.4, lx:0.4, T:5, fov:0.9},      // kickoff: a wide arc settling toward square-on
+    cele:     {x0:38, x1:46, y0:32, y1:24, z0:46, z1:36, lx:58, ly:4, T:3, fov:0.85},   // after a goal: pushing in on the beaten goal mouth
+    win:      {r:92, y:58, a:0.5, w:0.08, fov:0.9}                             // full time: a slow swing over the table
+   }
+  },
   follow:0.0014, lookFollow:0.01, lerp:3,   // ball-follow weights + position lerp
    shakeDecay:0.6, shakeX:0.004, shakeY:0.002, // screen-shake decay + amplitudes
    freeRoamSpeed:80, freeRoamSprint:2.0, freeRoamSens:0.22 // free-roam: base speed, sprint mult, mouse sens
@@ -3248,7 +3326,7 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,atmos:'hig
   blueMetalness:.15,blueRoughness:.45,blueGlow:0,blueScale:1,
   // true = keep the material values exported with the model.
   redFinishDefault:false,blueFinishDefault:false,
- // controls: sensitivities multiply CTRL.slideSpeed / CTRL.mouseSens; padSlideCurve 1 = linear, >1 = finer near centre
+ // controls: padSlideSens / kbdSens scale a full stick / key against the rod's own top speed (never past it), mouseSens multiplies CTRL.mouseSens; padSlideCurve 1 = linear, >1 = finer near centre
 padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
 padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,
 // Total Control pad: LT eases slide toward padTCFine, RT toward padTCFast, neither = padTCBase

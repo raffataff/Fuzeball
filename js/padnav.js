@@ -163,8 +163,9 @@ function navMove(dx,dy){
  }
  if(b){navSet(b);Au.ui('move');}
 }
-// a select wrapped as ◀ VALUE ▶ (js/vsel.js) adjusts in place like a slider; a bare dropdown (dev panels) opens as a list
+// a select wrapped as ◀ VALUE ▶ (js/vsel.js) adjusts in place like a slider; a pick list (data-vsel="list") or a bare dropdown (dev panels) opens as a list
 function navVsel(el){return!!(el.parentElement&&el.parentElement.classList.contains('vsel'));}
+function navVlist(el){return navVsel(el)&&el.dataset.vsel==='list';}
 function navFire(el){el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}
 // ◀▶ on a value being edited: a slider moves a twentieth of its range, a selector steps one option (wrapping, skipping disabled/hidden)
 function navNudge(el,d){
@@ -191,42 +192,52 @@ function navAdjEnd(keep){
  }
  NAV.adjWas=null;return true;
 }
-// a dropdown opens as our own list (the native picker takes only the real keyboard): ▲▼ walk it, A picks, B closes untouched
+// a dropdown or pick list opens as our own list (the native picker takes only the real keyboard): ▲▼ / arrow keys / hover walk it, A / Enter / a click picks, B / Esc / a click outside closes it untouched
 function navDropOpen(el){
  navDropEnd(false);
- const L=document.createElement('div');L.id='navDrop';L.classList.add('navDrop');L.setAttribute('role','listbox');
+ const vs=navVsel(el),box=vs?el.parentElement:el;
+ const L=document.createElement('div');L.id='navDrop';L.classList.add('navDrop');if(vs)L.classList.add('vs');L.setAttribute('role','listbox');
  const items=[];
  for(let i=0;i<el.options.length;i++){const o=el.options[i];if(o.hidden)continue;
   const d=document.createElement('div');d.classList.add('navDropI');if(o.disabled)d.classList.add('off');if(i===el.selectedIndex)d.classList.add('cur');
   d.textContent=o.textContent;d.dataset.i=i;
-  if(!o.disabled)d.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();NAV.drop.i=items.indexOf(d);navDropEnd(true);});
+  if(!o.disabled){
+   d.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();if(e.button)return;NAV.drop.i=items.indexOf(d);navDropEnd(true);});
+   d.addEventListener('mouseenter',()=>{const D=NAV.drop,k=items.indexOf(d),H=CONFIG.audioMix.hover;if(!D||D.i===k)return;
+    D.i=k;navDropMark(false);if(H&&H.on)Au.ui('move');});}
   L.appendChild(d);items.push(d);}
  if(!items.length)return;
  document.body.appendChild(L);
- const r=el.getBoundingClientRect(),vh=innerHeight||document.documentElement.clientHeight;
- L.style.minWidth=Math.round(r.width)+'px';L.style.left=Math.round(r.left)+'px';
- const h=Math.min(L.scrollHeight,Math.max(120,vh*.6));L.style.maxHeight=h+'px';
- L.style.top=Math.round(r.bottom+h+8<=vh?r.bottom+2:Math.max(8,r.top-h-2))+'px';
+ const r=box.getBoundingClientRect(),vw=innerWidth||document.documentElement.clientWidth,vh=innerHeight||document.documentElement.clientHeight;
+ L.style.minWidth=Math.round(r.width)+'px';
+ const full=L.scrollHeight+L.offsetHeight-L.clientHeight;   // + the borders: a list that fits shows no scrollbar
+ const dn=vh-r.bottom-(NAV.show?60:8),up=r.top-10;          // 60: clear of the pad prompt strip
+ const below=Math.min(full,vh*.6)<=dn||dn>=up,h=Math.max(Math.min(120,full),Math.min(full,vh*.6,below?dn:up));
+ L.style.maxHeight=h+'px';
+ const lw=L.offsetWidth||r.width;   // a pick list centres on its slot (a long name widens it both ways)
+ L.style.left=Math.round(vs?clamp(r.left+(r.width-lw)/2,8,Math.max(8,vw-lw-8)):r.left)+'px';
+ L.style.top=Math.round(below?r.bottom+2:Math.max(8,r.top-h-2))+'px';L.classList.toggle('up',!below);
  let i=items.findIndex(d=>+d.dataset.i===el.selectedIndex);if(i<0)i=0;
- NAV.drop={el,L,items,i};el.classList.add('navAdj');navDropMark();NAV.hintT=0;
+ NAV.drop={el,L,items,i};el.classList.add('navAdj');navDropMark(true);NAV.hintT=0;Au.ui('open');
 }
-function navDropMark(){const D=NAV.drop;if(!D)return;
+// sc: scroll the row into view (not for a hover, which would scroll the list under the pointer)
+function navDropMark(sc){const D=NAV.drop;if(!D)return;
  D.items.forEach((d,k)=>d.classList.toggle('on',k===D.i));
- const d=D.items[D.i];if(d){const t=d.offsetTop,b=t+d.offsetHeight;if(t<D.L.scrollTop)D.L.scrollTop=t;else if(b>D.L.scrollTop+D.L.clientHeight)D.L.scrollTop=b-D.L.clientHeight;}}
+ const d=D.items[D.i];if(sc&&d){const t=d.offsetTop,b=t+d.offsetHeight;if(t<D.L.scrollTop)D.L.scrollTop=t;else if(b>D.L.scrollTop+D.L.clientHeight)D.L.scrollTop=b-D.L.clientHeight;}}
 function navDropStep(d){const D=NAV.drop;if(!D)return;
  let i=D.i;for(let k=0;k<D.items.length;k++){i+=d;if(i<0||i>=D.items.length)return;if(!D.items[i].classList.contains('off'))break;}
- D.i=i;navDropMark();Au.ui('move');}
+ D.i=i;navDropMark(true);Au.ui('move');}
 // pick=true takes the highlighted option (firing input/change only if it moved); false leaves it
 function navDropEnd(pick){
  const D=NAV.drop;if(!D)return false;NAV.drop=null;NAV.hintT=0;
  D.L.remove();
  D.el.classList.remove('navAdj');
- if(pick&&D.el.isConnected){const it=D.items[D.i];if(it){const n=+it.dataset.i;if(n!==D.el.selectedIndex){D.el.selectedIndex=n;navFire(D.el);}}}
+ if(pick&&D.el.isConnected){const it=D.items[D.i];if(it){const n=+it.dataset.i;if(n!==D.el.selectedIndex){D.el.selectedIndex=n;Au.ui('value');navFire(D.el);}}}
  return true;
 }
 function navActivate(el){
  const t=el.tagName,ty=el.type;
- if(t==='SELECT'){if(navVsel(el))navAdjStart(el);else navDropOpen(el);return;}
+ if(t==='SELECT'){if(navVsel(el)&&!navVlist(el))navAdjStart(el);else navDropOpen(el);return;}
  if(t==='INPUT'&&ty==='range'){navAdjStart(el);return;}
  if(t==='TEXTAREA'||(t==='INPUT'&&/^(text|number|search|email)$/.test(ty))){NAV.edit=el;el.focus();return;}
  if(typeof el.click==='function')el.click();else el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
@@ -263,14 +274,16 @@ function navRoot(){
  const d=NAV_SCREENS[id]||{};
  return{key:id,el:el,def:d.def,start:d.start,back:'.backBtn',scr:SCREENS[id]};
 }
-// show the cursor; false when it was hidden, so a first press only reveals it
+// show the cursor; false when it was hidden, so a first press only reveals it (a list the mouse opened takes the press, the cursor landing on its owner)
 function navReveal(){
  if(NAV.show)return true;
  NAV.show=true;document.body.classList.add('padNav');
- if(NAV.el&&navVis(NAV.el)&&NAV.root&&NAV.root.el.contains(NAV.el))navSet(NAV.el);else navDefault();
- return false;
+ if(NAV.drop)navSet(NAV.drop.el);
+ else if(NAV.el&&navVis(NAV.el)&&NAV.root&&NAV.root.el.contains(NAV.el))navSet(NAV.el);else navDefault();
+ return!!NAV.drop;
 }
-function navHide(){if(navGrab())layPadDrop(true);navAdjEnd(true);navDropEnd(false);if(!NAV.show)return;NAV.show=false;document.body.classList.remove('padNav');navHints(null);}
+// an open list stays: it answers the mouse too
+function navHide(){if(navGrab())layPadDrop(true);navAdjEnd(true);if(!NAV.show)return;NAV.show=false;document.body.classList.remove('padNav');navHints(null);}
 function navDir(dx,dy){
  if(!navReveal())return;
  if(navGrab()){layPadNudge(dx,dy);if(NAV.el)navScrollTo(NAV.el);return;}
@@ -295,7 +308,7 @@ function navHints(R){
   if(NAV.drop)p.push(['DUD','Choose'],['A','Select'],['B','Close']);
   else if(el&&el.dataset.nav==='capture')p.push(['DPAD','Leave tester']);
   else if(el&&NAV.adj===el)p.push(['DLR','Adjust'],['A','Done'],['B','Cancel']);
-  else if(t==='SELECT')p.push(['A',navVsel(el)?'Change':'Open']);
+  else if(t==='SELECT')p.push(['A',navVsel(el)&&!navVlist(el)?'Change':'Open']);
   else if(t==='INPUT'&&ty==='range')p.push(['A','Adjust']);
   else if(NAV.edit)p.push(['A','Done']);
   else if(t==='TEXTAREA'||(t==='INPUT'&&/^(text|number|search|email)$/.test(ty)))p.push(['A','Type']);
@@ -385,6 +398,17 @@ padLabels();
 addEventListener('mousemove',e=>{if(Math.abs(e.movementX)+Math.abs(e.movementY)>3){NAV.kind='kbm';navHide();}},{passive:true});
 addEventListener('mousedown',()=>{NAV.kind='kbm';navHide();},{passive:true});
 addEventListener('keydown',()=>{NAV.kind='kbm';},{passive:true});
+// --- an open list off the pad: the keyboard walks it (capture: ahead of input.js, where Esc steps back a screen), a click outside it or a resize closes it ---
+addEventListener('keydown',e=>{if(!NAV.drop)return;const k=e.code;
+ if(k==='ArrowUp'||k==='ArrowDown')navDropStep(k==='ArrowUp'?-1:1);
+ else if(k==='Enter'||k==='NumpadEnter'||k==='Space'){if(!e.repeat)navDropEnd(true);}
+ else if(k==='Escape')navDropEnd(false);
+ else return;
+ e.preventDefault();e.stopImmediatePropagation();},true);
+addEventListener('mousedown',e=>{const D=NAV.drop;if(!D||D.L.contains(e.target))return;
+ if(navVsel(D.el)&&D.el.parentElement.contains(e.target))return;   // its own slot toggles it (js/vsel.js vselOpen)
+ navDropEnd(false);},true);
+addEventListener('resize',()=>navDropEnd(false));
 // --- mouse hover: the cursor's move sound for a pointer landing on something clickable ---
 const NAV_HOV={el:null};
 function navHoverEl(t){const H=CONFIG.audioMix.hover;

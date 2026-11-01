@@ -1299,6 +1299,14 @@ body.padNav select.navFocus,body.padNav input.navFocus{background-color:#0f2536}
 .navDropI.cur::before{content:'✓';position:absolute;left:7px;color:var(--focus);font-size:14px}
 .navDropI.on{background:color-mix(in srgb,var(--focus) 26%,transparent);color:#fff}
 .navDropI.off{color:#56617a;cursor:default}
+/* a pick list's list (vsel.js data-vsel="list"): the slot unrolled, in its face and type; the current value carries a gold edge */
+.navDrop.vs{background:linear-gradient(180deg,#0f2536,#0a1c2b);border:1px solid rgba(188,220,237,.5);border-top:2px solid var(--gold);border-radius:0;padding:4px 0;
+ font-family:var(--font-ui);font-weight:400;font-size:16px;letter-spacing:.08em;text-transform:uppercase}
+.navDrop.vs.up{border-top:1px solid rgba(188,220,237,.5);border-bottom:2px solid var(--gold)}   /* opened above its slot: the gold edge stays on the slot's side */
+.navDrop.vs .navDropI{padding:8px 30px;text-align:center;border-radius:0;color:var(--text)}
+.navDrop.vs .navDropI.cur{color:var(--gold)}
+.navDrop.vs .navDropI.cur::before{content:'';left:0;top:6px;bottom:6px;width:3px;background:var(--gold)}
+.navDrop.vs .navDropI.off{color:#56617a}
 body.padNav select.navAdj,body.padNav input.navAdj{background-color:color-mix(in srgb,var(--focus) 24%,#0f2536);
  }
 /* a panel held on the pad in the layout editor: lifted off the grid, the corner that Y turns into a resize handle lit when resizing */
@@ -1342,3 +1350,10 @@ body.padNav .vsel select.navFocus{outline:none!important;box-shadow:none!importa
 body.padNav .vsel:has(select.navFocus){outline:3px solid var(--focus);outline-offset:3px}
 .vsel:has(select.navAdj){border-color:var(--gold);background:linear-gradient(180deg,#3d2c10,#241a09)}
 .vsel:has(select.navAdj) .vsA{color:var(--gold)}
+/* a pick list: one chevron (the left spacer keeps the value centred), the whole slot one button; the chevron turns over while its list is open */
+.vsel.list{cursor:pointer}
+.vsel.list .vsA:hover{background:none}
+.vsel.list:hover .vsA.dn{color:var(--text)}
+.vsA.sp::before{display:none}
+.vsA.dn::before{border-width:8px 6px 0;border-style:solid;border-color:currentColor transparent transparent;transition:transform .12s}
+.vsel:has(select.navAdj) .vsA.dn::before{transform:rotate(180deg)}

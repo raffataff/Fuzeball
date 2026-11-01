@@ -6,12 +6,14 @@
 
 // ===== recorder (ring buffer) =====
 // tot = steps recorded since the last cut (a monotonic absolute index, ring step j = abs tot - n + j); the sound log stores abs so a wrapping ring can't re-point an event
-const RB={cap:0,n:0,head:0,tot:0,pos:null,typ:null,rod:null,slots:4,keys:Object.keys(CONFIG.ballTypes)};
+// ice = each team's frost seconds left per step (0 = none)
+const RB={cap:0,n:0,head:0,tot:0,pos:null,typ:null,rod:null,ice:null,slots:4,keys:Object.keys(CONFIG.ballTypes)};
 function replayAlloc(){
  RB.cap=Math.ceil(REPLAY.buffer*SIM.hz);
  RB.pos=new Float32Array(RB.cap*RB.slots*3);
  RB.typ=new Int8Array(RB.cap*RB.slots);
  RB.rod=new Float32Array(RB.cap*rods.length*2);
+ RB.ice=new Float32Array(RB.cap*2);
 }
 function replayCut(){RB.n=0;RB.head=0;RB.tot=0;RS.n=0;RS.head=0;RP.queued=false;}
                                                           // serve / redrop / new match: stale footage and queue die together; the sound log is cut with the positions
@@ -25,6 +27,7 @@ function recordReplay(){
   else RB.typ[tb+s]=-1;
  }
  for(let ri=0;ri<rods.length;ri++){const r=rods[ri],o=rb+ri*2;RB.rod[o]=r.offset;RB.rod[o+1]=r.angle;}
+ for(let t=0;t<2;t++){const l=S.eff[t].frozen-S.time;RB.ice[i*2+t]=l>0?l:0;}
  RB.head=(RB.head+1)%RB.cap;RB.tot++;if(RB.n<RB.cap)RB.n++;
 }
 // logical step j (0 = oldest recorded) → physical ring index
@@ -79,8 +82,8 @@ function replaySndUpdate(absNow,zk){
 }
 
 // ===== playback state =====
-// sndI = cursor into the sound log; keep = promoted to a file; sting = goal horn already re-fired; camSaved/camSave = free-roam parking spot
-const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,
+// sndI = cursor into the sound log; keep = promoted to a file; sting = goal horn already re-fired; camSaved/camSave = free-roam parking spot; j / jDt = the footage's float step and the sim seconds it moved this frame
+const RP={on:false,queued:false,team:0,gx:0,t:0,len:0,start:0,mode:'play',hold:0,j:0,jDt:0,
  shot:0,lastShot:-1,side:1,fov0:0,snap:false,ghosts:null,hasLook:false,sndI:0,keep:false,sting:false,
  camSaved:false,camSave:new THREE.Vector3(),
  look:new THREE.Vector3(),focus:new THREE.Vector3(),lookTo:new THREE.Vector3(),
@@ -200,6 +203,12 @@ function rbBall(s,j,out){
  out.set(lerp(P[p0],P[p1],a),lerp(P[p0+1],P[p1+1],a),lerp(P[p0+2],P[p1+2],a));
  return t0;
 }
+// team t's frost seconds left at the footage's current point, 0 = none (js/ice.js dresses the men off it in playback)
+function replayIce(t){
+ if(!RB.ice||!RB.n)return 0;
+ const j0=Math.floor(RP.j),j1=Math.min(j0+1,RB.n-1),a=RB.ice[rbIdx(j0)*2+t],b=RB.ice[rbIdx(j1)*2+t];
+ return a>0&&b>0?lerp(a,b,RP.j-j0):a;
+}
 
 // ===== camera shots =====
 // hand-placed moves picked at random per replay; bp = the filmed patch (RP.area), ball = the rally ball, t01 = 0..1 through the footage; numbers in CONFIG.replay.shots
@@ -262,8 +271,8 @@ function replayStart(){
  let si=Math.floor(Math.random()*REPLAY_SHOTS.length);
  if(si===RP.lastShot)si=(si+1)%REPLAY_SHOTS.length;
  RP.shot=si;RP.lastShot=si;RP.side=Math.random()<.5?-1:1;
- RP.fov0=camera.fov;
- replayCamStash();                            // free-roam only — see replayCamStash
+ RP.fov0=typeof cineFovBase==='function'?cineFovBase():camera.fov;   // the cinematic camera's zoom isn't the replay's base
+ replayCamStash();                           // free-roam only — see replayCamStash
   replayGhosts();
   for(const g of RP.ghosts){g.typ=-1;replayGhostHide(g);g.trailT=0;}
   vfxFadeOut(0.3);                            // what the goal threw up goes before the footage starts (js/vfx.js)
@@ -316,8 +325,8 @@ function replayUpdate(rdt){
    if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();if(vfxLive())vfxGoal(RP.team,RP.focus);}}
  }else{RP.hold-=rdt;if(RP.hold<=0){replayEnd();return;}}
  const j=clamp(RP.start+RP.t*SIM.hz,0,RB.n-1);
- // SIM steps since the last frame as sim time; ghost speed is measured against that, not rdt, so slow-mo doesn't cool a flying ball (js/balls.js)
- const jDt=(RP.prevJ>=0?Math.max(0,j-RP.prevJ):0)/SIM.hz;RP.prevJ=j;
+ // SIM steps since the last frame as sim time; ghost speed and the ice's clock run on it, not rdt, so slow-mo doesn't cool a flying ball (js/balls.js)
+ const jDt=(RP.prevJ>=0?Math.max(0,j-RP.prevJ):0)/SIM.hz;RP.prevJ=j;RP.j=j;RP.jDt=jDt;
  replaySndUpdate(rbAbs(j),zk);   // re-fire everything the footage clock has just passed
  /* rods straight from the buffer (display only — r.offset/r.angle untouched) */
  const j0=Math.floor(j),j1=Math.min(j0+1,RB.n-1),a=j-j0,r0=rbIdx(j0)*rods.length*2,r1=rbIdx(j1)*rods.length*2;

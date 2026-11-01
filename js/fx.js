@@ -419,18 +419,28 @@ function camTeamSide(){
 function camRod(i){return CAM.rodModes&&CAM.rodModes.indexOf(i)>=0&&typeof userRod==='function'?userRod():null;}
 function camModeOK(i){
  if(CAM.rodModes&&CAM.rodModes.indexOf(i)>=0)return!!camRod(i);
+ if(CAM.cine&&i===CAM.cine.mode)return!S.seats.length&&typeof cineUpdate==='function';   // the cinematic camera is for watching only
  return camTeamSide()>=0||CAM.soloOnly.indexOf(i)<0;
 }
+function camSay(){if(CAM.cine&&S.camMode===CAM.cine.mode)toast('CAMERA','CINEMATIC',1.2);}
 // V / pad-Y step: skips shots that aren't offerable right now
 function cycleCam(d){
  const n=CAM.modes.length;
- for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui('value');return;}}
+ for(let k=1;k<=n;k++){const i=((S.camMode+d*k)%n+n)%n;if(camModeOK(i)){S.camMode=i;Au.ui('value');camSay();return;}}
 }
 // numpad: straight to one shot
 function camPick(i){
  if(i==null||i<0||i>=CAM.modes.length||i===S.camMode)return;
  if(!camModeOK(i)){Au.ui('error');return;}
- S.camMode=i;Au.ui('value');
+ S.camMode=i;Au.ui('value');camSay();
+}
+// playing and watching keep their own camera: an AI showdown opens on the cinematic one (cine.spectate), a camera picked while watching is kept for the next
+let camKind='play';const camKept={play:0,watch:-1};
+function camMatchStart(){
+ const k=S.seats.length?'play':'watch';
+ if(k!==camKind){camKept[camKind]=S.camMode;camKind=k;
+  const m=camKept[k];if(m>=0)S.camMode=m;else if(CAM.cine&&CAM.cine.spectate)S.camMode=CAM.cine.mode;}
+ if(!camModeOK(S.camMode))cycleCam(1);   // the camera persists between matches: step off a shot that's no longer offerable
 }
 // the menus' look target, eased on all three axes (a match eases only lookX)
 // built on first use, not at load: harnesses boot this file against a THREE stub with no Vector3
@@ -462,7 +472,9 @@ function cameraUpdate(rdt){
  // MENUS: ease to the current screen's shot; no shake, ball follow or idle drift, so the menu render throttle can settle
  if(S.phase==='menu'&&CAM.menuShots&&typeof screenId==='function'){
   const m=menuShot(screenId()),k=clamp(rdt*CAM.menuLerp,0,1);   // clamped: a negative rdt would extrapolate
-  if(!camMenuOn){camMenuOn=true;if(!camMenuLook)camMenuLook=new THREE.Vector3();const pm=CAM.modes[S.camMode]||m;camMenuLook.set(S.camLookX,pm[4],pm[5]);}   // from wherever the match camera was looking
+  if(!camMenuOn){camMenuOn=true;if(!camMenuLook)camMenuLook=new THREE.Vector3();   // from wherever the match camera was looking
+   const pm=CAM.modes[S.camMode]||m,cl=typeof cineOff==='function'?cineOff():null;
+   if(cl)camMenuLook.set(cl[0],cl[1],cl[2]);else camMenuLook.set(S.camLookX,pm[4],pm[5]);}
   camera.position.x=lerp(camera.position.x,m[0],k);
   camera.position.y=lerp(camera.position.y,m[1],k);
   camera.position.z=lerp(camera.position.z,m[2],k);
@@ -473,6 +485,7 @@ function cameraUpdate(rdt){
  }
  camMenuOn=false;
  vfxCamPre();   // takes last frame's punch back out before the ease reads the position
+ if(typeof cineUpdate==='function'&&cineUpdate(rdt)){vfxCamPost(rdt);return;}   // the cinematic camera directs itself (js/cine.js)
  let bx=0;
  if(S.balls.length){for(const b of S.balls)bx+=b.m.position.x;bx/=S.balls.length;}
  const m=CAM.modes[S.camMode];

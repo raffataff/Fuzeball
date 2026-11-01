@@ -38,6 +38,7 @@ var rods=[],SCENELOG=[],scene={add:function(o){SCENEADDS++;SCENELOG.push(o);}},S
 var S={phase:'play',time:0,eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}]};
 var playerModel=[null,null];
 var AUCALLS=[];var Au={play:function(id){AUCALLS.push(id);return false;}};
+var RP={j:0,jDt:0},RI=[0,0];function replayIce(t){return RI[t];}
 var FXON=true,CF=[],SP=[],BL=[],BU=[];
 function vfxLive(){return FXON;}
 function vfxLin(h){const c=new Col().set(h);return [c.r,c.g,c.b];}
@@ -50,7 +51,7 @@ function vfxBlast(kind,x,y,z){BL.push({kind,x,y,z});}
 function burst(p,c1,c2,n,sp){BU.push({x:p.x,y:p.y,z:p.z,n});}
 `;
 const EXPORT=`;globalThis.X={CONFIG:CONFIG,IC:IC,ICE:ICE,S:S,cfg:cfg,THREE:THREE,ID:ID,
- get rods(){return rods;},set rods(v){rods=v;},playerModel:playerModel,
+ get rods(){return rods;},set rods(v){rods=v;},playerModel:playerModel,RP:RP,RI:RI,
  get FXON(){return FXON;},set FXON(v){FXON=v;},
  get SCENEADDS(){return SCENEADDS;},set SCENEADDS(v){SCENEADDS=v;},
  log:{au:AUCALLS,cf:CF,sp:SP,bl:BL,bu:BU,adds:ADDS,scene:SCENELOG},F:F,
@@ -323,13 +324,42 @@ function suite(X){
  X.S.eff[1].frozen=0;X.iceClear();
  ok(!X.ICE.sh.list.some(c=>c.on)&&X.ICE.sh.mesh.visible===false,'...are taken by a match start');
 
- /* 9. a replay */
- reset(X);X.S.eff[1].frozen=9;X.iceUpdate(0.016);X.iceUpdate(0.016);
- X.log.cf.length=0;X.log.au.length=0;X.log.bl.length=0;
- X.S.phase='replay';X.iceUpdate(0.016);
- ok(shown(X,1)===0&&X.log.cf.length===0,'a replay hides the blocks and does not shatter them');
+ /* 9. a replay: the blocks follow the footage (u0/u1 = when each team's frost ends on the footage clock, 0 = none) */
+ const FT={t:0},hz=X.CONFIG.sim.hz;
+ const rpAt=(t,u0,u1)=>{X.RP.jDt=Math.max(0,t-FT.t);FT.t=t;X.RP.j=t*hz;X.RI[0]=Math.max(0,u0-t);X.RI[1]=Math.max(0,u1-t);X.iceUpdate(0.016);};
+ const rpIn=()=>{X.S.phase='replay';FT.t=0;X.log.cf.length=0;X.log.au.length=0;X.log.bl.length=0;X.ICE.sh.list.forEach(c=>c.on=false);};
+ const grown=t=>X.rods.filter(r=>r.team===t).every(r=>r.ice.every(it=>!it.g.visible||near(it.g.scale.y,1,1e-6)));
+ const flying=()=>X.ICE.sh.list.filter(c=>c.on).length;
+ reset(X);X.S.eff[1].frozen=9;for(let i=0;i<30;i++)X.iceUpdate(0.016);
+ rpIn();rpAt(0,0,0);
+ ok(shown(X,1)===0,'footage from before the freeze shows no blocks');
+ ok(X.log.au.length===0&&X.log.bl.length===0&&flying()===0,'and going into it breaks nothing and plays nothing');
+ rpAt(0.1,0,1.5);
+ ok(shown(X,1)===MEN&&X.log.au.join()==='ice_form'&&X.log.bl.length===MEN,'the freeze in the footage forms the blocks');
+ const itR=X.rods.find(r=>r.team===1).ice[0],s0=itR.g.scale.y;
+ for(let i=0;i<20;i++)rpAt(0.1,0,1.5);
+ ok(s0<1&&near(itR.g.scale.y,s0,1e-9),'they grow on the footage clock: a still frame holds them');
+ for(let i=1;i<=10;i++)rpAt(0.1+i*0.05,0,1.5);
+ ok(near(itR.g.scale.y,1,1e-6),'and are full size once the footage has run the grow time');
+ {let lo=9;for(let k=0;k<60;k++){rpAt(0.61+k*0.01,0,1.5);lo=Math.min(lo,X.ICE.mat[1].f.opacity);}
+  ok(lo<X.IC.opacity-0.02,'the warning flicker reads the footage\'s time left, not the live match\'s ('+lo.toFixed(3)+')');}
+ X.log.au.length=0;rpAt(1.51,0,1.5);
+ ok(shown(X,1)===0&&flying()===MEN*X.IC.shatter.pieces&&X.log.au.join()==='ice_break','the frost running out in the footage shatters the blocks');
+ X.S.phase='play';X.log.au.length=0;X.log.bl.length=0;X.ICE.sh.list.forEach(c=>c.on=false);X.iceUpdate(0.016);
+ ok(shown(X,1)===MEN&&grown(1),'back in the match the live frost is on the men again, full size');
+ ok(X.log.au.length===0&&X.log.bl.length===0&&flying()===0,'with no form, burst or break');
+ reset(X);X.S.eff[1].frozen=9;for(let i=0;i<30;i++)X.iceUpdate(0.016);
+ rpIn();rpAt(0,3,3);
+ ok(shown(X,0)===MEN&&shown(X,1)===MEN&&grown(0)&&grown(1),'footage frozen from its first frame shows full blocks at once, on every team frozen in it');
+ ok(X.log.au.length===0&&X.log.bl.length===0,'and forms nothing');
  X.S.phase='play';X.iceUpdate(0.016);
- ok(shown(X,1)===MEN&&X.log.au.length===0&&X.log.bl.length===0,'they come back after it with no second form sound or burst');
+ ok(shown(X,0)===0&&shown(X,1)===MEN&&flying()===0&&X.log.au.length===0,'leaving it drops the footage\'s frost on team 0 with no break');
+ reset(X);X.S.eff[1].frozen=9;for(let i=0;i<30;i++)X.iceUpdate(0.016);
+ const rh=X.rods.find(r=>r.team===1&&r.men.length===5);
+ rh.removedUntil[2]=X.S.time+5;rh.men[2].visible=false;X.iceUpdate(0.016);
+ rpIn();rpAt(0,0,3);
+ ok(rh.ice[2].g.visible===false&&shown(X,1)===MEN-1&&flying()===0,'a man the cannonball took has no block in the footage and nothing breaks at the cut');
+ X.S.phase='play';X.iceUpdate(0.016);rh.removedUntil[2]=0;rh.men[2].visible=true;
 
  /* 10. a cannonball takes a man */
  reset(X);X.S.eff[1].frozen=9;X.iceUpdate(0.016);for(let i=0;i<30;i++)X.iceUpdate(0.016);
@@ -421,16 +451,20 @@ const MUT=[
  ['gy=-(ROD_H+PLAYER_H)+P.gap','gy=-(ROD_H+PLAYER_H)-1','the base sinks into the pitch'],
  ['iceStop(t,T,live);','iceStop(t,T,false);','expiry does not shatter'],
  ['T.live=false;T.age=0;T.pulse=0;}','T.age=0;T.pulse=0;}','a clear leaves the team marked live'],
- ['it.g.visible=!hide;','it.g.visible=true;','a replay shows the blocks'],
- ['alive=(!ru||ru<=S.time)&&r.men[mi].visible;','alive=true;','a removed man keeps his block'],
- ["const hide=S.phase==='replay',live=S.phase!=='menu';","const hide=S.phase==='replay',live=true;",'the menu keeps the frost'],
+ ["const rp=S.phase==='replay'&&typeof replayIce==='function'",'const rp=false','a replay shows the live frost, not the footage\'s'],
+ ['cut=rp!==ICE.rp','cut=false','crossing into a replay forms or breaks the blocks'],
+ ['it.born=T.age-IC.grow;','it.born=T.age;','a block grows again at the cut'],
+ ['it.vis=on&&iceAlive(r,mi);','it.vis=on;','a removed man gets his block back at the cut'],
+ ['dt=rp?RP.jDt:rdt','dt=rdt','the footage\'s blocks run on the wall clock'],
+ ['return (!ru||ru<=S.time)&&r.men[mi].visible;','return true;','a removed man keeps his block'],
+ ["live=S.phase!=='menu',","live=true,",'the menu keeps the frost'],
  ['it.g.scale.set(lerp(0.72,1,k),lerp(0.2,1,k),lerp(0.72,1,k));','it.g.scale.set(1,1,1);','blocks pop in'],
  ['m.f.opacity=IC.opacity*(1-0.4*w*f);','m.f.opacity=IC.opacity;','no flicker in the last seconds'],
  ["Au.play('ice_form');",'','no form sound'],
  ["if(fx)Au.play('ice_break');",'','no break sound'],
  ['iceMake(iceTris(rings,t*31+v*7+1,P))','iceMake(iceTris(rings,t*31+1,P))','every shape is the same'],
  ["s.toFixed(3)+'|'","'x|'",'a rescale is not noticed'],
- ['if(e.frozen>T.until+0.5)T.pulse=1;','','a second pickup is silent'],
+ ['if(left>T.left+0.5)T.pulse=1;','','a second pickup is silent'],
  ['return typeof vfxLive===\'function\'&&vfxLive()&&cfg.particles;','return typeof vfxLive===\'function\'&&vfxLive();','particles off still spawns'],
  ['if(T.glint<=0){T.glint=IC.glint.every*rand(0.6,1.5);iceGlint(t);}','','no glints'],
  ['.applyMatrix4(mw);\n  let dx=_icV.x-cx','\n  let dx=_icV.x-cx','shards start at the origin'],

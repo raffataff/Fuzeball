@@ -15,7 +15,12 @@ function makeSeat(team,devs,lockRole){
   rods:[],ctrl:0,
   tcMult:1,        // live Total-Control slide multiplier for THIS seat's pad (was the global S.tcMult)
   padRaise:false,  // pad raise is a hold — per seat, or two pads would clobber each other's raise
-  padAngleArm:true,// right-stick angle authority; a rod switch drops it until the stick re-centres (js/input.js)
+  padAngleArm:true,// right-stick angle authority; a rod switch drops it until the stick re-centres or flicks through centre (js/input.js)
+  padRs:0,         // ...the angle axis at the last poll, for that flick
+  padCarry:false,  // a switch is carrying the stick's angle onto the new rod (CONFIG.control.handover.stick), picked up on the next poll
+  carryRs:0,       // ...the angle axis at the switch: the carry lasts until the stick leaves it
+  kickW:-1,        // a pad kick waiting for LT to reach the pass depth: s waited, -1 none (js/input.js, shots.js shotChordWait)
+  kickR:null,      // ...and the rod it was pressed on
   shotRod:null,    // rod this seat drove last frame, so js/shots.js can clear a wind-up left on a rod it let go of
   holdRod:null,    // rod the auto-switch is currently withholding mid-save (js/ai.js autoHoldRod)
   holdT:0,         // …and when that started, so handover.maxHold can expire it
@@ -64,6 +69,8 @@ function rodTaken(r,not){
  for(let i=0;i<S.seats.length;i++){const s=S.seats[i];if(s!==not&&seatRod(s)===r)return true;}
  return false;
 }
+// a switch and the right stick: its angle carries onto the new rod (control.handover.stick; input.js picks it up, rods.js eases it), or the stick is disarmed until it re-centres
+function seatStickSwitch(s){const H=CTRL.handover;if(H&&H.stick){s.padCarry=true;s.carryRs=s.padRs||0;}else s.padAngleArm=false;}
 // resolve a device token to its seat: exact match first, then any 'pad*' holder
 function seatForDev(tok){
  for(let i=0;i<S.seats.length;i++)if(S.seats[i].devs.indexOf(tok)>=0)return S.seats[i];
@@ -76,7 +83,7 @@ function clearRodAI(r){
  if(!r)return;
  r.raiseKeep=!!r.raise;                     // inherited raise — released by rodRaiseRelease / userControlUpdate
  if(!r.raiseKeep)r.behindFlag=false;
- r.act=null;r.heldFwd=false;r.rvUntil=0;r.rvReady=false;r.ttOn=false;r.ttPh=null;
+ r.act=null;r.heldFwd=false;r.rvUntil=0;r.rvReady=false;r.ttOn=false;r.ttPh=null;r.puPh=null;r.puB=false;
  // the rod holds its ground: r.target was left at the AI's destination and keyboard/pad add to it, so pin it to the live offset
  r.target=r.offset;r.slideV=0;
  rodInputRelease(r);                        // a stale stick angle or held kick from an earlier stint would pin this rod
@@ -91,8 +98,8 @@ function clearRodAI(r){
 // the player has taken the raise themselves (button, stick or kick): the inherited latch is done
 function rodRaiseRelease(r){if(r)r.raiseKeep=false;}
 // a rod a seat just let go of: drop every held input still on it (the release lands on the new rod)
-//   padAngleOn/Target: the last stick angle (outranks the raise latch and rest-drop in updateRods); kickHold: a held kick that pins the swing
-function rodInputRelease(r){if(r){r.padAngleOn=false;r.padAngleTarget=0;r.kickHold=false;}}
+//   padAngleOn/Target: the last stick angle (outranks the raise latch and rest-drop in updateRods); padCarry: a stick angle eased over from a switch; kickHold: a held kick that pins the swing
+function rodInputRelease(r){if(r){r.padAngleOn=false;r.padAngleTarget=0;r.padCarry=false;r.kickHold=false;}}
 // the slide freeze: false = this seat's slide does nothing this frame; set briefly by an auto hand-over (CONFIG.control.handover.settle), since every slide device is relative and the swipe would carry onto the new rod
 // kick, raise and angle are untouched; a manual switch is unchanged
 function seatSlideOK(s){return !s||S.time>=(s.slideArm||0);}
@@ -108,7 +115,7 @@ function setSeatCtrl(s,i,dir){
  if(s.ctrl===was)return false;
  clearRodAI(s.rods[s.ctrl]);                 // handoff: wipe AI state from the newly claimed rod
  rodInputRelease(s.rods[was]);               // …and every held input off the one we just dropped
- s.padAngleArm=false;                        // a stick already held must re-centre before it drives the new rod
+ seatStickSwitch(s);                         // a stick already held carries over, or must re-centre before it drives the new rod
  S.lastSwitch=S.time;updateChips();Au.ui('rod');
  return true;
 }
