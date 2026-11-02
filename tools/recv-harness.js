@@ -14,6 +14,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  inlane:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// the teammate behind us'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:'),
+ calm:slice(AI,'function calmK(',NL+'function coverZ('),
  seat:slice(SE,'function clearRodAI(r){',NL+'function setSeatCtrl')
 };
 const stubs=[
@@ -30,7 +31,7 @@ function boot(mut){
   if(g[mut.part]===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.inlane,g.catch,g.seat,
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.inlane,g.catch,g.calm,g.seat,
   ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,DIFFS:DIFFS,recvReady:recvReady,recvPossess:recvPossess,recvReadyNow:recvReadyNow,recvArm:recvArm,recvBall:recvBall,recvStart:recvStart,recvStep:recvStep,recvEnd:recvEnd,recvRelease:recvRelease,gkHold:gkHold,clearRodAI:clearRodAI,SHOT_capV:SHOT.pin.capV,SHOT_back:SHOT.pin.back,SHOT_front:SHOT.pin.front,SHOT_fwdBack:SHOT.pin.fwdBack,SHOT_fwdFront:SHOT.pin.fwdFront};'].join(NL),ctx);
  return ctx.X;
 }
@@ -266,6 +267,20 @@ RD.maxBall=0;
   X.recvStep(r,null,D,dt);
   ok('a ready rod is not in a hurry: a slow rod, a lane 6 off (more than the 0.45 s a pass takes would give it) is still one it gets onto',r.act==='recv'&&r.rvMan===4&&near(r.target,0,1e-6),r.act+' '+r.rvMan+' '+r.target);
   X.DIFFS.pro.speed=sp0;}
+ // ---- calm (CONFIG.ai.calm): standing ready for a team ball far off ---------------------------------------------------
+ {const ready=q=>{q.rvReady=true;q.rvUntil=X.S.time+60;q.rvZ=6;q.rvFl=RV.ready.wait;q.rvLaneT=-9;q.clC=1;X.recvStart(q);},zOf=q=>q.baseZ[q.rvMan]+q.target;
+  const r=world(X).r;ready(r);X.recvStep(r,null,D,dt);
+  ok('a rod standing ready for a far team ball no one is passing to (calm) does not jump onto its z',near(r.target,0,1e-6)&&r.clOn===true,'target='+r.target);
+  for(let i=0;i<360;i++){X.S.time+=dt;X.recvStep(r,null,D,dt);}
+  ok('…it eases onto it',near(zOf(r),6,X.AIC.calm.settle+0.05),'z='+zOf(r));
+  const q=world(X).r;ready(q);q.rvLaneT=X.S.time;X.recvStep(q,null,D,dt);
+  ok('…a lane the holder looks at is taken at once',near(zOf(q),6,1e-6),'z='+zOf(q));
+  const w=world(X).r;ready(w);X.S.balls.push(ball(X,-20,2,60,0));X.recvStep(w,null,D,dt);
+  ok('…and so is the line of a ball on its way',near(zOf(w),2,1e-6),'z='+zOf(w));
+  const k=world(X).r;ready(k);X.AIC.calm.ready=false;X.recvStep(k,null,D,dt);X.AIC.calm.ready=true;
+  ok('…and with calm.ready off a ready rod keeps a man on the ball at once',near(zOf(k),6,1e-6),'z='+zOf(k));
+  const c=world(X).r;ready(c);c.clC=0;X.recvStep(c,null,D,dt);
+  ok('…and a rod the play is near (not calm) is on it at once',near(zOf(c),6,1e-6),'z='+zOf(c));}
  {const {from,r}=world(X);X.recvReady(from,[{rod:r,man:3,z:12,score:5}]);X.recvStart(r);X.recvStep(r,null,D,dt);
   X.recvArm(from,{x:-7.5,z:12});
   ok('a real pass takes over: no longer just ready, the flight timed from now',r.rvReady===false&&r.rvT0===X.S.time&&near(r.rvFl,30/RV.speed,1e-6));
@@ -432,9 +447,9 @@ const MUT=[
  {n:'…a ball drifting back slowly does not',part:'catch',from:'b.v.x*r.kickDir<-RD.awayV',to:'b.v.x*r.kickDir<0'},
  {n:'…a fast ball coming at the rod does not',part:'catch',from:'b.v.x*r.kickDir<-RD.awayV',to:'Math.abs(b.v.x)>RD.awayV'},
  {n:'…a ball in the air readies it',part:'catch',from:'||p.y>(ask?RV.maxY:AIC.lowY))return;',to:')return;'},
- {n:'a ready rod ignores the ball coming at it',part:'catch',from:'if(b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY){tAr=',to:'if(false){tAr='},
- {n:'…follows a slow ball too',part:'catch',from:'if(b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY){tAr=',to:'if(b&&b.v.x*dir>=-1e9&&b.m.position.y<=RV.maxY){tAr='},
- {n:'…follows a ball in the air',part:'catch',from:'&&b.m.position.y<=RV.maxY){tAr=',to:'){tAr='},
+ {n:'a ready rod ignores the ball coming at it',part:'catch',from:'const run=b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY;',to:'const run=false;'},
+ {n:'…follows a slow ball too',part:'catch',from:'const run=b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY;',to:'const run=b&&b.v.x*dir>=-1e9&&b.m.position.y<=RV.maxY;'},
+ {n:'…follows a ball in the air',part:'catch',from:'const run=b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY;',to:'const run=b&&b.v.x*dir>=RV.ready.trackV;'},
  {n:'…goes to where the ball is, not where its line will be',part:'catch',from:'za=b.m.position.z+b.v.z*tAr;}',to:'za=b.m.position.z;}'},
  {n:'…the whistle does not stop it',part:'catch',from:'RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil||0)>S.time&&!r.rvReady))return;',to:'RV.roles.indexOf(r.role)<0||((r.rvUntil||0)>S.time&&!r.rvReady))return;'},
  {n:'…the keeper is readied',part:'catch',from:'!RD.on||RV.roles.indexOf(r.role)<0||r.force||((r.rvUntil',to:'!RD.on||r.force||((r.rvUntil'},
@@ -473,10 +488,14 @@ const MUT=[
  {n:'a human\'s rod is waited for',part:'catch',from:'||isUserRod(q)||(q.act&&q.act!==\'recv\'))return true;',to:'||(q.act&&q.act!==\'recv\'))return true;'},
  {n:'the keeper is waited for',part:'catch',from:'if(RV.roles.indexOf(q.role)<0||isUserRod(q)||(q.act&&',to:'if(isUserRod(q)||(q.act&&'},
  {n:'with the wait off, a mate is still waited for',part:'catch',from:'if(!RV.on||!RD.on||!pk)return true;\n const q=pk.rod;',to:'if(!RV.on||!pk)return true;\n const q=pk.rod;'},
- {n:'a ready rod is not posed until the pass is struck',part:'catch',from:'  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;\n }',to:'  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);\n  return;\n }'},
- {n:'…or its man is not put on the lane',part:'catch',from:'  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;\n }',to:'  r.aiMan=r.rvMan;\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;\n }'},
+ {n:'a ready rod is not posed until the pass is struck',part:'catch',from:'\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;\n }',to:'\n  return;\n }'},
+ {n:'…or its man is not put on the lane',part:'catch',from:'?calmGo(r,o,dt):o;',to:'?r.target:r.target;'},
  {n:'…or it reads the flight that has not begun (through)',part:'catch',from:'if(r.rvReady){                                                       // no pass yet',to:'if(false){                                                       // no pass yet'},
- {n:'a ready rod that cannot reach the lane waits on',part:'catch',from:'  if(r.rvMan<0){recvEnd(r,\'reach\');return;}\n  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;',to:'  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);\n  r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;\n  return;'},
+ {n:'a ready rod that cannot reach the lane waits on',part:'catch',from:'  if(r.rvMan<0){recvEnd(r,\'reach\');return;}\n  const o=clamp(r.rvO',to:'  const o=clamp(r.rvO'},
+ {n:'standing ready for a far team ball is never calm',part:'catch',from:'?calmGo(r,o,dt):o;',to:'?o:o;'},
+ {n:'…a lane the holder looks at is eased too',part:'catch',from:'&&AIC.calm.ready&&S.time-(r.rvLaneT||-9)>=RV.ready.hold?',to:'&&AIC.calm.ready?'},
+ {n:'…a ball on its way is eased too',part:'catch',from:'r.target=!run&&AIC.calm.ready',to:'r.target=AIC.calm.ready'},
+ {n:'…the ready switch is ignored',part:'catch',from:'r.target=!run&&AIC.calm.ready&&',to:'r.target=!run&&'},
  {n:'a real pass leaves the rod "ready" (it is read as waiting, not as a flight)',part:'catch',from:'rx.rvZ=aim.z;rx.rvReady=false;rx.rvRestT=0;}',to:'rx.rvZ=aim.z;rx.rvRestT=0;}'},
  {n:'a pinned ball leaves the rod "ready"',part:'catch',from:'r.catT=0;r.rvUntil=0;r.rvReady=false;return;}',to:'r.catT=0;r.rvUntil=0;return;}'},
  {n:'ending leaves the rod ready',part:'catch',from:'r.act=null;r.rvUntil=0;r.rvReady=false;r.rvRestT=0;r.aiMan=-1;',to:'r.act=null;r.rvUntil=0;r.rvRestT=0;r.aiMan=-1;'},

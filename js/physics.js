@@ -124,11 +124,11 @@ function hitFresh(b,k,imp,min){
 function rollProbe(b){
  if(b.scored)return;
  const p=b.m.position,v=b.v,eps=PHY.contactEps,aC=b.t.audio;
- if(p.y<BALL_R+eps)Au.rollFeed(0,Math.hypot(v.x,v.z),aC);             // floor — both tables
+ if(p.y<BALL_R+eps)Au.rollFeed(0,Math.hypot(v.x,v.z),aC,b);             // floor — both tables
  if(ARENA_ON||p.y>=WALL_H+BALL_R)return;
  const zl=F.W/2-BALL_R,xl=F.L/2-BALL_R;
- if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC);       // side wall: travel is x/y
- else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC);  // end wall: travel is z/y
+ if(Math.abs(p.z)>zl-eps)Au.rollFeed(1,Math.hypot(v.x,v.y),aC,b);       // side wall: travel is x/y
+ else if(Math.abs(p.x)>xl-eps)Au.rollFeed(1,Math.hypot(v.z,v.y),aC,b);  // end wall: travel is z/y
 }
 // is the ball past the line somewhere other than the mouth? (wide of a post, over the bar, under the pitch, behind the net)
 // the caller latches it (b.noGoal, cleared once back in front of the line); kept apart from b.overBar, which drives the net roof

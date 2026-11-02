@@ -38,7 +38,7 @@ function arenaContact(b,pen,nx,ny,nz){
     if(ny<=ARENA.fricNy)spawnMark(b,nx,ny,nz,-vn);}}   // bowl WALL only — the floor and its fillet get nothing
   else{v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;
    // tangential = what's left of v once the normal component is removed
-   Au.rollFeed(ny>ARENA.fricNy?0:1,Math.hypot(v.x,v.y,v.z),b.t.audio);}
+   Au.rollFeed(ny>ARENA.fricNy?0:1,Math.hypot(v.x,v.y,v.z),b.t.audio,b);}
   if(ny>ARENA.fricNy){const f=Math.exp(-PHY.floorFric*hStep);v.x*=f;v.z*=f;}
  }
 }

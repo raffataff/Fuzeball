@@ -2,6 +2,344 @@
  "v": 1,
  "note": "written by tools/build_audio_manifest.js, do not edit",
  "sounds": {
+  "ball_drop": [
+   "sfx/ball_drop_01.wav",
+   "sfx/ball_drop_02.wav",
+   "sfx/ball_drop_03.wav"
+  ],
+  "ball_drop_champions_green": [
+   "sfx/ball_drop_champions_green_01.wav",
+   "sfx/ball_drop_champions_green_02.wav",
+   "sfx/ball_drop_champions_green_03.wav"
+  ],
+  "ball_drop_champions_purple": [
+   "sfx/ball_drop_champions_purple_01.wav",
+   "sfx/ball_drop_champions_purple_02.wav",
+   "sfx/ball_drop_champions_purple_03.wav"
+  ],
+  "ball_drop_cork": [
+   "sfx/ball_drop_cork_01.wav",
+   "sfx/ball_drop_cork_02.wav",
+   "sfx/ball_drop_cork_03.wav"
+  ],
+  "ball_drop_cyatron": [
+   "sfx/ball_drop_cyatron_01.wav",
+   "sfx/ball_drop_cyatron_02.wav",
+   "sfx/ball_drop_cyatron_03.wav"
+  ],
+  "ball_drop_deck": [
+   "sfx/ball_drop_deck_01.wav",
+   "sfx/ball_drop_deck_02.wav",
+   "sfx/ball_drop_deck_03.wav"
+  ],
+  "ball_drop_moon": [
+   "sfx/ball_drop_moon_01.wav",
+   "sfx/ball_drop_moon_02.wav",
+   "sfx/ball_drop_moon_03.wav"
+  ],
+  "ball_drop_neon": [
+   "sfx/ball_drop_neon_01.wav",
+   "sfx/ball_drop_neon_02.wav",
+   "sfx/ball_drop_neon_03.wav"
+  ],
+  "ball_drop_royal": [
+   "sfx/ball_drop_royal_01.wav",
+   "sfx/ball_drop_royal_02.wav",
+   "sfx/ball_drop_royal_03.wav"
+  ],
+  "ball_drop_verdantia": [
+   "sfx/ball_drop_verdantia_01.wav",
+   "sfx/ball_drop_verdantia_02.wav",
+   "sfx/ball_drop_verdantia_03.wav"
+  ],
+  "ball_floor": [
+   "sfx/ball_floor_01.wav",
+   "sfx/ball_floor_02.wav",
+   "sfx/ball_floor_03.wav",
+   "sfx/ball_floor_04.wav",
+   "sfx/ball_floor_05.wav"
+  ],
+  "ball_floor_champions_green": [
+   "sfx/ball_floor_champions_green_01.wav",
+   "sfx/ball_floor_champions_green_02.wav",
+   "sfx/ball_floor_champions_green_03.wav",
+   "sfx/ball_floor_champions_green_04.wav",
+   "sfx/ball_floor_champions_green_05.wav"
+  ],
+  "ball_floor_champions_purple": [
+   "sfx/ball_floor_champions_purple_01.wav",
+   "sfx/ball_floor_champions_purple_02.wav",
+   "sfx/ball_floor_champions_purple_03.wav",
+   "sfx/ball_floor_champions_purple_04.wav",
+   "sfx/ball_floor_champions_purple_05.wav"
+  ],
+  "ball_floor_cork": [
+   "sfx/ball_floor_cork_01.wav",
+   "sfx/ball_floor_cork_02.wav",
+   "sfx/ball_floor_cork_03.wav",
+   "sfx/ball_floor_cork_04.wav",
+   "sfx/ball_floor_cork_05.wav"
+  ],
+  "ball_floor_cyatron": [
+   "sfx/ball_floor_cyatron_01.wav",
+   "sfx/ball_floor_cyatron_02.wav",
+   "sfx/ball_floor_cyatron_03.wav",
+   "sfx/ball_floor_cyatron_04.wav",
+   "sfx/ball_floor_cyatron_05.wav"
+  ],
+  "ball_floor_deck": [
+   "sfx/ball_floor_deck_01.wav",
+   "sfx/ball_floor_deck_02.wav",
+   "sfx/ball_floor_deck_03.wav",
+   "sfx/ball_floor_deck_04.wav",
+   "sfx/ball_floor_deck_05.wav"
+  ],
+  "ball_floor_moon": [
+   "sfx/ball_floor_moon_01.wav",
+   "sfx/ball_floor_moon_02.wav",
+   "sfx/ball_floor_moon_03.wav",
+   "sfx/ball_floor_moon_04.wav",
+   "sfx/ball_floor_moon_05.wav"
+  ],
+  "ball_floor_neon": [
+   "sfx/ball_floor_neon_01.wav",
+   "sfx/ball_floor_neon_02.wav",
+   "sfx/ball_floor_neon_03.wav",
+   "sfx/ball_floor_neon_04.wav",
+   "sfx/ball_floor_neon_05.wav"
+  ],
+  "ball_floor_royal": [
+   "sfx/ball_floor_royal_01.wav",
+   "sfx/ball_floor_royal_02.wav",
+   "sfx/ball_floor_royal_03.wav",
+   "sfx/ball_floor_royal_04.wav",
+   "sfx/ball_floor_royal_05.wav"
+  ],
+  "ball_floor_verdantia": [
+   "sfx/ball_floor_verdantia_01.wav",
+   "sfx/ball_floor_verdantia_02.wav",
+   "sfx/ball_floor_verdantia_03.wav",
+   "sfx/ball_floor_verdantia_04.wav",
+   "sfx/ball_floor_verdantia_05.wav"
+  ],
+  "ball_goal": [
+   "sfx/ball_goal_01.wav",
+   "sfx/ball_goal_02.wav",
+   "sfx/ball_goal_03.wav"
+  ],
+  "ball_goal_arena": [
+   "sfx/ball_goal_arena_01.wav",
+   "sfx/ball_goal_arena_02.wav",
+   "sfx/ball_goal_arena_03.wav"
+  ],
+  "ball_goal_circuit": [
+   "sfx/ball_goal_circuit_01.wav",
+   "sfx/ball_goal_circuit_02.wav",
+   "sfx/ball_goal_circuit_03.wav"
+  ],
+  "ball_post": [
+   "sfx/ball_post_01.wav",
+   "sfx/ball_post_02.wav",
+   "sfx/ball_post_03.wav",
+   "sfx/ball_post_04.wav"
+  ],
+  "ball_post_arena": [
+   "sfx/ball_post_arena_01.wav",
+   "sfx/ball_post_arena_02.wav",
+   "sfx/ball_post_arena_03.wav",
+   "sfx/ball_post_arena_04.wav"
+  ],
+  "ball_post_circuit": [
+   "sfx/ball_post_circuit_01.wav",
+   "sfx/ball_post_circuit_02.wav",
+   "sfx/ball_post_circuit_03.wav",
+   "sfx/ball_post_circuit_04.wav"
+  ],
+  "ball_roll_fast": [
+   "sfx/ball_roll_fast_01.wav",
+   "sfx/ball_roll_fast_02.wav"
+  ],
+  "ball_roll_fast_champions_green": [
+   "sfx/ball_roll_fast_champions_green_01.wav",
+   "sfx/ball_roll_fast_champions_green_02.wav"
+  ],
+  "ball_roll_fast_champions_purple": [
+   "sfx/ball_roll_fast_champions_purple_01.wav",
+   "sfx/ball_roll_fast_champions_purple_02.wav"
+  ],
+  "ball_roll_fast_cork": [
+   "sfx/ball_roll_fast_cork_01.wav",
+   "sfx/ball_roll_fast_cork_02.wav"
+  ],
+  "ball_roll_fast_cyatron": [
+   "sfx/ball_roll_fast_cyatron_01.wav",
+   "sfx/ball_roll_fast_cyatron_02.wav"
+  ],
+  "ball_roll_fast_deck": [
+   "sfx/ball_roll_fast_deck_01.wav",
+   "sfx/ball_roll_fast_deck_02.wav"
+  ],
+  "ball_roll_fast_moon": [
+   "sfx/ball_roll_fast_moon_01.wav",
+   "sfx/ball_roll_fast_moon_02.wav"
+  ],
+  "ball_roll_fast_neon": [
+   "sfx/ball_roll_fast_neon_01.wav",
+   "sfx/ball_roll_fast_neon_02.wav"
+  ],
+  "ball_roll_fast_royal": [
+   "sfx/ball_roll_fast_royal_01.wav",
+   "sfx/ball_roll_fast_royal_02.wav"
+  ],
+  "ball_roll_fast_verdantia": [
+   "sfx/ball_roll_fast_verdantia_01.wav",
+   "sfx/ball_roll_fast_verdantia_02.wav"
+  ],
+  "ball_roll_slow": [
+   "sfx/ball_roll_slow_01.wav",
+   "sfx/ball_roll_slow_02.wav"
+  ],
+  "ball_roll_slow_champions_green": [
+   "sfx/ball_roll_slow_champions_green_01.wav",
+   "sfx/ball_roll_slow_champions_green_02.wav"
+  ],
+  "ball_roll_slow_champions_purple": [
+   "sfx/ball_roll_slow_champions_purple_01.wav",
+   "sfx/ball_roll_slow_champions_purple_02.wav"
+  ],
+  "ball_roll_slow_cork": [
+   "sfx/ball_roll_slow_cork_01.wav",
+   "sfx/ball_roll_slow_cork_02.wav"
+  ],
+  "ball_roll_slow_cyatron": [
+   "sfx/ball_roll_slow_cyatron_01.wav",
+   "sfx/ball_roll_slow_cyatron_02.wav"
+  ],
+  "ball_roll_slow_deck": [
+   "sfx/ball_roll_slow_deck_01.wav",
+   "sfx/ball_roll_slow_deck_02.wav"
+  ],
+  "ball_roll_slow_moon": [
+   "sfx/ball_roll_slow_moon_01.wav",
+   "sfx/ball_roll_slow_moon_02.wav"
+  ],
+  "ball_roll_slow_neon": [
+   "sfx/ball_roll_slow_neon_01.wav",
+   "sfx/ball_roll_slow_neon_02.wav"
+  ],
+  "ball_roll_slow_royal": [
+   "sfx/ball_roll_slow_royal_01.wav",
+   "sfx/ball_roll_slow_royal_02.wav"
+  ],
+  "ball_roll_slow_verdantia": [
+   "sfx/ball_roll_slow_verdantia_01.wav",
+   "sfx/ball_roll_slow_verdantia_02.wav"
+  ],
+  "ball_scrape": [
+   "sfx/ball_scrape_01.wav",
+   "sfx/ball_scrape_02.wav"
+  ],
+  "ball_scrape_arena": [
+   "sfx/ball_scrape_arena_01.wav",
+   "sfx/ball_scrape_arena_02.wav"
+  ],
+  "ball_scrape_circuit": [
+   "sfx/ball_scrape_circuit_01.wav",
+   "sfx/ball_scrape_circuit_02.wav"
+  ],
+  "ball_wall": [
+   "sfx/ball_wall_01.wav",
+   "sfx/ball_wall_02.wav",
+   "sfx/ball_wall_03.wav",
+   "sfx/ball_wall_04.wav",
+   "sfx/ball_wall_05.wav",
+   "sfx/ball_wall_06.wav"
+  ],
+  "ball_wall_arena": [
+   "sfx/ball_wall_arena_01.wav",
+   "sfx/ball_wall_arena_02.wav",
+   "sfx/ball_wall_arena_03.wav",
+   "sfx/ball_wall_arena_04.wav",
+   "sfx/ball_wall_arena_05.wav",
+   "sfx/ball_wall_arena_06.wav"
+  ],
+  "ball_wall_circuit": [
+   "sfx/ball_wall_circuit_01.wav",
+   "sfx/ball_wall_circuit_02.wav",
+   "sfx/ball_wall_circuit_03.wav",
+   "sfx/ball_wall_circuit_04.wav",
+   "sfx/ball_wall_circuit_05.wav",
+   "sfx/ball_wall_circuit_06.wav"
+  ],
+  "ir_arcade": [
+   "ir/ir_arcade.wav"
+  ],
+  "ir_moon": [
+   "ir/ir_moon.wav"
+  ],
+  "ir_open": [
+   "ir/ir_open.wav"
+  ],
+  "ir_pub": [
+   "ir/ir_pub.wav"
+  ],
+  "ir_saucer": [
+   "ir/ir_saucer.wav"
+  ],
+  "rod_bump": [
+   "sfx/rod_bump_01.wav",
+   "sfx/rod_bump_02.wav",
+   "sfx/rod_bump_03.wav",
+   "sfx/rod_bump_04.wav"
+  ],
+  "rod_bump_arena": [
+   "sfx/rod_bump_arena_01.wav",
+   "sfx/rod_bump_arena_02.wav",
+   "sfx/rod_bump_arena_03.wav",
+   "sfx/rod_bump_arena_04.wav"
+  ],
+  "rod_bump_circuit": [
+   "sfx/rod_bump_circuit_01.wav",
+   "sfx/rod_bump_circuit_02.wav",
+   "sfx/rod_bump_circuit_03.wav",
+   "sfx/rod_bump_circuit_04.wav"
+  ],
+  "rod_slide_fast": [
+   "sfx/rod_slide_fast_01.wav",
+   "sfx/rod_slide_fast_02.wav"
+  ],
+  "rod_slide_fast_arena": [
+   "sfx/rod_slide_fast_arena_01.wav",
+   "sfx/rod_slide_fast_arena_02.wav"
+  ],
+  "rod_slide_fast_circuit": [
+   "sfx/rod_slide_fast_circuit_01.wav",
+   "sfx/rod_slide_fast_circuit_02.wav"
+  ],
+  "rod_slide_slow": [
+   "sfx/rod_slide_slow_01.wav",
+   "sfx/rod_slide_slow_02.wav"
+  ],
+  "rod_slide_slow_arena": [
+   "sfx/rod_slide_slow_arena_01.wav",
+   "sfx/rod_slide_slow_arena_02.wav"
+  ],
+  "rod_slide_slow_circuit": [
+   "sfx/rod_slide_slow_circuit_01.wav",
+   "sfx/rod_slide_slow_circuit_02.wav"
+  ],
+  "rod_spin": [
+   "sfx/rod_spin_01.wav",
+   "sfx/rod_spin_02.wav"
+  ],
+  "rod_spin_arena": [
+   "sfx/rod_spin_arena_01.wav",
+   "sfx/rod_spin_arena_02.wav"
+  ],
+  "rod_spin_circuit": [
+   "sfx/rod_spin_circuit_01.wav",
+   "sfx/rod_spin_circuit_02.wav"
+  ],
   "ui_back": [
    "ui/ui_back_01.wav",
    "ui/ui_back_02.wav",

@@ -1020,11 +1020,13 @@ function recvStep(r,best,D,dt){
  if((r.rvUntil||0)<=S.time){recvEnd(r,r.rvReady?'idle':'time');return;}
  if(r.rvReady){                                                       // no pass yet: pose up, the man on the lane the holder is looking at, or on the line of a ball already coming at it
   let za=r.rvZ,tAr=RV.ready.reachT;
-  if(b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY){tAr=Math.max(0,-(b.m.position.x-r.x)*dir/Math.max(b.v.x*dir,5));za=b.m.position.z+b.v.z*tAr;}
+  const run=b&&b.v.x*dir>=RV.ready.trackV&&b.m.position.y<=RV.maxY;
+  if(run){tAr=Math.max(0,-(b.m.position.x-r.x)*dir/Math.max(b.v.x*dir,5));za=b.m.position.z+b.v.z*tAr;}
   const m=catchMan(r,clamp(za,-zl,zl),tAr);
   if(m){r.rvMan=m.i;r.rvO=m.o;}
   if(r.rvMan<0){recvEnd(r,'reach');return;}
-  r.aiMan=r.rvMan;r.target=clamp(r.rvO,-r.maxOff,r.maxOff);
+  const o=clamp(r.rvO,-r.maxOff,r.maxOff);
+  r.aiMan=r.rvMan;r.target=!run&&AIC.calm.ready&&S.time-(r.rvLaneT||-9)>=RV.ready.hold?calmGo(r,o,dt):o;   // standing ready for a team ball far off is calm; a lane the holder looks at, or a ball on its way, is taken at once
   r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;
   return;
  }
@@ -1941,8 +1943,31 @@ function coverEye(r,b,D,tta,predL,relFront,dt){
  const lag=(D.reactDelay||0)*stReact(r)+tr;
  return r.aiTZ+r.aiTVZ*(lag*TK.lead+Math.max(0,relFront)/TK.shotV*TK.carry*TK.flight)*predL;
 }
-// rods.js: the AI hand's slide speed and acceleration multiplier, cover.slide while this keeper / DEF covers the goal with nothing else on
-function coverSlide(r,uSeat){return !uSeat&&r.cvOn&&!r.act&&r.kickT<0?AIC.cover.slide:1;}
+// rods.js: the AI hand's slide speed and acceleration multiplier, cover.slide while this keeper / DEF covers the goal with nothing else on, calm.v on a calm rod
+function coverSlide(r,uSeat){return uSeat?1:(r.cvOn&&!r.act&&r.kickT<0?AIC.cover.slide:1)*(r.clOn?lerp(1,AIC.calm.v,r.clC):1);}
+// --- calm (CONFIG.ai.calm) ---
+// how far the play is from this rod: 0 = in it (tracks the ball's z), 1 = far off (stands its ground)
+function calmK(r,b){
+ const CM=AIC.calm;
+ if(!CM||!CM.on||!b)return 0;
+ const dir=r.team===0?1:-1,rel=(b.m.position.x-r.x)*dir,d=Math.abs(rel),R=rel<0?CM.behind:S.lastTouch===r.team?CM.own:CM.ahead;
+ let c=clamp((d-R[0])/(R[1]-R[0]),0,1);
+ const cl=-Math.sign(rel)*b.v.x*dir;                 // >0 = closing on the rod
+ if(c>0&&cl>0)c*=clamp((d/cl-CM.t[0])/(CM.t[1]-CM.t[0]),0,1);
+ return c;
+}
+// the slide a standing rod takes for a wanted offset o: a calm one smooths it and sets off only once it is CM.dead out, a busy one takes it as it is
+function calmGo(r,o,dt){
+ const CM=AIC.calm,c=r.clC;
+ if(!(S.time>r.clAt&&S.time-r.clAt<dt*1.5)){r.clT=r.target;r.clMv=false;}   // first call since an action owned the slide: start from where it is heading
+ r.clAt=S.time;
+ if(!(c>0)){r.clT=o;r.clMv=false;return o;}
+ r.clOn=true;
+ r.clT=lerp(r.clT,o,1-Math.exp(-dt/(CM.tau*c)));
+ if(!r.clMv&&Math.abs(r.clT-r.target)>CM.dead*c)r.clMv=true;
+ else if(r.clMv&&Math.abs(o-r.clT)<CM.settle){r.clMv=false;r.clT=o;return o;}   // caught up: the last bit, then it stands
+ return r.clMv?r.clT:r.target;
+}
 // z this keeper/DEF man takes to share the goal with its mate; NaN when this rod is the one playing the ball (or has no mate to share with)
 // the DEF only covers while the ball is out in front of it: a ball at or behind it is its to play, so it stays on the ball's z
 function coverZ(r,bzp,relFront,dt){
@@ -1983,6 +2008,7 @@ function coverZ(r,bzp,relFront,dt){
    r.raiseKeep=false;                     // an inherited raise (js/seats.js) dies the moment the AI has the rod back
    r.force=false;                         // set below once the rod has its ball; slideBlocked reads it
    r.cvOn=false;                          // covering the goal this step (rods.js slides it at cover.slide)
+   r.clOn=false;r.clC=0;                  // calm this step (calmGo), and how calm
    // training: a hidden rod or an AI-off team never chases or swings
    // TRN.lift[team] picks flat obstacle (false) or the passive raise (true)
    if(S.trn&&(r.trnHidden||!S.trn.ai[r.team])){
@@ -2052,11 +2078,11 @@ function coverZ(r,bzp,relFront,dt){
   r.aiErrT-=dt;
   if(r.aiErrT<=0){const R=rngAi(r.idx);r.aiErrT=rngR(R,AIC.errEvery[0],AIC.errEvery[1]);r.aiErrTarget=rngR(R,-D.err,D.err)*stErr(r);r.aiGoalZ=rngR(R,-1,1);r.aiIQ=R()<clamp((D.iq||0)*stIQ(r),0,1);}
   r.aiErr=lerp(r.aiErr,r.aiErrTarget,Math.min(1,AIC.errLerp*dt));
-  const dir=r.team===0?1:-1;
+  const dir=r.team===0?1:-1,eK=1-(r.clC=calmK(r,best));   // a calm rod has no aim error or aim bend
   let pz=r.aiBZ;
   const tta=r.aiBVX!==0?(r.x-r.aiBX)/r.aiBVX:-1;
   if(tta>0&&tta<AIC.ttaMax)pz+=r.aiBVZ*tta*predL;
-  pz+=r.aiErr;
+  pz+=r.aiErr*eK;
   // goal targeting: aim at a spot in the mouth (tight when accurate, sprayed when not) and shift the man to the side that sends it there; clamped small so the foot connects
   const bp0=best.m.position;
   const relFront=(bp0.x-r.x)*dir;               // ball ahead(+)/behind(−) this rod, dir-relative
@@ -2066,7 +2092,7 @@ function coverZ(r,bzp,relFront,dt){
   const cvz=(CV.on&&!force&&gd&&bp0.y<AIC.lowY)?coverZ(r,cbz,relFront,dt):NaN;
   if(cvz===cvz){
    r.cvOn=true;
-   pz=lerp(cbz+r.aiErr,cvz,r.aiIQ||r.cvW?1:CV.dumbBias);   // cover: split the mouth with the other of keeper/DEF (a keeper never half-chases a ball it can't reach)
+   pz=lerp(cbz+r.aiErr*eK,cvz,r.aiIQ||r.cvW?1:CV.dumbBias);   // cover: split the mouth with the other of keeper/DEF (a keeper never half-chases a ball it can't reach)
   }else if(DEF.on && (r.role==='GK'||r.role==='DEF') && bp0.y<AIC.lowY && relFront>DEF.engage){
    // --- defending an incoming ball ---
    // sit on the ball-to-own-goal line so GK and DEF cover the shot at two depths
@@ -2088,7 +2114,7 @@ function coverZ(r,bzp,relFront,dt){
    }else{
     gz=clamp(spray,-F.goalHalf*AIC.aimGoalZ,F.goalHalf*AIC.aimGoalZ); // old centre + full spray
    }
-   pz+=clamp(-((gz-bp0.z)/dx)*AIC.aimGain,-AIC.aimMax,AIC.aimMax);
+   pz+=clamp(-((gz-bp0.z)/dx)*AIC.aimGain,-AIC.aimMax,AIC.aimMax)*eK;
   }
   if(force)pz=bp0.z;                            // square up on the ball, no aim bend or drifting error
   if(r.role==='GK')pz=clamp(pz,-F.goalHalf-AIC.gkPad,F.goalHalf+AIC.gkPad);
@@ -2410,6 +2436,7 @@ function coverZ(r,bzp,relFront,dt){
    if(pe-be<AIC.manHyst){bi=r.aiMan;bo=po;}
   }
   r.aiMan=bi;
+  bo=calmGo(r,bo,dt);
   if(Math.abs(bo-r.target)>AIC.retargetDead)r.target=bo;
   // --- foot-trap break ---
   // drop a raised rod when a slow ball is pinned at a foot; the raise latch takes priority

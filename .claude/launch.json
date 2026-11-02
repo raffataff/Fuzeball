@@ -12,6 +12,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/sfx-server.js", "8124"],
       "port": 8124
+    },
+    {
+      "name": "soundlab",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/soundlab-server.js", "--port=8125"],
+      "port": 8125
     }
   ]
 }

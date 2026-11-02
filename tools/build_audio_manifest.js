@@ -3,6 +3,7 @@
 // naming: <id>_01.ogg, <id>_02.ogg ... or <id>.ogg, anywhere under assets/audio/ (subfolders are only for you, except music/: tracks named by CONFIG.audioMix.music, never indexed); the id is the file name minus its take number and must be:
 //   - a sound in CONFIG.audioMix.sounds                          ball_kick_03.ogg
 //   - a variant: <id>_hard, or <id>_<ballType>                   ball_kick_hard_01.ogg, ball_wall_fire.ogg
+//   - a venue variant of a sound with `by`: <id>_<pitchId> / <id>_<tableId>    ball_roll_slow_cork_01.wav, rod_bump_arena_01.wav
 //   - a room impulse: ir_<roomId>                                ir_pub.wav
 // anything else is reported and left out (a typo can't ship a sound nobody hears); ship .ogg (Vorbis), .wav/.flac/.mp3/.m4a/.opus/.webm decode too
 // then prints every sound's state: recorded (n takes), synthesized (a stand-in plays) or SILENT (recorded-only, no file yet), the to-do list for a session
@@ -25,7 +26,8 @@ function idOf(file){return path.basename(file).replace(EXT,'').toLowerCase().rep
 function validId(id,C){
  const S=C.audioMix.sounds;if(S[id])return true;
  const m=/^ir_(.+)$/.exec(id);if(m)return!!C.rooms[m[1]];
- for(const base in S)if(id.startsWith(base+'_')){const v=id.slice(base.length+1);if(v==='hard'||C.ballTypes[v])return true;}
+ for(const base in S)if(id.startsWith(base+'_')){const v=id.slice(base.length+1),by=S[base].by;
+  if(v==='hard'||C.ballTypes[v]||(by==='pitch'&&C.pitches[v])||(by==='table'&&C.tables[v]))return true;}
  return false;
 }
 function walk(d,out){

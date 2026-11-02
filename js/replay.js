@@ -39,7 +39,7 @@ function rbAbs(j){return RB.tot-RB.n+j;}
 // the sim is frozen in playback, so the rally's impacts are logged by tapping Au itself and re-fired against the footage clock; only in-rally impacts (not whistles, countdown, the goal horn or UI clicks)
 // an entry = abs step, magnitude, the ball type's audio config (by reference), the ball's position and type (copied, for panning) and the surface kind
 const RS={cap:CONFIG.replay.audio.events,n:0,head:0,step:null,kind:null,p:null,arg:null,pos:null,key:null,e:null,
- src:{x:0,y:0,z:0,key:null},keys:['kick','wall','post','power','boom']};
+ src:{x:0,y:0,z:0,key:null},keys:['kick','wall','post','power','boom','bump']};
 function replaySndAlloc(){
  RS.step=new Int32Array(RS.cap);RS.kind=new Int8Array(RS.cap);
  RS.p=new Float32Array(RS.cap);RS.arg=new Array(RS.cap);

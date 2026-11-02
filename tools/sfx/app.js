@@ -15,7 +15,7 @@ let toastT=0;function toast(m,ms){const t=q('toast');t.textContent=m;t.style.dis
 const UI=Object.assign({loop:false,auto:true,view:'wave',amt:.35,locks:{},shut:{},vol:.7,cur:'ui_move'},load(LSU)||{});
 const ST={kit:null,ids:[],files:{},server:false,ctx:null,out:null,src:null,last:null,take:0,cands:[],hist:{},hi:{},ab:0,ms:0};
 const saveUI=()=>store(LSU,UI);
-const GROUPS=[['Menus',id=>id.startsWith('ui_')],['Match & power-ups',id=>!/^(ui_|sting_|crowd_|ball_|ir_)/.test(id)],['Stingers',id=>id.startsWith('sting_')],['Table',id=>id.startsWith('ball_')],['Crowd',id=>id.startsWith('crowd_')]];
+const GROUPS=[['Menus',id=>id.startsWith('ui_')],['Match & power-ups',id=>!/^(ui_|sting_|crowd_|ball_|rod_|ir_)/.test(id)],['Stingers',id=>id.startsWith('sting_')],['Table',id=>/^(ball_|rod_)/.test(id)],['Crowd',id=>id.startsWith('crowd_')]];
 const LADDER={ui_move:-22,ui_rod:-23,ui_value:-21,ui_tab:-20,ui_back:-20,ui_click:-18,ui_open:-19,ui_error:-18,ui_start:-16,ui_wipe:-21};
 const TOUR=[['ui_move',0],['ui_move',.22],['ui_move',.42],['ui_value',.8],['ui_value',1],['ui_tab',1.45],['ui_move',1.8],['ui_click',2.15],['ui_open',2.45],['ui_move',3.05],
  ['ui_rod',3.35],['ui_rod',3.55],['ui_back',3.95],['ui_error',4.55],['ui_move',5.15],['ui_start',5.55],['ui_wipe',5.65]];
@@ -31,10 +31,10 @@ function recHash(r){return hash(JSON.stringify([X.fill(r),kp()]));}
 function actx(){if(!ST.ctx){ST.ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});ST.out=ST.ctx.createGain();ST.out.connect(ST.ctx.destination);}
  ST.out.gain.value=UI.vol;if(ST.ctx.state==='suspended')ST.ctx.resume();return ST.ctx;}
 function bufOf(o){const c=actx(),b=c.createBuffer(2,Math.max(1,o.L.length),o.sr);b.copyToChannel(o.L,0);b.copyToChannel(o.R,1);return b;}
-function playBuf(b,o){o=o||{};const c=actx();if(!o.mix)stop();const s=c.createBufferSource(),g=c.createGain();s.buffer=b;g.gain.value=o.gain==null?1:o.gain;s.connect(g);g.connect(ST.out);
- const at=c.currentTime+(o.when||0);s.start(at);if(!o.mix){ST.src=s;ST.pt=at;ST.pl=b.duration;s.onended=()=>{if(ST.src!==s)return;ST.src=null;if(UI.loop&&!o.once)setTimeout(()=>{if(!ST.src)play();},180);};head();}return s;}
-function stop(){if(ST.src){const s=ST.src;ST.src=null;try{s.stop();}catch(e){}}}
-function play(){const r=curRec();if(!r)return;if(!ST.last)doRender();if(ST.last)playBuf(bufOf(ST.last));}
+function playBuf(b,o){o=o||{};const c=actx();if(!o.mix)stop();const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=!!o.loop;g.gain.value=o.gain==null?1:o.gain;s.connect(g);g.connect(ST.out);
+ const at=c.currentTime+(o.when||0);s.start(at);if(!o.mix){ST.src=s;ST.pt=at;ST.pl=b.duration;ST.lp=!!o.loop;s.onended=()=>{if(ST.src!==s)return;ST.src=null;if(UI.loop&&!o.once)setTimeout(()=>{if(!ST.src)play();},180);};head();}return s;}
+function stop(){if(ST.src){const s=ST.src;ST.src=null;try{s.stop();}catch(e){}}for(const s of ST.sw||[])try{s.stop();}catch(e){}ST.sw=null;}
+function play(){const r=curRec();if(!r)return;if(!ST.last)doRender();if(ST.last)playBuf(bufOf(ST.last),{loop:ST.last.loop&&UI.loop});}
 function head(){const tick=()=>{drawView();if(ST.src)requestAnimationFrame(tick);};requestAnimationFrame(tick);}
 function playRec(r,o){o=o||{};const out=X.render(r,kp(),{take:o.take|0});playBuf(bufOf(out),Object.assign({once:true},o));return out;}
 
@@ -72,10 +72,11 @@ const VIS={
  'pitch.hz':o=>o.pitch.mode==='hz','pitch.deg':o=>o.pitch.mode!=='hz','pitch.oct':o=>o.pitch.mode!=='hz','pitch.acc':o=>o.pitch.mode!=='hz',
  'pitch.repEvery':o=>o.pitch.reps>1,'pitch.repGain':o=>o.pitch.reps>1,'pitch.repShift':o=>o.pitch.reps>1,
  'pitch.penv.time':o=>!!o.pitch.penv.st,'pitch.penv.curve':o=>!!o.pitch.penv.st,'pitch.glide.time':o=>!!o.pitch.glide.deg,'pitch.glide.delay':o=>!!o.pitch.glide.deg,'pitch.vib.rate':o=>!!o.pitch.vib.depth,
- 'osc.pw':o=>o.osc.wave==='pulse','osc.det':o=>o.osc.uni>1,'osc.spread':o=>o.type==='noise'||o.osc.uni>1,'noise.dens':o=>o.noise.color==='crackle','modal.ratios':o=>o.modal.model==='custom',
+ 'osc.pw':o=>o.osc.wave==='pulse','osc.det':o=>o.osc.uni>1,'osc.spread':o=>o.type==='noise'||o.osc.uni>1,'noise.dens':o=>o.noise.color==='crackle','modal.ratios':o=>o.modal.model==='custom','modal.dens':o=>o.modal.exc==='crackle',
  'mod.ringRatio':o=>o.mod.ring>0,'mod.tremRate':o=>o.mod.trem>0,'mod.tremShape':o=>o.mod.trem>0,'mod.down':o=>true,'mod.glitchRate':o=>o.mod.glitch>0,
  'norm.db':o=>o.norm.mode!=='off','chorus.rate':o=>o.chorus.mix>0,'chorus.depth':o=>o.chorus.mix>0,'delay.time':o=>o.delay.mix>0,'delay.fb':o=>o.delay.mix>0,'delay.tone':o=>o.delay.mix>0,'delay.ping':o=>o.delay.mix>0,
- 'verb.size':o=>o.verb.mix>0,'verb.damp':o=>o.verb.mix>0,'verb.pre':o=>o.verb.mix>0};
+ 'verb.size':o=>o.verb.mix>0,'verb.damp':o=>o.verb.mix>0,'verb.pre':o=>o.verb.mix>0,'loop.len':o=>o.loop.on,'loop.xf':o=>o.loop.on,
+ 'tail.trim':o=>!o.loop.on,'tail.fade':o=>!o.loop.on,'tail.max':o=>!o.loop.on};
 function visOf(p,o){if(/^filt\./.test(p)&&p!=='filt.type'&&o.filt&&o.filt.type==='none')return false;const f=VIS[p];return f?f(o):true;}
 function row(obj,e,def,card){const [p,label,k,a,b]=e,v0=X.getP(obj,p),lb=h('label',{title:p+' (double-click: reset)'},label);let rng=null,inp;
  const changed=()=>JSON.stringify(X.getP(obj,p))!==JSON.stringify(X.getP(def,p));
@@ -108,6 +109,7 @@ function buildMain(){const m=q('main');m.innerHTML='';const id=UI.cur,r=curRec()
  const sh=h('div',{class:'shead'},h('span',{class:'title'},id||'no sound'));
  if(!r){m.append(sh,h('div',{class:'box empty'},h('p',null,id+' has no recipe in this kit yet.'),
    P.HOLO[id]?h('button',{class:'b gold',onclick:()=>setRec(P.HOLO[id],'holographic preset')},'Start from Holographic'):null,
+   P.TABLE[id]?h('button',{class:'b gold',onclick:()=>setRec(P.TABLE[id],'table draft')},'Start from the table draft'):null,
    P.LEGACY[id]?h('button',{class:'b',onclick:()=>setRec(P.LEGACY[id],'game stand-in')},'Start from the game stand-in'):null,
    h('button',{class:'b',onclick:()=>setRec(blank(),'blank')},'Blank'),
    fl.length?h('button',{class:'b',onclick:()=>abPlay(id)},'Play the game file'):null,
@@ -130,7 +132,8 @@ function buildMain(){const m=q('main');m.innerHTML='';const id=UI.cur,r=curRec()
   h('span',{class:'grp'},h('label',null,'Take'),h('button',{class:'b ic sm',onclick:()=>takeStep(-1)},'◀'),h('span',{id:'takeN',style:'min-width:34px;text-align:center'},(ST.take+1)+'/'+r.takes),h('button',{class:'b ic sm',onclick:()=>takeStep(1)},'▶')),
   h('button',{class:'b',onclick:playTakes,title:'play every take in turn, as the game would'},'All takes'),
   fl.length?h('button',{class:'b',onclick:()=>abPlay(id),title:'the file the game plays now'},'Game file'):null,
-  P.LEGACY[id]?h('button',{class:'b',onclick:()=>playRec(P.LEGACY[id]),title:'the synthesized stand-in the game plays without a file'},'Stand-in'):null);
+  P.LEGACY[id]?h('button',{class:'b',onclick:()=>playRec(P.LEGACY[id]),title:'the synthesized stand-in the game plays without a file'},'Stand-in'):null,
+  partOf(id)?h('button',{class:'b',onclick:sweep,title:'the loops of '+partOf(id).ids.join(' + ')+' mixed the way the game mixes them, slow to full speed and back'},'Speed sweep'):null);
  const e2=tr.children[4];
  m.append(sh,view,h('div',{class:'meters',id:'met'}),tr,h('div',{class:'harm',title:'the kit\'s scale; gold = this sound, cyan = the rest of the kit; click to hear a note'},h('canvas',{id:'hv',onclick:harmClick})));
  r.layers.forEach((L,i)=>m.append(layerCard(r,L,i)));
@@ -159,7 +162,7 @@ function layerCard(r,L,i){const card=h('div',{class:'layer'+(L.on?'':' off')});
 function masterCard(r){const card=h('div',{class:'layer master'}),S=X.MSCHEMA,D=X.MDEF,M=r.master,secs=h('div',{class:'secs'});
  card.append(h('div',{class:'lh'},h('span',{class:'ty'},'MASTER'),h('span',{class:'hint'},'effects on the whole sound, the file\'s level and the takes')));
  secs.append(section('Mout','Output',M,S.out,D,card),section('Meq','EQ',M,S.eq,D,card),section('Mch','Chorus',M,S.chorus,D,card),section('Mdl','Delay',M,S.delay,D,card),
-  section('Mvb','Reverb',M,S.verb,D,card),section('Mtl','Length',M,S.tail,D,card),section('Mvy','Takes & seed',M,S.vary,D,card));
+  section('Mvb','Reverb',M,S.verb,D,card),section('Mlp','Loop',M,S.loop,D,card),section('Mtl','Length',M,S.tail,D,card),section('Mvy','Takes & seed',M,S.vary,D,card));
  card.append(secs);requestAnimationFrame(()=>refresh(card,M));return card;}
 function octShift(d){const r=curRec();if(!r)return;for(const L of r.layers){if(L.pitch.mode==='hz')L.pitch.hz*=Math.pow(2,d);else L.pitch.oct=Math.max(1,Math.min(8,L.pitch.oct+d));}commit('octave '+(d>0?'+':'−'));buildMain();sched(true);}
 function takeStep(d){const r=curRec();if(!r)return;ST.take=(ST.take+d+r.takes)%r.takes;const t=q('takeN');if(t)t.textContent=(ST.take+1)+'/'+r.takes;doRender();play();}
@@ -178,7 +181,7 @@ function drawView(){const cv=q('cv');if(!cv)return;const {w,h:H,d}=fit(cv),g=cv.
    g.globalAlpha=1;g.fillStyle='#22365a';g.fillRect(0,cy,w,1);}}
  g.fillStyle='#F0B24A';g.font=(10*d)+'px Exo 2, sans-serif';const seen={};
  for(const nt of o.notes){if(nt.m==null)continue;const x=Math.round(nt.t/len*w);g.globalAlpha=.6;g.fillRect(x,0,1,8*d);g.globalAlpha=1;const k=x>>4;if(!seen[k]){g.fillText(X.noteName(nt.m),x+2,11*d);seen[k]=1;}}
- if(ST.src&&ST.ctx){const t=ST.ctx.currentTime-ST.pt;if(t>=0&&t<=ST.pl){const x=t/len*w;g.fillStyle='#fff';g.fillRect(x,0,1.5*d,H);}}}
+ if(ST.src&&ST.ctx){let t=ST.ctx.currentTime-ST.pt;if(ST.lp&&t>0)t%=ST.pl;if(t>=0&&t<=ST.pl){const x=t/len*w;g.fillStyle='#fff';g.fillRect(x,0,1.5*d,H);}}}
 function spec(o,w,H){const c=document.createElement('canvas');c.width=w;c.height=H;const g=c.getContext('2d'),N=1024,n=o.L.length,img=g.createImageData(w,H),re=new Float64Array(N),im=new Float64Array(N),win=new Float64Array(N);
  for(let i=0;i<N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(N-1));const lo=Math.log(40),hi=Math.log(o.sr/2);
  for(let x=0;x<w;x++){const c0=Math.floor(x/w*n)-N/2;for(let i=0;i<N;i++){const j=c0+i,v=j>=0&&j<n?(o.L[j]+o.R[j])*.5:0;re[i]=v*win[i];im[i]=0;}fft(re,im);
@@ -206,7 +209,7 @@ function harmClick(e){const cv=q('hv'),b=cv.getBoundingClientRect(),m=HLO+Math.f
 function meters(){const el=q('met');if(!el)return;const o=ST.last;if(!o){el.textContent='';return;}
  const ns=[...new Set(o.notes.filter(n=>n.m!=null).map(n=>n.m))].sort((a,b)=>a-b);
  el.innerHTML='';el.append(...[h('span',null,'Length ',h('b',null,o.len.toFixed(3)+' s')),h('span',null,'Peak ',h('b',{class:o.peak>-.3?'warn':''},o.peak.toFixed(1)+' dB')),
-  h('span',null,'Loud ',h('b',null,o.loud.toFixed(1)+' dB')),o.clip?h('b',{class:'warn',title:'the loudness target would clip: the level was held at the peak'},'held at peak'):null,
+  h('span',null,'Loud ',h('b',null,o.loud.toFixed(1)+' dB')),o.loop?h('b',{title:'a seamless loop: Loop on plays it round'},'loop'):null,o.clip?h('b',{class:'warn',title:'the loudness target would clip: the level was held at the peak'},'held at peak'):null,
   h('span',null,'Notes ',...ns.map(m=>h('b',{style:'margin-right:4px;color:'+(X.inScale(kp(),m)?'':'#ff5d5d')},X.noteName(m)))),
   h('span',{class:'sp'}),h('span',null,'render '+ST.ms.toFixed(0)+' ms')].filter(Boolean));}
 
@@ -244,8 +247,24 @@ async function saveKitSrv(quiet){ST.kit.name=q('kitName').value.trim()||'Untitle
  try{const r=await fetch('/__sfx/kit/'+encodeURIComponent(ST.kit.name),{method:'POST',body:JSON.stringify(ST.kit)}).then(x=>x.json());if(!quiet)toast(r.ok?'Saved tools/sfx/kits/'+r.name+'.json':'Save failed: '+r.err);kitList();}catch(e){if(!quiet)toast('Save failed');}}
 async function kitList(){const s=q('kitLoad');s.innerHTML='';s.append(h('option',{value:''},'load…'));if(!ST.server)return;
  try{const r=await fetch('/__sfx/kits').then(x=>x.json());for(const k of r.kits)s.append(h('option',{value:k},k));}catch(e){}}
-function setKit(k){ST.kit=Object.assign(newKit(false),k);ST.kit.sounds=ST.kit.sounds||{};ST.kit.exp=ST.kit.exp||{};ST.hist={};ST.hi={};kitSave();headerSync();select(UI.cur);}
+function drafts(){const K=ST.kit,d=K.drafts=K.drafts||[];for(const id in P.TABLE)if(!d.includes(id)){d.push(id);if(!K.sounds[id])K.sounds[id]=X.clone(P.TABLE[id]);}kitSave();}
+function setKit(k){ST.kit=Object.assign(newKit(false),k);ST.kit.sounds=ST.kit.sounds||{};ST.kit.exp=ST.kit.exp||{};drafts();ST.hist={};ST.hi={};kitSave();headerSync();select(UI.cur);}
 function headerSync(){q('kitName').value=ST.kit.name;q('kKey').value=ST.kit.key;q('kScale').value=ST.kit.scale;q('kA4').value=ST.kit.a4;}
+
+// --- the game's loop mix (js/audio.js lpTick): a part's loops crossfaded by speed, swept slow to full and back ---
+const LOOPS=()=>typeof CONFIG!=='undefined'&&CONFIG.audioMix&&CONFIG.audioMix.loops||null;
+function partOf(id){const L=LOOPS();if(!L)return null;for(const k in L)if(L[k]&&L[k].ids&&L[k].ids.includes(id))return L[k];return null;}
+// auXf in js/audio.js: equal-power weights for layers placed at `at`
+function xfW(n,at,w){const k=at.length;w.fill(0);if(!k)return w;if(n<=at[0]){w[0]=1;return w;}if(n>=at[k-1]){w[k-1]=1;return w;}
+ for(let i=1;i<k;i++)if(n<=at[i]){const u=(n-at[i-1])/Math.max(1e-6,at[i]-at[i-1]);w[i-1]=Math.cos(u*Math.PI/2);w[i]=Math.sin(u*Math.PI/2);break;}return w;}
+function sweep(){const C=partOf(UI.cur);if(!C)return;stop();const c=actx(),T=6,t0=c.currentTime+.05,ls=[];
+ C.ids.forEach((id,i)=>{const r=ST.kit.sounds[id];if(!r)return;const o=X.render(r,kp(),{take:0}),s=c.createBufferSource(),g=c.createGain();
+  s.buffer=bufOf(o);s.loop=true;g.gain.value=0;s.connect(g);g.connect(ST.out);s.start(t0,Math.random()*o.len);s.stop(t0+T+.1);ls.push({id,s,g,at:C.at[i]??0,v:(SND()[id]&&SND()[id].vol)??1});});
+ if(!ls.length)return toast('No recipes for '+C.ids.join(', '));
+ const at=ls.map(l=>l.at),w=new Float32Array(ls.length);
+ for(let t=0;t<=T+1e-6;t+=1/50){const ph=t/T,u=ph<.5?ph*2:2-ph*2,lv=u>0?Math.pow(u,C.curve):0,rt=C.rate[0]+(C.rate[1]-C.rate[0])*u;xfW(u,at,w);
+  ls.forEach((l,i)=>{l.g.gain.setValueAtTime(lv*w[i]*l.v,t0+t);l.s.playbackRate.setValueAtTime(rt,t0+t);});}
+ ST.sw=ls.map(l=>l.s);toast('Speed sweep: '+ls.map(l=>l.id).join(' + ')+', rest to full speed ('+C.vRef+') and back',T*1000);}
 
 // --- tour / group / balance ---
 function tour(){const c=actx();stop();const n={};let any=0;
@@ -299,7 +318,7 @@ addEventListener('resize',()=>{specK='';drawView();drawHarm();});
 // --- boot ---
 async function boot(){const S=SND();ST.ids=Object.keys(S).map(id=>({id,bus:S[id].bus||'fx',syn:S[id].syn!==false}));
  if(!ST.ids.length)ST.ids=Object.keys(P.HOLO).map(id=>({id,bus:'ui',syn:true}));
- const k=load(LSK);ST.kit=k&&k.sounds?Object.assign(newKit(false),k):newKit(true);ST.kit.exp=ST.kit.exp||{};
+ const k=load(LSK);ST.kit=k&&k.sounds?Object.assign(newKit(false),k):newKit(true);ST.kit.exp=ST.kit.exp||{};drafts();
  header();rightCol();headerSync();
  try{ST.server=(await fetch('/__sfx/ping',{cache:'no-store'}).then(r=>r.json())).ok;}catch(e){ST.server=false;}
  const sv=q('srv');sv.textContent=ST.server?'export on':'no server: downloads';sv.className='pill '+(ST.server?'ok':'no');

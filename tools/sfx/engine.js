@@ -27,14 +27,15 @@ const MODAL={
 const SEL={
  type:['osc','fm','noise','pluck','modal','add'], wave:['sine','triangle','saw','square','pulse'], color:['white','pink','brown','blue','crackle'],
  play:['chord','arp','rand'], pmode:['scale','hz'], ftype:['none','lp','hp','bp','notch'], poles:[2,4], tshape:['sine','square','ramp'],
- model:Object.keys(MODAL).concat('custom'), norm:['peak','loud','off']};
+ model:Object.keys(MODAL).concat('custom'), norm:['peak','loud','off'], exc:['hit','crackle','noise']};
 const LSCHEMA={
  main:[['gain','Level dB','num',-40,6],['pan','Pan','num',-1,1],['t0','Start s','num',0,2]],
  osc:[['osc.wave','Wave','sel',SEL.wave],['osc.pw','Pulse width','num',.05,.95],['osc.uni','Unison','int',1,7],['osc.det','Detune ct','num',0,60],['osc.spread','Stereo spread','num',0,1]],
  fm:[['fm.ratio','Ratio','log',.25,16],['fm.idx','Index start','num',0,20],['fm.idxEnd','Index end','num',0,20],['fm.idxTime','Index time','log',.001,2],['fm.fb','Feedback','num',0,1],['osc.uni','Unison','int',1,7],['osc.det','Detune ct','num',0,60],['osc.spread','Stereo spread','num',0,1]],
  noise:[['noise.color','Colour','sel',SEL.color],['noise.dens','Crackle /s','log',10,20000],['osc.spread','Stereo spread','num',0,1]],
  pluck:[['pluck.decay','Ring s','log',.02,6],['pluck.bright','Bright','num',0,1]],
- modal:[['modal.model','Model','sel',SEL.model],['modal.ratios','Custom ratios','txt'],['modal.decay','Ring s','log',.02,6],['modal.tilt','High decay','num',.05,1],['modal.bright','Bright','num',0,1],['modal.hit','Mallet','num',0,1]],
+ modal:[['modal.model','Model','sel',SEL.model],['modal.ratios','Custom ratios','txt'],['modal.decay','Ring s','log',.02,6],['modal.tilt','High decay','num',.05,1],['modal.bright','Bright','num',0,1],['modal.hit','Mallet','num',0,1],
+  ['modal.exc','Excite','sel',SEL.exc],['modal.dens','Taps /s','log',10,20000]],
  add:[['add.harm','Harmonics','txt'],['add.stretch','Stretch','num',-.05,.05],['osc.uni','Unison','int',1,7],['osc.det','Detune ct','num',0,60],['osc.spread','Stereo spread','num',0,1]],
  pitch:[['pitch.mode','Pitch','sel',SEL.pmode],['pitch.deg','Scale degree','int',-14,21],['pitch.oct','Octave','int',1,8],['pitch.acc','Accidental','int',-1,1],['pitch.hz','Hz (free)','log',20,12000],
   ['pitch.cents','Fine ct','num',-100,100],['pitch.notes','Notes (degrees)','txt'],['pitch.play','Play','sel',SEL.play],['pitch.step','Step / strum s','num',0,.5],['pitch.stepGain','Step level','num',.2,1.5],
@@ -54,11 +55,12 @@ const MSCHEMA={
  delay:[['delay.mix','Delay','num',0,1],['delay.time','Time s','log',.01,1],['delay.fb','Feedback','num',0,.95],['delay.tone','Tone Hz','log',500,16000],['delay.ping','Ping-pong','bool']],
  verb:[['verb.mix','Reverb','num',0,1],['verb.size','Size','num',0,1],['verb.damp','Damping','num',0,1],['verb.pre','Pre-delay s','num',0,.2]],
  tail:[['tail.trim','Trim below dB','num',-100,-30],['tail.fade','Fade out s','num',0,.5],['tail.max','Max length s','num',.1,10]],
+ loop:[['loop.on','Seamless loop','bool'],['loop.len','Loop s','num',.25,8],['loop.xf','Crossfade s','num',.01,1]],
  vary:[['seed','Seed','int',1,9999],['vary.cents','Take pitch ct','num',0,100],['vary.time','Take time %','num',0,.5],['vary.filt','Take filter %','num',0,.5],['vary.gain','Take level dB','num',0,6]]};
 
 const LDEF={on:true,solo:false,name:'',type:'osc',gain:-6,pan:0,t0:0,
  osc:{wave:'sine',pw:.5,uni:1,det:8,spread:.4},fm:{ratio:2,idx:2,idxEnd:0,idxTime:.15,fb:0},noise:{color:'white',dens:800},
- pluck:{decay:.6,bright:.6},modal:{model:'glass',ratios:'1 2.32 4.25',decay:.6,tilt:.5,bright:.45,hit:.2},add:{harm:'1 .5 .33 .25',stretch:0},
+ pluck:{decay:.6,bright:.6},modal:{model:'glass',ratios:'1 2.32 4.25',decay:.6,tilt:.5,bright:.45,hit:.2,exc:'hit',dens:400},add:{harm:'1 .5 .33 .25',stretch:0},
  pitch:{mode:'scale',deg:0,oct:5,acc:0,hz:440,cents:0,notes:'0',play:'chord',step:.05,stepGain:1,reps:1,repEvery:.12,repGain:.6,repShift:0,
   penv:{st:0,time:.03,curve:2},glide:{deg:0,time:0,delay:0},vib:{depth:0,rate:6},rnd:0},
  amp:{a:.001,h:0,d:.15,s:0,len:0,r:.05},
@@ -66,7 +68,7 @@ const LDEF={on:true,solo:false,name:'',type:'osc',gain:-6,pan:0,t0:0,
  mod:{drive:0,ring:0,ringRatio:1.5,trem:0,tremRate:12,tremShape:'sine',crush:0,down:1,glitch:0,glitchRate:16}};
 const MDEF={gain:0,norm:{mode:'peak',db:-1},width:1,drive:0,mono:false,lowcut:40,shelf:{f:8000,db:0},
  chorus:{mix:0,rate:.6,depth:3},delay:{mix:0,time:.11,fb:.25,tone:6000,ping:true},verb:{mix:.08,size:.4,damp:.5,pre:.008},
- tail:{trim:-72,fade:.01,max:6},seed:1,vary:{cents:12,time:.06,filt:.12,gain:1}};
+ tail:{trim:-72,fade:.01,max:6},loop:{on:false,len:2,xf:.25},seed:1,vary:{cents:12,time:.06,filt:.12,gain:1}};
 const KDEF={name:'Untitled kit',key:'D',scale:'susPent',a4:440,sounds:{}};
 
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -173,6 +175,7 @@ function source(L,o,fr,det,sr,R,u){const N=o.length;
   for(let i=0;i<N;i++){const per=Math.min(8000,sr/fr[i]),rp=w-per,i0=Math.floor(rp),fr0=rp-i0;
    const y=B[i0&mask]*(1-fr0)+B[(i0+1)&mask]*fr0,f=g*(damp*y+(1-damp)*prev);prev=y;B[w&mask]=f;w++;o[i]=y;}}
  else if(L.type==='modal'){const K=L.modal,rat=nums(K.model==='custom'?K.ratios:MODAL[K.model]||K.ratios);
+  if(K.exc==='crackle'||K.exc==='noise'){modalDriven(K,rat,o,fr,det,sr,R);return;}
   for(let k=0;k<rat.length;k++){const amp=Math.pow(K.bright,k),T=Math.max(K.decay,.005)*Math.pow(K.tilt,k);let p=u?R():0;if(amp<1e-4)continue;
    for(let i=0;i<N;i++){const f=fr[i]*det*rat[k];if(f>sr*.45)break;o[i]+=Math.sin(TAU*p)*amp*Math.exp(-T60*i/sr/T);p+=f/sr;}}
   if(K.hit>0){const n=Math.min(N,Math.round(sr*.004));let lp=0;for(let i=0;i<n;i++){lp+=.5*((R()*2-1)-lp);o[i]+=lp*K.hit*(1-i/n);}}
@@ -181,6 +184,14 @@ function source(L,o,fr,det,sr,R,u){const N=o.length;
   for(let k=0;k<H.length;k++){if(!H[k])continue;const m=Math.pow(k+1,1+S);let p=u?R():0;
    for(let i=0;i<N;i++){const f=fr[i]*det*m;if(f>sr*.45)break;o[i]+=Math.sin(TAU*p)*H[k];p+=f/sr;}}
   let s=0;for(const h of H)s+=Math.abs(h);const n=.8/Math.max(1,s*.7);for(let i=0;i<N;i++)o[i]*=n;}}
+
+// the modes as resonators rung by taps at `dens` a second (crackle: rolling, rattles) or rubbed by noise (scraping); mallet = how sharp each tap is
+function modalDriven(K,rat,o,fr,det,sr,R){const N=o.length,e=new Float32Array(N),pd=K.dens/sr,a=.03+.97*K.hit;let lp=0;
+ for(let i=0;i<N;i++){const x=K.exc==='noise'?R()*2-1:R()<pd?(R()*2-1)*(.25+.75*R()):0;lp+=a*(x-lp);e[i]=lp;}
+ for(let k=0;k<rat.length;k++){const amp=Math.pow(K.bright,k),T=Math.max(K.decay,.005)*Math.pow(K.tilt,k);if(amp<1e-4)continue;
+  const r=Math.exp(-T60/(T*sr)),g=amp*(K.exc==='noise'?2*Math.sqrt(1-r):1);let y1=0,y2=0;   // noise: about unit level whatever the ring
+  for(let i=0;i<N;i++){const w=TAU*Math.min(fr[i]*det*rat[k],sr*.45)/sr,y=2*r*Math.cos(w)*y1-r*r*y2+e[i]*Math.sin(w)*g;y2=y1;y1=y;o[i]+=y;}}
+ for(let i=0;i<N;i++)o[i]*=.55;}
 
 // --- master effects ---
 function biquad(type,f,q,db,sr){const w=TAU*f/sr,c=Math.cos(w),s=Math.sin(w),al=s/(2*q),A=Math.pow(10,db/40);let b0,b1,b2,a0,a1,a2;
@@ -218,14 +229,20 @@ const db=x=>x>0?20*Math.log10(x):-120;
 // --- the whole render ---
 function jitterOf(V,take,seed){if(!take)return {cents:0,time:1,filt:1,gain:0};const R=rngOf(seed*7919+take*104729);const s=()=>R()*2-1;
  return {cents:s()*V.cents,time:1+s()*V.time,filt:1+s()*V.filt,gain:s()*V.gain};}
+// loop.on: every layer's gate held and its wobbles snapped to whole cycles, rendered past a settle (pre) so the reverb and the rings are running, then len + xf cut out and the xf tail faded over the head
+const loopRate=(f,len)=>Math.max(1,Math.round(f*len))/len;
 function render(rec,kit,opt){opt=opt||{};rec=fill(rec);kit=Object.assign({},KDEF,kit||{});
- const sr=opt.sr||SR,M=rec.master,take=opt.take|0,J=jitterOf(M.vary,take,M.seed|0),solo=rec.layers.some(l=>l.on&&l.solo);
- const live=rec.layers.filter(l=>l.on&&(!solo||l.solo)),voices=[];
+ const sr=opt.sr||SR,M=rec.master,take=opt.take|0,J=jitterOf(M.vary,take,M.seed|0),solo=rec.layers.some(l=>l.on&&l.solo),LP=M.loop&&M.loop.on?M.loop:null;
+ let live=rec.layers.filter(l=>l.on&&(!solo||l.solo)),pre=0;
+ if(LP){let s=0;for(const L of live)s=Math.max(s,L.t0+L.amp.a+L.amp.h+L.amp.d+(L.type==='modal'?L.modal.decay:L.type==='pluck'?L.pluck.decay:0));
+  pre=Math.min(4,tailOf(M)+s);const hold=pre+LP.len+LP.xf+1,q=f=>loopRate(f,LP.len);
+  live=live.map(L=>merge(L,{amp:{len:Math.max(L.amp.len,hold)},mod:{tremRate:q(L.mod.tremRate)},filt:{lfoRate:q(L.filt.lfoRate)},pitch:{vib:{rate:q(L.pitch.vib.rate)}}}));}
+ const voices=[];
  live.forEach((L,li)=>notesOf(L,kit,J).forEach((nt,ni)=>voices.push({L,nt,seed:(M.seed|0)*1000003+take*7717+li*131+ni*17+1})));
  const A0=L=>({a:L.amp.a*J.time,h:L.amp.h*J.time,d:L.amp.d*J.time,s:L.amp.s,len:L.amp.len*J.time,r:L.amp.r*J.time});
  let end=.02;for(const v of voices)end=Math.max(end,v.nt.t+voiceDur(A0(v.L)));
- const len=Math.min(M.tail.max,end+tailOf(M)),n=Math.max(1,Math.ceil(len*sr));
- const L=new Float32Array(n),R=new Float32Array(n);
+ const len=LP?pre+LP.len+LP.xf:Math.min(M.tail.max,end+tailOf(M)),n=Math.max(1,Math.ceil(len*sr));
+ let L=new Float32Array(n),R=new Float32Array(n);
  for(const v of voices){const V=renderVoice(v.L,v.nt,J,sr,v.seed),off=Math.round(v.nt.t*sr),g=Math.pow(10,v.L.gain/20)*v.nt.g;
   const pl=Math.cos((v.L.pan+1)*Math.PI/4)*1.4142,pr=Math.sin((v.L.pan+1)*Math.PI/4)*1.4142;
   for(let i=0;i<V.N&&off+i<n;i++){L[off+i]+=V.l[i]*g*Math.min(pl,1.4142);R[off+i]+=V.r[i]*g*Math.min(pr,1.4142);}}
@@ -236,16 +253,21 @@ function render(rec,kit,opt){opt=opt||{};rec=fill(rec);kit=Object.assign({},KDEF
  if(M.delay.mix>0)delay(L,R,M.delay,sr);
  if(M.verb.mix>0)reverb(L,R,M.verb,sr);
  if(M.width!==1||M.mono){const w=M.mono?0:M.width;for(let i=0;i<n;i++){const m=(L[i]+R[i])*.5,s=(L[i]-R[i])*.5*w;L[i]=m+s;R[i]=m-s;}}
+ if(LP){const p0=Math.round(pre*sr),ln=Math.max(1,Math.round(LP.len*sr)),xf=Math.min(ln,Math.round(LP.xf*sr),n-p0-ln);
+  const fold=x=>{const o=x.slice(p0,p0+ln);for(let i=0;i<xf;i++){const u=i/xf;o[i]=x[p0+i]*Math.sin(u*Math.PI/2)+x[p0+ln+i]*Math.cos(u*Math.PI/2);}return o;};
+  L=fold(L);R=fold(R);}
+ const m=L.length;
  let g=Math.pow(10,(M.gain+J.gain)/20);const pk=peakOf(L,R),ld=loudOf(L,R,sr);
  if(M.norm.mode==='peak'&&pk>0)g=Math.pow(10,(M.norm.db+J.gain)/20)/pk;
  else if(M.norm.mode==='loud'&&ld>-120)g=Math.pow(10,(M.norm.db+J.gain-ld)/20);
  let clip=false;if(pk*g>.98){g=.98/pk;clip=M.norm.mode!=='peak';}
- for(let i=0;i<n;i++){L[i]*=g;R[i]*=g;}
- const thr=pk*g*Math.pow(10,M.tail.trim/20);let last=n-1;while(last>0&&Math.abs(L[last])<thr&&Math.abs(R[last])<thr)last--;
- const fade=Math.round(M.tail.fade*sr),cut=Math.min(n,last+1+fade);
- const oL=L.slice(0,cut),oR=R.slice(0,cut);for(let i=0;i<fade&&i<cut;i++){const k=cut-1-i,f=i/fade;oL[k]*=f;oR[k]*=f;}
+ for(let i=0;i<m;i++){L[i]*=g;R[i]*=g;}
+ let oL=L,oR=R;
+ if(!LP){const thr=pk*g*Math.pow(10,M.tail.trim/20);let last=m-1;while(last>0&&Math.abs(L[last])<thr&&Math.abs(R[last])<thr)last--;
+  const fade=Math.round(M.tail.fade*sr),cut=Math.min(m,last+1+fade);
+  oL=L.slice(0,cut);oR=R.slice(0,cut);for(let i=0;i<fade&&i<cut;i++){const k=cut-1-i,f=i/fade;oL[k]*=f;oR[k]*=f;}}
  const notes=[];live.forEach((L2,li)=>L2.type!=='noise'&&notesOf(L2,kit,J).forEach(nt=>notes.push({layer:li,t:nt.t,m:nt.m,hz:nt.hz0})));
- return {L:oL,R:oR,sr,len:cut/sr,peak:db(peakOf(oL,oR)),loud:loudOf(oL,oR,sr),clip,notes,mono:!!M.mono};}
+ return {L:oL,R:oR,sr,len:oL.length/sr,peak:db(peakOf(oL,oR)),loud:loudOf(oL,oR,sr),clip,notes,mono:!!M.mono,loop:!!LP};}
 
 // --- WAV ---
 function wav(r,bits,mono){bits=bits||16;const ch=mono?1:2,n=r.L.length,bp=bits/8,data=n*ch*bp,b=new ArrayBuffer(44+data),v=new DataView(b);
@@ -257,6 +279,6 @@ function wav(r,bits,mono){bits=bits||16;const ch=mono?1:2,n=r.L.length,bp=bits/8
   if(bits===16)v.setInt16(o,q,true);else{v.setUint8(o,q&255);v.setUint8(o+1,(q>>8)&255);v.setUint8(o+2,(q>>16)&255);}o+=bp;}
  return new Uint8Array(b);}
 
-const API={SR,KEYS,SCALES,MODAL,SEL,LSCHEMA,MSCHEMA,LDEF,MDEF,KDEF,clone,merge,fill,getP,setP,midiOf,hzOf,inScale,noteName,nums,rngOf,envAt,gateOf,notesOf,render,wav};
+const API={SR,KEYS,SCALES,MODAL,SEL,LSCHEMA,MSCHEMA,LDEF,MDEF,KDEF,clone,merge,fill,getP,setP,midiOf,hzOf,inScale,noteName,nums,rngOf,envAt,gateOf,notesOf,render,wav,loopRate};
 G.SFX=API;if(typeof module!=='undefined'&&module.exports)module.exports=API;
 })(typeof globalThis!=='undefined'?globalThis:this);

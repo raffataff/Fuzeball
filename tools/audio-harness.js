@@ -19,7 +19,7 @@ function mockAudio(made){
   this.createGain=()=>node('gain',{gain:P(1)});
   this.createBiquadFilter=()=>node('biquad',{type:'lowpass',frequency:P(350),Q:P(1),gain:P(0)});
   this.createOscillator=()=>node('osc',{type:'sine',frequency:P(440),start(){},stop(){}});
-  this.createBufferSource=()=>node('src',{buffer:null,loop:false,playbackRate:P(1),start(t,off){this.at=t;this.startedAt=t;this.started=true;},stop(t){this.stopAt=t;}});
+  this.createBufferSource=()=>node('src',{buffer:null,loop:false,playbackRate:P(1),start(t,off){this.at=t;this.startedAt=t;this.started=true;},stop(t){this.stopAt=t;this.stopped=true;}});
   this.createStereoPanner=()=>node('pan',{pan:P(0)});
   this.createConvolver=()=>node('conv',{buffer:null,normalize:true});
   this.createDynamicsCompressor=()=>node('comp',{threshold:P(0),knee:P(0),ratio:P(1),attack:P(0),release:P(0)});
@@ -165,6 +165,18 @@ function suite(src,verbose){
   const gHard=A.made.filter(n=>n.kind==='gain')[v0+3].gain.value;
   ok('a soft touch is quieter than a firm one',gSoft<gHard*.6,[gSoft,gHard]);
   delete Au.bank.ball_kick;delete Au.bank.ball_kick_hard;delete Au.bank.ball_kick_fire;}
+ // venue variants: a sound with `by` plays <id>_<tableId> / <id>_<pitchId> where that set exists
+ {const bw=buf(A),ba=buf(A),bf=buf(A),bc=buf(A),bx=buf(A),t0=cfg.table,p0=cfg.pitch;
+  Au.bank.ball_wall=[bw];Au.bank.ball_wall_arena=[ba];Au.bank.ball_floor=[bf];Au.bank.ball_floor_cork=[bc];Au.bank.ball_floor_arena=[bx];
+  const fired=()=>A.made.filter(n=>n.kind==='src').pop().buffer,hit=id=>{Au.ctx.currentTime+=1;Au.play(id,{p:40,src:ball(0,0)});return fired();};
+  cfg.table='classic';cfg.pitch='royal';
+  ok('a table sound on a table with no set of its own plays the base take',hit('ball_wall')===bw);
+  cfg.table='arena';ok('…and the table\'s own take on that table',hit('ball_wall')===ba);
+  ok('a pitch sound ignores the table',hit('ball_floor')===bf);
+  cfg.pitch='cork';ok('…and follows the pitch',hit('ball_floor')===bc);
+  delete Au.bank.ball_floor;ok('a venue set plays even with no base take',hit('ball_floor')===bc);
+  cfg.pitch='royal';ok('…and elsewhere the sound is synthesized again',Au.play('ball_floor',{p:40,src:ball(0,0)})===false);
+  for(const k of ['ball_wall','ball_wall_arena','ball_floor_cork','ball_floor_arena'])delete Au.bank[k];cfg.table=t0;cfg.pitch=p0;}
  {Au.ctx.currentTime+=1;const o0=osc();Au.ui('back');
   const o=A.made.filter(n=>n.kind==='osc').slice(o0);
   ok('a menu sound is synthesized with no recording',o.length>0);ok('…and lands on the menu bus',o.every(n=>reach(n,Au.ub))&&!o.some(n=>reach(n,Au.mg)));
@@ -263,6 +275,72 @@ function suite(src,verbose){
    MU.match='music/x.ogg';ok('a single file still reads as a list',Au.musicList().length===1&&Au.musicList()[0].f==='music/x.ogg');
    MU.match=M0;cfg.musicMatch='';m.mi=0;Au.musicFetch=fw;}
   m.tr.menu=null;m.tr.match=null;}
+ /* 7. loops: the roll, the rods (audioMix.loops) */
+ {const LP=AUMIX.loops,w=new Float32Array(2),at=LP.roll.at;
+  ok('loop speed: vMin is 0, vRef is 1, clamped',ctx.auLpN(LP.roll.vMin,LP.roll)===0&&ctx.auLpN(LP.roll.vRef,LP.roll)===1&&ctx.auLpN(1e4,LP.roll)===1&&ctx.auLpN(-5,LP.roll)===0);
+  ctx.auXf(0,at,w);ok('a slow ball plays the slow loop alone',w[0]===1&&w[1]===0,[...w]);
+  ctx.auXf(1,at,w);ok('a fast ball plays the fast loop alone',w[0]===0&&w[1]===1,[...w]);
+  let ep=true,mono=true,p1=-1;for(let n=at[0];n<=at[1];n+=.01){ctx.auXf(n,at,w);if(Math.abs(w[0]*w[0]+w[1]*w[1]-1)>1e-6)ep=false;if(w[1]<p1-1e-9)mono=false;p1=w[1];}
+  ok('the crossfade keeps the power',ep);ok('…and moves one way',mono);
+  ok('one layer is always the whole sound',ctx.auXf(.5,[0],new Float32Array(1))[0]===1);
+  const vox=()=>[...Au.lp.values()].filter(V=>V.on).length,srcOf=(V,p)=>V.parts[p].ls,run=(n,f)=>{for(let i=0;i<n;i++){if(f)f();Au.tick(1/60);}};
+  ctx.S.phase='play';const s0=srcs();run(10,()=>Au.rollFeed(0,40,{},ball(30,0)));
+  ok('no roll files: the ball rolls in silence',srcs()===s0&&vox()===0);
+  Au.bank.ball_roll_slow=[buf(A,2)];Au.bank.ball_roll_fast=[buf(A,2)];
+  run(6,()=>Au.rollFeed(0,10,{},ball(30,0)));
+  const V=Au.lp.get('ball'),L=V&&V.on&&srcOf(V,'roll');
+  ok('a rolling ball starts both roll loops',!!L&&L.length===2&&L.every(l=>l.s.loop&&l.s.started),L&&L.length);
+  ok('…panned by the ball, into the effects bus and the room',!!L&&path2(L[0].s,Au.mg,'pan')&&reach(L[0].s,Au.rv.f));
+  ok('…the ball on the right pans right',!!V&&V.pn.pan.value>.1,V&&V.pn.pan.value);
+  const gs=()=>L.map(l=>l.g.gain.value),slow=gs(),rS=L[0].s.playbackRate.value;
+  ok('slow: the slow loop is the louder',slow[0]>slow[1]*2,slow);
+  run(60,()=>Au.rollFeed(0,LP.roll.vRef,{},ball(30,0)));const fast=gs(),rF=L[0].s.playbackRate.value;
+  ok('fast: the fast loop is the louder',fast[1]>fast[0]*2,fast);ok('…louder than the slow roll',fast[1]>slow[0],[slow,fast]);
+  ok('…and the loops play faster',rF>rS*1.15,[rS,rF]);
+  run(60,()=>Au.rollFeed(0,LP.roll.vRef,{roll:{rate:.62}},ball(30,0)));
+  ok('a heavy ball plays the roll slower',L[0].s.playbackRate.value<rF*.7,[L[0].s.playbackRate.value,rF]);
+  run(90);ok('the ball stops: the loops fade and stop',vox()===0&&L.every(l=>l.s.stopped));
+  run(20,()=>{ctx.S.phase='menu';Au.rollFeed(0,80,{},ball(0,0));});ok('nothing loops in the menus',vox()===0);ctx.S.phase='play';
+  Au.bank.ball_scrape=[buf(A,2)];run(6,()=>Au.rollFeed(1,50,{},ball(0,30)));
+  ok('along a wall the scrape plays, not the roll',!!V.on&&srcOf(V,'scrape').length===1&&V.parts.roll.lvl===0);
+  run(90);
+  const rc={roll:{floor:{vol:.3,freq:250,freqScale:5,q:.7}}};Au.rl=[Au.mkRoll(),Au.mkRoll()];run(6,()=>Au.rollFeed(0,60,rc,ball(0,0)));
+  ok('with roll loops the synthesized roll stays silent',Au.rl[0].g.gain.value===0,Au.rl[0].g.gain.value);
+  const keep=Au.bank.ball_roll_slow;delete Au.bank.ball_roll_slow;delete Au.bank.ball_roll_fast;run(6,()=>Au.rollFeed(0,60,rc,ball(0,0)));
+  ok('…and plays when there are none',Au.rl[0].g.gain.value>0,Au.rl[0].g.gain.value);
+  Au.rl=null;Au.bank.ball_roll_slow=keep;Au.bank.ball_roll_fast=[buf(A,2)];run(90);
+  {const cs=buf(A,2),p0=cfg.pitch;Au.bank.ball_roll_slow_cork=[cs];cfg.pitch='cork';run(6,()=>Au.rollFeed(0,10,{},ball(30,0)));
+   const CL=V.on&&srcOf(V,'roll');
+   ok('on a pitch with its own roll the loop plays that pitch\'s take',!!CL&&CL[0].s.buffer===cs&&CL[1].s.buffer===Au.bank.ball_roll_fast[0]);
+   run(90);cfg.pitch=p0;delete Au.bank.ball_roll_slow_cork;}
+  // rods
+  ctx.seatOf=r=>r.human?{}:null;
+  const rod=(o)=>Object.assign({pivot:{position:{x:22.5,y:7.5,z:0}},vz:0,angVel:0,offset:0,prevOffset:0,maxOff:10,vzH:[0,0,0,0]},o);
+  const hr=rod({human:true,vz:60,vzH:[60,60,60,60]});const r0=srcs();run(5,()=>Au.rodFeed(hr));
+  ok('no rod files: rods slide in silence',srcs()===r0&&!Au.lp.get(hr));
+  Au.bank.rod_slide_slow=[buf(A,1)];Au.bank.rod_slide_fast=[buf(A,1)];Au.bank.rod_spin=[buf(A,1)];Au.bank.rod_bump=[buf(A,.2)];
+  run(5,()=>Au.rodFeed(hr));const HV=Au.lp.get(hr);
+  ok('a sliding rod starts its slide loops',!!HV&&HV.on&&srcOf(HV,'slide').length===2);
+  ok('…panned by the rod',!!HV&&HV.pn.pan.value>.05,HV&&HV.pn.pan.value);const hl=HV.parts.slide.lvl;
+  const ar=rod({vz:60,vzH:[60,60,60,60]});run(5,()=>Au.rodFeed(ar));const AV=Au.lp.get(ar);
+  ok('an AI rod slides quieter than a player\'s',!!AV&&AV.parts.slide.lvl<hl*.7,[AV&&AV.parts.slide.lvl,hl]);
+  const tr=rod({human:true,vz:2000,vzH:[2000,0,0,0]});run(5,()=>Au.rodFeed(tr));ok('a hard set is not a slide',!Au.lp.get(tr)||!Au.lp.get(tr).on);
+  const sp=rod({human:true,angVel:45});run(5,()=>Au.rodFeed(sp));ok('a fast turn plays the spin',!!Au.lp.get(sp)&&Au.lp.get(sp).parts.spin.lvl>0);
+  const kick=rod({human:true,angVel:8});run(5,()=>Au.rodFeed(kick));ok('a slow turn does not',!Au.lp.get(kick)||!(Au.lp.get(kick).parts.spin&&Au.lp.get(kick).parts.spin.lvl>0));
+  const bumps=()=>A.made.filter(n=>n.kind==='src'&&n.buffer===Au.bank.rod_bump[0]).length;
+  const bb=rod({human:true,offset:10,prevOffset:9.6,vz:48,vzH:[48,48,48,48]});let b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(bb);
+  ok('arriving at the end of the travel bumps',bumps()===b0+1);
+  b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(rod({human:true,offset:10,prevOffset:10,vz:0,vzH:[48,0,0,0]}));ok('…once, not while it rests there',bumps()===b0);
+  b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(rod({human:true,offset:-10,prevOffset:-9.6,vz:-48,vzH:[-48,-48,-48,-48]}));ok('…at either end',bumps()===b0+1);
+  b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(rod({human:true,offset:9.97,prevOffset:9.9,vz:5,vzH:[5,5,4,3]}));ok('…not for a gentle arrival',bumps()===b0);
+  const mid=(LP.bump.min+LP.bump.aiMin)/2,mv=[mid,mid,mid,mid];b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(rod({offset:10,prevOffset:9.6,vz:mid,vzH:mv}));
+  ok('an AI rod needs a harder arrival to bump',bumps()===b0);Au.ctx.currentTime+=1;Au.rodFeed(rod({human:true,offset:10,prevOffset:9.6,vz:mid,vzH:mv}));ok('…than a player does',bumps()===b0+1);
+  const g0=A.made.length;Au.ctx.currentTime+=1;Au.rodFeed(rod({human:true,offset:10,prevOffset:9.6,vz:70,vzH:[70,70,70,70]}));const gh=A.made.slice(g0).find(n=>n.kind==='gain').gain.value;
+  const g1=A.made.length;Au.ctx.currentTime+=1;Au.rodFeed(rod({offset:10,prevOffset:9.6,vz:70,vzH:[70,70,70,70]}));const ga=A.made.slice(g1).find(n=>n.kind==='gain').gain.value;
+  ok('an AI rod bumps quieter',ga<gh*.8,[ga,gh]);
+  Au.setOn(false);ok('the sound switch stops every loop',vox()===0);
+  for(const k of ['ball_roll_slow','ball_roll_fast','ball_scrape','rod_slide_slow','rod_slide_fast','rod_spin','rod_bump'])delete Au.bank[k];
+  delete ctx.seatOf;}
  }catch(e){fails.push('threw: '+(e.stack||e.message).split('\n').slice(0,3).join(' | '));}
  return{fails,pass};
 }
@@ -290,6 +368,9 @@ function staticChecks(){
  ok('manifest: a sound is valid',MF.validId('crowd_roar',CONFIG));
  ok('manifest: a ball-type variant is valid',MF.validId('ball_kick_fire',CONFIG));
  ok('manifest: a hard variant is valid',MF.validId('ball_kick_hard',CONFIG));
+ ok('manifest: a table variant of a table sound is valid',MF.validId('rod_bump_arena',CONFIG)&&MF.validId('ball_scrape_circuit',CONFIG));
+ ok('manifest: a pitch variant of a pitch sound is valid',MF.validId('ball_roll_slow_cork',CONFIG)&&MF.validId('ball_floor_champions_green',CONFIG));
+ ok('manifest: a venue variant of the wrong kind is not',!MF.validId('ball_wall_cork',CONFIG)&&!MF.validId('ball_roll_slow_arena',CONFIG)&&!MF.validId('ball_kick_arena',CONFIG));
  ok('manifest: a room impulse is valid',MF.validId('ir_pub',CONFIG));
  ok('manifest: an impulse for no room is not',!MF.validId('ir_garage',CONFIG));
  ok('manifest: a typo is not',!MF.validId('ball_kik',CONFIG)&&!MF.validId('ball_kick_soft',CONFIG));
@@ -360,6 +441,21 @@ const MUTS=[
  mutate('cfg.musicMatch=e.f;','','the pick is not kept'),
  mutate('this.mx.mi=i<0?0:i;','this.mx.mi=0;','a new session forgets the pick'),
  mutate("if(!m.tr.match||m.tr.match.f!==e.f)this.musicFetch('match',e.f);",'','the next track is never fetched'),
+ mutate('w[i-1]=Math.cos(u*Math.PI/2);w[i]=Math.sin(u*Math.PI/2);','w[i-1]=1-u;w[i]=u;','the loop crossfade is equal-gain'),
+ mutate('rt=(C.rate[0]+(C.rate[1]-C.rate[0])*u)*P.rt*R;','rt=P.rt*R;','the speed never moves the loop rate'),
+ mutate('if(!any){this.lpStop(V);continue;}','','loops are never stopped'),
+ mutate('sp=live?P.want:0,u=auLpN(sp,C)','sp=P.want,u=auLpN(sp,C)','loops play in the menus'),
+ mutate('V.pn=c.createStereoPanner?c.createStereoPanner():null;','V.pn=null;','loops are not panned'),
+ mutate('Math.abs(r.offset)>=end&&Math.abs(r.prevOffset)<end){','Math.abs(r.offset)>=end){','a rod resting at the end keeps bumping'),
+ mutate("if(vz<L.vzCap)this.lpFeed(r,'slide',vz,src,ai?L.slide.ai??1:1);","if(vz<L.vzCap)this.lpFeed(r,'slide',vz,src,1);",'AI rods slide as loud as a player'),
+ mutate('if(vz<L.vzCap)this.lpFeed','this.lpFeed','a hard set plays as a slide'),
+ mutate('P.rt=rt||1;','P.rt=1;','a ball type never changes the roll rate'),
+ mutate('if(im>=(ai?B.aiMin??B.min:B.min)&&','if(im>=B.min&&','AI rods bump as easily as a player'),
+ mutate("sp=live&&!this.lpHas(k?'scrape':'roll')?r.want:0,","sp=live?r.want:0,",'the synthesized roll plays over the recorded loops'),
+ mutate("return k&&this.has(id+'_'+k)?id+'_'+k:id;},",'return id;},','venue sets are ignored'),
+ mutate("by==='pitch'?cfg.pitch:by==='table'?cfg.table:null",'by?cfg.table:null','a pitch sound follows the table'),
+ mutate('else if(this.has(vi))use=vi;','else if(this.has(id))use=id;','one-shots ignore the venue'),
+ mutate('const u=this.vid(id);if(!this.has(u))return;','const u=id;if(!this.has(u))return;','loops ignore the venue'),
 ];
 let caught=0;console.log('\nmutations (each must fail something):');
 for(const M of MUTS){

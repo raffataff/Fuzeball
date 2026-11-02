@@ -329,9 +329,9 @@ const MUT=[
  {n:'the first read slides in from z 0',part:'cover',from:'if(r.aiTZ==null){r.aiTZ=p.z;r.aiTVZ=b.v.z;}',to:'if(r.aiTZ==null){r.aiTZ=0;r.aiTVZ=0;}'},
  {n:'track off is ignored',part:'cover',from:'if(!TK||!TK.on)return ',to:'if(!TK)return '},
  {n:'the slide lift is not budgeted in the reach',part:'cover',from:'.speed*CV.slide*CV.speedMul*',to:'.speed*CV.speedMul*'},
- {n:'a covering rod slides at its plain speed',part:'cover',from:'r.kickT<0?AIC.cover.slide:1;',to:'r.kickT<0?1:1;'},
+ {n:'a covering rod slides at its plain speed',part:'cover',from:'r.kickT<0?AIC.cover.slide:1)',to:'r.kickT<0?1:1)'},
  {n:'a covering rod keeps the lift while an action owns it',part:'cover',from:'r.cvOn&&!r.act&&r.kickT<0?',to:'r.cvOn&&r.kickT<0?'},
- {n:'a human-held rod gets the lift',part:'cover',from:'return !uSeat&&r.cvOn&&',to:'return r.cvOn&&'},
+ {n:'a human-held rod gets the lift',part:'cover',from:'return uSeat?1:(',to:'return ('},
  {n:'a removed man still casts a shadow',part:'cover',from:'for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const c=oz+',to:'for(let i=0;i<r.baseZ.length;i++){const c=oz+'}
 ];
 let missed=0;

@@ -1,0 +1,1190 @@
+{
+ "v": 1,
+ "venues": {
+  "tables": {
+   "classic": {
+    "from": {
+     "rods": "FB Silent Steel",
+     "table": "Maple Butcher Block",
+     "men": "FB Men"
+    },
+    "ref": {
+     "rods": "user:pmvzf8s6303",
+     "table": "preset:maple",
+     "men": "user:pmvzfz4s00d"
+    },
+    "rods": {
+     "E": 201,
+     "density": 7850,
+     "loss": 0.0206,
+     "od": 15.8,
+     "wall": 7.9,
+     "bearing": 0.1,
+     "friction": 0.035,
+     "play": 10,
+     "lube": 0.76,
+     "bumperHard": 65,
+     "bumperThick": 14,
+     "handleMass": 95,
+     "handleLoose": 0.1,
+     "finish": 0.82
+    },
+    "table": {
+     "fieldThick": 32,
+     "fieldDensity": 710,
+     "fieldE": 11500,
+     "fieldLoss": 0.012,
+     "fieldRough": 14,
+     "fieldTex": 10,
+     "fieldGrain": 2.5,
+     "wear": 0.22,
+     "polish": 0.3,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 700,
+     "cabE": 11000,
+     "cabLoss": 0.012,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#D8B482",
+     "lineColor": "#20262E",
+     "cabColor": "#7A4A24"
+    },
+    "men": {
+     "density": 4450,
+     "E": 2500,
+     "loss": 0.21,
+     "mass": 88,
+     "toeHard": 0.79,
+     "toeRough": 0.72,
+     "clearance": 1.7,
+     "loose": 0.12,
+     "wear": 0.2,
+     "colorA": "#D1242A",
+     "colorB": "#1553C8",
+     "gloss": 0.55
+    }
+   },
+   "arena": {
+    "from": {
+     "rods": "FB Silent Steel"
+    },
+    "ref": {
+     "rods": "user:pmvzf8s6303"
+    },
+    "rods": {
+     "E": 201,
+     "density": 7850,
+     "loss": 0.0206,
+     "od": 15.8,
+     "wall": 7.9,
+     "bearing": 0.1,
+     "friction": 0.035,
+     "play": 10,
+     "lube": 0.76,
+     "bumperHard": 65,
+     "bumperThick": 14,
+     "handleMass": 95,
+     "handleLoose": 0.1,
+     "finish": 0.82
+    }
+   },
+   "circuit": {
+    "from": {
+     "rods": "FB Silent Steel",
+     "table": "Maple Butcher Block"
+    },
+    "ref": {
+     "rods": "user:pmvzf8s6303",
+     "table": "preset:maple"
+    },
+    "rods": {
+     "E": 201,
+     "density": 7850,
+     "loss": 0.0206,
+     "od": 15.8,
+     "wall": 7.9,
+     "bearing": 0.1,
+     "friction": 0.035,
+     "play": 10,
+     "lube": 0.76,
+     "bumperHard": 65,
+     "bumperThick": 14,
+     "handleMass": 95,
+     "handleLoose": 0.1,
+     "finish": 0.82
+    },
+    "table": {
+     "fieldThick": 32,
+     "fieldDensity": 710,
+     "fieldE": 11500,
+     "fieldLoss": 0.012,
+     "fieldRough": 14,
+     "fieldTex": 10,
+     "fieldGrain": 2.5,
+     "wear": 0.22,
+     "polish": 0.3,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 700,
+     "cabE": 11000,
+     "cabLoss": 0.012,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#D8B482",
+     "lineColor": "#20262E",
+     "cabColor": "#7A4A24"
+    }
+   }
+  },
+  "pitches": {
+   "pub_classic": {
+    "from": {
+     "table": "FB Pub Classic"
+    },
+    "ref": {
+     "table": "user:pmvzf0zq902"
+    },
+    "table": {
+     "fieldThick": 19,
+     "fieldDensity": 640,
+     "fieldE": 9000,
+     "fieldLoss": 0.05,
+     "fieldRough": 16,
+     "fieldTex": 8,
+     "fieldGrain": 3,
+     "wear": 0.43,
+     "polish": 0.3,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.2,
+     "cabThick": 38,
+     "cabDensity": 620,
+     "cabE": 9500,
+     "cabLoss": 0.018,
+     "cavityDepth": 110,
+     "cavityOpen": 0.6,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 12000,
+     "goalDensity": 900,
+     "goalLoss": 0.03,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#3F7A4F",
+     "lineColor": "#F5F3E7",
+     "cabColor": "#6B4322"
+    }
+   },
+   "cork": {
+    "from": {
+     "table": "FB Cork"
+    },
+    "ref": {
+     "table": "user:pmvzfj0r206"
+    },
+    "table": {
+     "fieldThick": 19,
+     "fieldDensity": 640,
+     "fieldE": 3250,
+     "fieldLoss": 0.2,
+     "fieldRough": 16,
+     "fieldTex": 51,
+     "fieldGrain": 3,
+     "wear": 0.43,
+     "polish": 0.3,
+     "scuffs": 0.6,
+     "dents": 0.5,
+     "dust": 0.34,
+     "cabThick": 38,
+     "cabDensity": 700,
+     "cabE": 11000,
+     "cabLoss": 0.012,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#3F7A4F",
+     "lineColor": "#F5F3E7",
+     "cabColor": "#7A4A24"
+    }
+   },
+   "royal": {
+    "from": {
+     "table": "FB Grass"
+    },
+    "ref": {
+     "table": "user:pmvzfktxk07"
+    },
+    "table": {
+     "fieldThick": 37,
+     "fieldDensity": 2500,
+     "fieldE": 826,
+     "fieldLoss": 0.2,
+     "fieldRough": 29.8,
+     "fieldTex": 55,
+     "fieldGrain": 2,
+     "wear": 0.08,
+     "polish": 0.02,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#BFD7D2",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "champions_green": {
+    "from": {
+     "table": "FB Grass"
+    },
+    "ref": {
+     "table": "user:pmvzfktxk07"
+    },
+    "table": {
+     "fieldThick": 37,
+     "fieldDensity": 2500,
+     "fieldE": 826,
+     "fieldLoss": 0.2,
+     "fieldRough": 29.8,
+     "fieldTex": 55,
+     "fieldGrain": 2,
+     "wear": 0.08,
+     "polish": 0.02,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#BFD7D2",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "champions_purple": {
+    "from": {
+     "table": "FB Grass"
+    },
+    "ref": {
+     "table": "user:pmvzfktxk07"
+    },
+    "table": {
+     "fieldThick": 37,
+     "fieldDensity": 2500,
+     "fieldE": 826,
+     "fieldLoss": 0.2,
+     "fieldRough": 29.8,
+     "fieldTex": 55,
+     "fieldGrain": 2,
+     "wear": 0.08,
+     "polish": 0.02,
+     "scuffs": 0.25,
+     "dents": 0.1,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#BFD7D2",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "cyatron": {
+    "from": {
+     "table": "FB Laminate"
+    },
+    "ref": {
+     "table": "user:pmvzfmls208"
+    },
+    "table": {
+     "fieldThick": 19,
+     "fieldDensity": 1010,
+     "fieldE": 3800,
+     "fieldLoss": 0.0639,
+     "fieldRough": 8,
+     "fieldTex": 45,
+     "fieldGrain": 1.6,
+     "wear": 0.05,
+     "polish": 0.3,
+     "scuffs": 0.04,
+     "dents": 0.05,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#F2F1EA",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "neon": {
+    "from": {
+     "table": "FB Laminate"
+    },
+    "ref": {
+     "table": "user:pmvzfmls208"
+    },
+    "table": {
+     "fieldThick": 19,
+     "fieldDensity": 1010,
+     "fieldE": 3800,
+     "fieldLoss": 0.0639,
+     "fieldRough": 8,
+     "fieldTex": 45,
+     "fieldGrain": 1.6,
+     "wear": 0.05,
+     "polish": 0.3,
+     "scuffs": 0.04,
+     "dents": 0.05,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#F2F1EA",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "verdantia": {
+    "from": {
+     "table": "FB Laminate"
+    },
+    "ref": {
+     "table": "user:pmvzfmls208"
+    },
+    "table": {
+     "fieldThick": 19,
+     "fieldDensity": 1010,
+     "fieldE": 3800,
+     "fieldLoss": 0.0639,
+     "fieldRough": 8,
+     "fieldTex": 45,
+     "fieldGrain": 1.6,
+     "wear": 0.05,
+     "polish": 0.3,
+     "scuffs": 0.04,
+     "dents": 0.05,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#F2F1EA",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "moon": {
+    "from": {
+     "table": "FB Moon Dust"
+    },
+    "ref": {
+     "table": "user:pmvzfn5oz09"
+    },
+    "table": {
+     "fieldThick": 35.5,
+     "fieldDensity": 2350,
+     "fieldE": 1370,
+     "fieldLoss": 0.0639,
+     "fieldRough": 120,
+     "fieldTex": 70,
+     "fieldGrain": 1.03,
+     "wear": 0.66,
+     "polish": 0.05,
+     "scuffs": 0.67,
+     "dents": 0.68,
+     "dust": 0.69,
+     "cabThick": 38,
+     "cabDensity": 760,
+     "cabE": 3800,
+     "cabLoss": 0.03,
+     "cavityDepth": 110,
+     "cavityOpen": 0.4,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 200000,
+     "goalDensity": 7800,
+     "goalLoss": 0.006,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#F2F1EA",
+     "lineColor": "#1E3A8A",
+     "cabColor": "#23201E"
+    }
+   },
+   "deck": {
+    "from": {
+     "table": "FB Deck Plate"
+    },
+    "ref": {
+     "table": "user:pmvzftjzm0a"
+    },
+    "table": {
+     "fieldThick": 25,
+     "fieldDensity": 360,
+     "fieldE": 70000,
+     "fieldLoss": 0.0303,
+     "fieldRough": 0.84,
+     "fieldTex": 8,
+     "fieldGrain": 0.468,
+     "wear": 0.22,
+     "polish": 0.7,
+     "scuffs": 0.08,
+     "dents": 0.07,
+     "dust": 0.08,
+     "cabThick": 38,
+     "cabDensity": 620,
+     "cabE": 9500,
+     "cabLoss": 0.018,
+     "cavityDepth": 110,
+     "cavityOpen": 0.6,
+     "cavityDamp": 0.25,
+     "legCouple": 0.5,
+     "railPad": 0,
+     "goalThick": 2.5,
+     "goalE": 12000,
+     "goalDensity": 900,
+     "goalLoss": 0.03,
+     "goalRattle": 0.3,
+     "returnDia": 54,
+     "returnLoss": 0.05,
+     "fieldColor": "#3F7A4F",
+     "lineColor": "#F5F3E7",
+     "cabColor": "#6B4322"
+    }
+   }
+  },
+  "rooms": {
+   "open": {
+    "from": {
+     "room": "FB Void"
+    },
+    "ref": {
+     "room": "user:pmvzfbhot04"
+    },
+    "room": {
+     "width": 5,
+     "length": 6,
+     "height": 3,
+     "rt60": 0.1,
+     "hfDamp": 0.9,
+     "early": -21,
+     "air": 0.55,
+     "floorE": 11000,
+     "floorLoss": 0.03,
+     "floorTone": 240
+    }
+   },
+   "saucer": {
+    "from": {
+     "room": "Flying Saucer"
+    },
+    "ref": {
+     "room": "user:pmvzfgzzw05"
+    },
+    "room": {
+     "width": 6.1,
+     "length": 6.5,
+     "height": 3.1,
+     "rt60": 0.435,
+     "hfDamp": 0.75,
+     "early": -6,
+     "air": 0.3,
+     "floorE": 400,
+     "floorLoss": 0.02,
+     "floorTone": 110
+    }
+   },
+   "arcade": {
+    "from": {
+     "room": "FB Arcade"
+    },
+    "ref": {
+     "room": "user:pmvzfuylo0b"
+    },
+    "room": {
+     "width": 8,
+     "length": 13,
+     "height": 3.9,
+     "rt60": 1.05,
+     "hfDamp": 0.3,
+     "early": 0,
+     "air": 0.3,
+     "floorE": 30000,
+     "floorLoss": 0.01,
+     "floorTone": 420
+    }
+   },
+   "pub": {
+    "from": {
+     "room": "Pub"
+    },
+    "ref": {
+     "room": "preset:pub"
+    },
+    "room": {
+     "width": 8,
+     "length": 13,
+     "height": 3.2,
+     "rt60": 1.05,
+     "hfDamp": 0.3,
+     "early": 0,
+     "air": 0.3,
+     "floorE": 30000,
+     "floorLoss": 0.01,
+     "floorTone": 420
+    }
+   },
+   "moon": {
+    "from": {
+     "room": "FB Moon Base"
+    },
+    "ref": {
+     "room": "user:pmvzfwip10c"
+    },
+    "room": {
+     "width": 11.3,
+     "length": 13,
+     "height": 5.4,
+     "rt60": 1.13,
+     "hfDamp": 0.51,
+     "early": -12,
+     "air": 0.51,
+     "floorE": 1070,
+     "floorLoss": 0.01,
+     "floorTone": 420
+    }
+   }
+  },
+  "balls": {
+   "classic": {
+    "from": {
+     "ball": "FB Classic"
+    },
+    "ref": {
+     "ball": "user:pmvzewxn001"
+    },
+    "ball": {
+     "diameter": 38.1,
+     "density": 900,
+     "E": 1800,
+     "nu": 0.36,
+     "loss": 0.035,
+     "hollow": 0,
+     "shell": 2,
+     "roughness": 1.34,
+     "texDepth": 26,
+     "texCount": 37,
+     "runout": 40,
+     "mu": 0.32,
+     "color": "#F4F1E6"
+    }
+   }
+  }
+ },
+ "actions": {},
+ "exported": {
+  "ball_wall": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.275Z"
+  },
+  "ball_floor": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.300Z"
+  },
+  "ball_post": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.321Z"
+  },
+  "ball_goal": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.351Z"
+  },
+  "ball_drop": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.376Z"
+  },
+  "rod_bump": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.397Z"
+  },
+  "ball_roll_slow": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.434Z"
+  },
+  "ball_roll_fast": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.470Z"
+  },
+  "ball_scrape": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.503Z"
+  },
+  "rod_slide_slow": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.537Z"
+  },
+  "rod_slide_fast": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.569Z"
+  },
+  "rod_spin": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block, FB Men, FB Pub Classic, FB Classic",
+   "at": "2026-11-02T16:56:03.602Z"
+  },
+  "ball_wall_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.624Z"
+  },
+  "ball_post_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.642Z"
+  },
+  "ball_goal_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.675Z"
+  },
+  "rod_bump_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.695Z"
+  },
+  "ball_scrape_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.730Z"
+  },
+  "rod_slide_slow_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.762Z"
+  },
+  "rod_slide_fast_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.793Z"
+  },
+  "rod_spin_arena": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel",
+   "at": "2026-11-02T16:56:03.824Z"
+  },
+  "ball_wall_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:03.868Z"
+  },
+  "ball_post_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:03.889Z"
+  },
+  "ball_goal_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:03.915Z"
+  },
+  "rod_bump_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:03.959Z"
+  },
+  "ball_scrape_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:03.993Z"
+  },
+  "rod_slide_slow_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:04.025Z"
+  },
+  "rod_slide_fast_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:04.056Z"
+  },
+  "rod_spin_circuit": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Silent Steel, Maple Butcher Block",
+   "at": "2026-11-02T16:56:04.087Z"
+  },
+  "ball_floor_cork": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Cork",
+   "at": "2026-11-02T16:56:04.109Z"
+  },
+  "ball_drop_cork": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Cork",
+   "at": "2026-11-02T16:56:04.136Z"
+  },
+  "ball_roll_slow_cork": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Cork",
+   "at": "2026-11-02T16:56:04.173Z"
+  },
+  "ball_roll_fast_cork": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Cork",
+   "at": "2026-11-02T16:56:04.208Z"
+  },
+  "ball_floor_royal": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.230Z"
+  },
+  "ball_drop_royal": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.255Z"
+  },
+  "ball_roll_slow_royal": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.293Z"
+  },
+  "ball_roll_fast_royal": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.329Z"
+  },
+  "ball_floor_cyatron": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.353Z"
+  },
+  "ball_drop_cyatron": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.377Z"
+  },
+  "ball_roll_slow_cyatron": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.417Z"
+  },
+  "ball_roll_fast_cyatron": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.466Z"
+  },
+  "ball_floor_neon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.487Z"
+  },
+  "ball_drop_neon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.508Z"
+  },
+  "ball_roll_slow_neon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.546Z"
+  },
+  "ball_roll_fast_neon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.580Z"
+  },
+  "ball_floor_verdantia": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.603Z"
+  },
+  "ball_drop_verdantia": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.624Z"
+  },
+  "ball_roll_slow_verdantia": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.659Z"
+  },
+  "ball_roll_fast_verdantia": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Laminate",
+   "at": "2026-11-02T16:56:04.694Z"
+  },
+  "ball_floor_champions_green": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.717Z"
+  },
+  "ball_drop_champions_green": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.751Z"
+  },
+  "ball_roll_slow_champions_green": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.789Z"
+  },
+  "ball_roll_fast_champions_green": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.824Z"
+  },
+  "ball_floor_champions_purple": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.848Z"
+  },
+  "ball_drop_champions_purple": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.871Z"
+  },
+  "ball_roll_slow_champions_purple": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.910Z"
+  },
+  "ball_roll_fast_champions_purple": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Grass",
+   "at": "2026-11-02T16:56:04.962Z"
+  },
+  "ball_floor_moon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Moon Dust",
+   "at": "2026-11-02T16:56:04.980Z"
+  },
+  "ball_drop_moon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Moon Dust",
+   "at": "2026-11-02T16:56:05.002Z"
+  },
+  "ball_roll_slow_moon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Moon Dust",
+   "at": "2026-11-02T16:56:05.041Z"
+  },
+  "ball_roll_fast_moon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Moon Dust",
+   "at": "2026-11-02T16:56:05.082Z"
+  },
+  "ball_floor_deck": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 5,
+   "from": "FB Deck Plate",
+   "at": "2026-11-02T16:56:05.103Z"
+  },
+  "ball_drop_deck": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 3,
+   "from": "FB Deck Plate",
+   "at": "2026-11-02T16:56:05.125Z"
+  },
+  "ball_roll_slow_deck": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Deck Plate",
+   "at": "2026-11-02T16:56:05.163Z"
+  },
+  "ball_roll_fast_deck": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 2,
+   "from": "FB Deck Plate",
+   "at": "2026-11-02T16:56:05.199Z"
+  },
+  "ir_open": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 1,
+   "from": "FB Void",
+   "at": "2026-11-02T16:56:05.215Z"
+  },
+  "ir_saucer": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 1,
+   "from": "Flying Saucer",
+   "at": "2026-11-02T16:56:05.231Z"
+  },
+  "ir_pub": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 1,
+   "from": "Pub",
+   "at": "2026-11-02T16:56:05.250Z"
+  },
+  "ir_arcade": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 1,
+   "from": "FB Arcade",
+   "at": "2026-11-02T16:56:05.269Z"
+  },
+  "ir_moon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 1,
+   "from": "FB Moon Base",
+   "at": "2026-11-02T16:56:05.288Z"
+  }
+ }
+}

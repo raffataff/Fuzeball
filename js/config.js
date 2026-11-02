@@ -711,7 +711,7 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.05,  strikeA:1.25,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:1.35,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
       powFrom:0.03, powTo:0.05,     // power window (opens with the strike so it covers the contact)
@@ -1426,7 +1426,21 @@ ai:{
    manHyst:1.4,                               // z-units a different man must beat the current one by to steal aim
    retargetDead:0.1,                          // z the desired slide must differ by before re-aiming
    errLerp:7.0,                               // rate the wandering aim error drifts to its new target (per s)
-   slideAccel:600                             // AI rod slide acceleration cap (u/s²)
+   slideAccel:600,                            // AI rod slide acceleration cap (u/s²)
+   // --- calm: a rod the play is far from stands its ground instead of chasing the ball's z (plain alignment, goal cover, ready for a team ball) ---
+   calm:{
+      on:true,            // false = every rod tracks the ball's z at full speed wherever the ball is
+      ahead:[30,42],      // ball this far ahead of the rod (u, dir-relative): tracked fully at the first, fully calm from the second
+      own:[16,28],        // ...ahead and the rod's own team touched it last (nothing to block)
+      behind:[14,26],     // ...behind it (the play has gone past the rod)
+      t:[0.5,1.0],        // ...unless it is coming at the rod and gets there within the first (s); fully calm only past the second
+      tau:0.5,            // a calm rod's wanted slide is smoothed over this long (s): a rally's back and forth averages out
+      dead:2.5,           // ...and it sets off only once that is this far (u) from its target, then follows it until caught up
+      settle:0.3,         // ...caught up = the smoothed slide within this (u) of the wanted one
+      v:0.55,             // ...at this share of its slide speed and acceleration
+      ready:true,         // a rod standing ready for a team ball (not a lane the holder looks at) is calm too; false = it keeps a man on the ball's z
+      brake:true          // ...braking in time to stop on its target; false = it overshoots and comes back like a rod in play (~1.3 u at pro speed; in play the overshoot carries the slide through a strike)
+   }
  },
 
   /* ---- 3D player models ----------------------------------------------- */
@@ -2077,7 +2091,7 @@ deadball:{
    master:0.55,
    limiter:{on:true,threshold:-7,knee:8,ratio:10,attack:0.004,release:0.15},
    voices:{wall:{gap:0.055,max:4},kick:{gap:0.02,max:6},post:{gap:0.05,max:3},react:{gap:0.25,max:2},power:{gap:0.12,max:2},
-           ui:{gap:0.045,max:3},sting:{gap:0.3,max:2}},
+           ui:{gap:0.045,max:3},sting:{gap:0.3,max:2},bump:{gap:0.04,max:3}},
    jitter:{pitch:0.16},
    hover:{on:true, fields:false},   // ui_move when the mouse lands on a menu button; fields = text boxes, sliders and ticks count too
    roll:{
@@ -2091,9 +2105,23 @@ deadball:{
          wall: {vol:0.12,freq:620,freqScale:11.0,q:1.5}}
    },
 
+   // ---- loops: recorded sounds that follow a speed (Au.lpFeed / lpTick) ----
+   // a part plays its ids as looping takes crossfaded on equal power by speed (each id sits at its `at`, 0..1 of vMin..vRef), silent at rest; ids with no file are skipped, a part with none is silent
+   //   vMin / vRef = speed where it fades in / reaches full level, curve = level is norm^curve (<1 = loud early), rate = playback rate at vMin..vRef, attack / release = smoothing (s), ai = level on an AI-held rod
+   // roll / scrape: the ball on the pitch / along a wall (u/s, rollProbe); slide: a rod's slide (u/s); spin: a rod's turn (rad/s); a ball type's audio.roll.rate scales the ball's rate
+   loops:{
+    on:true,
+    roll:  {ids:['ball_roll_slow','ball_roll_fast'], at:[0.15,0.7], vMin:3,  vRef:110, curve:0.7, rate:[0.85,1.2], attack:0.03,  release:0.16},
+    scrape:{ids:['ball_scrape'],                     at:[0],        vMin:4,  vRef:100, curve:0.8, rate:[0.8,1.3],  attack:0.02,  release:0.12},
+    slide: {ids:['rod_slide_slow','rod_slide_fast'], at:[0.2,0.8],  vMin:8,  vRef:80,  curve:0.8, rate:[0.85,1.2], attack:0.012, release:0.08, ai:0.35},   // the AI slides ~half the time: its rods are a quiet bed
+    spin:  {ids:['rod_spin'],                        at:[0],        vMin:18, vRef:60,  curve:1,   rate:[0.7,1.4],  attack:0.01,  release:0.12, ai:0.5},
+    vzCap:300,                       // a slide faster than this is a hard set (a reset, a trial going home), not a sound (u/s)
+    bump:{min:12, aiMin:25, near:0.05, ai:0.4} // rod_bump: the arrival speed it needs (u/s, the fastest of the last four steps; aiMin on an AI rod: they reach an end ~2.5 times a second), how near the end counts (u), level on an AI-held rod
+   },
+
    // ---- recorded sounds ----
    // files under assets/audio/ named <id>_01.ogg, <id>_02.ogg...; run node tools/build_audio_manifest.js; an id with no files plays its synthesized version
-   // variants: <id>_<ballType>, <id>_hard (above hardFrom); a recorded ir_<roomId>.wav replaces a room's reverb
+   // variants: <id>_<ballType>, <id>_<pitchId> / <id>_<tableId> (sounds.<id>.by), <id>_hard (above hardFrom); a recorded ir_<roomId>.wav replaces a room's reverb
    samples:{on:true, folder:'assets/audio/', manifest:'manifest.json'},
 
    // ---- music ----
@@ -2146,16 +2174,25 @@ deadball:{
    // ---- per-sound playback ----
    //   bus = fx|crowd|ui, vol = level, pitch/volJ = random spread per play, send = reverb send (x the room's), gate = shared voice cap with its synth
    //   pRef = impact speed at full level (falls toward pFloor on a pCurve), pPitch = pitch rise soft to hard, exc = crowd lift, syn:false = recorded only
+   //   by = the venue part it follows: 'pitch' | 'table' plays <id>_<pitchId> / <id>_<tableId> there when that file exists (tools/soundlab-server.js exports them)
    // what each sound is lives in the Fuzeball Sound List artifact
    sounds:{
     // the table
     ball_kick:   {bus:'fx', vol:0.9, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7},
-    ball_wall:   {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1},
-    ball_floor:  {bus:'fx', vol:0.7, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1},
+    ball_wall:   {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1, by:'table'},
+    ball_floor:  {bus:'fx', vol:0.7, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1, by:'pitch'},
     ball_hit:    {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.1,  pCurve:1},    // ball on ball
-    ball_post:   {bus:'fx', vol:0.9, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8},
-    ball_goal:   {bus:'fx', vol:0.9, pitch:0.04, volJ:0.08, send:1, syn:false},   // into the goal and down the return
-    ball_drop:   {bus:'fx', vol:0.8, pitch:0.04, volJ:0.08, send:1, syn:false},   // the serve: fed in, rattling onto the pitch
+    ball_post:   {bus:'fx', vol:0.9, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8, by:'table'},
+    ball_goal:   {bus:'fx', vol:0.9, pitch:0.04, volJ:0.08, send:1, syn:false, by:'table'},   // into the goal and down the return
+    ball_drop:   {bus:'fx', vol:0.8, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
+    rod_bump:    {bus:'fx', vol:0.45, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, syn:false, by:'table'},   // a rod hitting the end of its travel
+    // loops (audioMix.loops): vol = the level at full speed
+    ball_roll_slow:{bus:'fx', vol:0.5,  send:0.6, syn:false, by:'pitch'},   // the ball rolling slowly on the pitch: a low rumble
+    ball_roll_fast:{bus:'fx', vol:0.6,  send:0.6, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
+    ball_scrape:   {bus:'fx', vol:0.4,  send:0.6, syn:false, by:'table'},   // rolling along a wall
+    rod_slide_slow:{bus:'fx', vol:0.35, send:0.4, syn:false, by:'table'},   // a rod sliding gently in its bearings
+    rod_slide_fast:{bus:'fx', vol:0.45, send:0.4, syn:false, by:'table'},   // ...jerked hard: louder, rattling
+    rod_spin:      {bus:'fx', vol:0.3,  send:0.5, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
     // match
     whistle:     {bus:'fx', vol:0.8, pitch:0.02, send:0.8},
     whistle_end: {bus:'fx', vol:0.8, send:0.8, syn:false},   // full time as one take; without it, three singles
@@ -2241,7 +2278,8 @@ deadball:{
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
          wall:{noiseDur:.075,noiseFreq:900,noiseFreqScale:2.5,noiseVol:.02,noiseVolScale:.004,noiseVolMax:.38,q:1.1,
                bodyFrom:30,bodyFreq:85,bodyDur:.12,bodyVolScale:.0028,bodyVolMax:.30,bodySlide:-30},
-         roll:{floor:{vol:.42,freq:130,freqScale:2.2,q:1.0},       // low grinding rumble
+         roll:{rate:.62,                                           // the recorded roll loops play this much slower
+               floor:{vol:.42,freq:130,freqScale:2.2,q:1.0},       // low grinding rumble
                wall: {vol:.34,freq:300,freqScale:5,q:1.8}},
          post:{noiseDur:.04,noiseFreq:2200,noiseVolScale:.4,freqs:[328,523,784,1100],droop:.95,
                attack:.004,decay:.32,vol:.2,volScale:.006,volMax:.6}

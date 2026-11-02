@@ -58,6 +58,48 @@ const LEGACY={
  ui_error:rec('ui_error',[WOOD(-5,5,0,.06,.07),WOOD(-5,5,.08,.08,.06)],LM),
  ui_start:rec('ui_start',[BELL(0,5,0,.07,.045),BELL(2,5,.045,.07,.045),BELL(3,5,.09,.07,.045),BELL(5,5,.135,.35,.055)],LM)};
 
+// --- the table: rolls, rods and the bumper, in free pitch (not the kit's key); loops get their speed from the game (CONFIG.audioMix.loops) ---
+const TL=(len,xf)=>({lowcut:30,verb:{mix:0},delay:{mix:0},norm:{mode:'loud',db:-20},mono:true,loop:{on:true,len,xf},vary:{cents:5,time:0,filt:.08,gain:.5}});
+const SUS={a:.005,s:1,len:1,r:.05};
+const nz=(name,color,gain,filt,o)=>lay('noise',X.merge({name,gain,noise:{color},amp:SUS,filt},o||{}));
+const ring=(name,exc,dens,hz,ratios,decay,o)=>lay('modal',X.merge({name,pitch:{mode:'hz',hz},modal:{model:'custom',ratios,decay,tilt:.6,bright:.6,hit:.3,exc,dens},amp:SUS},o||{}));
+const BOARD='1 1.47 2.09 2.56',SHELL='1 1.6',TUBE='1 2.756 5.404 8.933 13.344',MEN='1 1.72 2.95';
+const TABLE={
+ ball_roll_slow:dbl(rec('ball_roll_slow',[
+  nz('rumble','brown',0,{type:'lp',cut:420,q:.8,lfo:.35,lfoRate:1},{mod:{trem:.3,tremRate:3}}),
+  ring('board','crackle',260,210,BOARD,.08,{gain:-4,modal:{hit:.35}}),
+  ring('shell','crackle',140,2900,SHELL,.02,{gain:-12,modal:{hit:.9}})],TL(3,.4),'the ball rolling slowly on the pitch: a low rumble, the board knocked by the grain, a few ticks of the shell'),{takes:2}),
+ ball_roll_fast:dbl(rec('ball_roll_fast',[
+  nz('rumble','pink',0,{type:'lp',cut:1400,q:.7,lfo:.3,lfoRate:1.33},{mod:{trem:.18,tremRate:9}}),
+  nz('body','brown',-8,{type:'lp',cut:200,q:.9}),
+  ring('board','crackle',1600,210,BOARD,.07,{gain:-6,modal:{bright:.7,hit:.75}}),
+  ring('shell','crackle',900,2900,SHELL,.02,{gain:-10,modal:{hit:.9}})],TL(3,.4),'rolling fast: brighter rumble, the board rung hard, the ball turning ~9 times a second'),{takes:2}),
+ ball_scrape:dbl(rec('ball_scrape',[
+  nz('rub','pink',0,{type:'bp',cut:1300,q:1.8,lfo:.5,lfoRate:2.4},{mod:{trem:.25,tremRate:6}}),
+  ring('wall','noise',400,480,'1 2.31 3.85',.06,{gain:-8,modal:{tilt:.5,bright:.5,hit:.6}}),
+  ring('ticks','crackle',500,2900,SHELL,.02,{gain:-12,modal:{hit:.9}}),
+  nz('low','brown',-8,{type:'lp',cut:220,q:.7})],TL(2.5,.3),'the ball rubbing along a wall: a rub, the wall ringing under it, the shell ticking'),{takes:2}),
+ rod_slide_slow:dbl(rec('rod_slide_slow',[
+  nz('hush','pink',0,{type:'bp',cut:1700,q:.9,lfo:.3,lfoRate:1.5}),
+  ring('tube','crackle',70,820,TUBE,.3,{gain:-10,modal:{tilt:.45,bright:.45,hit:.2}}),
+  nz('bushing','brown',-6,{type:'lp',cut:260,q:.7})],TL(2,.25),'a rod sliding gently: the bushing hush, the steel tube ringing now and then'),{takes:2}),
+ rod_slide_fast:dbl(rec('rod_slide_fast',[
+  nz('hush','white',0,{type:'bp',cut:2300,q:.8,lfo:.3,lfoRate:2}),
+  ring('tube','crackle',380,820,TUBE,.25,{gain:-10,modal:{tilt:.45,bright:.5,hit:.45}}),
+  ring('men','crackle',240,1700,MEN,.035,{gain:-10,modal:{hit:.8}}),
+  nz('bushing','brown',-4,{type:'lp',cut:380,q:.7})],TL(2,.25),'a rod jerked hard: louder hush, the tube rattling, the men clattering on it'),{takes:2}),
+ rod_spin:dbl(rec('rod_spin',[
+  nz('whoosh','pink',0,{type:'bp',cut:650,q:1.2},{mod:{trem:.8,tremRate:10}}),
+  nz('air','pink',-20,{type:'bp',cut:2400,q:.8},{mod:{trem:.7,tremRate:10}}),
+  ring('rattle','crackle',300,820,TUBE,.12,{gain:-12,modal:{tilt:.45,bright:.5,hit:.5}})],TL(2.5,.3),'a rod turning fast: the men cutting the air twice a turn, the rod rattling'),{takes:2}),
+ rod_bump:dbl(rec('rod_bump',[
+  lay('modal',{name:'thud',gain:0,pitch:{mode:'hz',hz:135},modal:{model:'custom',ratios:'1 1.58 2.37 3.3',decay:.1,tilt:.5,bright:.55,hit:.5},amp:{a:.0008,d:.14,s:0,r:.03}}),
+  nz('knock','brown',-2,{type:'lp',cut:1200,q:.7},{amp:{a:.0005,d:.025,s:0,len:0,r:.01}}),
+  lay('modal',{name:'ring',gain:-16,pitch:{mode:'hz',hz:820},modal:{model:'custom',ratios:TUBE,decay:.2,tilt:.4,bright:.4,hit:.15},amp:{a:.001,d:.25,s:0,r:.03}}),
+  lay('osc',{name:'rubber',gain:-6,pitch:{mode:'hz',hz:95,penv:{st:7,time:.02,curve:2}},osc:{wave:'sine'},amp:{a:.001,d:.07,s:0,r:.02}})],
+  {lowcut:35,verb:{mix:0},delay:{mix:0},norm:{mode:'peak',db:-1},mono:true,tail:{trim:-60,fade:.01,max:1},vary:{cents:35,time:.1,filt:.15,gain:1.5}},
+  'a rod hitting its end stop: the rubber bumper, the cabinet thud, a little ring of the rod'),{takes:4})};
+
 // --- randomiser ---
 function gen(cat,seed,kit){const R=X.rngOf(seed*2654435761>>>0||1),rr=(a,b)=>a+(b-a)*R(),rl=(a,b)=>a*Math.pow(b/a,R()),ri=(a,b)=>Math.floor(rr(a,b+1)),pick=a=>a[Math.floor(R()*a.length)],ch=p=>R()<p;
  const n=(kit&&X.SCALES[kit.scale]?X.SCALES[kit.scale].s.length:5),deg=()=>ri(0,n-1),up=()=>pick(['0 1','0 2','0 2 4','0 1 2','0 '+(n>5?4:3),'0 2 '+n]);
@@ -105,7 +147,7 @@ const CATS=['hover','confirm','cancel','error','open','close','whoosh','chime','
 
 // --- mutate: nudge every unlocked number by up to amt of its range (log ranges in log), sometimes a step of a selector or a degree ---
 function mutate(r,amt,seed,locks){locks=locks||{};const R=X.rngOf(seed*2246822519>>>0||1),o=X.clone(X.fill(r));
- const nudge=(obj,sc)=>{for(const g in sc){if(locks[g])continue;for(const e of sc[g]){const [p,,k,a,b]=e;if(p==='seed'||p==='pitch.hz'&&obj.pitch&&obj.pitch.mode!=='hz')continue;
+ const nudge=(obj,sc)=>{for(const g in sc){if(locks[g])continue;for(const e of sc[g]){const [p,,k,a,b]=e;if(p==='seed'||/^loop./.test(p)||p==='pitch.hz'&&obj.pitch&&obj.pitch.mode!=='hz')continue;
   const v=X.getP(obj,p);if(v==null)continue;
   if(k==='num'&&R()<.6)X.setP(obj,p,Math.min(b,Math.max(a,v+(R()*2-1)*amt*(b-a)*.25)));
   else if(k==='log'&&R()<.6){const lo=Math.max(a,1e-6);X.setP(obj,p,Math.min(b,Math.max(lo,Math.max(v,lo)*Math.exp((R()*2-1)*amt*Math.log(b/lo)*.25))));}
@@ -115,6 +157,6 @@ function mutate(r,amt,seed,locks){locks=locks||{};const R=X.rngOf(seed*224682251
  if(!locks.master)nudge(o.master,X.MSCHEMA);
  return o;}
 
-const API={HOLO,LEGACY,CATS,gen,mutate,lay,rec};
+const API={HOLO,LEGACY,TABLE,CATS,gen,mutate,lay,rec};
 X.P=API;if(typeof module!=='undefined'&&module.exports)module.exports=API;
 })(typeof globalThis!=='undefined'?globalThis:this);

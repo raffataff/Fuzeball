@@ -22,6 +22,13 @@ function auPick(n,last,r){if(n<2)return 0;if(!(last>=0&&last<n))return Math.floo
 // a track's [loopStart, loopEnd] in seconds from its TuneTrack .loop.json; a missing or impossible sidecar loops the whole buffer
 function auLoopPts(j,dur){const sr=j&&j.sample_rate,a=j&&j.loop_start_sample/sr,b=j&&j.loop_end_sample/sr;
  return a>=0&&b>a&&b<=dur+.01?[a,Math.min(b,dur)]:[0,dur];}
+// a loop part's speed as 0..1 of vMin..vRef (CONFIG.audioMix.loops)
+function auLpN(v,C){return Math.max(0,Math.min(1,(v-C.vMin)/Math.max(1e-6,C.vRef-C.vMin)));}
+// equal-power weights into w for layers placed at `at` (ascending, 0..1) at n: below the first or past the last, that layer alone
+function auXf(n,at,w){const k=at.length;for(let i=0;i<k;i++)w[i]=0;if(!k)return w;
+ if(n<=at[0]){w[0]=1;return w;}if(n>=at[k-1]){w[k-1]=1;return w;}
+ for(let i=1;i<k;i++)if(n<=at[i]){const u=(n-at[i-1])/Math.max(1e-6,at[i]-at[i-1]);w[i-1]=Math.cos(u*Math.PI/2);w[i]=Math.sin(u*Math.PI/2);break;}
+ return w;}
 // -1..1 across the screen, from the camera so a sound follows the ball through every camera mode and the replay
 const _auV=typeof THREE!=='undefined'?new THREE.Vector3():null;
 function auPanOf(s){
@@ -174,6 +181,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
  bg:false, // window is unfocused / hidden — silenced when cfg.muteBg
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
  rl:null, // [floor, wall] roll voices, or null when CONFIG.audioMix.roll.on is false
+ lp:null, // loop voices (audioMix.loops): key (the ball voice, or a rod) → {parts:{name:{C,want,lvl,spd,g,rt,ls}}, src, on, out/pn/in (nodes while audible)}
  ch:null, // the held charge voice (js/shots.js), or null when CONFIG.shots.charge.tone.on is false
  bank:null,   // id → [AudioBuffer]: recorded takes (assets/audio/manifest.json). {} once loading starts
  listed:null, // ids the manifest lists, decoded or not: synthesis isn't built for these
@@ -206,6 +214,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   this.nbuf=this.mkNoise(3);
   this.bed={layers:[],x:0,ten:0,lvl:0,g:c.createGain(),s:null};this.bed.g.gain.value=0;this.bed.g.connect(this.cb);
   if(AUMIX.roll&&AUMIX.roll.on)this.rl=[this.mkRoll(),this.mkRoll()];
+  this.lp=new Map();
   if(CONFIG.shots&&CONFIG.shots.charge.tone.on)this.ch=this.mkCharge();
   this.rvTick();
   this.load();
@@ -234,17 +243,20 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
     .then(bs=>{bs=bs.filter(Boolean);if(bs.length)this.bank[id]=bs;})));
   }).then(after,after);},
  has(id){const b=this.bank&&this.bank[id];return!!(b&&b.length);},
+ // the take set an id plays at this venue: <id>_<pitchId> / <id>_<tableId> for a sound that follows one (sounds.<id>.by) and has it, else <id>
+ vid(id){const D=AUSND[id],by=D&&D.by,k=typeof cfg==='undefined'?null:by==='pitch'?cfg.pitch:by==='table'?cfg.table:null;
+  return k&&this.has(id+'_'+k)?id+'_'+k:id;},
  busOf(D){return D.bus==='crowd'?this.cb:D.bus==='ui'?this.ub:this.mg;},
 
  // play a recorded take of `id`: false = none (caller synthesizes), true = played or held back by the voice gate
  // o: p (impact speed), src (a ball or {x,y,z,key}), vol, rate, send, bus, at (delay s), gate:false
  play(id,o){if(!this.ctx||!this.bank)return false;o=o||{};
   const D=AUSND[id]||{},src=o.src||null,key=src&&src.key,
-   n=(o.p==null||!D.pRef)?1:clamp(o.p/D.pRef,0,1);
+   n=(o.p==null||!D.pRef)?1:clamp(o.p/D.pRef,0,1),vi=this.vid(id);
   let use=null;
   if(key&&key!=='classic'&&this.has(id+'_'+key))use=id+'_'+key;
   else if(D.hardFrom!=null&&n>=D.hardFrom&&this.has(id+'_hard'))use=id+'_hard';
-  else if(this.has(id))use=id;
+  else if(this.has(vi))use=vi;
   if(!use)return false;
   const bk=this.bank[use],k=auPick(bk.length,this.last[use]??-1,Math.random()),buf=bk[k],
    rt=(o.rate||1)*(1+(Math.random()*2-1)*(D.pitch||0))*(D.pRef&&D.pPitch?1+(n-.5)*D.pPitch:1);
@@ -474,7 +486,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   this.env(g,t,T.markA/R,d,T.markVol*this.vol);
   o.connect(g);g.connect(this.mg);o.start();o.stop(t+d+.1);},
 
- setOn(on){this.mix();if(!on){this.rollStop();this.chargeStop();}},
+ setOn(on){this.mix();if(!on){this.rollStop();this.chargeStop();if(this.lp)for(const V of this.lp.values())if(V.on)this.lpStop(V);}},
 
  // voice gate for one-shots: retrigger cooldown plus a concurrent cap per key (over-cap hits are dropped); cooldown scales with 1/rate; a take and its synth share one key
  vgate(key,dur){const g=AUMIX.voices&&AUMIX.voices[key];if(!g)return true;
@@ -488,23 +500,25 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
 
  tick(dt){if(!this.ctx)return;
   this.exc=Math.max(0,this.exc-dt*(AUC.excDecay??.3));
-  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.chargeVoice(dt);this.musicTick();},
+  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.lpTick(dt);this.chargeVoice(dt);this.musicTick();},
 
  // physics reports rolling contact here per ball per surface per frame (rollProbe, and the arena's inelastic branch); MAX not sum
- // k: 0 = floor, 1 = wall; aC = the ball type's audio block (.roll picks the character)
- rollFeed(k,spd,aC){const r=this.rl&&this.rl[k];if(!r||!(spd>0))return;
-  if(spd>r.want){r.want=spd;r.cfg=(aC&&aC.roll)||null;}},
+ // k: 0 = floor, 1 = wall; aC = the ball type's audio block (.roll picks the character); b = the ball (pans the recorded loops)
+ rollFeed(k,spd,aC,b){if(!(spd>0))return;const rc=(aC&&aC.roll)||null;
+  if(this.lp)this.lpFeed('ball',k?'scrape':'roll',spd,b,1,rc&&rc.rate);
+  const r=this.rl&&this.rl[k];if(r&&spd>r.want){r.want=spd;r.cfg=rc;}},
 
  rollStop(){if(!this.rl)return;for(const r of this.rl){r.lvl=0;r.spd=0;r.want=0;r.cfg=null;if(r.g)r.g.gain.value=0;}},
 
  // drive both roll voices toward what physics fed, then clear; attack fast, release slow so a one-frame probe miss doesn't chop it; keep the release above ~0.1s or it becomes tremolo
+ // a surface with recorded loops (lpHas) leaves its synthesized voice silent
  rollTick(dt){if(!this.rl||!this.ctx)return;
   const R=AUMIX.roll,
    live=cfg.sound&&this.inMatch();
   for(let k=0;k<2;k++){
    const r=this.rl[k],key=k?'wall':'floor',
     rc=(r.cfg&&r.cfg[key])||R.def[key],
-    sp=live?r.want:0,
+    sp=live&&!this.lpHas(k?'scrape':'roll')?r.want:0,
     n=clamp((sp-R.speedMin)/Math.max(1e-3,R.speedRef-R.speedMin),0,1),
     tgt=n>0?Math.pow(n,R.curve)*rc.vol:0,
     tc=tgt>r.lvl?R.attack:R.release,
@@ -521,6 +535,63 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    }
    r.want=0;r.cfg=null;
   }},
+
+ // ---- loops (audioMix.loops): looping takes that follow a speed ----
+ // a voice is one panned output (the ball, or a rod) holding parts (roll + scrape, slide + spin); nodes exist only while it is audible, each start picks a take and a random offset
+ // feeds take the frame's MAX (v x g), like rollFeed; g = level, rt = playback rate, src = what it pans by
+ lpHas(part){const L=AUMIX.loops,C=L&&L.on&&L[part];return!!C&&C.ids.some(id=>this.has(this.vid(id)));},
+ lpFeed(key,part,v,src,g,rt){if(!this.lp||!(v>0)||!this.lpHas(part))return;g=g??1;
+  let V=this.lp.get(key);if(!V)this.lp.set(key,V={parts:{},src:null,on:false,out:null,pn:null,in:null});
+  let P=V.parts[part];if(!P)P=V.parts[part]={C:AUMIX.loops[part],want:0,lvl:0,spd:0,g:1,rt:1,ls:null,w:null,at:null};
+  if(v*g>P.want*P.g||!P.want){P.want=v;P.g=g;P.rt=rt||1;V.src=src||V.src;}},
+ lpTick(dt){if(!this.lp||!this.lp.size||!this.ctx)return;
+  const live=cfg.sound&&this.inMatch(),R=this.rate>0?this.rate:1;
+  for(const V of this.lp.values()){let any=false;
+   for(const n in V.parts){const P=V.parts[n],C=P.C,sp=live?P.want:0,u=auLpN(sp,C),
+     tgt=u>0?Math.pow(u,C.curve)*P.g:0,a=1-Math.exp(-dt/Math.max(1e-3,tgt>P.lvl?C.attack:C.release));
+    P.lvl+=(tgt-P.lvl)*a;P.spd+=(sp-P.spd)*a;   // the speed rides the level's envelope, so a fade also sweeps the rate down
+    if(P.lvl<1e-3){P.lvl=0;P.spd=0;}else any=true;   // -60 dB: stop the sources
+    P.want=0;}
+   if(any&&!V.on)this.lpStart(V);
+   if(!V.on)continue;
+   if(!any){this.lpStop(V);continue;}
+   const Pn=AUMIX.pan;if(V.pn&&V.src&&Pn&&Pn.on)V.pn.pan.value=auPanOf(V.src)*Pn.width;
+   for(const n in V.parts){const P=V.parts[n],C=P.C;if(!P.ls)this.lpPart(V,P);
+    const u=auLpN(P.spd,C),rt=(C.rate[0]+(C.rate[1]-C.rate[0])*u)*P.rt*R;auXf(u,P.at,P.w);
+    for(let i=0;i<P.ls.length;i++){const l=P.ls[i];l.g.gain.value=P.lvl*P.w[i]*l.v*this.vol;l.s.playbackRate.value=rt;}}}},
+ lpStart(V){const c=this.ctx;let send=0;
+  for(const n in V.parts)for(const id of V.parts[n].C.ids)send=Math.max(send,(AUSND[id]&&AUSND[id].send)||0);
+  V.out=c.createGain();V.in=this.route(this.mg,null,send);V.pn=c.createStereoPanner?c.createStereoPanner():null;
+  if(V.pn){V.out.connect(V.pn);V.pn.connect(V.in);}else V.out.connect(V.in);
+  for(const n in V.parts)this.lpPart(V,V.parts[n]);
+  V.on=true;},
+ // a part's sources: one looping take per id that has files at this venue (vid), at its place on the speed line
+ lpPart(V,P){const c=this.ctx;P.ls=[];
+  P.C.ids.forEach((id,i)=>{const u=this.vid(id);if(!this.has(u))return;const bk=this.bank[u],k=auPick(bk.length,this.last[u]??-1,Math.random()),b=bk[k];this.last[u]=k;
+   const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=true;g.gain.value=0;s.connect(g);g.connect(V.out);s.start(0,Math.random()*b.duration);
+   P.ls.push({id,s,g,at:P.C.at[i]??0,v:(AUSND[id]&&AUSND[id].vol)??1});});
+  P.at=P.ls.map(l=>l.at);P.w=new Float32Array(P.ls.length);},
+ lpStop(V){for(const n in V.parts){const P=V.parts[n];
+   if(P.ls)for(const l of P.ls){try{l.s.stop();}catch(e){}l.g.disconnect();}
+   P.ls=null;P.lvl=0;P.spd=0;}
+  try{V.out.disconnect();if(V.pn)V.pn.disconnect();V.in.disconnect();}catch(e){}
+  V.out=V.pn=V.in=null;V.on=false;},
+
+ // rods.js updateRods, every step: the slide and the turn feed the rod's loops; reaching the end of the travel at speed is a bump
+ rodFeed(r){if(!this.ctx||!this.lp)return;const L=AUMIX.loops;if(!L||!L.on)return;
+  if(!this.lpHas('slide')&&!this.lpHas('spin')&&!this.has(this.vid('rod_bump')))return;
+  const ai=!(typeof seatOf==='function'&&seatOf(r)),pv=r.pivot&&r.pivot.position;if(!pv)return;
+  let V=this.lp.get(r),src=V&&V.src;if(!src)src={x:0,y:0,z:0};
+  src.x=pv.x;src.y=pv.y;src.z=pv.z;
+  const vz=Math.abs(r.vz),w=Math.abs(r.angVel);
+  if(vz<L.vzCap)this.lpFeed(r,'slide',vz,src,ai?L.slide.ai??1:1);
+  if(w<L.vzCap)this.lpFeed(r,'spin',w,src,ai?L.spin.ai??1:1);
+  const B=L.bump,end=r.maxOff-B.near;
+  if(end>0&&Math.abs(r.offset)>=end&&Math.abs(r.prevOffset)<end){
+   let im=0;for(const x of r.vzH||[r.vz])im=Math.max(im,Math.abs(x));
+   if(im>=(ai?B.aiMin??B.min:B.min)&&im<L.vzCap)this.bump(im,ai?B.ai:1,{x:pv.x,y:pv.y,z:Math.sign(r.offset)*F.W/2});}},
+ // a rod hitting the end of its travel; a = level (an AI rod's is lower); recorded only
+ bump(p,a,src){if(this.ctx)this.play('rod_bump',{p,src,vol:a||1});},
 
  env(g,t0,a,d,pk){g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(pk,t0+a);g.gain.exponentialRampToValueAtTime(.0001,t0+a+d);},
 

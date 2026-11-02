@@ -1,11 +1,12 @@
 // SFX Lab harness. node tools/sfx-harness.js
-// boots tools/sfx/engine.js + presets.js in a vm and checks the pitch maths, the render, normalising, takes, WAV, the presets and the randomiser; then mutates each and expects a failure
+// boots tools/sfx/engine.js + presets.js in a function scope and checks the pitch maths, the render, loops, driven modes, normalising, takes, WAV, the presets and the randomiser; then mutates each and expects a failure
 'use strict';
-const fs=require('fs'),vm=require('vm'),path=require('path');
+const fs=require('fs'),path=require('path');
 const ENG=fs.readFileSync(path.join(__dirname,'sfx','engine.js'),'utf8'),PRE=fs.readFileSync(path.join(__dirname,'sfx','presets.js'),'utf8');
+const CFG=require('./build_audio_manifest.js').loadConfig();
 
-function boot(eng,pre){const ctx={Math,JSON,Object,Array,Float32Array,Float64Array,Uint8Array,ArrayBuffer,DataView,String,Number,Set,isFinite,console};ctx.globalThis=ctx;
- vm.runInNewContext(eng+'\n;'+pre,ctx);if(!ctx.SFX||!ctx.SFX.P)throw new Error('engine did not boot');return ctx.SFX;}
+// a function scope, not a vm context: the per-sample maths runs ~20x slower against a contextified global
+function boot(eng,pre){const G={};new Function('globalThis','module','require',eng+'\n;'+pre)(G);if(!G.SFX||!G.SFX.P)throw new Error('engine did not boot');return G.SFX;}
 
 function suite(X){const P=X.P,fails=[];let pass=0;const ok=(c,m)=>{if(c)pass++;else fails.push(m);};
  const D={key:'D',scale:'susPent',a4:440},C={key:'C',scale:'major',a4:440};
@@ -56,6 +57,26 @@ function suite(X){const P=X.P,fails=[];let pass=0;const ok=(c,m)=>{if(c)pass++;e
  ok(!gbad,'every category renders finite');ok(!goff,'generated notes in the scale ('+goff+' off)');
  const degs=new Set();for(let s=1;s<=20;s++)degs.add(P.gen('hover',s,D).layers[0].pitch.deg);ok(degs.size>=5,'neighbouring seeds pick different notes ('+degs.size+')');
  const sig=s=>P.gen('confirm',s,D).layers.map(l=>l.type+l.pitch.deg).join();let twins=0;for(let s=1;s<=40;s++)if(sig(s)===sig(s+1))twins++;ok(!twins,'no two neighbouring seeds make the same sound ('+twins+')');
+ // loops: exactly their length, the gate held to the end, a seam no bigger than any other step
+ const rmsOf=(x,a,b)=>{let s=0;for(let i=a;i<b;i++)s+=x[i]*x[i];return Math.sqrt(s/Math.max(1,b-a));},rm=x=>rmsOf(x,0,x.length);
+ const lq=X.fill({layers:[{type:'noise',gain:0,noise:{color:'brown'},filt:{type:'lp',cut:400,q:.7},amp:{a:.005,d:.05,s:1,len:.1,r:.05}}],master:{verb:{mix:0},lowcut:20,norm:{mode:'loud',db:-20},mono:true,loop:{on:true,len:1,xf:.1}}}),ro=X.render(lq,D);
+ ok(ro.loop&&ro.L.length===48000,'a loop is exactly its length ('+ro.L.length+')');
+ ok(rmsOf(ro.L,44000,48000)>rm(ro.L)*.4,'a loop holds its gate to the end');
+ let mx=0;for(let i=1;i<ro.L.length;i++)mx=Math.max(mx,Math.abs(ro.L[i]-ro.L[i-1]));const sj=Math.abs(ro.L[0]-ro.L[ro.L.length-1]);
+ ok(sj<=mx,'the loop seam steps no more than any sample does ('+(sj/mx).toFixed(2)+')');
+ ok(X.loopRate(2.7,1)===3&&X.loopRate(9,3)===9&&X.loopRate(.2,2)===.5,'loop wobbles snap to whole cycles');
+ // modes rung by taps or rubbed: the energy sits on the mode; more taps, louder; rubbing stays near unit level whatever the ring
+ const md=(exc,dens,o,gain)=>X.fill({layers:[{type:'modal',gain:gain??-20,pitch:{mode:'hz',hz:500},modal:Object.assign({model:'custom',ratios:'1',decay:.2,tilt:1,bright:1,hit:.5,exc,dens},o||{}),amp:{a:.001,s:1,len:1,r:.05}}],master:{verb:{mix:0},lowcut:20,norm:{mode:'off'}}});
+ const gz=(x,f)=>{const w=2*Math.PI*f/48000,c=2*Math.cos(w);let s1=0,s2=0;for(let i=0;i<x.length;i++){const s=x[i]+c*s1-s2;s2=s1;s1=s;}return s1*s1+s2*s2-c*s1*s2;};
+ const mc=X.render(md('crackle',300),D).L,mn=X.render(md('noise',0),D).L;
+ ok(gz(mc,500)>100*gz(mc,1500)&&gz(mc,500)>100*gz(mc,170),'taps ring the mode, not the rest');ok(gz(mn,500)>100*gz(mn,1500),'rubbing rings the mode');
+ ok(rm(X.render(md('crackle',2000),D).L)>3*rm(X.render(md('crackle',100),D).L),'more taps a second, louder');
+ const nL=rm(X.render(md('noise',0,{decay:2},-50),D).L),n03=rm(X.render(md('noise',0,{decay:.03},-50),D).L);ok(nL<n03*2&&n03<nL*2,'a rubbed mode keeps its level whatever its ring ('+nL.toFixed(3)+' / '+n03.toFixed(3)+')');
+ // the table drafts: configured ids, mono, finite; the game's loops are loops, the bump is not
+ const SND=CFG.audioMix.sounds,LPS=CFG.audioMix.loops,lpIds=new Set();for(const k in LPS)if(LPS[k]&&LPS[k].ids)for(const id of LPS[k].ids)lpIds.add(id);
+ for(const id in P.TABLE){const r=P.TABLE[id],o=X.render(r,D);let nf=0;for(let i=0;i<o.L.length;i+=11)if(!isFinite(o.L[i]))nf++;
+  ok(!!SND[id],id+' is a sound the game knows');ok(o.mono&&!nf&&o.L.length>100,id+' renders mono and finite');ok(o.loop===lpIds.has(id),id+(lpIds.has(id)?' is a loop':' is a one-shot'));}
+ for(const id of lpIds)ok(!!P.TABLE[id],'the game loop '+id+' has a table draft');
  // mutate
  const m=P.mutate(holo,.5,3,{pitch:true,motion:true});ok(JSON.stringify(m.layers.map(l=>l.pitch))===JSON.stringify(X.fill(holo).layers.map(l=>l.pitch)),'locked pitch survives mutate');
  ok(JSON.stringify(m.layers.map(l=>l.amp))!==JSON.stringify(X.fill(holo).layers.map(l=>l.amp)),'unlocked envelope moves');
@@ -80,6 +101,14 @@ const MUT=[
  ['E','const d=P.deg+offs[oi]+r*P.repShift','const d=P.deg+offs[oi]'],
  ['E','while(last>0&&Math.abs(L[last])<thr&&Math.abs(R[last])<thr)last--;',''],
  ['P','if(locks[g])continue;',''],
+ ['E','o[i]=x[p0+i]*Math.sin(u*Math.PI/2)+x[p0+ln+i]*Math.cos(u*Math.PI/2);','o[i]=x[p0+i];'],
+ ['E','amp:{len:Math.max(L.amp.len,hold)}','amp:{len:L.amp.len}'],
+ ['E','if(!LP){const thr','if(true){const thr'],
+ ['E','const loopRate=(f,len)=>Math.max(1,Math.round(f*len))/len;','const loopRate=(f,len)=>f;'],
+ ['E','y=2*r*Math.cos(w)*y1-r*r*y2+e[i]*Math.sin(w)*g','y=e[i]*g'],
+ ['E','R()<pd?(R()*2-1)*(.25+.75*R()):0','R()<.01?(R()*2-1)*(.25+.75*R()):0'],
+ ['E',"g=amp*(K.exc==='noise'?2*Math.sqrt(1-r):1)",'g=amp'],
+ ['P',"mono:true,loop:{on:true,len,xf}",'mono:true'],
  ['P',"ratios:'1 3.93',decay:d*.75","ratios:'1 3.93',decay:d*3"],
 ];
 let caught=0;

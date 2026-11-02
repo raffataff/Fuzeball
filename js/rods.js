@@ -177,8 +177,8 @@ function updateRods(dt){
    r.offset+=clamp(r.target-r.offset,-ms*dt,ms*dt);
    if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
-   const want=clamp((r.target-r.offset)/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped
-   const acc=AIC.slideAccel*cvS*(pushBurst(r)?AIC.catch.push.play.acc:1)*stAgil(r)*dt;   // spd stat scales direction-change agility (+ stamina fade)
+   const aR=AIC.slideAccel*cvS*(pushBurst(r)?AIC.catch.push.play.acc:1)*stAgil(r),acc=aR*dt;   // spd stat scales direction-change agility (+ stamina fade)
+   const d=r.target-r.offset,want=clamp(r.clOn&&AIC.calm.brake?Math.sign(d)*Math.min(Math.abs(d)/dt,Math.sqrt(2*aR*Math.abs(d))):d/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped; a calm rod no faster than it can still stop in
    r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
    r.offset+=r.slideV*dt;
   }
@@ -189,6 +189,7 @@ function updateRods(dt){
   r.vz=(r.offset-r.prevOffset)/dt;
   (r.vzH||(r.vzH=[0,0,0,0]))[r.vzI=((r.vzI|0)+1)&3]=r.vz;   // the last four steps' slide (physics.js pinRelease): a hand that moves once a frame (mouse, pad) moves the rod on one step in two
   r.tgV=lerp(r.tgV||0,(r.target-(r.tgP==null?r.target:r.tgP))/dt,Math.min(1,dt*8));r.tgP=r.target;   // where the rod is heading, smoothed (ai.js ttObs): its slide speed flips every few steps, its target holds
+  Au.rodFeed(r);                             // audio.js: slide / spin loops and the end-stop bump, read before prevOffset moves on
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);
   stExertTick(r,dt);                         // stamina: swing exertion bleeds off (CONFIG.stats.kickFat.recover)
