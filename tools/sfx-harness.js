@@ -76,7 +76,8 @@ function suite(X){const P=X.P,fails=[];let pass=0;const ok=(c,m)=>{if(c)pass++;e
  const SND=CFG.audioMix.sounds,LPS=CFG.audioMix.loops,lpIds=new Set();for(const k in LPS)if(LPS[k]&&LPS[k].ids)for(const id of LPS[k].ids)lpIds.add(id);
  for(const id in P.TABLE){const r=P.TABLE[id],o=X.render(r,D);let nf=0;for(let i=0;i<o.L.length;i+=11)if(!isFinite(o.L[i]))nf++;
   ok(!!SND[id],id+' is a sound the game knows');ok(o.mono&&!nf&&o.L.length>100,id+' renders mono and finite');ok(o.loop===lpIds.has(id),id+(lpIds.has(id)?' is a loop':' is a one-shot'));}
- for(const id of lpIds)ok(!!P.TABLE[id],'the game loop '+id+' has a table draft');
+ // the shipped loops come from the Sound Lab, with more speed points than the drafts: a part needs one draft for the speed sweep
+ for(const k in LPS)if(LPS[k]&&LPS[k].ids)ok(LPS[k].ids.some(id=>P.TABLE[id]),'the game loop part '+k+' has a table draft');
  // mutate
  const m=P.mutate(holo,.5,3,{pitch:true,motion:true});ok(JSON.stringify(m.layers.map(l=>l.pitch))===JSON.stringify(X.fill(holo).layers.map(l=>l.pitch)),'locked pitch survives mutate');
  ok(JSON.stringify(m.layers.map(l=>l.amp))!==JSON.stringify(X.fill(holo).layers.map(l=>l.amp)),'unlocked envelope moves');

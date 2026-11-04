@@ -666,7 +666,7 @@ function refreshRodCustomMats(){
   r.rodModel.userData.teamClones.forEach(c=>rodCustomMats.push({mat:c.mat,team:r.rodModel.userData.team,isGlow:c.isGlow}));});
 }
 
-// swap every rod's hardware to tableId's rod set (from applyTable); visual only
+// swap every rod's hardware to the rod set of tableId's selected skin (applyTable / selectSkin); visual only
 function reskinRods(tableId){
  if(!rods.length)return;                                  // rods not built yet (early applyTable) — buildRods dresses them
  const tid=(CONFIG.tables[tableId]?tableId:'classic');

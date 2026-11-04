@@ -132,7 +132,7 @@ function run(S,quiet){
  ok(pre.low.atmos==='low'&&pre.medium.atmos==='high'&&pre.high.atmos==='high','presets carry the atmosphere');
  ok(/cfg\.atmos=p\.atmos/.test(fnAt(S.options,'applyGfxPreset')),'a preset sets it');
  ok(/id="optAtmos"/.test(S.index)&&!/id="optFog"/.test(S.index),'the Atmosphere selector replaced the Fog tick');
- ok(/'js\/boost\.js','js\/haze\.js'/.test(S.index),'haze.js loads before anything compiles');
+ ok(/'js\/fire\.js','js\/haze\.js'/.test(S.index),'haze.js loads before anything compiles');
  if(!quiet&&fails.length>fl)for(const f of fails.slice(fl))console.log('  FAIL '+f);
  return fail-before;
 }
@@ -160,7 +160,7 @@ const M=[
  ['old key kept',()=>mutate('config',"delete cfg.fog;}",'}')],
  ['preset ignores it',()=>mutate('options','cfg.reducedFx=p.reducedFx;cfg.atmos=p.atmos;','cfg.reducedFx=p.reducedFx;')],
  ['low preset high',()=>mutate('options',"reducedFx:true,atmos:'low'}","reducedFx:true,atmos:'high'}")],
- ['late load',()=>mutate('index',"'js/boost.js','js/haze.js',","'js/boost.js',")],
+ ['late load',()=>mutate('index',"'js/fire.js','js/haze.js',","'js/fire.js',")],
 ];
 let caught=0;
 for(const [name,mk] of M){let s;try{s=mk();}catch(e){console.log('  '+e.message);continue;}

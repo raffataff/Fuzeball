@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuzeball: War Room</title>
+<style>
+@font-face{font-family:'FuzeClip';src:url('fonts/fuzeClip/FuzeClip.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:'SoccerLeague';src:url('fonts/soccerLeague/Soccer League Regular.ttf') format('truetype');font-weight:normal;font-style:normal;font-display:swap}
+
+:root{
+  --deep:#07111C; --panel:#0B1D2D; --blue:#123F5E; --steel:#6BAABC; --ice:#BCDCED;
+  --gold:#F0B24A; --spark:#F6DDB0; --text:#EDF0F1; --cut:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--deep);overflow:hidden}
+body{color:var(--text);font-family:'Segoe UI',system-ui,sans-serif}
+
+.stage{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform:translate(-50%,-50%)}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:56px 88px 0;
+  background:radial-gradient(900px 480px at 92% -8%,rgba(240,178,74,.10),transparent 62%),
+             linear-gradient(172deg,#07111C 0%,#0B2236 62%,#123F5E 150%)}
+.slide.on{display:flex}
+
+.cap{align-self:flex-start;background:var(--blue);color:var(--gold);font-family:'SoccerLeague',sans-serif;
+  font-size:17px;letter-spacing:.16em;padding:9px 26px 9px 20px;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
+
+h2{font-family:'FuzeClip',sans-serif;font-weight:400;font-size:62px;line-height:1;color:var(--gold);margin:24px 0 40px}
+
+.plate{position:relative;isolation:isolate;padding:28px 30px;color:var(--text)}
+.plate::before,.plate::after{content:"";position:absolute;inset:0;z-index:-1;
+  clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut))}
+.plate::before{background:linear-gradient(140deg,var(--steel),rgba(107,170,188,.18) 55%,rgba(107,170,188,.5))}
+.plate::after{inset:2px;background:linear-gradient(170deg,var(--panel),#0F2D45)}
+.k{font-family:'SoccerLeague',sans-serif;font-size:16px;letter-spacing:.16em;color:var(--steel);text-transform:uppercase}
+.plate h3{font-family:'FuzeClip',sans-serif;font-weight:400;font-size:40px;line-height:1.05;color:var(--text);margin:12px 0 14px}
+.plate p{font-size:23px;line-height:1.42;color:var(--ice)}
+
+.foot{position:absolute;left:88px;right:88px;bottom:26px;display:flex;justify-content:space-between;align-items:center;
+  border-top:1px solid rgba(107,170,188,.3);padding-top:12px;font-family:'SoccerLeague',sans-serif;font-size:15px;letter-spacing:.14em;color:var(--steel)}
+.foot b{font-weight:normal;color:var(--gold)}
+
+/* cover */
+.cover{justify-content:space-between;padding-bottom:0}
+.cover>div:nth-child(2){margin-top:auto;margin-bottom:200px}
+.cover .title{font-family:'FuzeClip',sans-serif;font-size:168px;line-height:.86;color:var(--gold);letter-spacing:.01em}
+.cover .tag{font-size:34px;color:var(--ice);margin-top:26px}
+.cover .sub{font-family:'SoccerLeague',sans-serif;font-size:18px;letter-spacing:.16em;color:var(--steel);margin-top:12px}
+.rods{position:absolute;left:88px;right:88px;bottom:70px;display:flex;justify-content:space-between;align-items:flex-end;height:110px}
+.rod{width:6px;height:110px;background:linear-gradient(var(--steel),var(--blue));position:relative}
+.rod::before,.rod::after{content:"";position:absolute;left:50%;transform:translateX(-50%);width:26px;height:14px;background:var(--gold);clip-path:polygon(0 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%)}
+.rod::before{top:22%}
+.rod::after{top:62%;background:var(--ice)}
+
+/* trailer */
+.vid{width:720px;align-self:center;background:#000;outline:2px solid var(--steel);outline-offset:0}
+.vid video{display:block;width:100%;aspect-ratio:16/9}
+.vidcap{align-self:center;margin-top:14px}
+.missing{color:var(--ice);font-size:22px;padding:40px;text-align:center}
+
+/* demo */
+.beats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.beats .plate{padding:20px 22px}
+.beats .plate h3{font-size:30px;margin:6px 0 8px}
+.beats .plate p{font-size:19px;line-height:1.35}
+.keys{padding:18px 22px;border-left:3px solid var(--gold);background:rgba(18,63,94,.35);display:flex;flex-direction:column;justify-content:center;gap:7px}
+.keys .row{display:flex;justify-content:space-between;align-items:center;font-size:18px;color:var(--ice)}
+kbd{font-family:'SoccerLeague',sans-serif;font-size:15px;letter-spacing:.06em;color:var(--text);background:#0B1D2D;border:1px solid var(--steel);padding:3px 9px;min-width:44px;text-align:center}
+
+/* status */
+.status{display:flex;flex-direction:column;gap:10px;max-width:960px}
+.srow{display:grid;grid-template-columns:260px 1fr 150px;align-items:center;gap:24px;padding:14px 26px;background:rgba(18,63,94,.32);border-left:2px solid var(--steel)}
+.srow .lab{font-family:'SoccerLeague',sans-serif;font-size:18px;letter-spacing:.14em;color:var(--steel);text-transform:uppercase}
+.srow .val{font-size:27px;color:var(--text)}
+.chip{justify-self:end;font-family:'SoccerLeague',sans-serif;font-size:15px;letter-spacing:.14em;padding:7px 16px;text-transform:uppercase}
+.chip.done{background:var(--ice);color:var(--deep)}
+.chip.open{color:var(--steel);border:1px solid var(--steel)}
+
+/* channels */
+.flow{display:flex;align-items:stretch;gap:0}
+.flow .plate{flex:1}
+.flow .plate h3{font-size:44px}
+.flow svg{flex:0 0 74px;align-self:center}
+
+/* next */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.cols .k{margin-bottom:14px;color:var(--gold)}
+.stack{display:flex;flex-direction:column;gap:16px}
+.stack .plate{padding:22px 28px}
+.stack .plate h3{font-size:30px;margin:6px 0 8px}
+.stack .plate p{font-size:21px}
+
+/* questions */
+.qs{display:flex;flex-direction:column;gap:18px}
+.q{display:flex;align-items:center;gap:36px;padding:26px 34px}
+.q .n{font-family:'FuzeClip',sans-serif;font-size:76px;color:var(--gold);line-height:1;min-width:110px}
+.q p{font-size:31px;color:var(--text);line-height:1.3}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+<section class="slide cover on">
+  <div class="cap">FEDERATION BROADCAST · EARLY ACCESS</div>
+  <div>
+    <div class="title">FUZEBALL</div>
+    <div class="tag">Table football, taken far too seriously.</div>
+    <div class="sub">A 3D FOOSBALL GAME · STEAM EARLY ACCESS</div>
+  </div>
+  <div class="rods"><span class="rod"></span><span class="rod"></span><span class="rod"></span><span class="rod"></span><span class="rod"></span><span class="rod"></span><span class="rod"></span><span class="rod"></span></div>
+  <div class="foot"><span>WAR ROOM</span><span><b>01</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">01 · WHAT IT IS</div>
+  <h2>Three things to know</h2>
+  <div class="flow" style="gap:28px">
+    <div class="plate"><div class="k">The table</div><h3>Wood, worn, chipped</h3><p>It came from Earth. It's the one constant in every room.</p></div>
+    <div class="plate"><div class="k">The venues</div><h3>Small and grubby</h3><p>An arcade, a moon base, a saucer bar. Loud and a bit rough.</p></div>
+    <div class="plate"><div class="k">The Federation</div><h3>Far too serious</h3><p>Gold trophies, anthems, and a rulebook thicker than the table.</p></div>
+  </div>
+  <p style="font-family:'FuzeClip',sans-serif;font-size:34px;color:var(--ice);margin-top:52px">Table football, taken far too seriously.</p>
+  <div class="foot"><span>WAR ROOM</span><span><b>02</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">02 · TRAILER</div>
+  <h2 style="margin:20px 0 24px">35 seconds</h2>
+  <div class="vid">
+    <video src="../tools/build/trailer/Fuzeball_Trailer.mp4" controls preload="auto">
+      <div class="missing">Trailer file not found: tools/build/trailer/Fuzeball_Trailer.mp4</div>
+    </video>
+  </div>
+  <div class="k vidcap">Play it, then say nothing over it</div>
+  <div class="foot"><span>WAR ROOM</span><span><b>03</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">03 · LIVE DEMO · ABOUT 4 MINUTES</div>
+  <h2 style="margin:20px 0 26px">Seven beats</h2>
+  <div class="beats">
+    <div class="plate"><div class="k">0:30</div><h3>Kick Off</h3><p>A match against the AI. Slide, switch rods, score.</p></div>
+    <div class="plate"><div class="k">0:20</div><h3>Power shot</h3><p>Wind up from the attacking rod and let it go.</p></div>
+    <div class="plate"><div class="k">1:00</div><h3>Back pin</h3><p>Catch from behind. Bounce it between two men.</p></div>
+    <div class="plate"><div class="k">0:30</div><h3>Forward pin</h3><p>Pose the leg, hold it, then let go.</p></div>
+    <div class="plate"><div class="k">0:20</div><h3>Replay</h3><p>Show a goal or a save.</p></div>
+    <div class="plate"><div class="k">0:40</div><h3>Training</h3><p>Run one drill, such as Tic-tac Lane.</p></div>
+    <div class="plate"><div class="k">0:20</div><h3>League</h3><p>Season, Squad and Club tabs. Don't enter a season.</p></div>
+    <div class="keys">
+      <div class="k" style="color:var(--gold)">Keyboard and mouse</div>
+      <div class="row"><span>Slide</span><span><kbd>W</kbd> <kbd>S</kbd></span></div>
+      <div class="row"><span>Switch rod</span><span><kbd>Q</kbd> <kbd>E</kbd></span></div>
+      <div class="row"><span>Kick</span><span><kbd>Space</kbd></span></div>
+      <div class="row"><span>Raise</span><span><kbd>L-Shift</kbd></span></div>
+      <div class="row"><span>Power</span><span><kbd>R-Shift</kbd></span></div>
+      <div class="row"><span>Finesse</span><span><kbd>R-Ctrl</kbd></span></div>
+    </div>
+  </div>
+  <div class="foot"><span>WAR ROOM</span><span><b>04</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">04 · WHERE IT STANDS</div>
+  <h2 style="margin:20px 0 28px">Built. Not yet out.</h2>
+  <div class="status">
+    <div class="srow"><span class="lab">Game</span><span class="val">Built, and heavily tested by me</span><span class="chip done">Done</span></div>
+    <div class="srow"><span class="lab">Outside players</span><span class="val">Nobody yet</span><span class="chip open">Open</span></div>
+    <div class="srow"><span class="lab">Steam page</span><span class="val">Not yet</span><span class="chip open">Open</span></div>
+    <div class="srow"><span class="lab">Next Fest</span><span class="val">Not submitted</span><span class="chip open">Open</span></div>
+    <div class="srow"><span class="lab">Release date</span><span class="val">None set</span><span class="chip open">Open</span></div>
+  </div>
+  <div class="foot"><span>WAR ROOM</span><span><b>05</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">05 · GETTING PLAYERS</div>
+  <h2>Three doors in</h2>
+  <div class="flow">
+    <div class="plate"><div class="k">01</div><h3>Socials</h3><p>Starting with the trailer.</p></div>
+    <svg viewBox="0 0 74 40" width="74" height="40" aria-hidden="true"><path d="M4 20H60" stroke="#6BAABC" stroke-width="3"/><path d="M58 10L70 20L58 30Z" fill="#F0B24A"/></svg>
+    <div class="plate"><div class="k">02</div><h3>itch.io</h3><p>A version people can download now.</p></div>
+    <svg viewBox="0 0 74 40" width="74" height="40" aria-hidden="true"><path d="M4 20H60" stroke="#6BAABC" stroke-width="3"/><path d="M58 10L70 20L58 30Z" fill="#F0B24A"/></svg>
+    <div class="plate"><div class="k">03</div><h3>Website hub</h3><p>One page that links to both.</p></div>
+    <svg viewBox="0 0 74 40" width="74" height="40" aria-hidden="true"><path d="M4 20H60" stroke="#6BAABC" stroke-width="3"/><path d="M58 10L70 20L58 30Z" fill="#F0B24A"/></svg>
+    <div class="plate"><div class="k">Goal</div><h3>Players</h3><p>People who play, then tell others.</p></div>
+  </div>
+  <div class="foot"><span>WAR ROOM</span><span><b>06</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">06 · WHAT'S NEXT</div>
+  <h2>Next week, then later</h2>
+  <div class="cols">
+    <div>
+      <div class="k">Next week</div>
+      <div class="stack">
+        <div class="plate"><div class="k">League</div><h3>More features</h3><p>Sponsors, upgrade mechanics, and whole-rod swaps for stamina.</p></div>
+        <div class="plate"><div class="k">Sound</div><h3>SFX pass</h3><p>SFX Lab for UI and effects. Sound Lab for the table.</p></div>
+      </div>
+    </div>
+    <div>
+      <div class="k">Planned</div>
+      <div class="stack">
+        <div class="plate"><div class="k">League</div><h3>Injuries</h3><p>From wear during a match, or random events between matches.</p></div>
+        <div class="plate"><div class="k">Mode</div><h3>Tournament</h3><p>Probably the Champions Cup, moved out of League.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>WAR ROOM</span><span><b>07</b> / 08</span></div>
+</section>
+
+<section class="slide">
+  <div class="cap">07 · FOR THE ROOM</div>
+  <h2>Questions</h2>
+  <div class="qs">
+    <div class="plate q"><div class="n">01</div><p>Champions Cup, or Federation Cup?</p></div>
+    <div class="plate q"><div class="n">02</div><p>Injuries: from wear in a match, random events between matches, or both?</p></div>
+    <div class="plate q"><div class="n">03</div><p>What would make you play a match of this, and what would make you stop?</p></div>
+  </div>
+  <div class="foot"><span>WAR ROOM</span><span><b>08</b> / 08</span></div>
+</section>
+
+</div>
+<script>
+'use strict';
+var stage=document.getElementById('stage');
+var slides=[].slice.call(document.querySelectorAll('.slide'));
+var i=0;
+function fit(){var s=Math.min(innerWidth/1280,innerHeight/720);stage.style.transform='translate(-50%,-50%) scale('+s+')';}
+function show(n){slides[i].classList.remove('on');i=Math.max(0,Math.min(slides.length-1,n));slides[i].classList.add('on');}
+addEventListener('resize',fit);fit();
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='VIDEO')return;
+  if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){show(i+1);e.preventDefault();}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){show(i-1);e.preventDefault();}
+  else if(e.key==='Home')show(0);else if(e.key==='End')show(slides.length-1);
+});
+document.addEventListener('click',function(e){
+  if(e.target.closest&&e.target.closest('video'))return;
+  show(e.clientX<innerWidth/3?i-1:i+1);
+});
+</script>
+</body>
+</html>

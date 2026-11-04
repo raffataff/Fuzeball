@@ -10,7 +10,7 @@ const MF=require('./build_audio_manifest.js');
 /* ---- mock WebAudio ------------------------------------------------------------------------ */
 function mockAudio(made){
  const P=v=>({value:v,setValueAtTime(x){this.value=x;},linearRampToValueAtTime(x){this.value=x;},
-  exponentialRampToValueAtTime(x){this.value=x;},setTargetAtTime(x){this.value=x;this.target=x;}});
+  exponentialRampToValueAtTime(x){this.value=x;},setTargetAtTime(x,t,tc){this.value=x;this.target=x;this.tc=tc;}});
  function node(kind,o){const n=Object.assign({kind,conns:[],off:false,
   connect(t){this.conns.push(t);return t;},
   disconnect(t){if(t)this.conns=this.conns.filter(x=>x!==t);else{this.conns=[];this.off=true;}}},o);made.push(n);return n;}
@@ -203,7 +203,11 @@ function suite(src,verbose){
   ok('each room has its own impulse',Au.irs.open&&Au.irs.pub&&Au.irs.open!==Au.irs.pub);
   const t=A.timers.pop();t.f();ok('the old room is let go once its tail is done',old.f.off&&old.c.off);
   ok('the bed feeds the new room',reach(Au.bed.g,Au.rv.c)&&!Au.bed.g.conns.some(n=>reach(n,old.c)&&!reach(n,Au.rv.c)));
-  ctx.activeRoom=CONFIG.rooms.pub;Au.tick(1/60);}
+  ctx.activeRoom=CONFIG.rooms.pub;Au.tick(1/60);
+  const b=buf(A,1);Au.bank.ir_moon=[b];ctx.activeRoom=CONFIG.rooms.moon;Au.tick(1/60);
+  ok('a recorded impulse plays at its own level, unnormalized',Au.rv.id==='moon'&&Au.rv.f.buffer===b&&Au.rv.f.normalize===false&&Au.rv.c.normalize===false,[Au.rv.f.normalize,Au.rv.c.normalize]);
+  delete Au.bank.ir_moon;ctx.activeRoom=CONFIG.rooms.pub;Au.tick(1/60);
+  ok('a generated impulse is normalized',Au.rv.f.buffer===Au.irs.pub&&Au.rv.f.normalize===true&&Au.rv.c.normalize===true,Au.rv.f.normalize);}
  /* 7. the bed */
  {Au.syn.crowd_bed_calm=buf(A,1);Au.syn.crowd_bed_wild=buf(A,1);Au.bedSync();const B=Au.bed,cl=B.layers.find(l=>l.t==='calm'),wl=B.layers.find(l=>l.t==='wild');
   ok('the stand-in bed has a calm and a wild layer',!!(cl&&wl)&&B.layers.length===2);
@@ -276,56 +280,65 @@ function suite(src,verbose){
    MU.match=M0;cfg.musicMatch='';m.mi=0;Au.musicFetch=fw;}
   m.tr.menu=null;m.tr.match=null;}
  /* 7. loops: the roll, the rods (audioMix.loops) */
- {const LP=AUMIX.loops,w=new Float32Array(2),at=LP.roll.at;
+ {const LP=AUMIX.loops,at=LP.roll.at,K=at.length,w=new Float32Array(K),RI=LP.roll.ids;
   ok('loop speed: vMin is 0, vRef is 1, clamped',ctx.auLpN(LP.roll.vMin,LP.roll)===0&&ctx.auLpN(LP.roll.vRef,LP.roll)===1&&ctx.auLpN(1e4,LP.roll)===1&&ctx.auLpN(-5,LP.roll)===0);
-  ctx.auXf(0,at,w);ok('a slow ball plays the slow loop alone',w[0]===1&&w[1]===0,[...w]);
-  ctx.auXf(1,at,w);ok('a fast ball plays the fast loop alone',w[0]===0&&w[1]===1,[...w]);
-  let ep=true,mono=true,p1=-1;for(let n=at[0];n<=at[1];n+=.01){ctx.auXf(n,at,w);if(Math.abs(w[0]*w[0]+w[1]*w[1]-1)>1e-6)ep=false;if(w[1]<p1-1e-9)mono=false;p1=w[1];}
+  ok('the roll has speed points between slow and fast',K>=3&&at.every((a,i)=>!i||a>at[i-1]),at);
+  ctx.auXf(0,at,w);ok('a slow ball plays the slowest loop alone',w[0]===1&&w.slice(1).every(x=>x===0),[...w]);
+  ctx.auXf(1,at,w);ok('a fast ball plays the fastest loop alone',w[K-1]===1&&w.slice(0,-1).every(x=>x===0),[...w]);
+  let ep=true,mono=true,p1=-1;for(let n=at[0];n<=at[K-1];n+=.005){ctx.auXf(n,at,w);let e=0,c=0;for(let i=0;i<K;i++){e+=w[i]*w[i];c+=i*w[i]*w[i];}if(Math.abs(e-1)>1e-6)ep=false;if(c<p1-1e-9)mono=false;p1=c;}
   ok('the crossfade keeps the power',ep);ok('…and moves one way',mono);
   ok('one layer is always the whole sound',ctx.auXf(.5,[0],new Float32Array(1))[0]===1);
+  {const C={vMin:10,vRef:90,bend:1},g=C.vMin+.25*(C.vRef-C.vMin);
+   ok('a take plays at rate 1 at the speed it was rendered at',Math.abs(ctx.auLpRate(g,C,.25)-1)<1e-12&&Math.abs(ctx.auLpRate(g,Object.assign({},C,{bend:0}),.25)-1)<1e-12);
+   ok('bend 1 is tape speed, bend 0 never re-pitches',Math.abs(ctx.auLpRate(2*g,C,.25)-2)<1e-9&&ctx.auLpRate(2*g,Object.assign({},C,{bend:0}),.25)===1);
+   ok('…heard only between vMin and vRef',Math.abs(ctx.auLpRate(1e4,C,.25)-C.vRef/g)<1e-9&&Math.abs(ctx.auLpRate(0,C,.25)-C.vMin/g)<1e-9);}
   const vox=()=>[...Au.lp.values()].filter(V=>V.on).length,srcOf=(V,p)=>V.parts[p].ls,run=(n,f)=>{for(let i=0;i<n;i++){if(f)f();Au.tick(1/60);}};
   ctx.S.phase='play';const s0=srcs();run(10,()=>Au.rollFeed(0,40,{},ball(30,0)));
   ok('no roll files: the ball rolls in silence',srcs()===s0&&vox()===0);
-  Au.bank.ball_roll_slow=[buf(A,2)];Au.bank.ball_roll_fast=[buf(A,2)];
-  run(6,()=>Au.rollFeed(0,10,{},ball(30,0)));
+  for(const id of RI)Au.bank[id]=[buf(A,2)];
+  const gAt=a=>LP.roll.vMin+a*(LP.roll.vRef-LP.roll.vMin);
+  run(6,()=>Au.rollFeed(0,gAt(at[0]),{},ball(30,0)));
   const V=Au.lp.get('ball'),L=V&&V.on&&srcOf(V,'roll');
-  ok('a rolling ball starts both roll loops',!!L&&L.length===2&&L.every(l=>l.s.loop&&l.s.started),L&&L.length);
+  ok('a rolling ball starts every roll loop',!!L&&L.length===K&&L.every(l=>l.s.loop&&l.s.started),L&&L.length);
   ok('…panned by the ball, into the effects bus and the room',!!L&&path2(L[0].s,Au.mg,'pan')&&reach(L[0].s,Au.rv.f));
   ok('…the ball on the right pans right',!!V&&V.pn.pan.value>.1,V&&V.pn.pan.value);
-  const gs=()=>L.map(l=>l.g.gain.value),slow=gs(),rS=L[0].s.playbackRate.value;
-  ok('slow: the slow loop is the louder',slow[0]>slow[1]*2,slow);
-  run(60,()=>Au.rollFeed(0,LP.roll.vRef,{},ball(30,0)));const fast=gs(),rF=L[0].s.playbackRate.value;
-  ok('fast: the fast loop is the louder',fast[1]>fast[0]*2,fast);ok('…louder than the slow roll',fast[1]>slow[0],[slow,fast]);
-  ok('…and the loops play faster',rF>rS*1.15,[rS,rF]);
+  ok('…gain, rate and pan glide to each frame\'s value, never step',!!L&&L.every(l=>l.g.gain.tc>=LP.glide&&l.s.playbackRate.tc>=LP.glide)&&V.pn.pan.tc>=LP.glide,L&&L.map(l=>[l.g.gain.tc,l.s.playbackRate.tc]));
+  const gs=()=>L.map(l=>l.g.gain.value),slow=gs();
+  ok('slow: the slowest loop is the louder',slow[0]>slow[1]*2,slow);
+  run(60,()=>Au.rollFeed(0,LP.roll.vRef,{},ball(30,0)));const fast=gs(),rF=L[K-1].s.playbackRate.value;
+  ok('fast: the fastest loop is the louder',fast[K-1]>fast[K-2]*2,fast);ok('…louder than the slow roll',fast[K-1]>slow[0],[slow,fast]);
+  {let ok1=true;for(let i=0;i<K;i++){run(90,()=>Au.rollFeed(0,gAt(at[i]),{},ball(30,0)));const g=gs();if(!(g[i]===Math.max(...g)&&Math.abs(L[i].s.playbackRate.value-1)<1e-9))ok1=false;}
+   ok('at each point\'s speed its own take leads, unpitched (the lab\'s modes stay put)',ok1);}
   run(60,()=>Au.rollFeed(0,LP.roll.vRef,{roll:{rate:.62}},ball(30,0)));
-  ok('a heavy ball plays the roll slower',L[0].s.playbackRate.value<rF*.7,[L[0].s.playbackRate.value,rF]);
+  ok('a heavy ball plays the roll slower',L[K-1].s.playbackRate.value<rF*.7,[L[K-1].s.playbackRate.value,rF]);
   run(90);ok('the ball stops: the loops fade and stop',vox()===0&&L.every(l=>l.s.stopped));
   run(20,()=>{ctx.S.phase='menu';Au.rollFeed(0,80,{},ball(0,0));});ok('nothing loops in the menus',vox()===0);ctx.S.phase='play';
-  Au.bank.ball_scrape=[buf(A,2)];run(6,()=>Au.rollFeed(1,50,{},ball(0,30)));
-  ok('along a wall the scrape plays, not the roll',!!V.on&&srcOf(V,'scrape').length===1&&V.parts.roll.lvl===0);
+  for(const id of LP.scrape.ids)Au.bank[id]=[buf(A,2)];run(6,()=>Au.rollFeed(1,50,{},ball(0,30)));
+  ok('along a wall the scrape plays, not the roll',!!V.on&&srcOf(V,'scrape').length===LP.scrape.ids.length&&V.parts.roll.lvl===0);
   run(90);
   const rc={roll:{floor:{vol:.3,freq:250,freqScale:5,q:.7}}};Au.rl=[Au.mkRoll(),Au.mkRoll()];run(6,()=>Au.rollFeed(0,60,rc,ball(0,0)));
   ok('with roll loops the synthesized roll stays silent',Au.rl[0].g.gain.value===0,Au.rl[0].g.gain.value);
-  const keep=Au.bank.ball_roll_slow;delete Au.bank.ball_roll_slow;delete Au.bank.ball_roll_fast;run(6,()=>Au.rollFeed(0,60,rc,ball(0,0)));
+  const keep=RI.map(id=>Au.bank[id]);for(const id of RI)delete Au.bank[id];run(6,()=>Au.rollFeed(0,60,rc,ball(0,0)));
   ok('…and plays when there are none',Au.rl[0].g.gain.value>0,Au.rl[0].g.gain.value);
-  Au.rl=null;Au.bank.ball_roll_slow=keep;Au.bank.ball_roll_fast=[buf(A,2)];run(90);
-  {const cs=buf(A,2),p0=cfg.pitch;Au.bank.ball_roll_slow_cork=[cs];cfg.pitch='cork';run(6,()=>Au.rollFeed(0,10,{},ball(30,0)));
+  Au.rl=null;RI.forEach((id,i)=>Au.bank[id]=keep[i]);run(90);
+  {const cs=buf(A,2),p0=cfg.pitch;Au.bank[RI[1]+'_cork']=[cs];cfg.pitch='cork';run(6,()=>Au.rollFeed(0,10,{},ball(30,0)));
    const CL=V.on&&srcOf(V,'roll');
-   ok('on a pitch with its own roll the loop plays that pitch\'s take',!!CL&&CL[0].s.buffer===cs&&CL[1].s.buffer===Au.bank.ball_roll_fast[0]);
-   run(90);cfg.pitch=p0;delete Au.bank.ball_roll_slow_cork;}
+   ok('on a pitch with its own roll the loop plays that pitch\'s take',!!CL&&CL[1].s.buffer===cs&&CL[2].s.buffer===Au.bank[RI[2]][0]);
+   run(90);cfg.pitch=p0;delete Au.bank[RI[1]+'_cork'];}
   // rods
   ctx.seatOf=r=>r.human?{}:null;
   const rod=(o)=>Object.assign({pivot:{position:{x:22.5,y:7.5,z:0}},vz:0,angVel:0,offset:0,prevOffset:0,maxOff:10,vzH:[0,0,0,0]},o);
   const hr=rod({human:true,vz:60,vzH:[60,60,60,60]});const r0=srcs();run(5,()=>Au.rodFeed(hr));
   ok('no rod files: rods slide in silence',srcs()===r0&&!Au.lp.get(hr));
-  Au.bank.rod_slide_slow=[buf(A,1)];Au.bank.rod_slide_fast=[buf(A,1)];Au.bank.rod_spin=[buf(A,1)];Au.bank.rod_bump=[buf(A,.2)];
+  for(const id of LP.slide.ids)Au.bank[id]=[buf(A,1)];Au.bank.rod_spin=[buf(A,1)];Au.bank.rod_bump=[buf(A,.2)];
   run(5,()=>Au.rodFeed(hr));const HV=Au.lp.get(hr);
-  ok('a sliding rod starts its slide loops',!!HV&&HV.on&&srcOf(HV,'slide').length===2);
+  ok('a sliding rod starts its slide loops',!!HV&&HV.on&&srcOf(HV,'slide').length===LP.slide.ids.length);
   ok('…panned by the rod',!!HV&&HV.pn.pan.value>.05,HV&&HV.pn.pan.value);const hl=HV.parts.slide.lvl;
   const ar=rod({vz:60,vzH:[60,60,60,60]});run(5,()=>Au.rodFeed(ar));const AV=Au.lp.get(ar);
   ok('an AI rod slides quieter than a player\'s',!!AV&&AV.parts.slide.lvl<hl*.7,[AV&&AV.parts.slide.lvl,hl]);
   const tr=rod({human:true,vz:2000,vzH:[2000,0,0,0]});run(5,()=>Au.rodFeed(tr));ok('a hard set is not a slide',!Au.lp.get(tr)||!Au.lp.get(tr).on);
   const sp=rod({human:true,angVel:45});run(5,()=>Au.rodFeed(sp));ok('a fast turn plays the spin',!!Au.lp.get(sp)&&Au.lp.get(sp).parts.spin.lvl>0);
+  {const P=Au.lp.get(sp).parts.spin,r=P.ls&&P.ls[0].s.playbackRate.value;ok('…pitched up with the turn (its whoosh scales with it)',r>1.05,r);}
   const kick=rod({human:true,angVel:8});run(5,()=>Au.rodFeed(kick));ok('a slow turn does not',!Au.lp.get(kick)||!(Au.lp.get(kick).parts.spin&&Au.lp.get(kick).parts.spin.lvl>0));
   const bumps=()=>A.made.filter(n=>n.kind==='src'&&n.buffer===Au.bank.rod_bump[0]).length;
   const bb=rod({human:true,offset:10,prevOffset:9.6,vz:48,vzH:[48,48,48,48]});let b0=bumps();Au.ctx.currentTime+=1;Au.rodFeed(bb);
@@ -339,7 +352,7 @@ function suite(src,verbose){
   const g1=A.made.length;Au.ctx.currentTime+=1;Au.rodFeed(rod({offset:10,prevOffset:9.6,vz:70,vzH:[70,70,70,70]}));const ga=A.made.slice(g1).find(n=>n.kind==='gain').gain.value;
   ok('an AI rod bumps quieter',ga<gh*.8,[ga,gh]);
   Au.setOn(false);ok('the sound switch stops every loop',vox()===0);
-  for(const k of ['ball_roll_slow','ball_roll_fast','ball_scrape','rod_slide_slow','rod_slide_fast','rod_spin','rod_bump'])delete Au.bank[k];
+  for(const k of [...LP.roll.ids,...LP.scrape.ids,...LP.slide.ids,...LP.spin.ids,'rod_bump'])delete Au.bank[k];
   delete ctx.seatOf;}
  }catch(e){fails.push('threw: '+(e.stack||e.message).split('\n').slice(0,3).join(' | '));}
  return{fails,pass};
@@ -373,6 +386,14 @@ function staticChecks(){
  ok('manifest: a venue variant of the wrong kind is not',!MF.validId('ball_wall_cork',CONFIG)&&!MF.validId('ball_roll_slow_arena',CONFIG)&&!MF.validId('ball_kick_arena',CONFIG));
  ok('manifest: a room impulse is valid',MF.validId('ir_pub',CONFIG));
  ok('manifest: an impulse for no room is not',!MF.validId('ir_garage',CONFIG));
+ // the impulses on disk carry the Sound Lab's level (tools/soundlab/spec.js irTake): one at the ceiling would play ~30 dB too wet unnormalized
+ {const d=path.join(ROOT,'assets/audio/ir');for(const f of fs.existsSync(d)?fs.readdirSync(d).filter(f=>/^ir_\w+\.wav$/i.test(f)):[]){const b=fs.readFileSync(path.join(d,f));let pk=0;
+  for(let i=44;i+1<b.length;i+=2)pk=Math.max(pk,Math.abs(b.readInt16LE(i)));
+  ok(f+' is at the lab\'s level, not the ceiling',pk/32768<Math.pow(10,-3/20),db(pk/32768).toFixed(1)+' dBFS');}}
+ // a speed point with no take leaves a hole in its part's crossfade: every loop id has its base take (node tools/soundlab-render.mjs)
+ {const mf=JSON.parse(rd('assets/audio/manifest.json')).sounds,L=CONFIG.audioMix.loops;
+  for(const k in L)if(L[k]&&L[k].ids){ok('loops.'+k+' has an `at` for every id',L[k].at.length===L[k].ids.length,L[k].at);
+   for(const id of L[k].ids)ok(id+' has a take on disk',!!(mf[id]&&mf[id].length));}}
  ok('manifest: a typo is not',!MF.validId('ball_kik',CONFIG)&&!MF.validId('ball_kick_soft',CONFIG));
  {const r=MF.build([path.join(ROOT,'assets/audio/b/ball_kick_02.ogg'),path.join(ROOT,'assets/audio/a/ball_kick_01.ogg'),path.join(ROOT,'assets/audio/oops.ogg')],CONFIG);
   ok('manifest: takes are grouped and sorted',JSON.stringify(r.sounds)==='{"ball_kick":["a/ball_kick_01.ogg","b/ball_kick_02.ogg"]}',r.sounds);
@@ -442,7 +463,9 @@ const MUTS=[
  mutate('this.mx.mi=i<0?0:i;','this.mx.mi=0;','a new session forgets the pick'),
  mutate("if(!m.tr.match||m.tr.match.f!==e.f)this.musicFetch('match',e.f);",'','the next track is never fetched'),
  mutate('w[i-1]=Math.cos(u*Math.PI/2);w[i]=Math.sin(u*Math.PI/2);','w[i-1]=1-u;w[i]=u;','the loop crossfade is equal-gain'),
- mutate('rt=(C.rate[0]+(C.rate[1]-C.rate[0])*u)*P.rt*R;','rt=P.rt*R;','the speed never moves the loop rate'),
+ mutate('l.s.playbackRate.setTargetAtTime(auLpRate(P.spd,C,l.at)*rt,t,gl);','l.s.playbackRate.setTargetAtTime(rt,t,gl);','the speed never moves the loop rate'),
+ mutate('C.vRef,v))/Math.max(1e-6,g),C.bend??1);}','C.vRef,v))/Math.max(1e-6,g),1);}','every take plays at tape speed'),
+ mutate('const g=C.vMin+at*(C.vRef-C.vMin);return','const g=C.vMin+.5*(C.vRef-C.vMin);return','a take is pitched as if rendered mid-line'),
  mutate('if(!any){this.lpStop(V);continue;}','','loops are never stopped'),
  mutate('sp=live?P.want:0,u=auLpN(sp,C)','sp=P.want,u=auLpN(sp,C)','loops play in the menus'),
  mutate('V.pn=c.createStereoPanner?c.createStereoPanner():null;','V.pn=null;','loops are not panned'),
@@ -456,6 +479,9 @@ const MUTS=[
  mutate("by==='pitch'?cfg.pitch:by==='table'?cfg.table:null",'by?cfg.table:null','a pitch sound follows the table'),
  mutate('else if(this.has(vi))use=vi;','else if(this.has(id))use=id;','one-shots ignore the venue'),
  mutate('const u=this.vid(id);if(!this.has(u))return;','const u=id;if(!this.has(u))return;','loops ignore the venue'),
+ mutate("nz=!this.has('ir_'+id);",'nz=true;','a recorded impulse is normalized (~30 dB too dry)'),
+ mutate('l.g.gain.setTargetAtTime(P.lvl*P.w[i]*l.v*this.vol,t,gl);','l.g.gain.value=P.lvl*P.w[i]*l.v*this.vol;','loop gains step once a frame'),
+ mutate('gl=Math.max(AUMIX.loops.glide||0,dt/3);','gl=0;','loops never glide'),
 ];
 let caught=0;console.log('\nmutations (each must fail something):');
 for(const M of MUTS){

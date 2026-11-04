@@ -97,6 +97,7 @@ function pinMarkUpdate(rdt){
 }
 function spawnTrail(b){
  if(!cfg.trails)return;                    // Options → Display · Effects
+ if(typeof fireOwns==='function'&&fireOwns(b))return;   // a fireball sheds embers and flame instead (js/fire.js)
  for(const s of sprites){if(s.visible)continue;
   s.visible=true;s.position.copy(b.m.position);
   s.userData.life=.38;
@@ -328,6 +329,7 @@ function fxUpdate(rdt){
  vfxUpdate(rdt);   // GPU particles, blasts, confetti, light envelopes and the net (js/vfx.js)
  if(typeof iceUpdate==='function')iceUpdate(rdt);   // the frost block on every slowed man (js/ice.js)
  if(typeof boostUpdate==='function')boostUpdate(rdt);   // a power hit's comet (js/boost.js)
+ if(typeof fireUpdate==='function')fireUpdate(rdt);     // the fireball's flame (js/fire.js)
  if(typeof hazeUpdate==='function')hazeUpdate(rdt);   // the dust motes (js/haze.js)
  vfxWinTick(rdt);  // the full-time board waits on the finale
  if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));

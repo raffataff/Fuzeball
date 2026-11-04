@@ -97,7 +97,7 @@ function ballHeatSet(obj,k){
   if(!o.isMesh)return;
   const ms=Array.isArray(o.material)?o.material:[o.material];
   for(const m of ms){
-   if(!m||!m.emissive)continue;   // no emissive = not a lit material: skips the cannonball's additive warn shell
+   if(!m||!m.emissive||m.userData.fireCore)continue;   // no emissive = not a lit material: skips the cannonball's additive warn shell; the fireball's core takes heat as a uniform (js/fire.js)
    const u=m.userData;
    if(u.heatEm===undefined){u.heatEm=m.emissive.getHex();u.heatEmI=m.emissiveIntensity;u.heatCol=m.color.getHex();}
    if(k<=0){

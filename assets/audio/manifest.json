@@ -155,97 +155,143 @@
    "sfx/ball_post_circuit_03.wav",
    "sfx/ball_post_circuit_04.wav"
   ],
+  "ball_roll_crawl": [
+   "sfx/ball_roll_crawl_01.wav"
+  ],
+  "ball_roll_crawl_champions_green": [
+   "sfx/ball_roll_crawl_champions_green_01.wav"
+  ],
+  "ball_roll_crawl_champions_purple": [
+   "sfx/ball_roll_crawl_champions_purple_01.wav"
+  ],
+  "ball_roll_crawl_cork": [
+   "sfx/ball_roll_crawl_cork_01.wav"
+  ],
+  "ball_roll_crawl_cyatron": [
+   "sfx/ball_roll_crawl_cyatron_01.wav"
+  ],
+  "ball_roll_crawl_deck": [
+   "sfx/ball_roll_crawl_deck_01.wav"
+  ],
+  "ball_roll_crawl_moon": [
+   "sfx/ball_roll_crawl_moon_01.wav"
+  ],
+  "ball_roll_crawl_neon": [
+   "sfx/ball_roll_crawl_neon_01.wav"
+  ],
+  "ball_roll_crawl_royal": [
+   "sfx/ball_roll_crawl_royal_01.wav"
+  ],
+  "ball_roll_crawl_verdantia": [
+   "sfx/ball_roll_crawl_verdantia_01.wav"
+  ],
   "ball_roll_fast": [
-   "sfx/ball_roll_fast_01.wav",
-   "sfx/ball_roll_fast_02.wav"
+   "sfx/ball_roll_fast_01.wav"
   ],
   "ball_roll_fast_champions_green": [
-   "sfx/ball_roll_fast_champions_green_01.wav",
-   "sfx/ball_roll_fast_champions_green_02.wav"
+   "sfx/ball_roll_fast_champions_green_01.wav"
   ],
   "ball_roll_fast_champions_purple": [
-   "sfx/ball_roll_fast_champions_purple_01.wav",
-   "sfx/ball_roll_fast_champions_purple_02.wav"
+   "sfx/ball_roll_fast_champions_purple_01.wav"
   ],
   "ball_roll_fast_cork": [
-   "sfx/ball_roll_fast_cork_01.wav",
-   "sfx/ball_roll_fast_cork_02.wav"
+   "sfx/ball_roll_fast_cork_01.wav"
   ],
   "ball_roll_fast_cyatron": [
-   "sfx/ball_roll_fast_cyatron_01.wav",
-   "sfx/ball_roll_fast_cyatron_02.wav"
+   "sfx/ball_roll_fast_cyatron_01.wav"
   ],
   "ball_roll_fast_deck": [
-   "sfx/ball_roll_fast_deck_01.wav",
-   "sfx/ball_roll_fast_deck_02.wav"
+   "sfx/ball_roll_fast_deck_01.wav"
   ],
   "ball_roll_fast_moon": [
-   "sfx/ball_roll_fast_moon_01.wav",
-   "sfx/ball_roll_fast_moon_02.wav"
+   "sfx/ball_roll_fast_moon_01.wav"
   ],
   "ball_roll_fast_neon": [
-   "sfx/ball_roll_fast_neon_01.wav",
-   "sfx/ball_roll_fast_neon_02.wav"
+   "sfx/ball_roll_fast_neon_01.wav"
   ],
   "ball_roll_fast_royal": [
-   "sfx/ball_roll_fast_royal_01.wav",
-   "sfx/ball_roll_fast_royal_02.wav"
+   "sfx/ball_roll_fast_royal_01.wav"
   ],
   "ball_roll_fast_verdantia": [
-   "sfx/ball_roll_fast_verdantia_01.wav",
-   "sfx/ball_roll_fast_verdantia_02.wav"
+   "sfx/ball_roll_fast_verdantia_01.wav"
+  ],
+  "ball_roll_rush": [
+   "sfx/ball_roll_rush_01.wav"
+  ],
+  "ball_roll_rush_champions_green": [
+   "sfx/ball_roll_rush_champions_green_01.wav"
+  ],
+  "ball_roll_rush_champions_purple": [
+   "sfx/ball_roll_rush_champions_purple_01.wav"
+  ],
+  "ball_roll_rush_cork": [
+   "sfx/ball_roll_rush_cork_01.wav"
+  ],
+  "ball_roll_rush_cyatron": [
+   "sfx/ball_roll_rush_cyatron_01.wav"
+  ],
+  "ball_roll_rush_deck": [
+   "sfx/ball_roll_rush_deck_01.wav"
+  ],
+  "ball_roll_rush_moon": [
+   "sfx/ball_roll_rush_moon_01.wav"
+  ],
+  "ball_roll_rush_neon": [
+   "sfx/ball_roll_rush_neon_01.wav"
+  ],
+  "ball_roll_rush_royal": [
+   "sfx/ball_roll_rush_royal_01.wav"
+  ],
+  "ball_roll_rush_verdantia": [
+   "sfx/ball_roll_rush_verdantia_01.wav"
   ],
   "ball_roll_slow": [
-   "sfx/ball_roll_slow_01.wav",
-   "sfx/ball_roll_slow_02.wav"
+   "sfx/ball_roll_slow_01.wav"
   ],
   "ball_roll_slow_champions_green": [
-   "sfx/ball_roll_slow_champions_green_01.wav",
-   "sfx/ball_roll_slow_champions_green_02.wav"
+   "sfx/ball_roll_slow_champions_green_01.wav"
   ],
   "ball_roll_slow_champions_purple": [
-   "sfx/ball_roll_slow_champions_purple_01.wav",
-   "sfx/ball_roll_slow_champions_purple_02.wav"
+   "sfx/ball_roll_slow_champions_purple_01.wav"
   ],
   "ball_roll_slow_cork": [
-   "sfx/ball_roll_slow_cork_01.wav",
-   "sfx/ball_roll_slow_cork_02.wav"
+   "sfx/ball_roll_slow_cork_01.wav"
   ],
   "ball_roll_slow_cyatron": [
-   "sfx/ball_roll_slow_cyatron_01.wav",
-   "sfx/ball_roll_slow_cyatron_02.wav"
+   "sfx/ball_roll_slow_cyatron_01.wav"
   ],
   "ball_roll_slow_deck": [
-   "sfx/ball_roll_slow_deck_01.wav",
-   "sfx/ball_roll_slow_deck_02.wav"
+   "sfx/ball_roll_slow_deck_01.wav"
   ],
   "ball_roll_slow_moon": [
-   "sfx/ball_roll_slow_moon_01.wav",
-   "sfx/ball_roll_slow_moon_02.wav"
+   "sfx/ball_roll_slow_moon_01.wav"
   ],
   "ball_roll_slow_neon": [
-   "sfx/ball_roll_slow_neon_01.wav",
-   "sfx/ball_roll_slow_neon_02.wav"
+   "sfx/ball_roll_slow_neon_01.wav"
   ],
   "ball_roll_slow_royal": [
-   "sfx/ball_roll_slow_royal_01.wav",
-   "sfx/ball_roll_slow_royal_02.wav"
+   "sfx/ball_roll_slow_royal_01.wav"
   ],
   "ball_roll_slow_verdantia": [
-   "sfx/ball_roll_slow_verdantia_01.wav",
-   "sfx/ball_roll_slow_verdantia_02.wav"
+   "sfx/ball_roll_slow_verdantia_01.wav"
   ],
   "ball_scrape": [
-   "sfx/ball_scrape_01.wav",
-   "sfx/ball_scrape_02.wav"
+   "sfx/ball_scrape_01.wav"
   ],
   "ball_scrape_arena": [
-   "sfx/ball_scrape_arena_01.wav",
-   "sfx/ball_scrape_arena_02.wav"
+   "sfx/ball_scrape_arena_01.wav"
   ],
   "ball_scrape_circuit": [
-   "sfx/ball_scrape_circuit_01.wav",
-   "sfx/ball_scrape_circuit_02.wav"
+   "sfx/ball_scrape_circuit_01.wav"
+  ],
+  "ball_scrape_fast": [
+   "sfx/ball_scrape_fast_01.wav"
+  ],
+  "ball_scrape_fast_arena": [
+   "sfx/ball_scrape_fast_arena_01.wav"
+  ],
+  "ball_scrape_fast_circuit": [
+   "sfx/ball_scrape_fast_circuit_01.wav"
   ],
   "ball_wall": [
    "sfx/ball_wall_01.wav",
@@ -305,28 +351,31 @@
    "sfx/rod_bump_circuit_04.wav"
   ],
   "rod_slide_fast": [
-   "sfx/rod_slide_fast_01.wav",
-   "sfx/rod_slide_fast_02.wav"
+   "sfx/rod_slide_fast_01.wav"
   ],
   "rod_slide_fast_arena": [
-   "sfx/rod_slide_fast_arena_01.wav",
-   "sfx/rod_slide_fast_arena_02.wav"
+   "sfx/rod_slide_fast_arena_01.wav"
   ],
   "rod_slide_fast_circuit": [
-   "sfx/rod_slide_fast_circuit_01.wav",
-   "sfx/rod_slide_fast_circuit_02.wav"
+   "sfx/rod_slide_fast_circuit_01.wav"
+  ],
+  "rod_slide_mid": [
+   "sfx/rod_slide_mid_01.wav"
+  ],
+  "rod_slide_mid_arena": [
+   "sfx/rod_slide_mid_arena_01.wav"
+  ],
+  "rod_slide_mid_circuit": [
+   "sfx/rod_slide_mid_circuit_01.wav"
   ],
   "rod_slide_slow": [
-   "sfx/rod_slide_slow_01.wav",
-   "sfx/rod_slide_slow_02.wav"
+   "sfx/rod_slide_slow_01.wav"
   ],
   "rod_slide_slow_arena": [
-   "sfx/rod_slide_slow_arena_01.wav",
-   "sfx/rod_slide_slow_arena_02.wav"
+   "sfx/rod_slide_slow_arena_01.wav"
   ],
   "rod_slide_slow_circuit": [
-   "sfx/rod_slide_slow_circuit_01.wav",
-   "sfx/rod_slide_slow_circuit_02.wav"
+   "sfx/rod_slide_slow_circuit_01.wav"
   ],
   "rod_spin": [
    "sfx/rod_spin_01.wav",

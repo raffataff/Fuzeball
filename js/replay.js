@@ -141,7 +141,7 @@ function replayGhostHide(g){
 // ===== rolling =====
 // the recorder stores position only, so orientation is re-derived: a rolling ball turns about the horizontal axis perpendicular to travel by distance/radius (same convention as physics.js)
 // driven by distance (slow-mo slows the spin) and accumulated as a world-axis quaternion (Euler tumbles on curves)
-const _rlAx=new THREE.Vector3(),_rlQ=new THREE.Quaternion();
+const _rlAx=new THREE.Vector3(),_rlQ=new THREE.Quaternion(),_rpFv=new THREE.Vector3();
 function replayRoll(g,dx,dz){
  const d=Math.hypot(dx,dz);
  if(d<1e-5)return;
@@ -343,6 +343,7 @@ function replayUpdate(rdt){
    if(ti!==g.typ)replayTint(g,ti);
    if(!g.primed){g.primed=true;g.prev.copy(g.m.position);}
    heatFeed(g.active||g.m,RB.keys[ti],jDt>0?g.prev.distanceTo(g.m.position)/jDt:0,g.shim);
+   if(typeof fireFeed==='function')fireFeed(RB.keys[ti],g.m.position,jDt>0?_rpFv.subVectors(g.m.position,g.prev).divideScalar(jDt):null,jDt,g.shim,null);
    // roll off the step just travelled, before prev is advanced (the trail test below reads it)
    if(REPLAY.roll){
     replayRoll(g,g.m.position.x-g.prev.x,g.m.position.z-g.prev.z);

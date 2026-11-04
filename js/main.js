@@ -83,6 +83,7 @@ function loop(t){
     if(b.light)b.light.position.copy(b.m.position);
     cannonballWarn(b);
     heatFeed(b.m,b.key,b.v.length(),b);
+    if(typeof fireFeed==='function')fireFeed(b.key,b.m.position,b.v,rdt*S.timeScale,b,b.light);   // the fireball's flame (js/fire.js)
    }
    heatClose();
     for(const r of rods){

@@ -24,6 +24,8 @@ function auLoopPts(j,dur){const sr=j&&j.sample_rate,a=j&&j.loop_start_sample/sr,
  return a>=0&&b>a&&b<=dur+.01?[a,Math.min(b,dur)]:[0,dur];}
 // a loop part's speed as 0..1 of vMin..vRef (CONFIG.audioMix.loops)
 function auLpN(v,C){return Math.max(0,Math.min(1,(v-C.vMin)/Math.max(1e-6,C.vRef-C.vMin)));}
+// the playback rate of a take rendered at `at` on that line, heard at speed v: 1 at its own speed, (v / its speed)^bend elsewhere
+function auLpRate(v,C,at){const g=C.vMin+at*(C.vRef-C.vMin);return Math.pow(Math.max(C.vMin,Math.min(C.vRef,v))/Math.max(1e-6,g),C.bend??1);}
 // equal-power weights into w for layers placed at `at` (ascending, 0..1) at n: below the first or past the last, that layer alone
 function auXf(n,at,w){const k=at.length;for(let i=0;i<k;i++)w[i]=0;if(!k)return w;
  if(n<=at[0]){w[0]=1;return w;}if(n>=at[k-1]){w[k-1]=1;return w;}
@@ -315,22 +317,23 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
 
  // ---- the room ----
  // polled, not hooked (activeRoom); a new convolver per room so old tails ring out and are disconnected when done
+ // a recorded ir_<room> carries its own level (the Sound Lab's mix, tools/soundlab/spec.js) and plays unnormalized; a generated one is normalized
  rvTick(){if(!this.ctx)return;const rm=typeof activeRoom!=='undefined'?activeRoom:null;
   if(this.rv&&this.rv.rm===rm)return;
   let id='open';if(rm&&typeof CONFIG!=='undefined')for(const k in CONFIG.rooms)if(CONFIG.rooms[k]===rm){id=k;break;}
   this.rvSet(id,rm);},
  rvSet(id,rm){const c=this.ctx,Rv=AUMIX.reverb;if(!c||!Rv)return;
   const A=Object.assign({},Rv.def,(Rv.rooms&&Rv.rooms[id])||{}),old=this.rv,t=c.currentTime,
-   rv={rm,id,A,f:null,c:null};
+   rv={rm,id,A,f:null,c:null,len:A.decay};
   this.cHp.frequency.setTargetAtTime(A.crowdHp||20,t,.05);this.cLp.frequency.setTargetAtTime(A.crowdLp||20000,t,.05);
-  if(Rv.on&&c.createConvolver){const b=this.irFor(id,A);
-   rv.f=c.createConvolver();rv.f.buffer=b;rv.f.connect(this.mg);
-   rv.c=c.createConvolver();rv.c.buffer=b;rv.c.connect(this.cb);}
+  if(Rv.on&&c.createConvolver){const b=this.irFor(id,A),nz=!this.has('ir_'+id);rv.len=Math.max(A.decay,b.duration);
+   rv.f=c.createConvolver();rv.f.normalize=nz;rv.f.buffer=b;rv.f.connect(this.mg);   // normalize is read when the buffer is set
+   rv.c=c.createConvolver();rv.c.normalize=nz;rv.c.buffer=b;rv.c.connect(this.cb);}
   this.rv=rv;
   const B=this.bed;
   if(B){if(B.s){B.g.disconnect(B.s);B.s=null;}
    if(rv.c){B.s=c.createGain();B.s.gain.value=Rv.crowd*(A.crowd??1);B.g.connect(B.s);B.s.connect(rv.c);}}
-  if(old&&(old.f||old.c))setTimeout(()=>{try{if(old.f)old.f.disconnect();if(old.c)old.c.disconnect();}catch(e){}},(old.A.decay*1.2+.5)*1000);},
+  if(old&&(old.f||old.c))setTimeout(()=>{try{if(old.f)old.f.disconnect();if(old.c)old.c.disconnect();}catch(e){}},(old.len*1.2+.5)*1000);},
  irFor(id,A){if(this.has('ir_'+id))return this.bank['ir_'+id][0];
   if(!this.irs[id]){const c=this.ctx,d=auIR(c.sampleRate,A,[...id].reduce((h,ch)=>h*31+ch.charCodeAt(0),7)),
     b=c.createBuffer(2,d[0].length,c.sampleRate);b.copyToChannel(d[0],0);b.copyToChannel(d[1],1);this.irs[id]=b;}
@@ -544,8 +547,9 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   let V=this.lp.get(key);if(!V)this.lp.set(key,V={parts:{},src:null,on:false,out:null,pn:null,in:null});
   let P=V.parts[part];if(!P)P=V.parts[part]={C:AUMIX.loops[part],want:0,lvl:0,spd:0,g:1,rt:1,ls:null,w:null,at:null};
   if(v*g>P.want*P.g||!P.want){P.want=v;P.g=g;P.rt=rt||1;V.src=src||V.src;}},
+ // gain, rate and pan glide to each frame's value (loops.glide): a step a frame clicks on every start and buzzes at the frame rate on every change
  lpTick(dt){if(!this.lp||!this.lp.size||!this.ctx)return;
-  const live=cfg.sound&&this.inMatch(),R=this.rate>0?this.rate:1;
+  const live=cfg.sound&&this.inMatch(),R=this.rate>0?this.rate:1,t=this.ctx.currentTime,gl=Math.max(AUMIX.loops.glide||0,dt/3);
   for(const V of this.lp.values()){let any=false;
    for(const n in V.parts){const P=V.parts[n],C=P.C,sp=live?P.want:0,u=auLpN(sp,C),
      tgt=u>0?Math.pow(u,C.curve)*P.g:0,a=1-Math.exp(-dt/Math.max(1e-3,tgt>P.lvl?C.attack:C.release));
@@ -555,17 +559,17 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    if(any&&!V.on)this.lpStart(V);
    if(!V.on)continue;
    if(!any){this.lpStop(V);continue;}
-   const Pn=AUMIX.pan;if(V.pn&&V.src&&Pn&&Pn.on)V.pn.pan.value=auPanOf(V.src)*Pn.width;
+   const Pn=AUMIX.pan;if(V.pn&&V.src&&Pn&&Pn.on)V.pn.pan.setTargetAtTime(auPanOf(V.src)*Pn.width,t,gl);
    for(const n in V.parts){const P=V.parts[n],C=P.C;if(!P.ls)this.lpPart(V,P);
-    const u=auLpN(P.spd,C),rt=(C.rate[0]+(C.rate[1]-C.rate[0])*u)*P.rt*R;auXf(u,P.at,P.w);
-    for(let i=0;i<P.ls.length;i++){const l=P.ls[i];l.g.gain.value=P.lvl*P.w[i]*l.v*this.vol;l.s.playbackRate.value=rt;}}}},
+    const u=auLpN(P.spd,C),rt=P.rt*R;auXf(u,P.at,P.w);
+    for(let i=0;i<P.ls.length;i++){const l=P.ls[i];l.g.gain.setTargetAtTime(P.lvl*P.w[i]*l.v*this.vol,t,gl);l.s.playbackRate.setTargetAtTime(auLpRate(P.spd,C,l.at)*rt,t,gl);}}}},
  lpStart(V){const c=this.ctx;let send=0;
   for(const n in V.parts)for(const id of V.parts[n].C.ids)send=Math.max(send,(AUSND[id]&&AUSND[id].send)||0);
   V.out=c.createGain();V.in=this.route(this.mg,null,send);V.pn=c.createStereoPanner?c.createStereoPanner():null;
   if(V.pn){V.out.connect(V.pn);V.pn.connect(V.in);}else V.out.connect(V.in);
   for(const n in V.parts)this.lpPart(V,V.parts[n]);
   V.on=true;},
- // a part's sources: one looping take per id that has files at this venue (vid), at its place on the speed line
+ // a part's sources: one looping take per id that has files at this venue (vid), at its place on the speed line (the speed it was rendered at)
  lpPart(V,P){const c=this.ctx;P.ls=[];
   P.C.ids.forEach((id,i)=>{const u=this.vid(id);if(!this.has(u))return;const bk=this.bank[u],k=auPick(bk.length,this.last[u]??-1,Math.random()),b=bk[k];this.last[u]=k;
    const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=true;g.gain.value=0;s.connect(g);g.connect(V.out);s.start(0,Math.random()*b.duration);

@@ -1,7 +1,7 @@
 'use strict';
 // ================= GLB table + rod + ball loaders =================
 // optional: the primitives from world.js/balls.js stay as the fallback when a file is missing
-const rodSets={};        // rod-set key -> {men:scene, _done:true}; '_shared' = stock assets/rods/, a table id = its own livery
+const rodSets={};        // rod-set key -> {men:scene, _done:true}; '_shared' = stock assets/rods/, else a CONFIG.rodSets id
 const rodSetLoading={};   // rod-set key -> [pending cbs] while its load batch is in flight
 const ROD_SIZES=[1,2,3,5];
 let ballModel=null;      // loaded ball GLB scene (with material slots)
@@ -391,19 +391,25 @@ function pruneSkies(keep){
  }
 }
 
-// --- rods (per-table livery, lazy) ---
-// each table may bring its own rod set (CONFIG.tables[id].rods), else assets/rods/; keyed by rodSetKey, cloned per rod by makeRodModel, kept resident
-// a missing size falls back to the shared set, then the primitive rod in world.js buildRods; visual only
-function rodSetKey(tableId){const T=CONFIG.tables[tableId];return (T&&T.rods)?tableId:'_shared';}
+// --- rods (per-skin livery, lazy) ---
+// the set a table wears follows its selected skin (CONFIG.rodSets); cloned per rod by makeRodModel, kept resident
+// a missing size falls back to the shared set, then the primitive rod in world.js dressRod; visual only
+// skinId omitted = the table's selected skin (curSkin); an unknown set id falls back to '_shared'
+function rodSetKey(tableId,skinId){
+ const T=CONFIG.tables[tableId];if(!T)return '_shared';
+ const sk=skinId!==undefined?skinId:(typeof curSkin==='function'?curSkin(tableId):null);
+ const sd=sk&&T.skins?T.skins[sk]:null,id=(sd&&sd.rods)||T.rods;
+ return (typeof id==='string'&&CONFIG.rodSets&&CONFIG.rodSets[id])?id:'_shared';
+}
 
-// load one rod set by key: '_shared' = assets/rods/fuzeball_rod_<n>man.glb, a table key = CONFIG.tables[key].rods.folder; a per-size 404 leaves it unset; cb runs once the batch settles
+// load one rod set by key: '_shared' = assets/rods/fuzeball_rod_<n>man.glb, else CONFIG.rodSets[key].folder (+ files); a per-size 404 leaves it unset; cb runs once the batch settles
 function loadRodSet(key,cb){
  const set=rodSets[key]||(rodSets[key]={});
  if(set._done){if(cb)cb();return;}
  if(rodSetLoading[key]){if(cb)rodSetLoading[key].push(cb);return;}
  const cbs=rodSetLoading[key]=[];if(cb)cbs.push(cb);
  const loader=newGLTF();
- const rd=(key!=='_shared'&&CONFIG.tables[key])?CONFIG.tables[key].rods:null;
+ const rd=(key!=='_shared'&&CONFIG.rodSets)?CONFIG.rodSets[key]:null;
  const folder=(rd&&rd.folder)||'assets/rods/';
  const files=(rd&&rd.files)||{};
  let left=ROD_SIZES.length;
@@ -411,7 +417,7 @@ function loadRodSet(key,cb){
  ROD_SIZES.forEach(n=>{
   const file=files[n]||('fuzeball_rod_'+n+'man.glb');
   loader.load(folder+file,g=>{set[n]=g.scene;settle();},undefined,()=>{
-   if(key!=='_shared'){settle();return;}                              // table override absent -> shared fallback in makeRodModel
+   if(key!=='_shared'){console.warn('rod set '+key+': '+folder+file+' missing, using the stock rod');settle();return;}
    loader.load('assets/'+file,g=>{set[n]=g.scene;settle();},undefined, // legacy assets/ root
     ()=>{console.warn('rod_'+n+'man.glb missing, using primitive');settle();});
   });
@@ -424,7 +430,7 @@ function loadRodModels(onReady){
  let left=keys.length;const done=()=>{if(--left===0)onReady();};
  keys.forEach(k=>loadRodSet(k,done));
 }
-// ensure a table's rod set is resident (table switch); cb on settle
+// ensure the rod set for a table's selected skin is resident (table or skin switch); cb on settle
 function ensureTableRods(tableId,cb){
  if(typeof loadRodSet!=='function'){if(cb)cb();return;}
  loadRodSet(rodSetKey(tableId),cb);
@@ -556,6 +562,7 @@ function loadBallModel(onReady){
       const n=ballKey(c);                          // 'classic.001'/'classic001' -> 'classic'
       if(n)ballMatMap[n]=m;
     });
+    if(typeof fireSkin==='function')fireSkin(ballModel);   // the fireball's molten core (js/fire.js)
     // diagnostic: which file actually loaded, and which slots carry an image map
     const withMap=Object.keys(ballMatMap).filter(k=>ballMatMap[k]&&ballMatMap[k].map);
     console.log('ball GLB loaded from '+url+' — slots:',Object.keys(ballMatMap),'| slots WITH a texture map:',withMap.length?withMap:'(none)');

@@ -67,6 +67,35 @@ let rodHoleMeshes=[];                  // the ACTIVE skin's rings, and the only 
 const tablePrimObjs={};                // table id -> [procedural fallback meshes], shown only when the active skin has no GLB
 // big-goal morph of the baked arena shell (arena_bowl + led ring): registered from the arena GLB load, driven by arenaMorphUpdate
 let arenaMorph=[],arenaMorphDirty=false;
+// smooth normals for the baked bowl: weld verts by rest position, orient each triangle toward the interior once, then average area-weighted face normals per weld group (computeVertexNormals on split verts shades every face flat)
+function arenaWeld(geo,base,N){
+ const idx=geo.index,T=(idx?idx.count:N)/3,key=new Map(),grp=new Uint32Array(N),tri=new Uint32Array(T*3),sg=new Float32Array(T);
+ let G=0;
+ for(let i=0;i<N;i++){const k=Math.round(base[i*3]*1e3)+','+Math.round(base[i*3+1]*1e3)+','+Math.round(base[i*3+2]*1e3);let g=key.get(k);if(g===undefined){g=G++;key.set(k,g);}grp[i]=g;}
+ for(let t=0;t<T;t++){
+  const a=idx?idx.getX(t*3):t*3,b=idx?idx.getX(t*3+1):t*3+1,c=idx?idx.getX(t*3+2):t*3+2;
+  tri[t*3]=a;tri[t*3+1]=b;tri[t*3+2]=c;
+  const ux=base[b*3]-base[a*3],uy=base[b*3+1]-base[a*3+1],uz=base[b*3+2]-base[a*3+2],vx=base[c*3]-base[a*3],vy=base[c*3+1]-base[a*3+1],vz=base[c*3+2]-base[a*3+2];
+  const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+  const cx=(base[a*3]+base[b*3]+base[c*3])/3,cz=(base[a*3+2]+base[b*3+2]+base[c*3+2])/3;
+  const g=arenaGrad(cx,cz,F.goalHalf,F.goalHalf);
+  sg[t]=(-g.x*nx+0.6*ny-g.z*nz)>=0?1:-1;   // inward = -grad + up
+ }
+ return {tri,grp,sg,T,acc:new Float32Array(G*3)};
+}
+function arenaSmoothNorm(w){
+ const S=w.sm,p=w.pos,nA=w.o.geometry.attributes.normal,acc=S.acc,tri=S.tri,grp=S.grp;
+ if(!nA)return;
+ acc.fill(0);
+ for(let t=0;t<S.T;t++){
+  const a=tri[t*3],b=tri[t*3+1],c=tri[t*3+2];
+  const ux=p.getX(b)-p.getX(a),uy=p.getY(b)-p.getY(a),uz=p.getZ(b)-p.getZ(a),vx=p.getX(c)-p.getX(a),vy=p.getY(c)-p.getY(a),vz=p.getZ(c)-p.getZ(a);
+  const s=S.sg[t],nx=(uy*vz-uz*vy)*s,ny=(uz*vx-ux*vz)*s,nz=(ux*vy-uy*vx)*s;
+  for(const v of [a,b,c]){const g=grp[v]*3;acc[g]+=nx;acc[g+1]+=ny;acc[g+2]+=nz;}
+ }
+ for(let i=0;i<w.N;i++){const g=grp[i]*3,x=acc[g],y=acc[g+1],z=acc[g+2],l=Math.hypot(x,y,z)||1;nA.setXYZ(i,x/l,y/l,z/l);}
+ nA.needsUpdate=true;
+}
 let tableHasFrame={};   // deprecated: per-skin goal-frame flags live in skinHasFrame[id][skinId]; kept to avoid a dangling ref
 
 // outline polyline matching arenaSD (rounded rect + outward goal cavities); rough corners are fine, every sample is Newton-projected
@@ -163,7 +192,7 @@ let ARENA_ON=false;
 let WALL_H=F.wallH; // flat tables: the active table's drawn wall height (CONFIG.tables[*].wallH, else CONFIG.table.wallH); stepBall's walls and rim are built on it
 let ENDWALL_H=0; // walled flat tables (CONFIG.tables[*].endWall.h): end-wall height the goal is inset into; 0 = classic open ends (physics.js stepBall)
 // registry-driven: select the table by id, show its group, hide the rest, set the collision flag, show the active skin
-// onReady fires once the skin GLB and room backdrop are resident (sync if cached); assets are lazy (CONFIG.tableAssets), the old one is evicted after the new one lands, until then applySkin shows primitives
+// onReady fires once the skin GLB and its rod set are resident (sync if cached); assets are lazy (CONFIG.tableAssets), the old one is evicted after the new one lands, until then applySkin shows primitives
 function applyTable(onReady){
  const id=CONFIG.tables[cfg.table]?cfg.table:'classic';   // fall back to classic for unknown/old saves
  activeTable=CONFIG.tables[id];
@@ -182,7 +211,9 @@ function applyTable(onReady){
  if(nets){netMats=nets;if(typeof applyColors==='function')applyColors();}
  // load (if needed) and show the active skin; prune only after the incoming skin is resident
  const sk=curSkin(id);
+ let left=2;
  const settled=()=>{
+  if(--left>0)return;
   if(typeof pruneSkins==='function')pruneSkins(sk?id+'/'+sk:null);
   if(onReady)onReady();
  };
@@ -190,8 +221,9 @@ function applyTable(onReady){
  else settled();
  applySkin(id);
  if(typeof drawField==='function')drawField();
- // rods are a per-table livery (visual only): ensure the set is resident, then reskin (idempotent); stock rods show until the table's own GLBs land
- if(typeof ensureTableRods==='function')ensureTableRods(id,()=>{if(typeof reskinRods==='function')reskinRods(id);});
+ // the skin's rod set (visual only): stock rods show until it lands, then reskin (idempotent)
+ if(typeof ensureTableRods==='function')ensureTableRods(id,()=>{if(typeof reskinRods==='function')reskinRods(id);settled();});
+ else settled();
 }
 
 // the skin currently selected for a table: cfg.skins[id], else the table's defSkin
@@ -218,17 +250,23 @@ function applySkin(id){
  if(typeof shadowDirty==='function')shadowDirty();   // table shell swapped — casters changed
 }
 // pick a skin for a table (Skin dropdown): remember it, lazy-load, show, then evict past cacheSkins after the new one lands
-// onReady fires once the skin GLB is resident (sync if cached), so flow.js venueLoad can stage it behind the veil
+// onReady fires once the skin GLB and, on the live table, its rod set are resident (sync if cached), so flow.js venueLoad stages both behind the veil
 function selectSkin(id,skinId,onReady){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
+ let left=2;
+ const settled=()=>{if(--left===0&&onReady)onReady();};
  if(typeof loadSkin==='function'){
   loadSkin(id,skinId,()=>{
    applySkin(id);if(typeof drawField==='function')drawField();
    if(typeof pruneSkins==='function')pruneSkins(id+'/'+skinId);
-   if(onReady)onReady();
+   settled();
   });
- }else if(onReady)onReady();
+ }else settled();
  applySkin(id);
+ // the rods follow the skin only on the table they stand in
+ if(activeTable===CONFIG.tables[id]&&typeof ensureTableRods==='function')
+  ensureTableRods(id,()=>{if(typeof reskinRods==='function')reskinRods(id);settled();});
+ else settled();
  if(typeof saveCfg==='function')saveCfg();
 }
 
@@ -263,7 +301,8 @@ function registerArenaMorph(root){
    dR[j+2]=lip.x>0?lip.z*(M-1)*gate( lip.x,azR):0;   // widen right mouth (+x half only) — uniform per column, x delta stays 0
    dL[j+2]=lip.x<0?lip.z*(M-1)*gate(-lip.x,azR):0;   // widen left  mouth (−x half only)
   }
-  arenaMorph.push({o:c,pos,base,dR,dL,N});
+  const w={o:c,pos,base,dR,dL,N,sm:(n.startsWith('arena_bowl')||pn.startsWith('arena_bowl'))?arenaWeld(c.geometry,base,N):null};
+  arenaMorph.push(w);if(w.sm)arenaSmoothNorm(w);
  });
  console.log('arena shell morph: '+arenaMorph.length+' mesh(es)');
 }
@@ -277,7 +316,7 @@ function arenaMorphUpdate(){
  for(let m=0;m<arenaMorph.length;m++){const w=arenaMorph[m],p=w.pos,b=w.base,dR=w.dR,dL=w.dL;
   for(let i=0;i<w.N;i++){const j=i*3;
    p.setXYZ(i,b[j]+dR[j]*tR+dL[j]*tL,b[j+1],b[j+2]+dR[j+2]*tR+dL[j+2]*tL);}
-  p.needsUpdate=true;w.o.geometry.computeVertexNormals();
+  p.needsUpdate=true;if(w.sm)arenaSmoothNorm(w);else w.o.geometry.computeVertexNormals();
  }
  arenaMorphDirty=active;
 }

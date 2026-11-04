@@ -262,8 +262,8 @@ function sweep(){const C=partOf(UI.cur);if(!C)return;stop();const c=actx(),T=6,t
   s.buffer=bufOf(o);s.loop=true;g.gain.value=0;s.connect(g);g.connect(ST.out);s.start(t0,Math.random()*o.len);s.stop(t0+T+.1);ls.push({id,s,g,at:C.at[i]??0,v:(SND()[id]&&SND()[id].vol)??1});});
  if(!ls.length)return toast('No recipes for '+C.ids.join(', '));
  const at=ls.map(l=>l.at),w=new Float32Array(ls.length);
- for(let t=0;t<=T+1e-6;t+=1/50){const ph=t/T,u=ph<.5?ph*2:2-ph*2,lv=u>0?Math.pow(u,C.curve):0,rt=C.rate[0]+(C.rate[1]-C.rate[0])*u;xfW(u,at,w);
-  ls.forEach((l,i)=>{l.g.gain.setValueAtTime(lv*w[i]*l.v,t0+t);l.s.playbackRate.setValueAtTime(rt,t0+t);});}
+ for(let t=0;t<=T+1e-6;t+=1/50){const ph=t/T,u=ph<.5?ph*2:2-ph*2,lv=u>0?Math.pow(u,C.curve):0;xfW(u,at,w);
+  ls.forEach((l,i)=>{l.g.gain.setValueAtTime(lv*w[i]*l.v,t0+t);l.s.playbackRate.setValueAtTime(Math.pow((C.vMin+u*(C.vRef-C.vMin))/(C.vMin+l.at*(C.vRef-C.vMin)),C.bend??1),t0+t);});}   // auLpRate in js/audio.js
  ST.sw=ls.map(l=>l.s);toast('Speed sweep: '+ls.map(l=>l.id).join(' + ')+', rest to full speed ('+C.vRef+') and back',T*1000);}
 
 // --- tour / group / balance ---

@@ -164,6 +164,12 @@ matchStats:{
 /* ---- procedural goal net shape (cosmetic only) ----------------------- */
  goalNet:{ bevel:{ r:1.8, segs:4 }, cell:1.6, backInset:0.98 },
 
+/* ---- rod sets (models.js loadRodSet) ----------------------------------- */
+// a skin's `rods` picks one, else its table's `rods`, else the stock assets/rods/; a size missing from a set borrows the stock rod
+ rodSets:{
+  classic:{ folder:'assets/tables/classic/rods/' }   // files:{1:'name.glb'} overrides one size's file name
+ },
+
 /* ---- table registry --------------------------------------------------- */
  tables:{
   classic:{
@@ -174,7 +180,7 @@ matchStats:{
    room:null,                               // no backdrop; uses the shared ground plane
    defTheme:'classic',
    defSkin:'wood', // must match a skins entry
-   rods:{folder:'assets/tables/classic/rods/'},
+   rods:'classic',                          // CONFIG.rodSets id; a skin's own rods:'<id>' wins
    skins:{
       wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},
       sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
@@ -197,7 +203,7 @@ matchStats:{
    defTheme:'neon',
    defSkin:'standard',
    skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena_standard.glb'} },
-   rods:{folder:'assets/tables/classic/rods/'}, 
+   rods:'classic',
    bowl:{
    length:120,        // bowl length along x — keep at the table length (see TUNING.md)
    width:68,          // bowl width along z
@@ -227,7 +233,7 @@ matchStats:{
    defTheme:'neon',                          // metadata only
    defSkin:'standard',
    skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
-   rods:{folder:'assets/tables/classic/rods/'},   // circuit rods (not built yet -> shared set)
+   rods:'classic',                           // circuit rods not built yet
    deadzones:[
     {xMin:46, zMin:14.}   // corner pockets
    ]
@@ -258,10 +264,10 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, grav:200,
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, grav:450,
    prad:0.6,                       // leg capsule radius: the figurines' legs are about 1.2 thick front to back, and the foot box's rear face is this far behind the leg
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
-   footBox:{x:1.6,y:1.0,z:1.05},     // foot box half-extents: x along leg, y perpendicular, z along rod
+   footBox:{x:1.6,y:1.0,z:1.0},     // foot box half-extents: x along leg, y perpendicular, z along rod
    footBoxOff:{x:-1.15,y:0.4},        // foot box centre offset from foot-base, rod-local (x raised with its height: the bottom face stays at -0.65, the top is at 2.95 up the leg)
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.005,                // random velocity nudge after a foot hit (stops perfect oscillations)
@@ -275,8 +281,8 @@ physics:{
    rimW:3,                                // drawn wall thickness: a ball that clears a wall comes down on its rounded top and rolls off
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
-   contactEps:0.35,                       // gap below which the roll probe counts a ball as touching
-   floorFric:0.15, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
+   contactEps:0.15,                       // gap below which the roll probe counts a ball as touching
+   floorFric:0.25, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
    wallRest:0.52,                         // side + end wall restitution
    postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution
    ballRest:0.9,                          // ball-vs-ball restitution
@@ -291,7 +297,7 @@ physics:{
 kick:{
    // swing-angle curve keyframes: time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.03,  strikeA:1.1,     // strike ramp end / peak forward angle
+   strike:0.04,  strikeA:1.1,     // strike ramp end / peak forward angle
    hold:0.15,                     // hold peak until this time
    drop:0.25,                     // fully returned by this time
    raiseA:-1.3, raiseLerp:18, dropLerp:15, // lift-men angle + settle rates
@@ -301,11 +307,11 @@ kick:{
    boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse, strikes only), freeze (speed)
    boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
-   rest:0.01, restPower:0.8,      // passive touch / struck shot
+   rest:0, restPower:0.8,      // passive touch / struck shot
    powFrom:0.008, powTo:0.08,       // swing-time window in which restPower is used instead of rest
    grip:0.6,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.45,
-   sideRest:0.6,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
+   sideRest:0.7,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
    rearDot:0.3,                   // a contact is the back of a man when its normal points at least this far backward (dir-relative x)
    rearCarry:0,                   // share of the rod's slide the back of an unposed man hands a ball: 0 = it is left behind, 1 = dragged along as before
@@ -711,12 +717,12 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.05,  strikeA:1.35,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:1.5,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
-      powFrom:0.03, powTo:0.05,     // power window (opens with the strike so it covers the contact)
-      restPower:0.8,                // restitution inside the power window
-      rest:0.1                      // passive touch outside it
+      powFrom:0.02, powTo:0.08,     // power window (opens with the strike so it covers the contact)
+      restPower:0.95,                // restitution inside the power window
+      rest:0                     // passive touch outside it
    },
 // dribble: ball at the feet, men down, no way forward: slide it instead of hitting it into the row opposite
    dribble:{
@@ -1672,9 +1678,9 @@ ai:{
  diffs:{
   //   speed = slide speed (u/s), react = perceived-position smoothing, reactDelay = reaction latency (s, under CONFIG.ai.reactMax)
   //   err = aim wander, range = reach, pred = lead on the ball, cd = kick cooldown x, aim = accuracy 0..1, iq = smart-choice chance 0..1
-  rookie:{speed:30,react:.25,err:0.5,range:5.8,pred:.55,cd:0.85,aim:.5,iq:.48,reactDelay:.12},
-  pro:   {speed:39,react:.18,err:0.35,range:6.3,pred:.75,cd:.55,aim:.65,iq:.65,reactDelay:.08},
-  legend:{speed:48,react:.1,err:.15, range:6.6,pred:0.9,cd:.30,aim:.9,iq:.8,reactDelay:.06}
+  rookie:{speed:45,react:.25,err:0.5,range:5.8,pred:.55,cd:0.85,aim:.5,iq:.48,reactDelay:.12},
+  pro:   {speed:53,react:.18,err:0.35,range:6.3,pred:.75,cd:.55,aim:.65,iq:.65,reactDelay:.08},
+  legend:{speed:60,react:.1,err:.15, range:6.6,pred:0.9,cd:.30,aim:.9,iq:.8,reactDelay:.06}
  },
 
  // ---- rod stats (league builds) ----
@@ -2106,16 +2112,18 @@ deadball:{
    },
 
    // ---- loops: recorded sounds that follow a speed (Au.lpFeed / lpTick) ----
-   // a part plays its ids as looping takes crossfaded on equal power by speed (each id sits at its `at`, 0..1 of vMin..vRef), silent at rest; ids with no file are skipped, a part with none is silent
-   //   vMin / vRef = speed where it fades in / reaches full level, curve = level is norm^curve (<1 = loud early), rate = playback rate at vMin..vRef, attack / release = smoothing (s), ai = level on an AI-held rod
-   // roll / scrape: the ball on the pitch / along a wall (u/s, rollProbe); slide: a rod's slide (u/s); spin: a rod's turn (rad/s); a ball type's audio.roll.rate scales the ball's rate
+   // a part plays its ids as looping takes crossfaded on equal power by speed, silent at rest; each id is rendered at its `at` (0..1 of vMin..vRef: tools/soundlab/spec.js); ids with no file are skipped, a part with none is silent
+   //   vMin / vRef = speed where it fades in / reaches full level, curve = level is norm^curve (<1 = loud early), bend = a take plays at (speed / its own speed)^bend, attack / release = smoothing (s), ai = level on an AI-held rod
+   //   bend 0 = never re-pitched, 1 = tape speed: rolls and slides are the lab's fixed plate, cabinet and rod modes, so they only crossfade (any bend moved them off the lab); the spin is mostly whoosh that scales with the turn
+   // roll / scrape: the ball on the pitch / along a wall (u/s, rollProbe); slide: a rod's slide (u/s); spin: a rod's turn (rad/s); a ball type's audio.roll.rate scales the ball's rate; a new id or `at` needs a render (node tools/soundlab-render.mjs)
    loops:{
     on:true,
-    roll:  {ids:['ball_roll_slow','ball_roll_fast'], at:[0.15,0.7], vMin:3,  vRef:110, curve:0.7, rate:[0.85,1.2], attack:0.03,  release:0.16},
-    scrape:{ids:['ball_scrape'],                     at:[0],        vMin:4,  vRef:100, curve:0.8, rate:[0.8,1.3],  attack:0.02,  release:0.12},
-    slide: {ids:['rod_slide_slow','rod_slide_fast'], at:[0.2,0.8],  vMin:8,  vRef:80,  curve:0.8, rate:[0.85,1.2], attack:0.012, release:0.08, ai:0.35},   // the AI slides ~half the time: its rods are a quiet bed
-    spin:  {ids:['rod_spin'],                        at:[0],        vMin:18, vRef:60,  curve:1,   rate:[0.7,1.4],  attack:0.01,  release:0.12, ai:0.5},
+    roll:  {ids:['ball_roll_crawl','ball_roll_slow','ball_roll_fast','ball_roll_rush'], at:[0.065,0.18,0.42,0.9], vMin:3, vRef:110, curve:0.7, bend:0, attack:0.03, release:0.16},   // 10, 22, 48, 99 u/s
+    scrape:{ids:['ball_scrape','ball_scrape_fast'],             at:[0.22,0.69],     vMin:4,  vRef:100, curve:0.8, bend:0,    attack:0.02,  release:0.12},             // 25, 70 u/s
+    slide: {ids:['rod_slide_slow','rod_slide_mid','rod_slide_fast'], at:[0.1,0.33,0.8], vMin:8, vRef:80, curve:0.8, bend:0, attack:0.012, release:0.08, ai:0.35},   // 15, 32, 66 u/s; the AI slides ~half the time: its rods are a quiet bed
+    spin:  {ids:['rod_spin'],                                   at:[0.4286],        vMin:18, vRef:60,  curve:1,   bend:0.6,  attack:0.01,  release:0.12, ai:0.5},      // 36 rad/s
     vzCap:300,                       // a slide faster than this is a hard set (a reset, a trial going home), not a sound (u/s)
+    glide:0.01,                      // s a loop's gain, rate and pan take to reach the frame's value (at least a third of the frame); 0 = a step a frame, which clicks
     bump:{min:12, aiMin:25, near:0.05, ai:0.4} // rod_bump: the arrival speed it needs (u/s, the fastest of the last four steps; aiMin on an AI rod: they reach an end ~2.5 times a second), how near the end counts (u), level on an AI-held rod
    },
 
@@ -2149,10 +2157,11 @@ deadball:{
    pan:{on:true, width:0.5},
 
    // ---- room reverb ----
-   // sends into the room (the crowd more), scaled by each room's fx/crowd; the impulse is generated from the room's numbers unless ir_<roomId> exists
+   // sends into the room, scaled by each room's fx/crowd; 1 = the Sound Lab's default send, so a recorded ir_<roomId> (exported at the lab's level) sounds as wet as the room in the lab
+   // a room with no ir_<roomId> gets an impulse generated from its numbers, normalized (about 9 dB drier than a lab room at the same send)
    //   decay = RT60 (s), damp = starting brightness (Hz), darken = how fast it loses top end, early = first reflections, pre = gap before the tail, crowdHp/Lp = crowd band-limit
    // kept here, not in CONFIG.rooms: the room editor's export drops unknown keys
-   reverb:{on:true, fx:0.14, crowd:0.28,
+   reverb:{on:true, fx:1, crowd:1.4,
     def:{decay:0.8, damp:5000, darken:2.0, early:0.5, pre:0.008, fx:1, crowd:1, crowdHp:60, crowdLp:16000},
     rooms:{
      open:  {decay:0.28, damp:2600, darken:4.0, early:0.15, pre:0.004, fx:0.6, crowdHp:380, crowdLp:3200},  // a deck in vacuum
@@ -2187,12 +2196,16 @@ deadball:{
     ball_drop:   {bus:'fx', vol:0.8, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
     rod_bump:    {bus:'fx', vol:0.45, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, syn:false, by:'table'},   // a rod hitting the end of its travel
     // loops (audioMix.loops): vol = the level at full speed
-    ball_roll_slow:{bus:'fx', vol:0.5,  send:0.6, syn:false, by:'pitch'},   // the ball rolling slowly on the pitch: a low rumble
-    ball_roll_fast:{bus:'fx', vol:0.6,  send:0.6, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
-    ball_scrape:   {bus:'fx', vol:0.4,  send:0.6, syn:false, by:'table'},   // rolling along a wall
-    rod_slide_slow:{bus:'fx', vol:0.35, send:0.4, syn:false, by:'table'},   // a rod sliding gently in its bearings
-    rod_slide_fast:{bus:'fx', vol:0.45, send:0.4, syn:false, by:'table'},   // ...jerked hard: louder, rattling
-    rod_spin:      {bus:'fx', vol:0.3,  send:0.5, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
+    ball_roll_crawl:{bus:'fx', vol:0.5, send:1, syn:false, by:'pitch'},   // the ball barely rolling on the pitch
+    ball_roll_slow:{bus:'fx', vol:0.5,  send:1, syn:false, by:'pitch'},   // ...rolling slowly: a low rumble
+    ball_roll_fast:{bus:'fx', vol:0.6,  send:1, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
+    ball_roll_rush:{bus:'fx', vol:0.6,  send:1, syn:false, by:'pitch'},   // ...a shot along the floor
+    ball_scrape:   {bus:'fx', vol:0.75, send:1, syn:false, by:'table'},   // rolling along a wall, slowly (its take is 5.5 dB quieter: all peaks)
+    ball_scrape_fast:{bus:'fx', vol:0.49, send:1, syn:false, by:'table'}, // ...fast
+    rod_slide_slow:{bus:'fx', vol:0.35, send:1, syn:false, by:'table'},   // a rod sliding gently in its bearings
+    rod_slide_mid: {bus:'fx', vol:0.4,  send:1, syn:false, by:'table'},   // ...an AI rod's working pace
+    rod_slide_fast:{bus:'fx', vol:0.45, send:1, syn:false, by:'table'},   // ...jerked hard: louder, rattling
+    rod_spin:      {bus:'fx', vol:0.3,  send:1, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
     // match
     whistle:     {bus:'fx', vol:0.8, pitch:0.02, send:0.8},
     whistle_end: {bus:'fx', vol:0.8, send:0.8, syn:false},   // full time as one take; without it, three singles
@@ -2242,7 +2255,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.,maxV:200,w:100,trail:'#ffffff',
+      mass:1.,maxV:400,w:100,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -2258,7 +2271,7 @@ deadball:{
    },
    fire:   
       {name:'FIREBALL',col:0xff6a1f,em:0xff2200,
-      mass:0.9,maxV:200,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
+      mass:0.9,maxV:400,w:14,trail:'#ff8c3a',light:0xff5500,markMul:1.5,   // scorches harder than a rubber scuff
       audio:{
          kick:{noiseDur:1.2,noiseFreq:8000,noiseFreqScale:14,noiseVol:.07,noiseVolScale:.05,noiseVolMax:.22,
                beepFreq:1500,beepDur:.6,beepType:'sine',beepVol:.0,beepVolScale:.002,beepVolMax:.0,beepSlide:-80,attack:.08,decay:1.1,},
@@ -2272,7 +2285,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:5,maxV:110,w:50,trail:'#000000',
+      mass:5,maxV:410,w:50,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2287,7 +2300,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.25,maxV:200,w:6,splits:true,trail:'#c39bff',
+      mass:1.25,maxV:400,w:6,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -2304,8 +2317,8 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.25,maxV:200,w:6,trail:'#8fffda',light:0x33cfff,
-      knuckle:{every:[0.11,0.26], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
+      mass:1.25,maxV:400,w:6,trail:'#8fffda',light:0x33cfff,
+      knuckle:{every:[0.3,0.8], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
              beepFreq:100,beepDur:.1,beepType:'sine',beepVol:.07,beepVolScale:.03,beepVolMax:.24,beepSlide:60},
@@ -2319,7 +2332,7 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:1.5,maxV:200,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:1.5,maxV:400,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2707,6 +2720,22 @@ deadball:{
     wave:{ travel:0.35, stagger:0.1, steps:14, power:3.0, pop:[2.5,5] },   // at pickup: a pulse runs each rod from its handle end over its men in `travel` s, rods `stagger` s apart from the keeper out; a pop (size) at each boot as it passes
     end:{ warn:2.0, cut:0.7, floor:0.12, spit:true, pop:[2,4], power:1.8, sparks:6 },   // the last `warn` s: the glow drops out (cut: how much of the time it is dark by the end, floor: how dim), spits a few sparks as it catches; then a pop at each boot
     gauge:{ glow:4.0, hold:0.12, decay:0.35, delay:0.05 }   // the stamina rings (rod holes): a gold flash as the wave enters the rod, at every catch of the sputter and at the end (how bright, seconds to fade); `hold` is the faint tint while boosted (0 = none), the fill is never touched
+   },
+
+   /* ---- fire: the fireball (js/fire.js) ----------------------------------------------
+      The ball is molten rock with glowing seams, inside a flame raymarched through a teardrop that streams behind it and rises when it is still.
+      Sizes are table units (the ball's radius is 1.9), speeds units/s (a kick leaves at 90-230). `ramp` is the flame's temperature from cool to white-hot. */
+   fire:{
+    on:true,                 // false = the ball GLB's own material, no flame
+    types:['fire'],          // ball types that burn
+    max:6,                   // burning balls drawn at once (live balls and replay ghosts)
+    steps:24,                // raymarch steps through the flame: more = smoother and dearer
+    ramp:[0x6e0e02, 0xff4a0c, 0xffa232, 0xfff0c8],   // embers, flame, bright flame, white-hot
+    core:{ crust:0x1c110d, scale:1.8, seam:0.06, seamK:2.6, crawl:0, pulse:3.1, glow:0.06, rim:0.8, rimP:2.4, bump:0.4, rough:0.82 },   // the ball: crust colour, plates across (cells per unit of radius), crack width (share of a plate), their glow, how fast the plates crawl (0 = fixed to the ball) and the glow breathes, the crust's dull glow, the bright edge (strength, how tight), crack relief, crust roughness
+    flame:{ shell:1.55, rest:2.4, len:0.05, maxLen:11, rise:24, lift:0.17, drag:1, turn:16, flow:[7,0.4], flowMax:34, stretch:1.0, streak:0.01, streakMax:1.5, scale:0.8, erode:1.6, power:1.3, absorb:0.15, smoke:4, ign:0.35, floor:0.02, fade:1.2 },   // radius round the ball (x the ball's), tail length still (x radius) and per unit/s of speed, the longest; how hard it rises / trails, the least it climbs (sine), how fast it swings round (1/s); how fast the tongues stream (units/s + per unit/s of speed, capped), how long they are along the flow (+ per unit/s of speed); tongue size, how ragged, brightness, how much it soaks up (thick flame saturates; smoke grows toward the tip), seconds a new ball takes to catch, the pitch height it stops at and the height it fades in over
+    embers:{ rate:[7,60], ref:120, carry:0.3, speed:[3,11], life:[0.35,0.9], size:[0.1,0.24], power:2.6, rise:-0.18, drag:1.6 },   // shed a second at rest / at `ref` units/s; how much of the ball's speed they keep, their own throw
+    flare:{ dv:45, decay:2.8, grow:0.2, pow:0.5, sparks:[8,24], speed:[25,70], power:2.4, flash:[2.5,5] },   // a hit or bounce that changes the speed by over dv in a frame: the flame swells and brightens, settling at `decay` /s, and throws sparks
+    light:{ base:1.4, flicker:0.3, up:1.2, flare:1.2 }   // the ball's pooled light: brightness, flicker, height over the ball, extra on a flare
    },
 
    /* ---- explosion smoke (js/fx.js smokeBurst / smokeUpdate) ----*/
