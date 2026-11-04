@@ -210,7 +210,7 @@ function renderIdleSkip(rdt){
  const I=(CONFIG.render&&CONFIG.render.idle)||{};
  if(I.on===false||!renderer||!camera)return false;
  if((I.phases||['menu']).indexOf(S.phase)<0)return false;
- if(S.redit||S.photo||S.freeRoam)return false;
+ if(S.redit||S.photo||S.freeRoam||S.figEd)return false;
  if(typeof dbgOn!=='undefined'&&dbgOn)return false;
  // the frame profiler (M) needs real frames, so don't skip while it's on
  if(typeof PERF!=='undefined'&&PERF&&PERF.on)return false;
@@ -611,7 +611,7 @@ function buildRods(){
   const pivot=new THREE.Group();pivot.position.set(d.x,ROD_H,0);scene.add(pivot);
   const baseZ=[],men=[];
   for(let i=0;i<d.men;i++){const bz=(i-(d.men-1)/2)*sp;baseZ.push(bz);
-    const p=makePlayer(d.team);p.position.z=bz;p.position.y=PLAYER_H;if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
+    const p=makePlayer(d.team);p.position.z=bz;p.position.y=manY(d.team);if(d.team===1)p.rotation.y=Math.PI;pivot.add(p);men.push(p);}
     const r={idx,x:d.x,team:d.team,role:d.role,men,baseZ,maxOff,pivot,handle:null,collar:null,rodBar:null,rodModel:null,
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickCurve:null,kickDir:d.team===0?1:-1,raise:false,raiseKeep:false,kickHold:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
@@ -1030,7 +1030,7 @@ function rebuildRodMen(){
   r.men.forEach(m=>r.pivot.remove(m));
   const men=[];
   for(let i=0;i<r.baseZ.length;i++){
-   const p=makePlayer(d.team);p.position.z=r.baseZ[i];p.position.y=PLAYER_H;
+   const p=makePlayer(d.team);p.position.z=r.baseZ[i];p.position.y=manY(d.team);
    if(d.team===1)p.rotation.y=Math.PI;r.pivot.add(p);men.push(p);
   }
   r.men=men;

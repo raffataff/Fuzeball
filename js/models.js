@@ -399,7 +399,10 @@ function rodSetKey(tableId,skinId){
  const T=CONFIG.tables[tableId];if(!T)return '_shared';
  const sk=skinId!==undefined?skinId:(typeof curSkin==='function'?curSkin(tableId):null);
  const sd=sk&&T.skins?T.skins[sk]:null,id=(sd&&sd.rods)||T.rods;
- return (typeof id==='string'&&CONFIG.rodSets&&CONFIG.rodSets[id])?id:'_shared';
+ if(typeof id==='string'&&CONFIG.rodSets&&CONFIG.rodSets[id])return id;
+ const w=rodSetKey.warned||(rodSetKey.warned={});
+ if(id&&!w[id]){w[id]=1;console.warn('rods \''+id+'\' ('+tableId+(sk?'/'+sk:'')+') is not in CONFIG.rodSets: stock rods');}
+ return '_shared';
 }
 
 // load one rod set by key: '_shared' = assets/rods/fuzeball_rod_<n>man.glb, else CONFIG.rodSets[key].folder (+ files); a per-size 404 leaves it unset; cb runs once the batch settles
@@ -437,26 +440,53 @@ function ensureTableRods(tableId,cb){
 }
 
 // clone the rod set's model for one rod and tint the team parts; falls back to the shared set, else null (primitive)
+// a handle / collar / knob mesh is tinted only where its material is named team*: team_glow* takes the team glow, any other the team colour
 function makeRodModel(men,team,tableId){
   const key=(typeof rodSetKey==='function')?rodSetKey(tableId):'_shared';
   const tpl=(rodSets[key]&&rodSets[key][men])||(rodSets._shared&&rodSets._shared[men]);
   if(!tpl)return null;
   const g=tpl.clone(true);
-  const clones=[];                              // {mat, isHandle} for applyColors / applyFinish
+  const clones=[];                              // {mat, isGlow} for applyColors / applyFinish
   g.traverse(c=>{
    if(!c.isMesh)return;c.castShadow=true;
-   const n=onm(c),src=c.material;
-   if(n.includes('handle')){
-    c.material=cloneWithMaps(teamMat[team],src);
-    if(c.material!==teamMat[team])clones.push({mat:c.material,isGlow:false});
-   }else if(n.includes('collar')||n.includes('knob')){
-    c.material=cloneWithMaps(teamGlow[team],src);
-    if(c.material!==teamGlow[team])clones.push({mat:c.material,isGlow:true});
-   }
+   const n=onm(c),src=c.material,mn=(src&&src.name)||'';
+   if(!/^team/i.test(mn))return;
+   if(!n.includes('handle')&&!n.includes('collar')&&!n.includes('knob'))return;
+   const glow=/^team[_.]?glow/i.test(mn),base=glow?teamGlow[team]:teamMat[team];
+   c.material=cloneWithMaps(base,src);
+   if(c.material===base)return;
+   if(c.material.map)rodGrainSet(c.material);
+   clones.push({mat:c.material,isGlow:glow});
   });
   if(clones.length){g.userData.teamClones=clones;g.userData.team=team;}
   return g;
  }
+
+// --- grain tint: a textured team part is the team colour × the map's brightness over its average, so any kit colour (white too) shows ---
+function rodGrainMean(t){
+ const u=t.userData||(t.userData={});if(u.grainMean)return u.grainMean;
+ let v=CONFIG.rods.grain.mean;
+ try{const im=t.image;if(im&&im.width&&!t.isCompressedTexture){
+  const N=64,cv=document.createElement('canvas');cv.width=cv.height=N;const x=cv.getContext('2d');x.drawImage(im,0,0,N,N);
+  const d=x.getImageData(0,0,N,N).data,lin=c=>{c/=255;return c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);};
+  let L=0;for(let i=0;i<d.length;i+=4)L+=.2126*lin(d[i])+.7152*lin(d[i+1])+.0722*lin(d[i+2]);
+  if(L>0)v=L/(d.length/4);}}catch(e){}
+ return(u.grainMean=v);
+}
+function rodGrainCompile(sh,m){
+ const G=CONFIG.rods.grain,u=m.userData.grain;
+ sh.uniforms.uGrain={value:new THREE.Vector3(u.mean,G.contrast,G.wood)};
+ sh.fragmentShader='uniform vec3 uGrain;\n'+sh.fragmentShader.replace('#include <map_fragment>',
+  '#ifdef USE_MAP\n vec4 texelColor=mapTexelToLinear(texture2D(map,vUv));\n vec3 gw=texelColor.rgb/uGrain.x;\n'+
+  ' vec3 gc=mix(vec3(1.0),vec3(dot(gw,vec3(.2126,.7152,.0722))),uGrain.y);\n diffuseColor.rgb*=mix(gc,gw,uGrain.z);diffuseColor.a*=texelColor.a;\n#endif');
+}
+function rodGrainSet(m){
+ if(!CONFIG.rods.grain||!CONFIG.rods.grain.on)return;
+ m.userData.grain={mean:rodGrainMean(m.map)};
+ m.onBeforeCompile=function(sh){rodGrainCompile(sh,this);};
+ m.customProgramCacheKey=()=>'rodGrain';
+ m.needsUpdate=true;
+}
 
 /* helpers */
 function onm(o){return(o.name||'').toLowerCase();}
@@ -464,10 +494,13 @@ function ballKey(o){return onm(o).replace(/[._]?\d+$/,'');}
 function wx(obj){return obj.getWorldPosition(new THREE.Vector3()).x;}
 function hideMeshes(obj){if(obj)obj.traverse(c=>{if(c.isMesh)c.visible=false;});}
 
-// clone dest material and carry over src's PBR maps so baked detail survives team-colour swaps
+// clone dest material and carry over src's maps so baked detail survives team-colour swaps
+// a base-colour map is multiplied by the team colour and keeps src's surface, which the default finish restores to (clone deep-copies userData.fbOrig)
 function cloneWithMaps(dest,src){
- if(!src||!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap)return dest;
+ if(!src||!src.map&&!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap)return dest;
  const m=dest.clone();
+ if(src.map){m.map=src.map;m.metalness=src.metalness;m.roughness=src.roughness;
+  const o=m.userData.fbOrig;if(o){o.metalness=src.metalness;o.roughness=src.roughness;}}
  if(src.normalMap){m.normalMap=src.normalMap;m.normalScale=src.normalScale;}
  if(src.bumpMap){m.bumpMap=src.bumpMap;m.bumpScale=src.bumpScale;}
  if(src.roughnessMap)m.roughnessMap=src.roughnessMap;

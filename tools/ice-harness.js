@@ -55,7 +55,7 @@ const EXPORT=`;globalThis.X={CONFIG:CONFIG,IC:IC,ICE:ICE,S:S,cfg:cfg,THREE:THREE
  get FXON(){return FXON;},set FXON(v){FXON=v;},
  get SCENEADDS(){return SCENEADDS;},set SCENEADDS(v){SCENEADDS=v;},
  log:{au:AUCALLS,cf:CF,sp:SP,bl:BL,bu:BU,adds:ADDS,scene:SCENELOG},F:F,
- iceScan:iceScan,iceBands:iceBands,iceDefault:iceDefault,iceFoot:iceFoot,iceRings:iceRings,iceRing:iceRing,iceTris:iceTris,iceMake:iceMake,
+ iceScan:iceScan,iceManY:iceManY,iceBands:iceBands,iceDefault:iceDefault,iceFoot:iceFoot,iceRings:iceRings,iceRing:iceRing,iceTris:iceTris,iceMake:iceMake,
  iceFitTeam:iceFitTeam,iceChunkSpawn:iceChunkSpawn,iceBuild:iceBuild,iceUpdate:iceUpdate,iceClear:iceClear,
  ROD_H:ROD_H,PLAYER_H:PLAYER_H,FOOT_BOX:FOOT_BOX,FOOT_BOX_OFF:FOOT_BOX_OFF,ARM:ARM,FOOT_T:FOOT_T,activeModel:activeModel,tmScale:tmScale};`;
 
@@ -237,7 +237,7 @@ function suite(X){
  mk();
  ok(X.ICE.built&&X.rods.every(r=>r.ice&&r.ice.length===r.men.length),'every man has a block');
  ok(X.rods.reduce((n,r)=>n+r.ice.length,0)===22,'22 men, 22 blocks');
- ok(X.rods.every(r=>r.ice.every((it,mi)=>it.g.parent===r.pivot&&near(it.g.position.y,X.PLAYER_H)&&near(it.g.position.z,r.baseZ[mi]))),'each block hangs on its rod\'s pivot at its man\'s place');
+ ok(X.rods.every(r=>r.ice.every((it,mi)=>it.g.parent===r.pivot&&near(it.g.position.y,X.iceManY(r.team))&&near(it.g.position.z,r.baseZ[mi]))),'each block hangs on its rod\'s pivot at its man\'s place');
  ok(X.rods.every(r=>r.ice.every(it=>it.g.visible===false)),'all of them are hidden until frost lands');
  ok(X.rods.every(r=>r.ice.every(it=>it.g.rotation.y===(r.team===1?Math.PI:0))),'the team facing is the figurine\'s');
  ok(X.SCENEADDS===1&&X.log.scene[0]===X.ICE.sh.mesh,'the one thing added to the scene is the chunk mesh (no light, no block)');
@@ -448,7 +448,7 @@ const MUT=[
  ['pad=lerp(P.pad[0],P.pad[1],u)','pad=P.pad[1]','the block is as loose at the feet as at the head'],
  ['const quad=(a,b,c,d)=>{tri(a,d,c);tri(a,c,b);};','const quad=(a,b,c,d)=>{tri(a,c,d);tri(a,b,c);};','the walls are wound inward'],
  ['zh=Math.min(lerp(zh,Math.max(zh,wz),k)+pad,P.maxHalfZ);','zh=lerp(zh,Math.max(zh,wz),k)+pad;','no width cap'],
- ['gy=-(ROD_H+PLAYER_H)+P.gap','gy=-(ROD_H+PLAYER_H)-1','the base sinks into the pitch'],
+ ['gy=-(ROD_H+iceManY(t))+P.gap','gy=-(ROD_H+iceManY(t))-1','the base sinks into the pitch'],
  ['iceStop(t,T,live);','iceStop(t,T,false);','expiry does not shatter'],
  ['T.live=false;T.age=0;T.pulse=0;}','T.age=0;T.pulse=0;}','a clear leaves the team marked live'],
  ["const rp=S.phase==='replay'&&typeof replayIce==='function'",'const rp=false','a replay shows the live frost, not the footage\'s'],

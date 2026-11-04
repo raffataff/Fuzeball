@@ -167,7 +167,8 @@ matchStats:{
 /* ---- rod sets (models.js loadRodSet) ----------------------------------- */
 // a skin's `rods` picks one, else its table's `rods`, else the stock assets/rods/; a size missing from a set borrows the stock rod
  rodSets:{
-  classic:{ folder:'assets/tables/classic/rods/' }   // files:{1:'name.glb'} overrides one size's file name
+  classic:{ folder:'assets/tables/classic/rods/' },   // files:{1:'name.glb'} overrides one size's file name
+  wood:{ folder:'assets/rods/wood/' }
  },
 
 /* ---- table registry --------------------------------------------------- */
@@ -182,7 +183,7 @@ matchStats:{
    defSkin:'wood', // must match a skins entry
    rods:'classic',                          // CONFIG.rodSets id; a skin's own rods:'<id>' wins
    skins:{
-      wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb'},
+      wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb', rods:'wood'},
       sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
       proLeague:{name:'Pro League', glb:'fuzeball_table_classic_proLeague.glb'},
       premierLeague:{name:'Premier League', glb:'fuzeball_table_classic_premierLeague.glb'},
@@ -264,11 +265,12 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.30, grav:450,
-   prad:0.6,                       // leg capsule radius: the figurines' legs are about 1.2 thick front to back, and the foot box's rear face is this far behind the leg
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:450,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
+   prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back, and the foot box's rear face is this far behind the leg
+   head:{ len:2.0, r:1.1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
-   footBox:{x:1.6,y:1.0,z:1.0},     // foot box half-extents: x along leg, y perpendicular, z along rod
-   footBoxOff:{x:-1.15,y:0.4},        // foot box centre offset from foot-base, rod-local (x raised with its height: the bottom face stays at -0.65, the top is at 2.95 up the leg)
+   footBox:{x:1.75,y:1.1,z:1.1},   // foot box half-extents: x along leg, y perpendicular, z along rod
+   footBoxOff:{x:-1.26,y:0.44},    // foot box centre offset from foot-base, rod-local: the box runs 3.89..7.39 down the leg, its sole 0.11 over the pitch (the drawn soles sit -0.03..0.13)
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.005,                // random velocity nudge after a foot hit (stops perfect oscillations)
    subMin:3, subMax:16, subTravel:0.2,  // adaptive substep bounds and target travel per step (PHYS_Q overrides by cfg.physQuality)
@@ -297,7 +299,7 @@ physics:{
 kick:{
    // swing-angle curve keyframes: time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.04,  strikeA:1.1,     // strike ramp end / peak forward angle
+   strike:0.04,  strikeA:0.9,     // strike ramp end / peak forward angle
    hold:0.15,                     // hold peak until this time
    drop:0.25,                     // fully returned by this time
    raiseA:-1.3, raiseLerp:18, dropLerp:15, // lift-men angle + settle rates
@@ -308,15 +310,15 @@ kick:{
    boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0, restPower:0.8,      // passive touch / struck shot
-   powFrom:0.008, powTo:0.08,       // swing-time window in which restPower is used instead of rest
-   grip:0.6,                     // fraction of the foot's velocity lerped into the ball on contact
-   slidePush:0.45,
-   sideRest:0.7,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
+   powFrom:0.001, powTo:0.03,       // swing-time window in which restPower is used instead of rest
+   grip:0.5,                     // fraction of the foot's velocity lerped into the ball on contact
+   slidePush:0.7,
+   sideRest:0.8,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
    rearDot:0.3,                   // a contact is the back of a man when its normal points at least this far backward (dir-relative x)
    rearCarry:0,                   // share of the rod's slide the back of an unposed man hands a ball: 0 = it is left behind, 1 = dragged along as before
    capRest:0.6,                   // bounce off the leg (the shin above the foot box); the foot keeps `rest`
-   capGrip:0.1,                   // fraction of the leg's velocity lerped into the ball on a leg touch (the foot keeps `grip`)
+   capGrip:0.2,                   // fraction of the leg's velocity lerped into the ball on a leg touch (the foot keeps `grip`)
    capDeadPosed:false,            // true = a rod posed to receive or pin (pinPose / pinOn) keeps a dead, gripping leg, as before; false = only the foot box is dead
 // SPEED CEILING: what a contact may leave the ball at, as a fraction of its type's maxV (see capSpeed)
 // base + strength + what the strike earned; raise `base` if play feels slow; on:false restores the hard clip
@@ -717,10 +719,10 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.05,  strikeA:1.5,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:1.3,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
-      powFrom:0.02, powTo:0.08,     // power window (opens with the strike so it covers the contact)
+      powFrom:0.01, powTo:0.04,     // power window (opens with the strike so it covers the contact)
       restPower:0.95,                // restitution inside the power window
       rest:0                     // passive touch outside it
    },
@@ -1454,10 +1456,11 @@ ai:{
   default:'cyborg',
   // a figurine GLB is one sub-mesh per material (5), each its own shadow draw; `casterFrac` (CONFIG.render.shadow.quality) decides how many cast
   // figurine registry: add an entry and a .glb and it shows in Customize; teamParts = team-coloured materials, hairParts = hair swatch, mug = portrait, renderTop = head y in the tape render (see portrait below)
+  // rodY = the model height (GLB units up from its origin, as Blender shows it) the rod passes through; scale then grows about the rod. Tune both with the Figurine Sizer (F4 in the menus, js/figedit.js)
   models:[
    // ROBOTS
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
-      src:'assets/fuzeball_cyborg.glb',scale:0.8,
+      src:'assets/fuzeball_cyborg.glb',scale:0.9, rodY:8.63,
       mug:'assets/renders/render_cyborg_mugshot.png',
       renderTop:64,
       teamParts:['kit_cyborg', 'kit_cyborg_visor'],
@@ -1465,21 +1468,21 @@ ai:{
       explosionSrc:'assets/animations/cyborg_explosion.glb'
    },
    {id:'deltaborg',name:'Deltaborg',blurb:'Ruthless and fast',
-      src:'assets/fuzeball_deltaborg.glb',scale:0.8,
+      src:'assets/fuzeball_deltaborg.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_deltaborg_mugshot.png',
       renderTop:41,
       teamParts:['kit_deltaborg'],hairParts:[],
       explosionSrc:'assets/animations/deltaborg_explosion.glb'
    },
    {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
-      src:'assets/fuzeball_irnman.glb',scale:0.8,
+      src:'assets/fuzeball_irnman.glb',scale:0.87, rodY:8.63,
       mug:'assets/renders/render_irnman_mugshot.png',
       renderTop:51,
       teamParts:['kit_irnman','kit_irnman_centre'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
-      src:'assets/fuzeball_mechaman.glb',scale:0.8,
+      src:'assets/fuzeball_mechaman.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_mechaman_mugshot.png',   
       renderTop:90,
       teamParts:['kit_mechaman_new'],hairParts:[],
@@ -1488,7 +1491,7 @@ ai:{
    
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
-      src:'assets/fuzeball_rocko.glb',scale:0.8,
+      src:'assets/fuzeball_rocko.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_rocko_mugshot.png',   
       renderTop:33,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
@@ -1497,21 +1500,21 @@ ai:{
 
    // MEN
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
-      src:'assets/fuzeball_manRichie.glb',scale:0.8,
+      src:'assets/fuzeball_manRichie.glb',scale:0.845, rodY:8.63,
       mug:'assets/renders/render_richie_mugshot.png',   
       renderTop:38,
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
    {id:'manDeano',name:'Deano',blurb:'Calm and clinical',
-      src:'assets/fuzeball_manDeano.glb',scale:0.8,
+      src:'assets/fuzeball_manDeano.glb',scale:0.885, rodY:8.63,
       mug:'assets/renders/render_deano_mugshot.png',
       renderTop:89,
       teamParts:['kit_deano'],hairParts:[],
       explosionSrc:'assets/animations/deano_explosion.glb'
    },
    {id:'manLeo',name:'Leo',blurb:'Calm and clinical',
-      src:'assets/fuzeball_manLeo.glb',scale:0.8,
+      src:'assets/fuzeball_manLeo.glb',scale:0.885, rodY:8.63,
       mug:'assets/renders/render_leo_mugshot.png',
       renderTop:109,
       teamParts:['kit_leo'],hairParts:['kit_leo_hair'],
@@ -1520,42 +1523,42 @@ ai:{
 
    // WOMEN
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
-      src:'assets/fuzeball_womanMaria.glb',scale:0.8,
+      src:'assets/fuzeball_womanMaria.glb',scale:0.89, rodY:8.63,
       mug:'assets/renders/render_maria_mugshot.png',   
       renderTop:70,
       teamParts:['kit_maria'],hairParts:['kit_maria_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
    },
    {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
-      src:'assets/fuzeball_womanSasha.glb',scale:0.8,
+      src:'assets/fuzeball_womanSasha.glb',scale:0.86, rodY:8.63,
       mug:'assets/renders/render_sasha_mugshot.png',
       renderTop:136,
       teamParts:['kit_sasha'],hairParts:[],
       explosionSrc:'assets/animations/sasha_explosion.glb'
    },
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
-      src:'assets/fuzeball_womanKimi.glb',scale:0.8,
+      src:'assets/fuzeball_womanKimi.glb',scale:0.875, rodY:8.63,
       mug:'assets/renders/render_kimi_mugshot.png',   
       renderTop:85,
       teamParts:['kit_kimi'],hairParts:[ 'kit_kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
    {id:'womanSandy',name:'Sandy',blurb:'Cunning and quick',
-      src:'assets/fuzeball_womanSandy.glb',scale:0.8,
+      src:'assets/fuzeball_womanSandy.glb',scale:0.885, rodY:8.63,
       mug:'assets/renders/render_sandy_mugshot.png',
       renderTop:90,
       teamParts:['kit_sandy'],hairParts:['kit_sandy_hair'],
       explosionSrc:'assets/animations/sandy_explosion.glb'
    },
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
-      src:'assets/fuzeball_womanTalia.glb',scale:0.8,
+      src:'assets/fuzeball_womanTalia.glb',scale:0.885, rodY:8.63,
       mug:'assets/renders/render_talia_mugshot.png',   
       renderTop:89,
       teamParts:['kit_talia', 'kit_talia_centre'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
       },
    {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
-      src:'assets/fuzeball_womanTanya.glb',scale:0.8,
+      src:'assets/fuzeball_womanTanya.glb',scale:0.875, rodY:8.63,
       mug:'assets/renders/render_tanya_mugshot.png',   
       renderTop:52,
       teamParts:['kit_tanya', 'kit_tanya_centre'],hairParts:[ 'kit_tanya_hair' ],
@@ -1563,7 +1566,7 @@ ai:{
       },      
     
    {id:'womanFaye',name:'Faye',blurb:'Bold and fearless',
-      src:'assets/fuzeball_womanFaye.glb',scale:0.8,
+      src:'assets/fuzeball_womanFaye.glb',scale:0.86, rodY:8.63,
       mug:'assets/renders/render_faye_mugshot.png',
       renderTop:125,
       teamParts:['kit_faye'],hairParts:['kit_faye_hair'],
@@ -1572,49 +1575,49 @@ ai:{
 
    // ALIENS
    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
-      src:'assets/fuzeball_womanZaneesh.glb',scale:0.8,
+      src:'assets/fuzeball_womanZaneesh.glb',scale:0.885, rodY:8.63,
       mug:'assets/renders/render_zaneesh_mugshot.png',   
       renderTop:131,
       teamParts:['kit_zaneesh'],hairParts:[],
       explosionSrc:'assets/animations/zaneesh_explosion.glb'
    }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
-      src:'assets/fuzeball_alienTamirok.glb',scale:0.8,
+      src:'assets/fuzeball_alienTamirok.glb',scale:0.87, rodY:8.63,
       mug:'assets/renders/render_tamirok_mugshot.png',   
       renderTop:83,
       teamParts:['kit_tamirok', 'kit_tamirok_centre'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
    {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
-      src:'assets/fuzeball_alienGrimlot.glb',scale:0.8,
+      src:'assets/fuzeball_alienGrimlot.glb',scale:0.865, rodY:8.63,
       mug:'assets/renders/render_grimlot_mugshot.png',   
       renderTop:82,
       teamParts:['kit_Grimlot'],hairParts:[],
       explosionSrc:'assets/animations/grimlot_explosion.glb'
       },
    {id:'alienKatum',name:'Katum',blurb:'Fierce and aggressive',
-      src:'assets/fuzeball_alienKatum.glb',scale:0.8,
+      src:'assets/fuzeball_alienKatum.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_katum_mugshot.png',   
       renderTop:10,
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
       },
    {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
-      src:'assets/fuzeball_alienKodus.glb',scale:0.8,
+      src:'assets/fuzeball_alienKodus.glb',scale:0.875, rodY:8.63,
       mug:'assets/renders/render_kodus_mugshot.png',   
       renderTop:84,
       teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
    {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
-      src:'assets/fuzeball_alienZargon.glb',scale:0.8,
+      src:'assets/fuzeball_alienZargon.glb',scale:0.875, rodY:8.63,
       mug:'assets/renders/render_zargon_mugshot.png',   
       renderTop:51,
       teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
       explosionSrc:'assets/animations/zargon_explosion.glb'
       },
    {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
-      src: 'assets/fuzeball_animalAzlar.glb', scale: 0.8,
+      src: 'assets/fuzeball_animalAzlar.glb', scale:0.875, rodY:8.63,
       mug: 'assets/renders/render_azlar_mugshot.png',
       renderTop:7,
       teamParts: ['kit_Azlar', 'kit_azlar_claws'], hairParts: ['kit_azlar_hair'],
@@ -1662,6 +1665,7 @@ ai:{
   handleLen:5,    // handle grip length (sits just outside the wall)
   collarLen:2.4,  // far-end collar/stopper width
   capOut:3,       // how far the bar tip pokes past the collar
+  grain:{ on:true, contrast:0.7, wood:0.2, mean:0.08 },   // a textured team part = team colour × the map's brightness (on:false = colour × map, which a white kit can't show); contrast 0 = flat colour; wood = share of the map's own hue kept; mean = fallback average brightness for a map that can't be read
    // rod layout, 1-2-5-3 per side; x along the long axis, team 0 = red (attacks +x); slideCap overrides the max slide
    defs:[
     {x:-52.5,team:0,men:1,role:'GK',slideCap:11},
@@ -2354,6 +2358,7 @@ deadball:{
    fractureFx:true,     // false = skip the explosion GLBs and vanish instantly
    roomEditor:false,
         // true = F2 opens the room editor (js/roomedit.js)
+   figEditor:true,      // true = F4 in the menus opens the Figurine Sizer (js/figedit.js)
   },
 
  /* ---- power-up types ------------------------------------------------- */
@@ -3559,6 +3564,9 @@ function tmMetal(t){return clamp(cfg[t===0?'redMetalness':'blueMetalness'],0,1);
 function tmRough(t){return clamp(cfg[t===0?'redRoughness':'blueRoughness'],0,1);}
 function tmGlow(t){return Math.max(0,cfg[t===0?'redGlow':'blueGlow']);}
 function tmScale(t){return cfg[t===0?'redScale':'blueScale']||1;}
+// a figurine's root y on its rod pivot: `rodY` puts that model height on the rod, so `scale` grows about the rod (the Customize scale still grows from the feet); no rodY = the base at playerH
+function figY(am){return am&&am.rodY!=null?-am.scale*am.rodY:PLAYER_H;}
+function manY(t){return figY(activeModel(t));}
 // 'Default' finish flag: the team keeps the material values exported with the model.
 function tmDefault(t){return !!cfg[t===0?'redFinishDefault':'blueFinishDefault'];}
 // snapshot a material's authored finish once so Default can restore it (applyTeamFinish calls it first)

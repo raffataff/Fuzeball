@@ -453,7 +453,7 @@ function menuShot(id){
  return R[id]||CAM.menuShots[id]||R.home||CAM.menuShots.home;
 }
 function cameraUpdate(rdt){
- if(S.photo)return;   // photo mode owns the camera outright (js/photo.js phApply) — no lerp, no shake
+ if(S.photo||S.figEd)return;   // photo mode and the Figurine Sizer own the camera outright (js/photo.js phApply) — no lerp, no shake
  if(S.freeRoam){
   camera.rotation.order='YXZ';
   camera.rotation.set(S.camPitch,S.camYaw,0);

@@ -722,8 +722,8 @@ function buildDebug(){
   box(0.08,F.wallH-F.goalH,F.goalHalf*2,s*F.L/2,(F.goalH+F.wallH)/2,0,wallM);   // lintel above mouth
   box(0.08,F.goalH,F.goalHalf*2,s*F.L/2,F.goalH/2,0,goalM);                     // open goal mouth
  });
- // player capsules: pivot(y=ROD_H) to foot(-ARM), radius PRAD, parented to each pivot; built once, shared by all 22
- const rch=BALL_R*FOOT_BOX_REACH;
+ // player capsules: pivot(y=ROD_H) to foot(-ARM), radius PRAD, and the head (physics.head) up from the pivot, parented to each pivot; built once, shared by all 22
+ const rch=BALL_R*FOOT_BOX_REACH,HD=CONFIG.physics.head;
  const footBM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.45,wireframe:true,depthWrite:false});
  const reachM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false});
  for(const r of rods)for(const bz of r.baseZ){
@@ -731,6 +731,10 @@ function buildDebug(){
   const cyl=new THREE.Mesh(dbgUnitCyl,manM);cyl.scale.set(PRAD,ARM,PRAD);cyl.position.y=-ARM/2;cap.add(cyl);
   const top=new THREE.Mesh(dbgUnitSph,manM);top.scale.setScalar(PRAD);cap.add(top);
   const foot=new THREE.Mesh(dbgUnitSph,manM);foot.scale.setScalar(PRAD);foot.position.y=-ARM;cap.add(foot);
+  if(HD){
+   const hc=new THREE.Mesh(dbgUnitCyl,manM);hc.scale.set(HD.r,HD.len,HD.r);hc.position.y=HD.len/2;cap.add(hc);
+   for(const y of [0,HD.len]){const hs=new THREE.Mesh(dbgUnitSph,manM);hs.scale.setScalar(HD.r);hs.position.y=y;cap.add(hs);}
+  }
   cap.visible=false;r.pivot.add(cap);dbgCaps.push(cap);
    // foot box: collision proxy (oriented box, half-extents from config)
     const footBox=new THREE.Mesh(dbgUnitBox,footBM);

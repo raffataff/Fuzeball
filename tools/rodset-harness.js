@@ -1,18 +1,28 @@
 // rod-set harness. node tools/rodset-harness.js
-// slices rodSetKey / loadRodSet / ensureTableRods (models.js), applyTable / curSkin / applySkin / selectSkin (arena.js) and reskinRods (world.js) and runs them on live CONFIG
-// question: does a skin's rods:'<id>' pick the set the rods wear (else the table's, else the stock one), load from CONFIG.rodSets, and does a skin or table change hold its onReady until that set is resident; each mutation must break an assertion
+// slices rodSetKey / loadRodSet / ensureTableRods / makeRodModel / cloneWithMaps (models.js), applyTable / curSkin / applySkin / selectSkin (arena.js) and reskinRods (world.js) and runs them on live CONFIG
+// question: does a skin's rods:'<id>' pick the set the rods wear (else the table's, else the stock one), load from CONFIG.rodSets, does a skin or table change hold its onReady until that set is resident, and does a team part keep its texture under the team colour; each mutation must break an assertion
+// also checks the shipped config: every rods id is registered, no duplicate rodSets key, every set's four GLBs on disk
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
 const rd=f=>fs.readFileSync(f,'utf8').split(String.fromCharCode(13)+NL).join(NL);
 const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('slice miss: '+from);
  const b=to?src.indexOf(to,a):-1;if(to&&b<0)throw new Error('slice miss: '+to);return src.slice(a,b<0?src.length:b);};
-const MOD=slice(rd('js/models.js'),'function rodSetKey(','// clone the rod set');
+const MS=rd('js/models.js');
+const MOD=slice(MS,'function rodSetKey(','// clone the rod set');
+const MOD2=slice(MS,'function makeRodModel(','/* helpers */')+slice(MS,'function onm(',NL)+NL+slice(MS,'function cloneWithMaps(','// --- fracture');
 const ARE=slice(rd('js/arena.js'),'function applyTable(','// ===== arena debug wireframe');
 const WLD=slice(rd('js/world.js'),'function reskinRods(','// one lumpy smoke puff');
 // a deferred GLTF loader: every load waits in Q until the test serves it (a url in HAVE loads, any other 404s)
+// Mat / Node: just enough of THREE's material and scene graph for makeRodModel (clone deep-copies userData, like r128)
 const stubs=[
  "var Q=[],LOG=[],HAVE=new Set(),DRESS=[],SKINQ=[],SKINSYNC=true;",
+ "function Mat(o){Object.assign(this,{name:'',map:null,normalMap:null,bumpMap:null,roughnessMap:null,metalnessMap:null,aoMap:null,metalness:0,roughness:0.5,userData:{}},o);}",
+ "Mat.prototype.clone=function(){const m=new Mat(Object.assign({},this));m.userData=JSON.parse(JSON.stringify(this.userData));m.src=this;return m;};",
+ "function Node(name,mat,kids){this.name=name;this.material=mat||null;this.isMesh=!!mat;this.children=kids||[];this.userData={};}",
+ "Node.prototype.traverse=function(f){f(this);this.children.forEach(c=>c.traverse(f));};",
+ "Node.prototype.clone=function(){return new Node(this.name,this.material,this.children.map(c=>c.clone()));};",
+ "var teamMat=[0,1].map(t=>new Mat({name:'tm'+t,metalness:0.1,roughness:0.3,userData:{fbOrig:{metalness:0.1,roughness:0.3}}})),teamGlow=[0,1].map(t=>new Mat({name:'tg'+t,metalness:0.2,roughness:0.2}));",
  "function newGLTF(){return{load:function(u,ok,p,err){LOG.push(u);Q.push({u:u,ok:ok,err:err});}};}",
  "function serve(){while(Q.length){const j=Q.shift();if(HAVE.has(j.u))j.ok({scene:{url:j.u}});else j.err(new Error('404'));}}",
  "const rodSets={},rodSetLoading={},ROD_SIZES=[1,2,3,5];",
@@ -25,22 +35,43 @@ const stubs=[
 ].join(NL);
 
 function boot(mut){
- let src=[MOD,ARE,WLD].join(NL);
+ let src=[MOD,MOD2,ARE,WLD].join(NL);
  if(mut){const before=src;src=src.split(mut.from).join(mut.to);
   if(src===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
- const ctx={console:{log:console.log,warn:()=>{}},Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{},length:0,key:()=>null}};
+ const WARN=[];
+ const ctx={console:{log:console.log,warn:s=>WARN.push(String(s))},Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{},length:0,key:()=>null}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,src,
-  ';globalThis.X={CONFIG:CONFIG,cfg:cfg,Q:Q,LOG:LOG,HAVE:HAVE,DRESS:DRESS,SKINQ:SKINQ,serve:serve,rodSets:rodSets,'+
-  'skinSync:function(v){SKINSYNC=v;},act:function(){return activeTable;},dressed:function(){return rodsDressedFor;},'+
+  ';globalThis.X={CONFIG:CONFIG,cfg:cfg,Q:Q,LOG:LOG,HAVE:HAVE,DRESS:DRESS,SKINQ:SKINQ,serve:serve,rodSets:rodSets,Mat:Mat,Node:Node,teamMat:teamMat,teamGlow:teamGlow,'+
+  'skinSync:function(v){SKINSYNC=v;},act:function(){return activeTable;},dressed:function(){return rodsDressedFor;},makeRodModel:makeRodModel,'+
   'rodSetKey:rodSetKey,loadRodSet:loadRodSet,ensureTableRods:ensureTableRods,applyTable:applyTable,selectSkin:selectSkin,reskinRods:reskinRods};'].join(NL),ctx);
+ ctx.X.WARN=WARN;
  return ctx.X;
 }
 
 const ROD=n=>'fuzeball_rod_'+n+'man.glb';
+// the shipped config, read as it is (no test sets): run once, not under mutation
+function shipped(){
+ const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
+ const X=boot(),C=X.CONFIG,sets=C.rodSets||{};
+ const block=slice(rd('js/config.js'),' rodSets:{',NL+' },'),keys=[...block.matchAll(/^  ([A-Za-z_$][\w$]*)\s*:/gm)].map(m=>m[1]);
+ const dup=keys.filter((k,i)=>keys.indexOf(k)!==i);
+ ok('CONFIG.rodSets has no duplicate key (the later one silently wins)',!dup.length,'duplicated: '+dup.join());
+ const named=[];
+ for(const tid in C.tables){const T=C.tables[tid];if(T.rods)named.push([tid,T.rods]);
+  for(const sk in T.skins||{})if(T.skins[sk].rods)named.push([tid+'/'+sk,T.skins[sk].rods]);}
+ const lost=named.filter(([w,id])=>!sets[id]).map(([w,id])=>w+' -> '+id);
+ ok('every rods id a table or skin names is registered in CONFIG.rodSets',!lost.length,lost.join(', '));
+ const gone=[];
+ for(const id in sets){const s=sets[id],fl=s.files||{};
+  for(const n of [1,2,3,5]){const p=(s.folder||'')+(fl[n]||ROD(n));if(!fs.existsSync(p))gone.push(id+': '+p);}}
+ ok('every registered set has its four rod GLBs on disk',!gone.length,gone.join(', '));
+ return R;
+}
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
  const C=X.CONFIG,T=C.tables.classic;
+ T.rods='classic';for(const k in T.skins)delete T.skins[k].rods;   // the test owns which skins name a set
  // a test set: own folder, the 1-man file renamed, the 3-man missing
  C.rodSets.alt={folder:'alt/',files:{1:'one.glb'}};
  ['alt/one.glb','alt/'+ROD(2),'alt/'+ROD(5)].forEach(u=>X.HAVE.add(u));
@@ -53,6 +84,8 @@ function suite(X){
  ok('the selected skin\'s rods pick the set',X.rodSetKey('classic')==='alt','got '+X.rodSetKey('classic'));
  ok('an explicit skin id beats the selected one',X.rodSetKey('classic','wood')==='classic','got '+X.rodSetKey('classic','wood'));
  ok('an id missing from CONFIG.rodSets falls back to the stock set',X.rodSetKey('classic','strike')==='_shared','got '+X.rodSetKey('classic','strike'));
+ {X.rodSetKey('classic','strike');const w=X.WARN.filter(s=>s.includes("'nope'"));
+  ok('...and says so in the console, once',w.length===1&&w[0].includes('classic/strike'),w.join(' | ')||'no warning');}
  ok('an unknown table wears the stock set',X.rodSetKey('nosuch')==='_shared');
  {const keep=C.tables.arena.rods;delete C.tables.arena.rods;
   ok('a table with no rods and a skin with none: the stock set',X.rodSetKey('arena')==='_shared','got '+X.rodSetKey('arena'));C.tables.arena.rods=keep;}
@@ -89,10 +122,33 @@ function suite(X){
   ok('applyTable holds onReady while the rod set loads',n===0&&X.Q.length>0,'ready '+n);
   X.serve();
   ok('...then fires once, the rods on the new set',n===1&&X.dressed()==='alt','ready '+n+', '+X.dressed());}
+ // tinting the team parts (makeRodModel / cloneWithMaps)
+ {const M=X.Mat,N=X.Node,grain={tex:'wood'};
+  const wood=new M({name:'team_wood',map:grain,metalness:0,roughness:1}),cap=new M({name:'metal_black'}),plain=new M({name:'team.001'}),glowWood=new M({name:'team_wood',map:grain}),glowPlain=new M({name:'team_glow'}),steel=new M({name:'rod_metal'});
+  C.rodSets.tint={folder:'tint/'};T.skins.sundayLeague.rods='tint';X.cfg.skins.classic='sundayLeague';
+  X.rodSets.tint={_done:true,1:new N('rod',null,[new N('rod1_handle009',wood),new N('rod1_handle009_1',cap),new N('rod1_collar002',glowWood),new N('rod1_bar001',steel)]),
+   2:new N('rod',null,[new N('rod1_handle018',plain),new N('rod1_knob002',glowPlain),new N('rod1_knob003',steel)])};
+  const by=(g,nm)=>{let f=null;g.traverse(c=>{if(c.name===nm)f=c;});return f.material;};
+  let g1,g2;try{g1=X.makeRodModel(1,0,'classic');g2=X.makeRodModel(2,1,'classic');}
+  catch(e){ok('makeRodModel clones the skin\'s set',false,e.message);return R;}
+  const h=by(g1,'rod1_handle009'),cl=by(g1,'rod1_collar002');
+  ok('a textured team handle is a team-colour clone that keeps its texture',h.src===X.teamMat[0]&&h.map===grain,'src '+(h.src&&h.src.name)+', map '+!!h.map);
+  ok('...with the part\'s own surface, not the team plastic',h.roughness===1&&h.metalness===0,'rough '+h.roughness+', metal '+h.metalness);
+  ok('...and the default finish restores to that surface',h.userData.fbOrig&&h.userData.fbOrig.roughness===1&&X.teamMat[0].userData.fbOrig.roughness===0.3,JSON.stringify(h.userData.fbOrig));
+  ok('a handle\'s metal part keeps its own material',by(g1,'rod1_handle009_1')===cap);
+  ok('a textured team part is grain-tinted (colour × map brightness), an untextured one is not',typeof h.onBeforeCompile==='function'&&h.userData.grain&&h.userData.grain.mean>0&&!(X.teamMat[1].userData.grain),JSON.stringify(h.userData.grain));
+  ok('a textured team_wood collar is a team-colour clone like the handle, keeping its texture',cl.src===X.teamMat[0]&&cl.map===grain&&cl!==h,'src '+(cl.src&&cl.src.name));
+  ok('the bar keeps its own material',by(g1,'rod1_bar001')===steel);
+  ok('an untextured team handle and knob share the team materials (no clone)',by(g2,'rod1_handle018')===X.teamMat[1]&&by(g2,'rod1_knob002')===X.teamGlow[1]);
+  ok('a knob in a non-team material keeps its own',by(g2,'rod1_knob003')===steel);
+  const tc=g1.userData.teamClones||[];
+  ok('the clones are listed for applyColors with their glow flag',tc.length===2&&tc.some(c=>c.mat===h&&!c.isGlow)&&tc.some(c=>c.mat===cl&&!c.isGlow)&&!(g2.userData.teamClones),JSON.stringify(tc.map(c=>c.isGlow)));}
  return R;
 }
 
 let bad=0,total=0;
+const fixed=shipped();
+for(const t of fixed){total++;if(!t.ok){bad++;console.log('  FAIL  '+t.name+(t.info?'   ['+t.info+']':''));}}
 const base=suite(boot());
 for(const t of base){total++;if(!t.ok){bad++;console.log('  FAIL  '+t.name+(t.info?'   ['+t.info+']':''));}}
 console.log('  '+(total-bad)+' passed, '+bad+' failed');
@@ -100,7 +156,16 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 /* Mutations: each edits the REAL source and must fail at least one assertion above. */
 const MUT=[
  {n:'the skin\'s rods are ignored',from:'id=(sd&&sd.rods)||T.rods',to:'id=T.rods'},
- {n:'an unknown set id is not checked',from:"return (typeof id==='string'&&CONFIG.rodSets&&CONFIG.rodSets[id])?id:'_shared';",to:"return id||'_shared';"},
+ {n:'an unknown set id is not checked',from:"if(typeof id==='string'&&CONFIG.rodSets&&CONFIG.rodSets[id])return id;",to:"if(id)return id;"},
+ {n:'an unknown set id warns every time',from:'if(id&&!w[id]){w[id]=1;',to:'if(id){'},
+ {n:'a handle\'s metal part is tinted too',from:"if(!/^team/i.test(mn))return;",to:'if(!src)return;'},
+ {n:'a team_glow part takes the team colour',from:'const glow=/^team[_.]?glow/i.test(mn)',to:'const glow=false'},
+ {n:'every collar takes the team glow',from:'const glow=/^team[_.]?glow/i.test(mn)',to:"const glow=n.includes('collar')||/^team[_.]?glow/i.test(mn)"},
+ {n:'a textured part is plain colour × map',from:'if(c.material.map)rodGrainSet(c.material);',to:''},
+ {n:'a map-only part is not cloned',from:'if(!src||!src.map&&!src.normalMap',to:'if(!src||!src.normalMap'},
+ {n:'the base-colour map is dropped',from:'if(src.map){m.map=src.map;',to:'if(src.map){'},
+ {n:'a textured part takes the team plastic surface',from:'m.metalness=src.metalness;m.roughness=src.roughness;'+NL,to:NL},
+ {n:'the default finish restores the team plastic',from:'if(o){o.metalness=src.metalness;o.roughness=src.roughness;}',to:''},
  {n:'an explicit skin id is ignored',from:'const sk=skinId!==undefined?skinId:',to:'const sk='},
  {n:'loadRodSet reads the table registry',from:'CONFIG.rodSets[key]:null',to:'CONFIG.tables[key]:null'},
  {n:'the per-size file override is ignored',from:"const file=files[n]||(",to:"const file=("},

@@ -109,6 +109,7 @@ function loop(t){
  // photo mode (F1): camera rig, key/turntable motion and scene hides; last on purpose, it writes after fxUpdate and sweetGuideUpdate (see phSceneApply)
  if(S.photo)phTick(rdt);
  if(S.redit)reditTick();                 // room editor self-heal (venue changed under the panel)
+ if(S.figEd)figTick(rdt);               // Figurine Sizer camera + stage (js/figedit.js)
  perfAdd('p','fx');
  perfMark('p');
  updateBallReflect();                   // local cube-map pass for ball reflections (world.js; throttled, self-gating)

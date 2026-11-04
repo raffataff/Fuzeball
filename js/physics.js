@@ -495,21 +495,25 @@ function collideRod(b,r){
     }
    }
   }
- // ---- rod capsule (fallback) ----
- const R=BALL_R+PRAD;
+ // ---- leg capsule (pivot to foot) and head capsule (pivot up, physics.head): where the foot box missed ----
+ const HD=PHY.head,RL=BALL_R+PRAD,RH=HD?BALL_R+HD.r:0,RM=Math.max(RL,RH);
  for(let i=0;i<r.baseZ.length;i++){
   if(footHit.has(i))continue;
   if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
   const pz=r.baseZ[i]+r.offset;
-  if(Math.abs(p.z-pz)>R+1)continue;
+  if(Math.abs(p.z-pz)>RM+1)continue;
   const sa=Math.sin(r.angle),ca=Math.cos(r.angle);
   const ax=r.x,ay=ROD_H;
   const dx=sa*ARM,dy=-ca*ARM;
-  const wx=p.x-ax,wy=p.y-ay;
-  let t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
-  const cx=ax+dx*t,cy=ay+dy*t,cz=pz;
+  const wx=p.x-ax,wy=p.y-ay,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
+  let cx=ax+dx*t,cy=ay+dy*t,R=RL;
+  const cz=pz;
   let nx=p.x-cx,ny=p.y-cy,nz=p.z-cz;
   let d=Math.sqrt(nx*nx+ny*ny+nz*nz);
+  if(HD){   // the deeper of the two contacts wins
+   const hx=-dx*HD.len/ARM,hy=-dy*HD.len/ARM,th=clamp((wx*hx+wy*hy)/(HD.len*HD.len),0,1),qx=ax+hx*th,qy=ay+hy*th,ex=p.x-qx,ey=p.y-qy,dh=Math.sqrt(ex*ex+ey*ey+nz*nz);
+   if(RH-dh>R-d){cx=qx;cy=qy;R=RH;nx=ex;ny=ey;d=dh;}
+  }
   if(d>R)continue;
   if(d<1e-4){nx=r.kickDir;ny=0;nz=0;d=1;}else{nx/=d;ny/=d;nz/=d;}
   const cvx=-(cy-ay)*r.angVel,cvy=(cx-ax)*r.angVel,cvz=r.vz;

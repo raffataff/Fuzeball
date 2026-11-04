@@ -43,7 +43,7 @@ function spawnFracture(r,mi){
   const manObj=r.men[mi];
   if(!tpl){manObj.visible=false;return;}      // no explosion GLB for this figurine yet: vanish
   // position is the man's neutral (unswung) world pose: the GLB is baked from it and falls straight down; no sin/cos(r.angle) term or a raised rod threw debris up and back
-  const wp=new THREE.Vector3(r.x,ROD_H+PLAYER_H,r.offset+r.baseZ[mi]);
+  const wp=new THREE.Vector3(r.x,ROD_H+manY(r.team),r.offset+r.baseZ[mi]);
   const s=activeModel(r.team).scale*tmScale(r.team);
   const ws=new THREE.Vector3(s,s,s);
   // rotation is only the static team-facing yaw (buildRods/rebuildRodMen), not the swing, or the debris falls sideways

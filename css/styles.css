@@ -18,10 +18,10 @@
    --glass:rgba(8,20,32,.94); /* panel fill. Solid, not frosted: the name stays for the rules that use it */
    --edge:rgba(107,170,188,.2);
    --cut:13px;                /* a plate's default nominal cut (--pc), for a ~36px plate */
-   --font-display:'FuzeClip','SoccerLeague College','SoccerLeague',sans-serif;   /* titles only; FuzeClip is already cut at the plates' 20° lean, italic adds nothing */
-   --font-ui:'FuzeClip','SoccerLeague',sans-serif;
+   --font-display:'Raffataff','SoccerLeague College','SoccerLeague',sans-serif;   /* TEST: Raffataff (was 'FuzeClip', 'SoccerLeague College', …) */
+   --font-ui:'Raffataff','SoccerLeague',sans-serif;   /* TEST: was 'FuzeClip' */
    --font-body:'Exo 2',system-ui,sans-serif;
-   --font-italic:'FuzeClip','SoccerLeague',sans-serif;
+   --font-italic:'Raffataff','SoccerLeague',sans-serif;   /* TEST: was 'FuzeClip' */
  /* ---- PANEL TYPE SCALE + TEXT ROLES ----
    micro: column/table heads (uppercase, wide tracking) · label: stat names, role heads, chips · head: a panel's h3 · num: numeric readouts (pair with --font-ui)
    body: the default · lead: the one headline line in a panel, and settings rows

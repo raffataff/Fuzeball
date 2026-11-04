@@ -37,14 +37,16 @@ function iceBands(pts,nb){
  return {top,b};
 }
 function iceDefault(nb){const b=[];for(let i=0;i<nb;i++)b.push({x0:-1.4,x1:2.0,z0:-1.8,z1:1.8});return {top:10,b};}
+// the man's root y on the pivot (no team = the stock base)
+function iceManY(t){return t==null||typeof manY!=='function'?PLAYER_H:manY(t);}
 // the physical foot box at rest, in the same frame: the block never cuts inside it
-function iceFoot(){
- const cy=-ARM*FOOT_T-FOOT_BOX_OFF.x-PLAYER_H;
+function iceFoot(t){
+ const cy=-ARM*FOOT_T-FOOT_BOX_OFF.x-iceManY(t);
  return {x0:FOOT_BOX_OFF.y-FOOT_BOX.y,x1:FOOT_BOX_OFF.y+FOOT_BOX.y,z:FOOT_BOX.z,y0:cy-FOOT_BOX.x,y1:cy+FOOT_BOX.x};
 }
 // one outline per height: snug round the legs and feet where the ball can reach, filling out toward the widest part of the body above
-function iceRings(F,P){
- const nb=F.b.length,dy=F.top/nb,fb=P.foot?iceFoot():null,e=[],gy=-(ROD_H+PLAYER_H)+P.gap;
+function iceRings(F,P,t){
+ const nb=F.b.length,dy=F.top/nb,fb=P.foot?iceFoot(t):null,e=[],gy=-(ROD_H+iceManY(t))+P.gap;
  for(let i=0;i<nb;i++){
   const q=F.b[i],y0=i*dy,y1=y0+dy;
   let x0=q.x0,x1=q.x1,zh=Math.max(Math.abs(q.z0),Math.abs(q.z1));
@@ -245,13 +247,13 @@ function iceChunksClear(){
 // --- build ---
 // refit a team's blocks when its figurine (or its scale, or the model arriving) changes; returns true when it did
 function iceFitTeam(t){
- const am=activeModel(t),s=am.scale*tmScale(t),key=am.id+'|'+s.toFixed(3)+'|'+(playerModel[t]?1:0);
+ const am=activeModel(t),s=am.scale*tmScale(t),my=iceManY(t),key=am.id+'|'+s.toFixed(3)+'|'+my.toFixed(3)+'|'+(playerModel[t]?1:0);
  if(ICE.key[t]===key)return false;
  ICE.key[t]=key;
- const P=IC.fit,pts=playerModel[t]?iceScan(playerModel[t],s):[],F=pts.length>=9?iceBands(pts,P.bands):iceDefault(P.bands),old=ICE.geo[t],rings=iceRings(F,P);
+ const P=IC.fit,pts=playerModel[t]?iceScan(playerModel[t],s):[],F=pts.length>=9?iceBands(pts,P.bands):iceDefault(P.bands),old=ICE.geo[t],rings=iceRings(F,P,t);
  ICE.fit[t]=F;ICE.geo[t]=[];
  for(let v=0;v<P.variants;v++)ICE.geo[t].push(iceMake(iceTris(rings,t*31+v*7+1,P)));
- for(const r of rods)if(r.team===t&&r.ice)for(const it of r.ice){const g=ICE.geo[t][it.v];it.front.geometry=g;it.back.geometry=g;}
+ for(const r of rods)if(r.team===t&&r.ice)for(const it of r.ice){const g=ICE.geo[t][it.v];it.front.geometry=g;it.back.geometry=g;it.g.position.y=my;}
  for(const g of old)g.dispose();
  return true;
 }
@@ -266,7 +268,7 @@ function iceBuild(){
   r.ice=[];
   for(let mi=0;mi<r.men.length;mi++){
    const v=Math.floor(iceHash(r.idx*13+mi*7+r.team*3+0.5)*IC.fit.variants)%IC.fit.variants,m=ICE.mat[r.team];
-   const g=new THREE.Group();g.position.set(0,PLAYER_H,r.baseZ[mi]);if(r.team===1)g.rotation.y=Math.PI;g.visible=false;
+   const g=new THREE.Group();g.position.set(0,iceManY(r.team),r.baseZ[mi]);if(r.team===1)g.rotation.y=Math.PI;g.visible=false;
    const back=new THREE.Mesh(ICE.geo[r.team][v],m.b),front=new THREE.Mesh(ICE.geo[r.team][v],m.f);
    back.renderOrder=2;front.renderOrder=3;
    back.castShadow=back.receiveShadow=front.castShadow=front.receiveShadow=false;
