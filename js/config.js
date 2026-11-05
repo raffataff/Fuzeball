@@ -265,7 +265,7 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:450,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:750,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
    prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back, and the foot box's rear face is this far behind the leg
    head:{ len:2.0, r:1.1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
@@ -310,10 +310,10 @@ kick:{
    boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0, restPower:0.8,      // passive touch / struck shot
-   powFrom:0.001, powTo:0.03,       // swing-time window in which restPower is used instead of rest
-   grip:0.5,                     // fraction of the foot's velocity lerped into the ball on contact
-   slidePush:0.7,
-   sideRest:0.8,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
+   powFrom:0.003, powTo:0.04,       // swing-time window in which restPower is used instead of rest
+   grip:0.6,                     // fraction of the foot's velocity lerped into the ball on contact
+   slidePush:0.9,
+   sideRest:0.9,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
    rearDot:0.3,                   // a contact is the back of a man when its normal points at least this far backward (dir-relative x)
    rearCarry:0,                   // share of the rod's slide the back of an unposed man hands a ball: 0 = it is left behind, 1 = dragged along as before
@@ -424,7 +424,7 @@ kick:{
    zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
    breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
    releaseA:0.35,    // rod turned this far off the pin angle (a stick flick) lets the ball go
-   swing:{strike:0.14,powTo:0.14},   // the pin shot is the trapShot curve with these: slower, or from the deep pose the boot overtakes the ball past upright and scoops it over the bar
+   swing:{strike:0.07,powTo:0.08},   // the pin shot is the trapShot curve with these: slower, or from the deep pose the boot overtakes the ball past upright and scoops it over the bar
    pass:{windup:0},  // a pass from the pin is the passShot curve with these: no wind-up, the leg is already back (passShot's pull-back to -0.35 would swing the boot forward past the ball)
    carryOut:0.9,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
@@ -461,7 +461,7 @@ kick:{
     // back pin and a ball rolling along the row behind the rod at a man (a roll from the next man): the foot is posed onto the top of it at its depth, so it rolls under the sole and is caught (the fixed `angle` fits only a ball 3.3-5 deep)
     roll:{
      on:true,
-     maxVX:4,       // |x speed| under this: rolling along the row
+     maxVX:20,       // |x speed| under this: rolling along the row
      minV:3,        // ...at least this fast (u/s); slower is the slow-ball assist's
      tMax:1.2,      // ...reaching a man's foot within this (s)
      lerp:40,       // the leg comes down onto it at this rate (pin.lower 22 takes ~0.12 s from a raise to the touch: a late press missed)
@@ -719,10 +719,10 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.05,  strikeA:1.3,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:1.0,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
-      powFrom:0.01, powTo:0.04,     // power window (opens with the strike so it covers the contact)
+      powFrom:0.03, powTo:0.05,     // power window (opens with the strike so it covers the contact)
       restPower:0.95,                // restitution inside the power window
       rest:0                     // passive touch outside it
    },
@@ -2146,7 +2146,7 @@ deadball:{
     // the first plays unless the player picked another: the music key (M) or a pad's touchpad steps through them, kept in cfg.musicMatch
     match:[
      {f:'music/match_drive.ogg',   name:'Drive'},
-     {f:'music/match_strings.ogg', name:'Strings'},
+     //{f:'music/match_strings.ogg', name:'Strings'},
      {f:'music/match_pulse.ogg',   name:'Pulse'},
      {f:'music/match_void.ogg',    name:'Void'}
     ],
@@ -2158,7 +2158,7 @@ deadball:{
    },
 
    // stereo placement from the ball's on-screen position; width 1 = hard left/right, keep it well under 1
-   pan:{on:true, width:0.5},
+   pan:{on:true, width:0.7},
 
    // ---- room reverb ----
    // sends into the room, scaled by each room's fx/crowd; 1 = the Sound Lab's default send, so a recorded ir_<roomId> (exported at the lab's level) sounds as wet as the room in the lab
@@ -2191,14 +2191,14 @@ deadball:{
    // what each sound is lives in the Fuzeball Sound List artifact
    sounds:{
     // the table
-    ball_kick:   {bus:'fx', vol:0.9, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7},
-    ball_wall:   {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1, by:'table'},
-    ball_floor:  {bus:'fx', vol:0.7, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1, by:'pitch'},
-    ball_hit:    {bus:'fx', vol:0.8, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.1,  pCurve:1},    // ball on ball
-    ball_post:   {bus:'fx', vol:0.9, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8, by:'table'},
-    ball_goal:   {bus:'fx', vol:0.9, pitch:0.04, volJ:0.08, send:1, syn:false, by:'table'},   // into the goal and down the return
-    ball_drop:   {bus:'fx', vol:0.8, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
-    rod_bump:    {bus:'fx', vol:0.45, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, syn:false, by:'table'},   // a rod hitting the end of its travel
+    ball_kick:   {bus:'fx', vol:0.6, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7},
+    ball_wall:   {bus:'fx', vol:0.4, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1, by:'table'},
+    ball_floor:  {bus:'fx', vol:0.5, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1, by:'pitch'},
+    ball_hit:    {bus:'fx', vol:0.5, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.1,  pCurve:1},    // ball on ball
+    ball_post:   {bus:'fx', vol:0.6, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8, by:'table'},
+    ball_goal:   {bus:'fx', vol:0.6, pitch:0.04, volJ:0.08, send:1, syn:false, by:'table'},   // into the goal and down the return
+    ball_drop:   {bus:'fx', vol:0.5, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
+    rod_bump:    {bus:'fx', vol:0.35, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, syn:false, by:'table'},   // a rod hitting the end of its travel
     // loops (audioMix.loops): vol = the level at full speed
     ball_roll_crawl:{bus:'fx', vol:0.5, send:1, syn:false, by:'pitch'},   // the ball barely rolling on the pitch
     ball_roll_slow:{bus:'fx', vol:0.5,  send:1, syn:false, by:'pitch'},   // ...rolling slowly: a low rumble
@@ -2289,7 +2289,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:5,maxV:410,w:50,trail:'#000000',
+      mass:5,maxV:210,w:50,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},

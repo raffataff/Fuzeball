@@ -27,7 +27,7 @@ function validId(id,C){
  const S=C.audioMix.sounds;if(S[id])return true;
  const m=/^ir_(.+)$/.exec(id);if(m)return!!C.rooms[m[1]];
  for(const base in S)if(id.startsWith(base+'_')){const v=id.slice(base.length+1),by=S[base].by;
-  if(v==='hard'||C.ballTypes[v]||(by==='pitch'&&C.pitches[v])||(by==='table'&&C.tables[v]))return true;}
+  if(v==='hard'||C.ballTypes[v]||C.ballTypes[v.replace(/^hard_/,'')]||(by==='pitch'&&C.pitches[v])||(by==='table'&&C.tables[v]))return true;}
  return false;
 }
 function walk(d,out){

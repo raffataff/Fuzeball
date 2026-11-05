@@ -25,12 +25,16 @@ const T = await import(pathToFileURL(path.join(LAB, 'src', 'audio', 'takes.js'))
 const C = AM.loadConfig(), specs = SP.specs(C), map = IO.loadMap(), lab = { base: SP.BASE, venues: map.venues };
 const KIND_OF = { tables: C.tables, pitches: C.pitches, rooms: C.rooms, balls: C.ballTypes };
 
-// a file id back to its sound and venue: <id> = the base venue, <id>_<venueId>, ir_<roomId>
+// a file id back to its sound, venue and venue kind: <id> = the base venue, <id>_<venueId> (a table, pitch or ball type), ir_<roomId>
 function parse(file) {
- if (file.startsWith('ir_')) return { sp: specs.find(s => s.kind === 'ir'), venue: file.slice(3) };
+ if (file.startsWith('ir_')) return { sp: specs.find(s => s.kind === 'ir'), venue: file.slice(3), kind: 'rooms' };
  const sp = specs.find(s => s.id === file);
- if (sp) return { sp, venue: null };
- for (const s of specs) if (s.by && file.startsWith(s.id + '_') && KIND_OF[s.by][file.slice(s.id.length + 1)]) return { sp: s, venue: file.slice(s.id.length + 1) };
+ if (sp) return { sp, venue: null, kind: null };
+ for (const s of specs) {
+  if (!file.startsWith(s.id + '_')) continue;
+  const v = file.slice(s.id.length + 1);
+  for (const k of [s.by, s.ball ? 'balls' : null]) if (k && KIND_OF[k][v]) return { sp: s, venue: v, kind: k };
+ }
  return null;
 }
 
@@ -44,7 +48,7 @@ for (const [file, e] of todo) {
  const spec = { ...q.sp, v: q.sp.v != null ? q.sp.v * (e.speed || 1) : undefined, takes: e.takes || q.sp.takes };
  const key = spec.id + '|' + (e.speed || 1);
  if (!gains.has(key) && spec.kind !== 'ir') gains.set(key, T.calibrate(spec, T.venueParams(lab)));
- const takes = spec.kind === 'ir' ? [SP.irTake(T, lab, q.venue, e.seed)] : T.renderTakes(spec, T.venueParams(lab, q.venue ? q.sp.by : null, q.venue), e.seed || 1, gains.get(key));
+ const takes = spec.kind === 'ir' ? [SP.irTake(T, lab, q.venue, e.seed)] : T.renderTakes(spec, T.venueParams(lab, q.kind, q.venue), e.seed || 1, gains.get(key));
  sets.push({ file, sr: T.TAKE_SR, seed: e.seed || 1, takes: takes.map(t => t.channels) });
  console.log('  ' + file.padEnd(32) + takes.map(t => t.seconds.toFixed(2) + 's ' + t.peakDb.toFixed(1) + (t.lkfs != null ? '/' + t.lkfs.toFixed(1) : '') + (t.limited ? ' limited' : '')).join('  '));
 }

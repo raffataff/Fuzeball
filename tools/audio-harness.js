@@ -156,6 +156,9 @@ function suite(src,verbose){
   ok('a recorded kick replaces the synthesized one',osc()===o0&&[b1,b2,b3].includes(fired()));
   Au.ctx.currentTime+=1;Au.kick(88,{},ball(0,0));ok('a hard hit plays the _hard take',fired()===bh);
   Au.ctx.currentTime+=1;Au.kick(30,{},ball(0,0,'fire'));ok('a fireball plays its own take',fired()===bf);
+  Au.ctx.currentTime+=1;Au.kick(88,{},ball(0,0,'fire'));ok('…and its own take for a hard hit with no hard set of its own',fired()===bf);
+  const bfh=buf(A);Au.bank.ball_kick_hard_fire=[bfh];Au.ctx.currentTime+=1;Au.kick(88,{},ball(0,0,'fire'));ok('…its own hard set when it has one',fired()===bfh);
+  Au.ctx.currentTime+=1;Au.kick(30,{},ball(0,0,'fire'));ok('…never for a soft touch',fired()===bf);delete Au.bank.ball_kick_hard_fire;
   let last=null,rep=0;for(let i=0;i<60;i++){Au.ctx.currentTime+=1;Au.kick(20,{},ball(0,0));const f=fired();if(f===last)rep++;last=f;}
   ok('recorded kicks never repeat a take back to back',rep===0,rep);
   Au.ctx.currentTime+=1;const s0=srcs();Au.kick(20,{},ball(0,0));Au.kick(20,{},ball(0,0));
@@ -172,6 +175,8 @@ function suite(src,verbose){
   cfg.table='classic';cfg.pitch='royal';
   ok('a table sound on a table with no set of its own plays the base take',hit('ball_wall')===bw);
   cfg.table='arena';ok('…and the table\'s own take on that table',hit('ball_wall')===ba);
+  {const bk=buf(A);Au.bank.ball_wall_cannon=[bk];Au.ctx.currentTime+=1;Au.play('ball_wall',{p:40,src:ball(0,0,'cannon')});
+   ok('a ball type\'s own wall take beats the table\'s',fired()===bk);ok('…and other balls keep the table\'s',hit('ball_wall')===ba);delete Au.bank.ball_wall_cannon;}
   ok('a pitch sound ignores the table',hit('ball_floor')===bf);
   cfg.pitch='cork';ok('…and follows the pitch',hit('ball_floor')===bc);
   delete Au.bank.ball_floor;ok('a venue set plays even with no base take',hit('ball_floor')===bc);
@@ -381,6 +386,7 @@ function staticChecks(){
  ok('manifest: a sound is valid',MF.validId('crowd_roar',CONFIG));
  ok('manifest: a ball-type variant is valid',MF.validId('ball_kick_fire',CONFIG));
  ok('manifest: a hard variant is valid',MF.validId('ball_kick_hard',CONFIG));
+ok('manifest: a ball type\'s hard variant is valid',MF.validId('ball_kick_hard_cannon',CONFIG)&&!MF.validId('ball_kick_hard_cork',CONFIG));
  ok('manifest: a table variant of a table sound is valid',MF.validId('rod_bump_arena',CONFIG)&&MF.validId('ball_scrape_circuit',CONFIG));
  ok('manifest: a pitch variant of a pitch sound is valid',MF.validId('ball_roll_slow_cork',CONFIG)&&MF.validId('ball_floor_champions_green',CONFIG));
  ok('manifest: a venue variant of the wrong kind is not',!MF.validId('ball_wall_cork',CONFIG)&&!MF.validId('ball_roll_slow_arena',CONFIG)&&!MF.validId('ball_kick_arena',CONFIG));
@@ -435,7 +441,8 @@ const MUTS=[
  mutate('y+=yy*FG[q];','y+=x*FG[q];','the vowel filters are bypassed'),
  mutate("this.dst=this.ub;\r\n  for(const n of P)","this.dst=this.mg;\r\n  for(const n of P)",'menu sounds land on the effects bus'),
  mutate('if(D.gate&&o.gate!==false&&!this.vgate(D.gate,buf.duration/rt))return true;','','recorded takes skip the voice gate'),
- mutate("if(key&&key!=='classic'&&this.has(id+'_'+key))use=id+'_'+key;\r\n  else if","if(false);\r\n  else if",'ball-type takes are ignored'),
+ mutate("else if(bt&&this.has(id+'_'+bt))use=id+'_'+bt;","else if(false);",'ball-type takes are ignored'),
+mutate("if(bt&&hd&&this.has(id+'_hard_'+bt))use=id+'_hard_'+bt;","if(false);",'a ball type\'s hard set is ignored'),
  mutate('l===lo?Math.cos(u*Math.PI/2):l===hi?Math.sin(u*Math.PI/2):0','l===lo?1-u:l===hi?u:0','the bed crossfade is equal-gain'),
  mutate('clamp(C.base+this.exc+B.ten*C.tension,0,1)','clamp(C.base+this.exc,0,1)','tension never reaches the crowd'),
  mutate("react(kind,at){\r\n  if(!this.ctx||!cfg.ambience)return;","react(kind,at){\r\n  if(!this.ctx)return;",'reactions ignore the crowd switch'),

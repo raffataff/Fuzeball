@@ -255,9 +255,11 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
  play(id,o){if(!this.ctx||!this.bank)return false;o=o||{};
   const D=AUSND[id]||{},src=o.src||null,key=src&&src.key,
    n=(o.p==null||!D.pRef)?1:clamp(o.p/D.pRef,0,1),vi=this.vid(id);
+  const hd=D.hardFrom!=null&&n>=D.hardFrom,bt=key&&key!=='classic'?key:null;
   let use=null;
-  if(key&&key!=='classic'&&this.has(id+'_'+key))use=id+'_'+key;
-  else if(D.hardFrom!=null&&n>=D.hardFrom&&this.has(id+'_hard'))use=id+'_hard';
+  if(bt&&hd&&this.has(id+'_hard_'+bt))use=id+'_hard_'+bt;
+  else if(bt&&this.has(id+'_'+bt))use=id+'_'+bt;
+  else if(hd&&this.has(id+'_hard'))use=id+'_hard';
   else if(this.has(vi))use=vi;
   if(!use)return false;
   const bk=this.bank[use],k=auPick(bk.length,this.last[use]??-1,Math.random()),buf=bk[k],
