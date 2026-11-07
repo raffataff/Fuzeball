@@ -47,7 +47,7 @@ function boot(src){
  const cam=new ctx.THREE.PerspectiveCamera(55,1.6,1,700);cam.position.set(0,60,120);cam.lookAt(0,0,0);cam.updateMatrixWorld(true);
  ctx.camera=cam;
  ctx.S={phase:'play',balls:[]};
- ctx.activeRoom=ctx.__a.CONFIG.rooms.pub;
+ ctx.activeRoom=ctx.__a.CONFIG.rooms.saucer;
  return Object.assign(ctx.__a,{ctx,made,timers});
 }
 const buf=(A,secs)=>{const b=new A.ctx.window.AudioContext().createBuffer(2,Math.round(48000*(secs||.2)),48000);return b;};
@@ -142,7 +142,7 @@ function suite(src,verbose){
  ok('init built the buses',!!(Au.mg&&Au.cb&&Au.ub&&Au.sum));
  ok('menus reach the output',reach(Au.ub,Au.sum));ok('the crowd reaches the output through the room band-limit',path2(Au.cb,Au.sum,'biquad'));
  ok('music reaches the output on a bus of its own',reach(Au.mu,Au.sum)&&Au.mu!==Au.ub&&Au.mu!==Au.mg&&Au.mu!==Au.cb);
- ok('a room was applied at init',Au.rv&&Au.rv.id==='pub',Au.rv&&Au.rv.id);
+ ok('a room was applied at init',Au.rv&&Au.rv.id==='saucer',Au.rv&&Au.rv.id);
  const osc=()=>A.made.filter(n=>n.kind==='osc').length,srcs=()=>A.made.filter(n=>n.kind==='src').length;
  {const o0=osc();Au.kick(60,{},ball(40,0));
   ok('with no recording the kick is synthesized',osc()>o0);
@@ -168,6 +168,14 @@ function suite(src,verbose){
   const gHard=A.made.filter(n=>n.kind==='gain')[v0+3].gain.value;
   ok('a soft touch is quieter than a firm one',gSoft<gHard*.6,[gSoft,gHard]);
   delete Au.bank.ball_kick;delete Au.bank.ball_kick_hard;delete Au.bank.ball_kick_fire;}
+ // Sound Lab takes keep the lab's balance: at the speed a take was rendered at it plays at lab.gain x its trim
+ {const D=AUSND.ball_kick,G=AUMIX.lab.gain,j0=D.volJ;D.volJ=0;Au.bank.ball_kick=[buf(A)];Au.bank.ball_kick_hard=[buf(A)];
+  const g=p=>{Au.ctx.currentTime+=1;Au.play('ball_kick',{p,src:ball(0,0)});return A.made.filter(n=>n.kind==='src').pop().conns[0].gain.value/Au.vol;};
+  ok('every Sound Lab hit and loop is marked lab',['ball_kick','ball_wall','ball_floor','ball_post','ball_goal','ball_drop','rod_bump','rod_spin',...AUMIX.loops.roll.ids,...AUMIX.loops.slide.ids].every(id=>AUSND[id].lab));
+  ok('a lab kick at its render speed plays at lab.gain',Math.abs(g(D.pAt*D.pRef)-G*D.vol)<1e-9,[g(D.pAt*D.pRef),G]);
+  ok('…and its hard set at its own render speed',Math.abs(g(D.pAtHard*D.pRef)-G*D.vol)<1e-9,g(D.pAtHard*D.pRef));
+  ok('…a harder hit than the render is louder still',g(D.pRef)>G*D.vol*1.02,g(D.pRef));
+  D.volJ=j0;delete Au.bank.ball_kick;delete Au.bank.ball_kick_hard;}
  // venue variants: a sound with `by` plays <id>_<tableId> / <id>_<pitchId> where that set exists
  {const bw=buf(A),ba=buf(A),bf=buf(A),bc=buf(A),bx=buf(A),t0=cfg.table,p0=cfg.pitch;
   Au.bank.ball_wall=[bw];Au.bank.ball_wall_arena=[ba];Au.bank.ball_floor=[bf];Au.bank.ball_floor_cork=[bc];Au.bank.ball_floor_arena=[bx];
@@ -205,14 +213,14 @@ function suite(src,verbose){
  {const old=Au.rv;ctx.activeRoom=CONFIG.rooms.open;Au.tick(1/60);
   ok('a room change builds a new reverb',Au.rv!==old&&Au.rv.id==='open');
   ok('Void\'s crowd is band-limited like a comms feed',Au.cLp.frequency.value===AUMIX.reverb.rooms.open.crowdLp,Au.cLp.frequency.value);
-  ok('each room has its own impulse',Au.irs.open&&Au.irs.pub&&Au.irs.open!==Au.irs.pub);
+  ok('each room has its own impulse',Au.irs.open&&Au.irs.saucer&&Au.irs.open!==Au.irs.saucer);
   const t=A.timers.pop();t.f();ok('the old room is let go once its tail is done',old.f.off&&old.c.off);
   ok('the bed feeds the new room',reach(Au.bed.g,Au.rv.c)&&!Au.bed.g.conns.some(n=>reach(n,old.c)&&!reach(n,Au.rv.c)));
-  ctx.activeRoom=CONFIG.rooms.pub;Au.tick(1/60);
+  ctx.activeRoom=CONFIG.rooms.saucer;Au.tick(1/60);
   const b=buf(A,1);Au.bank.ir_moon=[b];ctx.activeRoom=CONFIG.rooms.moon;Au.tick(1/60);
   ok('a recorded impulse plays at its own level, unnormalized',Au.rv.id==='moon'&&Au.rv.f.buffer===b&&Au.rv.f.normalize===false&&Au.rv.c.normalize===false,[Au.rv.f.normalize,Au.rv.c.normalize]);
-  delete Au.bank.ir_moon;ctx.activeRoom=CONFIG.rooms.pub;Au.tick(1/60);
-  ok('a generated impulse is normalized',Au.rv.f.buffer===Au.irs.pub&&Au.rv.f.normalize===true&&Au.rv.c.normalize===true,Au.rv.f.normalize);}
+  delete Au.bank.ir_moon;ctx.activeRoom=CONFIG.rooms.saucer;Au.tick(1/60);
+  ok('a generated impulse is normalized',Au.rv.f.buffer===Au.irs.saucer&&Au.rv.f.normalize===true&&Au.rv.c.normalize===true,Au.rv.f.normalize);}
  /* 7. the bed */
  {Au.syn.crowd_bed_calm=buf(A,1);Au.syn.crowd_bed_wild=buf(A,1);Au.bedSync();const B=Au.bed,cl=B.layers.find(l=>l.t==='calm'),wl=B.layers.find(l=>l.t==='wild');
   ok('the stand-in bed has a calm and a wild layer',!!(cl&&wl)&&B.layers.length===2);
@@ -305,6 +313,7 @@ function suite(src,verbose){
   run(6,()=>Au.rollFeed(0,gAt(at[0]),{},ball(30,0)));
   const V=Au.lp.get('ball'),L=V&&V.on&&srcOf(V,'roll');
   ok('a rolling ball starts every roll loop',!!L&&L.length===K&&L.every(l=>l.s.loop&&l.s.started),L&&L.length);
+  ok('…each lab take levelled to lab.gain at its own point on the speed line',!!L&&L.every((l,i)=>Math.abs(l.v*Math.pow(at[i],LP.roll.curve)-AUMIX.lab.gain*AUSND[RI[i]].vol)<1e-9),L&&L.map(l=>l.v));
   ok('…panned by the ball, into the effects bus and the room',!!L&&path2(L[0].s,Au.mg,'pan')&&reach(L[0].s,Au.rv.f));
   ok('…the ball on the right pans right',!!V&&V.pn.pan.value>.1,V&&V.pn.pan.value);
   ok('…gain, rate and pan glide to each frame\'s value, never step',!!L&&L.every(l=>l.g.gain.tc>=LP.glide&&l.s.playbackRate.tc>=LP.glide)&&V.pn.pan.tc>=LP.glide,L&&L.map(l=>[l.g.gain.tc,l.s.playbackRate.tc]));
@@ -390,7 +399,7 @@ ok('manifest: a ball type\'s hard variant is valid',MF.validId('ball_kick_hard_c
  ok('manifest: a table variant of a table sound is valid',MF.validId('rod_bump_arena',CONFIG)&&MF.validId('ball_scrape_circuit',CONFIG));
  ok('manifest: a pitch variant of a pitch sound is valid',MF.validId('ball_roll_slow_cork',CONFIG)&&MF.validId('ball_floor_champions_green',CONFIG));
  ok('manifest: a venue variant of the wrong kind is not',!MF.validId('ball_wall_cork',CONFIG)&&!MF.validId('ball_roll_slow_arena',CONFIG)&&!MF.validId('ball_kick_arena',CONFIG));
- ok('manifest: a room impulse is valid',MF.validId('ir_pub',CONFIG));
+ ok('manifest: a room impulse is valid',MF.validId('ir_saucer',CONFIG));
  ok('manifest: an impulse for no room is not',!MF.validId('ir_garage',CONFIG));
  // the impulses on disk carry the Sound Lab's level (tools/soundlab/spec.js irTake): one at the ceiling would play ~30 dB too wet unnormalized
  {const d=path.join(ROOT,'assets/audio/ir');for(const f of fs.existsSync(d)?fs.readdirSync(d).filter(f=>/^ir_\w+\.wav$/i.test(f)):[]){const b=fs.readFileSync(path.join(d,f));let pk=0;
@@ -486,6 +495,9 @@ mutate("if(bt&&hd&&this.has(id+'_hard_'+bt))use=id+'_hard_'+bt;","if(false);",'a
  mutate("by==='pitch'?cfg.pitch:by==='table'?cfg.table:null",'by?cfg.table:null','a pitch sound follows the table'),
  mutate('else if(this.has(vi))use=vi;','else if(this.has(id))use=id;','one-shots ignore the venue'),
  mutate('const u=this.vid(id);if(!this.has(u))return;','const u=id;if(!this.has(u))return;','loops ignore the venue'),
+ mutate('*lv(n)*lab;','*lv(n);','lab takes ignore the shared gain'),
+ mutate("use.startsWith(id+'_hard')&&D.pAtHard!=null?D.pAtHard:D.pAt","D.pAt",'a hard set is levelled as a soft one'),
+ mutate('/Math.pow(Math.max(.05,at),P.C.curve||1):1;',':1;','loop takes are not levelled at their own speed'),
  mutate("nz=!this.has('ir_'+id);",'nz=true;','a recorded impulse is normalized (~30 dB too dry)'),
  mutate('l.g.gain.setTargetAtTime(P.lvl*P.w[i]*l.v*this.vol,t,gl);','l.g.gain.value=P.lvl*P.w[i]*l.v*this.vol;','loop gains step once a frame'),
  mutate('gl=Math.max(AUMIX.loops.glide||0,dt/3);','gl=0;','loops never glide'),

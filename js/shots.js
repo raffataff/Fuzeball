@@ -36,7 +36,7 @@ function shotHoldUpdate(r,lt){
  const t=clamp((lt-H.from)/(1-H.from),0,1);
  h.on=true;
  h.holdRest=lerp(KICK.rest,H.rest,t);
- h.sideRest=lerp(KICK.sideRest,0,t);   // a squeeze cushions a side hit too, smoothly
+ h.sideRest=KICK.sideRest*lerp(1,H.side!=null?H.side:0,t);   // a squeeze softens a side hit too, smoothly
  h.holdGrip=lerp(stGrip(r),H.grip,t);
  h.carryMult=lerp(1,H.carry,t);
 }

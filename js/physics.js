@@ -452,7 +452,8 @@ function collideRod(b,r){
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     const V0=b.v0||(b.v0={x:0,y:0,z:0});V0.x=b.v.x;V0.y=b.v.y;V0.z=b.v.z;   // ...and its velocity, for the ceiling's keep
-    let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
+    const sb=sideTake(b,nx,ny,nz,vn,rest,HLD);   // the ball's own approach into a side face, handed back after the grip (sideGive)
+    let jm=-(1+rest)*(vn-sb)/b.t.mass;
     if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;
     jm*=stHit(r);
     // player shot (js/shots.js): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
@@ -460,7 +461,7 @@ function collideRod(b,r){
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
-    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);   // the back of a man does not carry a ball along with the slide
+    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);if(sb)sideGive(b,nx,ny,nz,sb,HLD);   // the back of a man does not carry a ball along with the slide
     const hit=trapping||capSpeed(b,r,sweet,in2),aim=hit&&!trapping;   // per-contact speed ceiling (see the banner above); a held contact is exempt; hit false = a re-hit, which aims and jitters nothing
     if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
@@ -529,13 +530,14 @@ function collideRod(b,r){
     const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     const V0=b.v0||(b.v0={x:0,y:0,z:0});V0.x=b.v.x;V0.y=b.v.y;V0.z=b.v.z;
-    let jm=-(1+rest)*vn/b.t.mass+sideBounce(b,nx,ny,nz,rest,HLD);
+    const sb=sideTake(b,nx,ny,nz,vn,rest,HLD);   // the ball's own approach into a side face, handed back after the grip (sideGive)
+    let jm=-(1+rest)*(vn-sb)/b.t.mass;
     if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;
     jm*=stHit(r);
     if(r.shotOn)jm*=r.shotPow;
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):(dead?stGrip(r):KICK.capGrip);
-    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);
+    b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);if(sb)sideGive(b,nx,ny,nz,sb,HLD);
     const aim=!trapping&&capSpeed(b,r,false,in2);
     if(r.kickStyle==='snake')snakeLoft(b);
     const tang=cvx*(-nz)+cvz*nx;
@@ -565,11 +567,17 @@ function collideRod(b,r){
   }
  }
 }
-// the ball's own approach speed rebounds off a side face (CONFIG.kick.sideRest); the slide's push is left as it was, so a tap is no stronger; returns the extra impulse
-function sideBounce(b,nx,ny,nz,rest,HLD){
+// side face (CONFIG.kick.sideRest): the ball's own approach (no more than its speed against the man, vn) is taken out before the contact (returned, <0) and given back after the grip at sideRest, so neither the grip nor the ball's mass eats the rebound; the slide's push is left as it was
+function sideTake(b,nx,ny,nz,vn,rest,HLD){
  if(Math.abs(nz)<KICK.sideDot)return 0;
- const e=(HLD?(HLD.sideRest||0):KICK.sideRest)-rest,bn=b.v.x*nx+b.v.y*ny+b.v.z*nz;
- return(e>0&&bn<0)?-e*bn/b.t.mass:0;
+ const sr=HLD?(HLD.sideRest||0):KICK.sideRest,bn=Math.max(b.v.x*nx+b.v.y*ny+b.v.z*nz,vn);   // a man sliding away with the ball (a cushion) bounces only what it closes at
+ if(sr<=rest||bn>=0)return 0;   // sideRest at or under rest = off; a ball already leaving the face keeps its speed
+ b.v.x-=nx*bn;b.v.y-=ny*bn;b.v.z-=nz*bn;
+ return bn;
+}
+function sideGive(b,nx,ny,nz,bn,HLD){
+ const e=-(HLD?(HLD.sideRest||0):KICK.sideRest)*bn;
+ b.v.x+=nx*e;b.v.y+=ny*e;b.v.z+=nz*e;
 }
 function ballBall(a,b){
  const pa=a.m.position,pb=b.m.position;

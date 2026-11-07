@@ -306,12 +306,12 @@ const RENDER_STEM={
  rocko:'rocko',manrichie:'richie',manDeano:'deano',manLeo:'leo',womanMaria:'maria',womanKimi:'kimi',
  womanTalia:'talia',womanTanya:'tanya',womanSasha:'sasha',womanSandy:'sandy',womanFaye:'faye',
  womanZaneesh:'zaneesh',alienTamirok:'tamirok',alienGrimlot:'grimlot',alienKatum:'katum',
- alienKodus:'kodus',alienZargon:'zargon',animalAzlar:'azlar'};
+ alienKodus:'kodus',alienZargon:'zargon',alienDrako:'drako',animalAzlar:'azlar'};
 function modelRender(id){const s=RENDER_STEM[id];return s?'assets/renders/render_'+s+'_cycles.png':null;}
 
 const MASK_STEMS=new Set([
  'cyborg','deltaborg','irnman','mechaman','stormer','rocko','leo', 'richie','deano','maria','kimi',
- 'talia','tanya','sasha','sandy','faye','zaneesh','tamirok','grimlot','katum','kodus','zargon','azlar']);
+ 'talia','tanya','sasha','sandy','faye','zaneesh','tamirok','grimlot','katum','kodus','zargon','drako','azlar']);
 
 
 function modelRenderMask(id){

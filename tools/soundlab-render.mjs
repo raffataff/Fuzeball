@@ -41,14 +41,12 @@ function parse(file) {
 const todo = Object.entries(map.exported).filter(([f]) => !ONLY || ONLY.includes(f));
 if (!todo.length) { console.log(ONLY ? 'none of ' + ONLY.join(', ') + ' was exported from the lab' : 'nothing exported from the lab yet: pick and export sounds in node tools/soundlab-server.js'); process.exit(0); }
 console.log('Sound Lab: ' + LAB + (DRY ? '   (dry: tools/build/soundlab)' : '') + '\n');
-const gains = new Map(), sets = [];
+const MIX = Math.pow(10, SP.MIX_GAIN / 20), sets = [];
 for (const [file, e] of todo) {
  const q = parse(file);
  if (!q) { console.log('  ' + file.padEnd(32) + 'skipped: no sound or venue by that name now'); continue; }
  const spec = { ...q.sp, v: q.sp.v != null ? q.sp.v * (e.speed || 1) : undefined, takes: e.takes || q.sp.takes };
- const key = spec.id + '|' + (e.speed || 1);
- if (!gains.has(key) && spec.kind !== 'ir') gains.set(key, T.calibrate(spec, T.venueParams(lab)));
- const takes = spec.kind === 'ir' ? [SP.irTake(T, lab, q.venue, e.seed)] : T.renderTakes(spec, T.venueParams(lab, q.kind, q.venue), e.seed || 1, gains.get(key));
+ const takes = spec.kind === 'ir' ? [SP.irTake(T, lab, q.venue, e.seed)] : T.renderTakes(spec, T.venueParams(lab, q.kind, q.venue), e.seed || 1, MIX);
  sets.push({ file, sr: T.TAKE_SR, seed: e.seed || 1, takes: takes.map(t => t.channels) });
  console.log('  ' + file.padEnd(32) + takes.map(t => t.seconds.toFixed(2) + 's ' + t.peakDb.toFixed(1) + (t.lkfs != null ? '/' + t.lkfs.toFixed(1) : '') + (t.limited ? ' limited' : '')).join('  '));
 }

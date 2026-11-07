@@ -104,7 +104,7 @@ function run(S,quiet){
  // 4. the room is the one on screen
  W.cfg.room='saucer';go('high','moon');
  ok(H.hazeRoomId()==='moon'&&Math.abs(HZ.A[0]-W.CONFIG.atmos.rooms.moon.haze[0])<1e-6,'a parked venue: the room on screen, not cfg.room');
- go('high','pub');
+ W.CONFIG.rooms.pub=W.CONFIG.rooms.pub||{name:'British Pub'};go('high','pub');            // parked out of rooms; its atmos entry stays
  ok(HZ.A[3]===0&&!HZ.sh.visible&&!HZ.pts.visible,'the pub has no air yet');
 
  // 5. the master switch

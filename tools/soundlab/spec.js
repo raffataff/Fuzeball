@@ -5,22 +5,19 @@
 
 // the venue a fresh save starts on: its sounds are the base files
 const BASE={tables:'classic',pitches:'pub_classic',balls:'classic'};
-// LKFS (ungated) per loop id, matched to the takes the CONFIG vols were set against
-// the scrape points are as loud as they get under the ceiling (a slow scrape is all peaks): their CONFIG vols make up the rest of the old -22.8
-const LOUD={ball_roll_crawl:-24.8,ball_roll_slow:-24.8,ball_roll_fast:-23.7,ball_roll_rush:-23.7,ball_scrape:-28.3,ball_scrape_fast:-24.6,
- rod_slide_slow:-23.0,rod_slide_mid:-22.0,rod_slide_fast:-20.9,rod_spin:-24.2};
 const TIME=1.4757;   // game motion played this many times faster in the lab (sqrt(981/450), the committed grav); fixed, not tied to physics.grav
-const HIT_PEAK=-3;   // dBFS of the loudest base take (re-rolls and louder venues keep 2 dB before the ceiling)
-// hits: at = share of the sound's pRef the takes are struck at (v = lab m/s for a sound with no pRef), takes = how many, ball = a take per ball type too
+// every take at the lab's own level x this, no per-sound normalizing: the files keep the lab's balance and a quiet profile stays quiet (the lab's master trim is the same -3 dB)
+const MIX_GAIN=-3;
+// hits: struck at the sound's pAt (pAtHard for a hard set) x pRef in CONFIG, where the game plays a take at its lab level; v = lab m/s for a sound with no pRef; takes = how many, ball = a take per ball type too
 const HITS={
- ball_kick:     {kind:'kick', at:0.45,takes:6, name:'Kick',            group:'Ball', ball:true},
- ball_kick_hard:{kind:'kick', at:0.9, takes:4, name:'Kick, hard',      group:'Ball', of:'ball_kick', ball:true},
- ball_wall:     {kind:'wall', at:0.6, takes:6, name:'Wall hit',        group:'Ball', ball:true},
- ball_floor:    {kind:'floor',at:0.6, takes:5, name:'Floor bounce',    group:'Ball'},
- ball_post:     {kind:'post', at:0.7, takes:4, name:'Post',            group:'Ball', ball:true},
- ball_goal:     {kind:'goal', v:1.5,  takes:3, name:'Goal and return', group:'Ball'},
- ball_drop:     {kind:'drop', v:1.0,  takes:3, name:'Serve drop',      group:'Ball'},
- rod_bump:      {kind:'bump', at:1,   takes:4, name:'Rod bump',        group:'Rods'}
+ ball_kick:     {kind:'kick', takes:6, name:'Kick',            group:'Ball', ball:true},
+ ball_kick_hard:{kind:'kick', takes:4, name:'Kick, hard',      group:'Ball', of:'ball_kick', hard:true, ball:true},
+ ball_wall:     {kind:'wall', takes:6, name:'Wall hit',        group:'Ball', ball:true},
+ ball_floor:    {kind:'floor',takes:5, name:'Floor bounce',    group:'Ball'},
+ ball_post:     {kind:'post', takes:4, name:'Post',            group:'Ball', ball:true},
+ ball_goal:     {kind:'goal', v:1.5, takes:3, name:'Goal and return', group:'Ball'},
+ ball_drop:     {kind:'drop', v:1.0, takes:3, name:'Serve drop',      group:'Ball'},
+ rod_bump:      {kind:'bump', takes:4, name:'Rod bump',        group:'Rods'}
 };
 // loops: one take per speed point (the next point stands in for a second take), two for the spin's single point
 const LOOPS={
@@ -42,13 +39,13 @@ const IR_SEND=-17;
 // every renderable sound, in panel order; C = the live CONFIG
 function specs(C){
  const S=C.audioMix.sounds,L=C.audioMix.loops,out=[];
- for(const id in HITS){const H=HITS[id],D=S[H.of||id]||{},u=H.at!=null&&D.pRef?H.at*D.pRef:null;
+ for(const id in HITS){const H=HITS[id],D=S[H.of||id]||{},at=H.hard?D.pAtHard:D.pAt,u=at!=null&&D.pRef?at*D.pRef:null;
   out.push({id,name:H.name,group:H.group,kind:H.kind,by:BY[D.by]||null,ball:!!H.ball,
-   v:u!=null?u*TIME/100:H.v,game:u!=null?Math.round(u)+' u/s':null,takes:H.takes,peak:HIT_PEAK,spread:0.15});}
+   v:u!=null?u*TIME/100:H.v,game:u!=null?Math.round(u)+' u/s':null,takes:H.takes,spread:0.15});}
  // each id at its `at` on the part's speed line, where the game plays it at rate 1 (audio.js auLpRate)
  for(const id in LOOPS){const P=L[Object.keys(L).find(k=>L[k]&&L[k].ids&&L[k].ids.includes(id))],T=LOOPS[id],g=P.vMin+(P.at[P.ids.indexOf(id)]??0)*(P.vRef-P.vMin);
   out.push({id,name:T.name,group:T.group,kind:T.kind,by:BY[(S[id]||{}).by]||null,v:g*TIME/(T.kind==='spin'?1:100),
-   game:Math.round(g)+(T.kind==='spin'?' rad/s':' u/s'),len:T.len,takes:T.takes,loud:LOUD[id]});}
+   game:Math.round(g)+(T.kind==='spin'?' rad/s':' u/s'),len:T.len,takes:T.takes});}
  out.push({id:'ir',name:'Room reverb',group:'Room',kind:'ir',by:'rooms',takes:1});
  return out;
 }
@@ -66,4 +63,4 @@ function irTake(T,lab,room,seed){const ch=T.renderTake({kind:'ir'},T.venueParams
  for(const c of ch)for(let i=0;i<c.length;i++)c[i]*=g;
  return {channels:ch,seconds:ch[0].length/T.TAKE_SR,peakDb:T.dbOf(T.peakOf(ch)),lkfs:null,limited:false,seam:null};}
 
-module.exports={BASE,IR_SEND,specs,venues,fileId,irTake};
+module.exports={BASE,IR_SEND,MIX_GAIN,specs,venues,fileId,irTake};

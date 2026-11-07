@@ -12,17 +12,25 @@ function ST(r,k){const t=S.teamStats&&S.teamStats[r.team],s=r.stats||(t&&(t[r.ro
 function stTire(r){return Math.max(STC.tireFloor,1-ST(r,'sta')/STC.max);}
 // 0..1: how spent this rod is from swinging; r.exert is banked by stExertKick and bled by stExertTick (from rods.js); scaled by stTire
 function stExert(r){const K=STC.kickFat;return (K.on&&K.full>0)?clamp((r.exert||0)/K.full,0,1)*stTire(r):0;}
-// bank one swing's exertion, from kickRod (every swing passes there); not charged per style; see CONFIG.stats.kickFat.userDrain
+// bank one swing's exertion (x r.shotExert: a power swing, the snake), from kickRod and stExertStick; not charged per style
 function stExertKick(r){
  const K=STC.kickFat;
  if(!K.on)return;
- // a held rod is exempt by default (a human can mash kick), but a power swing still banks the extra, so leaning on RT costs something
  const ex=r.shotExert||1;
+ // userDrain off: a held rod pays only a power swing's extra
  if(!K.userDrain&&typeof seatOf==='function'&&seatOf(r)){
   if(ex<=1)return;
   r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per*(ex-1));return;
  }
  r.exert=Math.min(K.full*K.cap,(r.exert||0)+K.per*ex);
+}
+// a pad stick swing (classic or Total Control) never calls kickRod: the leg turning forward past kickFat.stickW banks one swing, re-armed once it turns back (from updateRods, after angVel)
+function stExertStick(r){
+ const K=STC.kickFat;
+ if(!K.on||!(K.stickW>0))return;
+ const w=r.angVel*r.kickDir;
+ if(w<0){r.exStk=false;return;}
+ if(!r.exStk&&r.padAngleOn&&r.kickT<0&&r.pinMag==null&&w>K.stickW){r.exStk=true;stExertKick(r);}
 }
 // recovery: ticked once per sim step from updateRods alongside the rod's other cooldowns
 function stExertTick(r,dt){if(r.exert>0)r.exert=Math.max(0,r.exert-STC.kickFat.recover*dt);}

@@ -1,5 +1,5 @@
 // harness for the FLYING SAUCER room: the shipped GLB and sky, the config entry, and the two things the room's look rests on. Run: node tools/saucer-harness.js
-// must hold: the encoded GLB is KTX2-only, light-free, has exactly three blended materials (the window glass and the glow and paint decal sheets), opaque ones single-sided (backface culling) and every flat prop sharing one wear map, the bar's front panels face the room (arc_prism winding), and it is inside the triangle and mesh budget; all six sky faces ship; the giant in build_saucer_sky.py sits inside the low-sill window bay of build_saucer_room.py (azimuth and a little under the horizon); the room's authored lights fit the pool (spots, points, shadow budget); bakeGlbEnv hides textured-alpha glass (opacity 1) from the reflection bake, where it used to bake as a white blob
+// must hold: the encoded GLB is KTX2-only, light-free, has exactly three blended materials (the window glass and the glow and paint decal sheets), opaque ones single-sided (backface culling) and every textured prop wearing a surface set (normal + metallic-roughness maps), the bar's front panels face the room (arc_prism winding), and it is inside the triangle and mesh budget; all six sky faces ship; the giant in build_saucer_sky.py sits inside the low-sill window bay of build_saucer_room.py (azimuth and a little under the horizon); the room's authored lights fit the pool (spots, points, shadow budget); bakeGlbEnv hides textured-alpha glass (opacity 1) from the reflection bake, where it used to bake as a white blob
 // asset and source files are read from the repo; bakeGlbEnv is string-sliced from js/world.js and rebuilt against stubs
 'use strict';
 const fs=require('fs'),path=require('path');
@@ -47,7 +47,7 @@ function bandTris(j,bin,meshName,r,tol,y0,y1,swap){
  }
  return out;
 }
-const roomBlock=src=>{const a=src.indexOf('\n   saucer:{\n'),b=src.indexOf('\n   pub:{\n',a);if(a<0||b<0)throw new Error('ANCHOR LOST: saucer room block');return src.slice(a,b);};
+const roomBlock=src=>{const a=src.indexOf('\n   saucer:{\n'),b=src.indexOf('\n   arcade:{\n',a);if(a<0||b<0)throw new Error('ANCHOR LOST: saucer room block');return src.slice(a,b);};
 
 /* ---- 1. the shipped files ----------------------------------------------- */
 function assetSuite(cfgSrc,tweak){
@@ -68,10 +68,14 @@ function assetSuite(cfgSrc,tweak){
   const blend=(j.materials||[]).filter(m=>m.alphaMode==='BLEND');
   t(blend.length===3&&['glass','glow','paint'].every(k=>blend.some(m=>m.name==='saucer_'+k)),'exactly three transparent materials: the window glass and the glow and paint decal sheets',blend.map(m=>m.name).join());
   t((j.materials||[]).filter(m=>m.alphaMode!=='BLEND').every(m=>!m.doubleSided),'every opaque material is single-sided (backface culling halves the room\'s raster work)',(j.materials||[]).filter(m=>m.alphaMode!=='BLEND'&&m.doubleSided).map(m=>m.name).join());
-  const flat=(j.materials||[]).filter(m=>m.alphaMode!=='BLEND'&&m.pbrMetallicRoughness&&m.pbrMetallicRoughness.baseColorTexture&&!m.pbrMetallicRoughness.metallicRoughnessTexture);
-  const wearSrc=new Set(flat.map(m=>j.textures[m.pbrMetallicRoughness.baseColorTexture.index].source));
-  t(flat.length>=12&&wearSrc.size===1,'every flat prop material wears the one shared wear map (one image, not one per material)',flat.length+' materials, '+wearSrc.size+' images');
-  t((j.images||[]).length<=13,'image count (the textures are the real cost of a room)',(j.images||[]).length);
+  const props=(j.materials||[]).filter(m=>m.alphaMode!=='BLEND'&&m.pbrMetallicRoughness&&m.pbrMetallicRoughness.baseColorTexture&&!m.emissiveTexture&&/^saucer_/.test(m.name)&&!/^saucer_(hull|deck|dais)$/.test(m.name));
+  const bare=props.filter(m=>!m.normalTexture||!m.pbrMetallicRoughness.metallicRoughnessTexture);
+  t(props.length>=14&&!bare.length,'every textured prop material wears a surface set (normal + metallic-roughness maps, not flat roughness)',props.length+' materials; bare: '+bare.map(m=>m.name).join());
+  const srcOf=ti=>{const T=j.textures[ti];return T.source!==undefined?T.source:((T.extensions||{}).KHR_texture_basisu||{}).source;};
+  const nSrc=new Set(props.filter(m=>m.normalTexture).map(m=>srcOf(m.normalTexture.index)));
+  t(nSrc.size>=3&&nSrc.size<=8,'the prop materials share a few surface sets (not one set per material)',nSrc.size+' normal maps');
+  let texels=0;for(const im of j.images||[]){const v=j.bufferViews[im.bufferView];if(v&&im.mimeType==='image/ktx2'){const o=v.byteOffset||0;texels+=bin.readUInt32LE(o+20)*bin.readUInt32LE(o+24);}}
+  t((j.images||[]).length<=40&&texels<=32e6,'texture budget (the textures are the real cost of a room): <=40 images, <=32M texels at the top level',(j.images||[]).length+' images, '+(texels/1e6).toFixed(1)+'M texels');
   t(j.meshes.length<=32,'mesh (draw call) budget',j.meshes.length);
   let tris=0;for(const m of j.meshes)for(const p of m.primitives)tris+=(p.indices!==undefined?j.accessors[p.indices].count:j.accessors[p.attributes.POSITION].count)/3;
   t(tris>20000&&tris<=78000,'triangle budget (20k..78k; the heaviest of the other rooms is 40k)',tris);
@@ -88,7 +92,7 @@ function assetSuite(cfgSrc,tweak){
   const p=skySrc+'_'+f+'.ktx2';
   t(fs.existsSync(path.join(ROOT,p))&&fs.statSync(path.join(ROOT,p)).size>100000,'sky face ships: '+f,p);
  }
- // the pooled lights: the pub sets the per-type pool (3 spots, 1 point), the shadow budget is roomLightPool.shadow {point:1, spot:2}
+ // the pooled lights: the pool holds at least 3 spots and 1 point, the shadow budget is roomLightPool.shadow {point:1, spot:2}
  const lights=[...blk.matchAll(/\{type:'(spot|point|dir)'[^}]*\}/g)].map(m=>({type:m[1],shadow:/shadow:true/.test(m[0])}));
  const n=ty=>lights.filter(l=>l.type===ty).length,sh=ty=>lights.filter(l=>l.type===ty&&l.shadow).length;
  t(lights.length>=3,'authored lights present',lights.length);
@@ -164,7 +168,8 @@ const MUT=[
  ['an opaque material goes double-sided again','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').doubleSided=true;}],
  ['a fourth transparent material','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').alphaMode='BLEND';}],
  ['the draw-call budget blows','glb',j=>{for(let i=0;i<8;i++)j.meshes.push(j.meshes[0]);}],
- ['a prop material gets its own wear image','glb',j=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:0})-1,nt=j.textures.push({source:ni})-1;j.materials.find(m=>m.alphaMode!=='BLEND'&&m.pbrMetallicRoughness.baseColorTexture&&!m.pbrMetallicRoughness.metallicRoughnessTexture).pbrMetallicRoughness.baseColorTexture.index=nt;}],
+ ['a prop material goes back to flat roughness','glb',j=>{const m=j.materials.find(m=>m.name==='saucer_steel');delete m.normalTexture;delete m.pbrMetallicRoughness.metallicRoughnessTexture;}],
+ ['every prop material gets a set of its own','glb',j=>{j.materials.filter(m=>m.normalTexture&&/^saucer_/.test(m.name)).forEach(m=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:j.images[0].bufferView})-1;m.normalTexture={index:j.textures.push({source:ni})-1};});}],
  ['the front panels of the bar are wound inside-out','glb',(j,bin)=>{const FY=+ROOMPY.match(/^FY\s*=\s*(-?[\d.]+)/m)[1],STEP=+ROOMPY.match(/^STEP\s*=\s*([\d.]+)/m)[1],BF=+ROOMPY.match(/^BF\s*=\s*([\d.]+)/m)[1];bandTris(j,bin,'room_saucer_teal',BF-0.9,0.05,FY-STEP+11,FY-STEP+90,true);}],
  ['the glow sheet goes missing','glb',j=>{j.nodes.forEach(n=>{if(n.name==='room_saucer_glow')n.name='x';});}]
 ];

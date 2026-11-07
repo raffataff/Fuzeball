@@ -20,12 +20,15 @@ WHAT IS IN IT (static, one mesh per material)
     deck       tiling tread plate for the outer floor, vertex-colour AO
     dais       one 2048 map for the round dais: plates, hazard edge, gold ring and stencil text
     glass      the window panes (alpha blend; the loader draws room glass first and never shadows it)
-    props      flat PBR materials, emissive for lamps and neon (NO lights are exported)
+    props      one material each, wearing a tiling surface set (steel, brass, paint, leather, wood, plastic: albedo / normal / ORM,
+               box-projected); emissive for lamps and neon (NO lights are exported)
+    jukebox    the modelled one from JUKE_SRC (tools/build, not shipped), else a built one
+    colour     every opaque mesh's baked colour: ambient occlusion and the room's own lamps (LAMPS), ray-traced per corner (bake_light)
 
 Authored in GAME units (X long axis, Y up, Z width) and converted with g2b like the other room builders.
 The room is lit by CONFIG.rooms.saucer.lights (pooled); the emissive parts only show up in the reflection bake.
 """
-import bpy, bmesh, os, sys, math
+import bpy, bmesh, os, sys, math, time
 import numpy as np
 from mathutils import Vector, Matrix, noise
 
@@ -37,6 +40,7 @@ ROOT  = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 BUILD = os.path.join(ROOT, 'tools', 'build', 'saucer')
 os.makedirs(BUILD, exist_ok=True)
 GLB = os.path.join(BUILD, 'fuzeball_room_saucer.raw.glb')
+JUKE_SRC = os.path.join(ROOT, 'tools', 'build', 'saucer', 'saucer_jukebox.blend')   # the modelled jukebox (object 'jukebox'); if lost, import it from the shipped GLB (ktx2-decode.mjs)
 rng = np.random.default_rng(SEED)
 TS = TEX / 2048.0
 
@@ -83,24 +87,46 @@ def srgb(h):
     c = [((h >> s) & 255) / 255 for s in (16, 8, 0)]
     return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c) + (1.0,)
 def hx(h): return np.array([((h >> s) & 255) / 255 for s in (16, 8, 0)])      # sRGB 0..1, for the image arrays
-WEAR = {'img': None, 'mean': 1.0}      # the shared multiply map every non-emissive prop material wears (wear_texture)
-def flat_mat(name, hexc, metal=0.0, rough=0.6, emit=None, emit_str=1.0):
+SURF = {}      # kind -> {'alb', 'mean', 'n', 'orm', 'albs': {material: own albedo}} (the surface sets, built in the shell section)
+FACT = {}      # material -> (roughness, metallic) factors written into the GLB after export: glTF scales the ORM texture by them
+def flat_mat(name, hexc, metal=0.0, rough=0.6, emit=None, emit_str=1.0, kind=None):
+    """A prop material. With a surface kind it wears that set and metal / rough become the factors on its ORM; emissive ones stay plain."""
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; b = nt.nodes['Principled BSDF']
     col = srgb(hexc)
     b.inputs['Metallic'].default_value = metal; b.inputs['Roughness'].default_value = rough
     if emit is not None:
         b.inputs['Emission Color'].default_value = srgb(emit); b.inputs['Emission Strength'].default_value = emit_str
-    if emit is None and WEAR['img'] is not None:                # colour x wear map; the colour is lifted by the map's mean so the material keeps its value
-        a = nt.nodes.new('ShaderNodeTexImage'); a.image = WEAR['img']
-        mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
-        ins = [i for i in mx.inputs if i.type == 'RGBA']
-        nt.links.new(a.outputs['Color'], ins[0]); ins[1].default_value = tuple(min(1.0, c / WEAR['mean']) for c in col[:3]) + (1.0,)
-        nt.links.new([o for o in mx.outputs if o.type == 'RGBA'][0], b.inputs['Base Color'])
+    S = SURF.get(kind) if emit is None else None
+    if S:
+        own = S['albs'].get(name); a = nt.nodes.new('ShaderNodeTexImage'); a.image = own or S['alb']
+        if own is None:                                       # neutral map x colour, lifted by the map's mean so the material keeps its value
+            mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
+            ins = [i for i in mx.inputs if i.type == 'RGBA']
+            nt.links.new(a.outputs['Color'], ins[0]); ins[1].default_value = tuple(min(1.0, c / S['mean']) for c in col[:3]) + (1.0,)
+            nt.links.new([o for o in mx.outputs if o.type == 'RGBA'][0], b.inputs['Base Color'])
+        else:
+            nt.links.new(a.outputs['Color'], b.inputs['Base Color'])
+        n = nt.nodes.new('ShaderNodeTexImage'); n.image = S['n']
+        nm = nt.nodes.new('ShaderNodeNormalMap'); nt.links.new(n.outputs['Color'], nm.inputs['Color']); nt.links.new(nm.outputs['Normal'], b.inputs['Normal'])
+        o = nt.nodes.new('ShaderNodeTexImage'); o.image = S['orm']
+        sp = nt.nodes.new('ShaderNodeSeparateColor'); nt.links.new(o.outputs['Color'], sp.inputs['Color'])
+        nt.links.new(sp.outputs['Green'], b.inputs['Roughness']); nt.links.new(sp.outputs['Blue'], b.inputs['Metallic'])
+        FACT[name] = (rough, metal)
     else:
         b.inputs['Base Color'].default_value = col
     m.diffuse_color = col; m.use_backface_culling = True
     return m
+def glb_factors(path, fact):
+    """Write each listed material's roughness / metallic factor into the GLB's JSON (the exporter writes none when a texture drives the input)."""
+    import json, struct
+    b = open(path, 'rb').read(); jl = struct.unpack_from('<I', b, 12)[0]; j = json.loads(b[20:20 + jl])
+    for mt in j.get('materials', []):
+        f = fact.get(mt.get('name'))
+        if f:
+            pb = mt.setdefault('pbrMetallicRoughness', {}); pb['roughnessFactor'] = round(float(f[0]), 4); pb['metallicFactor'] = round(float(f[1]), 4)
+    js = json.dumps(j, separators=(',', ':')).encode(); js += b' ' * (-len(js) % 4); rest = b[20 + jl:]
+    open(path, 'wb').write(struct.pack('<III', 0x46546C67, 2, 20 + len(js) + len(rest)) + struct.pack('<II', len(js), 0x4E4F534A) + js + rest)
 def new_img(name, w, h, data=False, alpha=False):
     im = bpy.data.images.new(name, w, h, alpha=alpha)
     im.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
@@ -256,13 +282,18 @@ def text_arc(alpha, text, R, centre_deg, height, track, sign, N, ext, stroke):
 # =============================================================================================
 # TEXTURES
 # =============================================================================================
-def height_to_normal(Hf, px_x, px_y, k=1.0):
+def height_to_normal(Hf, px_x, px_y, k=1.0, wrap_x=False, wrap_y=False):
+    """Tangent-space normal of a height field; wrap_x / wrap_y take periodic differences so a tiling map's edges meet."""
     gy, gx = np.gradient(Hf, px_y, px_x)
+    if wrap_x: gx = (np.roll(Hf, -1, 1) - np.roll(Hf, 1, 1)) / (2 * px_x)
+    if wrap_y: gy = (np.roll(Hf, -1, 0) - np.roll(Hf, 1, 0)) / (2 * px_y)
     n = np.stack([-gx * k, gy * k, np.ones_like(Hf)], -1)           # rows go DOWN the image, hence +gy
     n /= np.linalg.norm(n, axis=-1, keepdims=True)
     return n * 0.5 + 0.5
 
 def hull_textures(W, H):
+    """The wall's tile: dark kick plate, teal wainscot, brass rail, cream upper wall, a dark band; riveted panels that bow a little between
+    their seams. Enamel worn to primer and steel at the seams and the floor, rust run from the rivets, hands polishing the wainscot."""
     TW, TV = TILE_U, TILE_V
     xx = ((np.arange(W) + .5) / W * TW)[None, :] * np.ones((H, 1))
     yy = ((1 - (np.arange(H) + .5) / H) * TV)[:, None] * np.ones((1, W))
@@ -283,10 +314,11 @@ def hull_textures(W, H):
     alb *= (0.93 + 0.14 * ph)[..., None]
     mott = tfbm(H, W, 6, 4, SEED + 1, 5)
     alb *= (0.86 + 0.28 * mott)[..., None]
-    # height: grooves at the seams, rivets beside them
+    # height: grooves at the seams, rivets beside them, panels bowing between the seams (a reflection wobbles across each)
     Hh = -0.5 * np.exp(-(dmin / 0.22) ** 2)
     Hh += 0.12 * np.exp(-((dmin - 0.7) / 0.3) ** 2)
     Hh += (tfbm(H, W, 12, 8, SEED + 2, 4) - 0.5) * 0.12
+    Hh += 1.1 * (tfbm(H, W, 9, 6, SEED + 10, 3) - 0.5) * sstep(0.4, 3.0, dmin) * (kind != 2)
     pxu, pxv = TW / W, TV / H
     def rivet(cx, cy):
         rr = 0.7; ix, iy = int(cx / pxu), int((TV - cy) / pxv); wr = int(rr / pxu) + 2
@@ -306,10 +338,11 @@ def hull_textures(W, H):
             for xv in np.arange(3.0, TW, 6.2):
                 for dy in (-1.5, 1.5):
                     if y0 <= sy + dy <= y1: rivet(xv, sy + dy)
-    # wear: chips near seams and the floor, rust under the rivets, scuffs, grime
+    # wear: chips (sunk to the primer or steel) near seams and the floor, rust under the rivets, scuffs low down, grime
     chip_n = tfbm(H, W, 40, 24, SEED + 3, 5)
     score = chip_n + 0.26 * np.exp(-dmin / 1.4) + 0.2 * np.exp(-yy / 12.0) + 0.04 * (kind == 1) - 0.8
     chip = sstep(0.0, 0.05, score) * (kind != 2)
+    Hh -= 0.3 * chip
     prime = np.where((tfbm(H, W, 8, 5, SEED + 4, 3) > 0.5)[..., None], hx(0x7a4a36), hx(0x868a8c))
     alb = alb * (1 - chip[..., None]) + prime * chip[..., None]
     streak = tfbm(H, W, 3, 36, SEED + 5, 4, 0.6)
@@ -317,17 +350,23 @@ def hull_textures(W, H):
     alb = alb * (1 - 0.6 * rust[..., None]) + hx(0x7d3f1b) * 0.6 * rust[..., None]
     grime = tfbm(H, W, 5, 3, SEED + 6, 4)
     alb *= (0.8 + 0.3 * grime)[..., None]
-    scr = np.zeros((H, W))
+    scr = np.zeros((H, W)); g = np.random.default_rng(SEED + 13)
     for _ in range(int(260 * TS + 40)):
-        x = rng.uniform(0, W); y = rng.uniform(0, H * (46.0 / TV) * 1.4); a = rng.uniform(0, math.pi); l = rng.uniform(6, 34) * TS * 2
-        seg_aa(scr, (x, y), (x + l * math.cos(a), y + l * math.sin(a) * 0.5), 1.0, rng.uniform(0.2, 0.7))
+        x = g.uniform(0, W); y = H - g.uniform(0, H * (64.0 / TV)); a = g.uniform(0, math.pi); l = g.uniform(6, 34) * TS * 2
+        seg_aa(scr, (x, y), (x + l * math.cos(a), y + l * math.sin(a) * 0.5), 1.0, g.uniform(0.2, 0.7))
     alb = alb * (1 - 0.35 * scr[..., None]) + 0.35 * scr[..., None] * 0.9
-    rough = np.where(kind == 2, 0.34, 0.62) + 0.14 * (tfbm(H, W, 20, 12, SEED + 7, 3) - 0.5)
+    tarn = sstep(0.4, 0.75, tfbm(H, W, 3, 8, SEED + 12, 4))
+    alb = np.where((kind == 2)[..., None], alb * (1 - 0.22 * tarn)[..., None], alb)
+    # roughness: enamel, glossier where hands polish the wainscot, matte under grime and rust, bare steel at the chips, a tarnished rail
+    hands = np.exp(-((yy - 40.0) / 22.0) ** 2) * sstep(0.45, 0.75, tfbm(H, W, 3, 2, SEED + 11, 4))
+    rough = np.select([kind == 0, kind == 1, (kind == 3) | (kind == 4)], [0.5, 0.34, 0.46], 0.4) + 0.1 * (tfbm(H, W, 20, 12, SEED + 7, 3) - 0.5)
+    rough = rough + 0.26 * sstep(0.5, 0.85, grime) + 0.22 * rust + 0.22 * scr - 0.14 * hands
+    rough = np.where(kind == 2, 0.22 + 0.26 * tarn, rough)
     rough = np.where(chip > 0.5, 0.42, rough)
     metal = np.where(kind == 2, 1.0, 0.0); metal = np.maximum(metal, chip * np.where(prime[..., 1] > 0.4, 1.0, 0.2))
-    ao = 1 - 0.55 * np.exp(-(dmin / 0.5) ** 2) - 0.25 * np.exp(-((dmin - 1.5) / 1.2) ** 2) * 0
+    ao = 1 - 0.55 * np.exp(-(dmin / 0.5) ** 2)
     orm = np.stack([np.clip(ao, 0, 1), np.clip(rough, 0, 1), np.clip(metal, 0, 1)], -1)
-    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.0), orm
+    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.0, wrap_x=True), orm
 
 def tread_textures(N):
     T = DECK_TILE
@@ -359,7 +398,7 @@ def tread_textures(N):
     metal = 0.35 + 0.55 * lug * wear
     ao = 1 - 0.5 * (1 - lug) * 0.6
     orm = np.stack([np.clip(ao, 0, 1), np.clip(rough, 0, 1), np.clip(metal, 0, 1)], -1)
-    return np.clip(alb, 0, 1), height_to_normal(Hh, T / N, T / N, 2.2), orm
+    return np.clip(alb, 0, 1), height_to_normal(Hh, T / N, T / N, 2.2, True, True), orm
 
 def dais_textures(N):
     R = DAIS_R + 2; ext = R
@@ -533,30 +572,168 @@ def paint_texture():
     rgb_ = img[..., :3]; empty = img[..., 3] < 1e-3
     for c in range(3): rgb_[..., c] = np.where(empty, 0.3, rgb_[..., c])
     return np.clip(img, 0, 1)
-WEAR_TILE = 26.0                                             # cm one repeat of the wear map covers on a prop
 def seg_wrap(img, p0, p1, w, val):
     N = img.shape[0]
     for ox in (-N, 0, N):
         for oy in (-N, 0, N):
             if min(p0[0], p1[0]) + ox > N + 4 or max(p0[0], p1[0]) + ox < -4 or min(p0[1], p1[1]) + oy > N + 4 or max(p0[1], p1[1]) + oy < -4: continue
             seg_aa(img, (p0[0] + ox, p0[1] + oy), (p1[0] + ox, p1[1] + oy), w, val)
-def wear_texture(N):
-    """Linear-light multiply map for flat props: smudges, pitting, scuffs and a few bright scratches. Tiles seamlessly."""
-    smudge = sstep(0.52, 0.80, tfbm(N, N, 5, 5, SEED + 41, 5))
-    fine = tfbm(N, N, 60, 60, SEED + 42, 3)
-    pits = sstep(0.62, 0.74, tfbm(N, N, 90, 90, SEED + 43, 2)) * 0.55
-    streak = sstep(0.55, 0.85, tfbm(N, N, 2, 22, SEED + 44, 3, 0.55))
-    dark = np.zeros((N, N)); light = np.zeros((N, N))
-    for _ in range(int(210 * TS + 60)):
-        x = rng.uniform(0, N); y = rng.uniform(0, N); a = rng.uniform(0, math.pi); l = rng.uniform(8, 70) * TS * 2
-        seg_wrap(light if rng.random() < 0.6 else dark, (x, y), (x + l * math.cos(a), y + l * math.sin(a)), 1.0, rng.uniform(0.25, 0.8))
-    W = 0.80 - 0.20 * smudge - 0.14 * streak * (0.4 + 0.6 * smudge) - 0.22 * pits + 0.06 * (fine - 0.5) * 2
-    W = W + 0.20 * light - 0.22 * dark
-    W = np.clip(W, 0.22, 1.0)
-    tint = np.stack([W * (1 - 0.00 * smudge), W * (1 - 0.03 * smudge - 0.01), W * (1 - 0.10 * smudge)], -1)
-    mean = float(W.mean())
-    srgb_e = np.where(tint <= 0.0031308, tint * 12.92, 1.055 * np.power(np.clip(tint, 1e-6, 1), 1 / 2.4) - 0.055)
-    return np.clip(srgb_e, 0, 1), mean
+
+# =============================================================================================
+# SURFACE SETS: tiling albedo / normal / ORM per kind of surface, worn by the prop materials through box-projected UVs
+# =============================================================================================
+# kind: cm one repeat covers, normal strength. A neutral albedo (steel, brass, leather, plastic) is multiplied by the material's colour;
+# paint and wood carry their own colours. The ORM green channel is absolute roughness for the roughest wearer; the others scale it (FACT).
+SURF_TILE = {'steel': 22.0, 'brass': 30.0, 'paint': 56.0, 'leather': 14.0, 'wood': 64.0, 'plastic': 20.0}
+SURF_K    = {'steel': 0.9, 'brass': 1.1, 'paint': 1.3, 'leather': 1.6, 'wood': 1.2, 'plastic': 0.7}
+def worley(N, cells, seed):
+    """Periodic F1, F2 (in cell widths) to one jittered point per cell; cells x cells over the tile."""
+    g = np.random.default_rng(seed).random((cells, cells, 2))
+    c = (np.arange(N) + .5) / N * cells; X, Y = np.meshgrid(c, c)
+    ix, iy = np.floor(X).astype(int), np.floor(Y).astype(int)
+    f1 = np.full((N, N), 9.0); f2 = np.full((N, N), 9.0)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            cx, cy = ix + dx, iy + dy; p = g[cy % cells, cx % cells]
+            d = np.hypot(cx + p[..., 0] - X, cy + p[..., 1] - Y)
+            f2 = np.where(d < f1, f1, np.minimum(f2, d)); f1 = np.minimum(f1, d)
+    return f1, f2
+def lin2srgb(c): c = np.clip(c, 0, 1); return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(np.maximum(c, 1e-6), 1 / 2.4) - 0.055)
+def hairlines(N, seed):
+    """Fine parallel lines along x (a brushed or turned finish), fading in and out."""
+    rows = tfbm(N, 1, N // 2, 1, seed, 3, 0.6)[:, 0]
+    return (rows[:, None] - 0.5) * (0.5 + tfbm(N, N, 4, 10, seed + 1, 3)) + 0.5
+def scratches(N, n, lmin, lmax, seed, ang=None, spread=0.25):
+    """Wrapping hairline scratches, lengths in pixels; ang None = any direction, else around ang (radians)."""
+    g = np.random.default_rng(seed); s = np.zeros((N, N))
+    for _ in range(n):
+        x, y = g.uniform(0, N), g.uniform(0, N); l = g.uniform(lmin, lmax)
+        a = g.uniform(0, math.pi) if ang is None else ang + g.normal(0, spread)
+        seg_wrap(s, (x, y), (x + l * math.cos(a), y + l * math.sin(a)), g.uniform(0.6, 1.3), g.uniform(0.3, 1.0))
+    return s
+def surf_nrm(H, N, k): return height_to_normal(H, 512.0 / N, 512.0 / N, k, True, True)
+def surf_orm(rough, metal): return np.stack([np.ones_like(rough), np.clip(rough, 0.04, 1), np.clip(metal, 0, 1)], -1)
+def neutral(alb_lin):
+    """Neutral albedo in linear light -> (sRGB image, mean) for a material that multiplies it by its colour."""
+    return lin2srgb(alb_lin), float(alb_lin.mean())
+
+def steel_set(N):
+    """Brushed / turned steel: hairlines, smudges and prints that dull it, grime in patches, a few bright scratches."""
+    s = N / 512.0
+    br = hairlines(N, SEED + 101)
+    smudge = sstep(0.52, 0.8, tfbm(N, N, 4, 4, SEED + 103, 5))
+    prints = sstep(0.6, 0.78, tfbm(N, N, 16, 16, SEED + 104, 3)) * sstep(0.45, 0.7, tfbm(N, N, 2, 2, SEED + 105, 3))
+    grime = sstep(0.64, 0.9, tfbm(N, N, 7, 7, SEED + 106, 5))
+    scr = scratches(N, int(150 * s), 12 * s, 110 * s, SEED + 107)
+    lum = 0.93 - 0.03 * smudge - 0.15 * grime + 0.05 * (br - 0.5) + 0.04 * scr
+    alb = np.stack([lum, lum * (1 - 0.04 * grime), lum * (1 - 0.1 * grime)], -1)
+    rough = 0.16 + 0.12 * (br - 0.5) + 0.14 * smudge + 0.12 * prints + 0.2 * grime - 0.07 * scr
+    metal = 1.0 - 0.3 * grime
+    H = 0.6 * (br - 0.5) - 0.7 * scr + 0.15 * (tfbm(N, N, 6, 6, SEED + 108, 3) - 0.5)
+    a, m = neutral(alb)
+    return a, m, surf_nrm(H, N, SURF_K['steel']), surf_orm(rough, metal)
+
+def brass_set(N):
+    """Turned brass: polished where hands go, tarnished and pitted where they do not, softly hammered."""
+    s = N / 512.0
+    tarn = sstep(0.4, 0.72, tfbm(N, N, 4, 4, SEED + 111, 5)) * (1 - 0.85 * sstep(0.45, 0.72, tfbm(N, N, 2, 2, SEED + 112, 4)))
+    f1, _ = worley(N, max(8, N // 9), SEED + 113)
+    pit = (1 - sstep(0.0, 0.16, f1)) * (tfbm(N, N, 57, 57, SEED + 114, 2) > 0.62) * (0.4 + 0.6 * tarn)
+    pol = hairlines(N, SEED + 115)
+    scr = scratches(N, int(90 * s), 8 * s, 70 * s, SEED + 116)
+    lum = 0.96 - 0.26 * tarn - 0.45 * pit + 0.05 * scr
+    alb = np.stack([lum, lum * (1 - 0.06 * tarn), lum * (1 - 0.15 * tarn)], -1)
+    rough = 0.14 + 0.28 * tarn + 0.06 * (pol - 0.5) + 0.3 * pit - 0.06 * scr + 0.05 * (tfbm(N, N, 24, 24, SEED + 117, 3) - 0.5)
+    metal = 1.0 - 0.25 * tarn - 0.6 * pit
+    H = 1.6 * (tfbm(N, N, 5, 5, SEED + 118, 3) - 0.5) + 0.25 * (pol - 0.5) - 0.8 * pit - 0.5 * scr
+    a, m = neutral(alb)
+    return a, m, surf_nrm(H, N, SURF_K['brass']), surf_orm(rough, metal)
+
+def paint_set(N):
+    """Enamel on steel, shared by every painted material: orange peel, chips down to the steel with a primer rim, scuffs, grime and runs.
+    Returns the normal, the ORM and the masks paint_albedo colours."""
+    s = N / 512.0
+    cl = sstep(0.38, 0.78, tfbm(N, N, 3, 3, SEED + 121, 4))
+    sc = tfbm(N, N, 26, 26, SEED + 122, 5) + 0.10 * (tfbm(N, N, 96, 96, SEED + 123, 2) - 0.5) + 0.22 * cl - 0.915
+    chip = sstep(0.0, 0.01, sc); rim = sstep(-0.016, 0.0, sc) * (1 - chip)
+    peel = tfbm(N, N, 72, 72, SEED + 124, 2); mott = tfbm(N, N, 8, 8, SEED + 125, 4)
+    grime = sstep(0.52, 0.86, tfbm(N, N, 4, 4, SEED + 126, 5))
+    runs = sstep(0.6, 0.9, tfbm(N, N, 2, 28, SEED + 127, 4, 0.6)) * (0.35 + 0.65 * grime)
+    scuff = scratches(N, int(130 * s), 6 * s, 45 * s, SEED + 128)
+    rust = sstep(0.62, 0.85, tfbm(N, N, 20, 20, SEED + 129, 3)) * chip
+    rough = 0.30 + 0.07 * (mott - 0.5) + 0.05 * (peel - 0.5) + 0.26 * grime + 0.14 * runs + 0.22 * scuff
+    rough = rough * (1 - chip - rim) + chip * (0.36 + 0.4 * rust) + rim * 0.78
+    metal = chip * (1 - 0.8 * rust)
+    H = 1.0 * (1 - chip) - 0.4 * rim + 0.35 * (peel - 0.5) - 0.3 * scuff
+    M = dict(chip=chip, rim=rim, mott=mott, grime=grime, runs=runs, scuff=scuff, rust=rust)
+    return surf_nrm(H, N, SURF_K['paint']), surf_orm(rough, metal), M
+def paint_albedo(M, hexc):
+    base = hx(hexc)[None, None] * (0.93 + 0.14 * M['mott'])[..., None]
+    base = base + (np.minimum(1, hx(hexc) * 1.35 + 0.08) - base) * (0.55 * M['scuff'])[..., None]
+    base = base * (1 - 0.34 * M['grime'] - 0.22 * M['runs'])[..., None] * np.array([1.0, 0.98, 0.95])[None, None] ** M['grime'][..., None]
+    steel = np.array([0.56, 0.58, 0.6])[None, None] * (0.85 + 0.3 * M['mott'])[..., None]
+    steel = steel * (1 - M['rust'][..., None]) + hx(0x6d3a1c) * M['rust'][..., None]
+    ch, rm = M['chip'][..., None], M['rim'][..., None]
+    return np.clip(base * (1 - ch - rm) + rm * hx(0x5e5048) + ch * steel, 0, 1)
+
+def leather_set(N):
+    """Upholstery vinyl: a pebbled grain, creases, grime in the grooves, shiny where people sit."""
+    f1, f2 = worley(N, max(16, N // 6), SEED + 131)
+    cell = np.clip((f2 - f1) / 0.45, 0, 1) ** 0.6
+    crease = sstep(0.94, 0.99, 1 - np.abs(2 * tfbm(N, N, 3, 5, SEED + 132, 4) - 1))
+    crease = np.clip(gblur(crease, 0.8) * 1.5, 0, 1)
+    wear = sstep(0.5, 0.8, tfbm(N, N, 2, 2, SEED + 134, 4))
+    dirt = sstep(0.55, 0.85, tfbm(N, N, 6, 6, SEED + 135, 4))
+    lum = 0.80 + 0.07 * (cell - 0.5) - 0.16 * (1 - cell) * (0.5 + dirt) - 0.08 * crease + 0.10 * wear
+    alb = np.stack([lum, lum, lum * (1 - 0.04 * dirt)], -1)
+    rough = 0.52 - 0.08 * cell - 0.2 * wear + 0.14 * (1 - cell) + 0.08 * crease + 0.1 * dirt
+    H = 0.55 * cell * (1 - 0.6 * wear) - 0.9 * crease + 0.4 * (tfbm(N, N, 5, 5, SEED + 136, 3) - 0.5)
+    a, m = neutral(alb)
+    return a, m, surf_nrm(H, N, SURF_K['leather']), surf_orm(rough, 0 * rough)
+
+def wood_set(N):
+    """Lacquered counter wood: planks along x, each cut off its own log (growth rings arch where the board leaves the log's axis),
+    pores and fibre along the grain, worn lacquer, seams, end joints and dents. Carries its own colour."""
+    s = N / 512.0; NP = 6; T = SURF_TILE['wood']; W = T / NP
+    yy, xx = np.mgrid[0:N, 0:N]; u = (xx + .5) / N; v = (yy + .5) / N
+    pk = np.floor(v * NP).astype(int); pv = v * NP - pk
+    g = np.random.default_rng(SEED + 141)
+    D0, A, K, ph, cx = g.uniform(9, 22, NP), g.uniform(1.0, 3.0, NP), g.integers(1, 3, NP), g.uniform(0, 2 * math.pi, NP), g.uniform(-0.9, 0.9, NP)
+    tint, joint, hue = 0.88 + 0.22 * g.random(NP), g.random(NP), g.random(NP)
+    depth = D0[pk] + A[pk] * np.sin(2 * math.pi * u * K[pk] + ph[pk]) + 0.8 * (tfbm(N, N, 2, 3, SEED + 142, 3) - 0.5)
+    rad = np.hypot((pv - 0.5 + cx[pk]) * W, depth) + 0.25 * (tfbm(N, N, 6, 4, SEED + 143, 3) - 0.5)
+    f = (rad * 3.2 + 1.5 * tfbm(N, N, 3, 2, SEED + 151, 3)) % 1.0     # ~3 rings a cm, their widths wandering
+    late = (sstep(0.55, 0.88, f) * (1 - sstep(0.92, 1.0, f))) * (0.55 + 0.45 * tfbm(N, N, 4, 2, SEED + 152, 3))
+    fibre = tfbm(N, N, int(260 * s), 5, SEED + 144, 2)
+    pores = sstep(0.74, 0.92, tfbm(N, N, int(200 * s), 36, SEED + 145, 2)) * (0.4 + 0.6 * (1 - late))
+    figure = tfbm(N, N, 3, 2, SEED + 150, 4)
+    dseam = np.minimum(pv, 1 - pv) * N / NP
+    seam = np.exp(-(dseam / (1.1 * s)) ** 2)
+    dj = np.abs(((u - joint[pk] + 0.5) % 1.0) - 0.5) * N
+    jt = np.exp(-(dj / (1.0 * s)) ** 2) * (pv > 0.02) * (pv < 0.98)
+    wear = sstep(0.5, 0.8, tfbm(N, N, 3, 3, SEED + 146, 5))
+    f1, _ = worley(N, max(6, N // 40), SEED + 147); dent = (1 - sstep(0.0, 0.22, f1)) * (tfbm(N, N, 13, 13, SEED + 148, 2) > 0.62)
+    scr = scratches(N, int(110 * s), 10 * s, 90 * s, SEED + 149, 0.0, 0.35)
+    light, dark = hx(0x76513a), hx(0x452a19)
+    alb = light[None, None] + (dark - light)[None, None] * np.clip(0.42 * late + 0.25 * fibre + 0.25 * pores + 0.35 * (figure - 0.5) + 0.12, 0, 1)[..., None]
+    alb = alb * tint[pk][..., None] * (1 + 0.08 * (hue[pk] - 0.5)[..., None] * np.array([1.0, 0.2, -0.8]))
+    alb = alb * (1 + 0.12 * wear)[..., None] * (1 - 0.5 * seam - 0.4 * jt)[..., None] + 0.05 * scr[..., None]
+    rough = 0.2 + 0.05 * late + 0.05 * (fibre - 0.5) + 0.3 * wear + 0.12 * pores + 0.45 * np.maximum(seam, jt) + 0.15 * scr
+    H = -1.0 * seam - 0.9 * jt + 0.1 * late - 0.25 * pores + 0.08 * (fibre - 0.5) - 0.6 * dent - 0.3 * scr
+    return np.clip(alb, 0, 1), surf_nrm(H, N, SURF_K['wood']), surf_orm(rough, 0 * rough)
+
+def plastic_set(N):
+    """Moulded plastic and rubber: a fine grain, dust settled in patches, worn smooth spots, scuffs."""
+    s = N / 512.0
+    grain = tfbm(N, N, 110, 110, SEED + 151, 2)
+    dust = sstep(0.5, 0.86, tfbm(N, N, 4, 4, SEED + 152, 5))
+    worn = sstep(0.55, 0.8, tfbm(N, N, 3, 3, SEED + 153, 4))
+    scr = scratches(N, int(70 * s), 6 * s, 40 * s, SEED + 154)
+    lum = 0.78 + 0.05 * (grain - 0.5) + 0.2 * dust - 0.05 * worn + 0.12 * scr
+    rough = 0.84 + 0.06 * (grain - 0.5) + 0.14 * dust - 0.2 * worn - 0.12 * scr
+    H = 0.4 * (grain - 0.5) - 0.6 * scr
+    a, m = neutral(np.stack([lum, lum, lum], -1))
+    return a, m, surf_nrm(H, N, SURF_K['plastic']), surf_orm(rough, 0 * rough)
 
 # =============================================================================================
 # GEOMETRY ACCUMULATORS AND PRIMITIVES (local space: x = along the wall, y = out toward the wall, z = up)
@@ -747,6 +924,7 @@ def tube_world(mat, pts_game, r, seg=6, smooth_pts=0, caps=True):
 # ---- vertex AO sources the props register; the floor and wall read them at build time -----------
 AO_BLOBS = []        # (x, z, rx, rz, strength)  game xz
 AO_ARCS = []         # (th0, th1, r0, r1, soft, strength)
+LAMPS = []           # (game xyz, colour hex, strength): the room's own lamps, for bake_light (strength = brightness x cm^2 at the lamp)
 def floor_ao(x, z):
     r = math.hypot(x, z); th = math.degrees(math.atan2(z, x)); a = 1.0
     a *= 1 - 0.55 * float(sstep(WALL_R - 22, WALL_R, r))
@@ -799,19 +977,24 @@ def glow_floor(th0, th1, r0, r1, reg, y=None, step=3.0):
     for k in range(n): GLW['F'].append((o + 2 * k, o + 2 * k + 1, o + 2 * k + 3, o + 2 * k + 2))
 
 sec('piers')
-# ---- window piers: chrome pilasters, a sconce on each -------------------------------------------
-for k in range(11):
-    th = -165 + 15 * k
-    sl = min([sv for c, sv in PANES if abs(c - th) < 8] or [SILL]); ym = (sl + HEAD) / 2
-    put('steel', at_wall(th, ym, 1.3) @ rotx(lean_deg), p_rbox(5.6, 3.0, HEAD - sl, 0.6, 1))
-    for yv in (sl + 1.1, HEAD - 1.1): put('brass', at_wall(th, yv, 0.0) @ loc(0, 0.4, 0) @ rotx(lean_deg), p_box(7.2, 1.0, 2.2, 0))
-    Ms = at_wall(th, 22, 2.6)
+# ---- window piers: chrome pilasters, a sconce on each; more sconces down the near wall -----------------------
+def sconce(th, y):
+    """A brass wall sconce rooted at height y: backplate, swan-neck arm, globe, its glow card and its lamp for the light bake."""
+    Ms = at_wall(th, y, 2.6)
     put('brass', Ms @ loc(0, -0.2, 0) @ rotx(90), p_cyl(2.8, 1.2, 8))
     put('brass', Ms, p_tube([Vector((0, -1.0, -1.0)), Vector((0, -4.8, -1.8)), Vector((0, -8.4, 1.0)), Vector((0, -8.4, 3.0))], 0.55, 4, True, 3))
     put('brass', Ms @ loc(0, -8.4, 3.0), p_lathe([[(0.9, 0), (2.3, 1.4), (3.0, 2.8)]], 8))
     put('lamp', Ms @ loc(0, -8.4, 7.9), p_sphere(3.3, 8, 6, 1.12))
     put('brass', Ms @ loc(0, -8.4, 11.2), p_lathe([[(2.2, 0), (1.9, 0.9), (0.9, 1.6), (0.6, 1.9)]], 8))
-    glow_wall(th, r_in(30) - 11.0, 30.0, 30, 30, 'warm')
+    glow_wall(th, r_in(y + 8) - 11.0, y + 8.0, 30, 30, 'warm')
+    LAMPS.append((polar(r_in(y) - 11.0, th, y + 8.0), 0xffb868, 850))
+for k in range(11):
+    th = -165 + 15 * k
+    sl = min([sv for c, sv in PANES if abs(c - th) < 8] or [SILL]); ym = (sl + HEAD) / 2
+    put('steel', at_wall(th, ym, 1.3) @ rotx(lean_deg), p_rbox(5.6, 3.0, HEAD - sl, 0.6, 1))
+    for yv in (sl + 1.1, HEAD - 1.1): put('brass', at_wall(th, yv, 0.0) @ loc(0, 0.4, 0) @ rotx(lean_deg), p_box(7.2, 1.0, 2.2, 0))
+    sconce(th, 22.0)
+for th, y in ((52.5, 40.0), (82.5, 44.0), (120.0, 56.0), (167.0, 56.0)): sconce(th, y)       # over the bench, the scoreboard, the lockers, by the jukebox
 arc_prism('teal', -165, -15, r_in(HEAD) - 5.0, r_in(HEAD + 4) + 1.0, HEAD, HEAD + 9.0, 3.0)
 arc_prism('brass', -165, -15, r_in(HEAD) - 5.4, r_in(HEAD) - 4.9, HEAD - 1.4, HEAD + 0.1, 3.0)
 for c, sl in PANES: arc_prism('brass', c - 7.5, c + 7.5, r_in(sl) - 4.2, r_in(sl) + 0.4, sl - 1.4, sl + 0.3, 3.0)
@@ -903,6 +1086,7 @@ arc_sweep('wood', B0 - 1.2, B1 + 1.2, wood_top, 2.5, caps=True)
 arc_sweep('brass', B0 - 1.2, B1 + 1.2, [(CT0 - 0.35, BT - 3.1), (CT0, BT - 3.1), (CT0, BT - 1.5), (CT0 - 0.35, BT - 1.5), (CT0 - 0.35, BT - 3.1)], 2.5, False)
 for rr in (BF + 5.5, BF + 12.5, BF + 19.5): arc_prism('dark', B0 - 1.1, B1 + 1.1, rr - 0.1, rr + 0.1, BT - 0.02, BT + 0.05, 2.5, ends=False)
 tube_arc('tealglow', BF - 3.0, B0 + 3, B1 - 3, BT - 5.2, 0.4, 5)
+for th in np.arange(B0 + 4, B1 - 3, 8.0): LAMPS.append((polar(BF - 10.0, float(th), BT - 8.0), 0x4fe8cc, 420))      # the strip washes the front panels
 tube_arc('brass', BF - 8.0, B0 + 2, B1 - 2, FL + 12, 1.5, 8)
 for th in np.arange(B0 + 4, B1 - 3, 12.0):
     put('brass', at_polar(float(th), BF - 8.0, FL + 6), p_cyl(1.0, 12, 8))
@@ -933,6 +1117,7 @@ put('dark', Mx, p_rbox(11, 4.6, 7.5, 0.7, 1)); put('brass', Mx @ loc(0, -2.4, 0)
 tube_world('rubber', [polar(BF - 2.3, SG1 + 3.6, SY0 - 9.5), polar(BF - 2.0, SG1 + 3.9, SY0 - 14), polar(BF - 1.2, SG1 + 4.0, FL + 11), polar(BF - 0.6, SG1 + 4.0, FL + 9.2)], 0.45, 5, 6)
 SGH = math.degrees(SIGN_X / (BF - 2.5))
 glow_arc(-135 - SGH, -135 + SGH, BF - 2.1, FL + SIGN_Y0, FL + SIGN_Y1, 'sign')
+for th in (-145, -125): LAMPS.append((polar(BF - 6.0, th, FL + 30.0), 0xff9a3c, 300))
 
 # on the counter: a tap tower, bottles, glasses on a tray and a till
 sec('bar top')
@@ -982,37 +1167,41 @@ for args in ((-166, 128.0, {}), (-113, 129.0, {'seat': 'seatteal'}), (-100, 127.
 stool(-121, 118.0, seat='leather', yaw=-121 + 180 + 78, tip=True)
 
 sec('jukebox')
-# ---- jukebox (-x end): an arched cabinet in cream and chrome, lit from inside ---------------------------
-def arch_pts(w, h_rect, n=14):
-    R = w / 2; return [(-R, 0.0), (R, 0.0)] + [(R * math.cos(math.radians(a)), h_rect + R * math.sin(math.radians(a))) for a in np.linspace(0, 180, n)]
-def arch_ring(Ro, Ri, h_rect, n=10):
-    return [(Ro * math.cos(math.radians(a)), h_rect + Ro * math.sin(math.radians(a))) for a in np.linspace(0, 180, n)] + [(Ri * math.cos(math.radians(a)), h_rect + Ri * math.sin(math.radians(a))) for a in np.linspace(180, 0, n)]
-Mj = at_polar(180, 188, FL)
-def jf(b, h=0.0): return Mj @ loc(0, b, h) @ rotx(90)               # a polygon in (a, h) extruded along the depth, front toward -b
-put('steel', Mj @ loc(0, 0, 3), p_rbox(58, 34, 6, 0.9, 1))
-put('vinyl', jf(0, 5), p_extrude(arch_pts(54, 50), 30))
-put('steel', jf(-15.5, 5.5), p_extrude(arch_pts(49, 48), 1.4))
-put('dark', jf(-16.1, 5.5), p_extrude(arch_pts(44.6, 46), 0.9))
-for Ro, Ri, mat in ((22.0, 19.4, 'tealglow'), (19.4, 16.8, 'lamp'), (16.8, 14.2, 'neon')): put(mat, jf(-16.7, 5.5), p_extrude(arch_ring(Ro, Ri, 46), 0.7))
-put('lamp', jf(-16.75, 5.5), p_extrude([(-14.2, 21.0), (14.2, 21.0), (14.2, 46.0)] + [(14.2 * math.cos(math.radians(a)), 46.0 + 14.2 * math.sin(math.radians(a))) for a in np.linspace(0, 180, 10)[1:-1]] + [(-14.2, 46.0)], 0.5))
-for a, rr, lab in ((-5.0, 8.4, 'red'), (0.3, 9.6, 'seatteal'), (5.2, 7.8, 'gold')):
-    put('rubber', Mj @ loc(a, -17.6 - abs(a) * 0.04, 5.5 + 32.0) @ rotx(90), p_cyl(rr, 0.5, 20)); put(lab, Mj @ loc(a, -17.95 - abs(a) * 0.04, 5.5 + 32.0) @ rotx(90), p_cyl(rr * 0.33, 0.3, 12))
-put('steel', Mj @ loc(0, -18.4, 5.5 + 42.8) @ rotx(90), p_cyl(0.7, 1.6, 8))
-put('steel', Mj @ loc(0, -16.6, 5.5 + 31.5), p_tube([Vector((12.5, -1.4, 10.0)), Vector((5.0, -1.8, 3.5)), Vector((0.5, -1.6, -0.5))], 0.35, 4, True, 3))
-put('dark', Mj @ loc(0, -16.3, 5.5 + 10.8), p_box(35.4, 0.8, 15.4, 0.3))
-for k in range(8): put('steel', Mj @ loc(0, -16.9, 5.5 + 4.6 + k * 1.75), p_box(33.4, 0.7, 0.8, 0.1))
-put('steel', Mj @ loc(0, -16.5, 5.5 + 19.8), p_box(35.4, 1.0, 2.8, 0.3))
-for k in range(8): put('ledr' if k % 3 == 0 else ('ledg' if k % 3 == 1 else 'vinyl'), Mj @ loc(-14.4 + k * 2.05, -17.2, 5.5 + 19.8), p_cyl(0.6, 0.5, 6, cz=0))
-put('brass', Mj @ loc(12.5, -17.1, 5.5 + 19.8), p_box(4.4, 0.5, 2.0, 0.1))
-tube_pts = [Vector((25.3, -16.2, 5.5 + 3.0)), Vector((25.3, -16.2, 5.5 + 46.0))] + [Vector((25.3 * math.cos(math.radians(a)), -16.2, 5.5 + 46.0 + 25.3 * math.sin(math.radians(a)))) for a in range(10, 171, 20)] + [Vector((-25.3, -16.2, 5.5 + 46.0)), Vector((-25.3, -16.2, 5.5 + 3.0))]
-put('tealglow', Mj, p_tube(tube_pts, 0.75, 5))
-for sx_ in (-1, 1): put('steel', Mj @ loc(sx_ * 28.2, -12.5, 31), p_cyl(1.7, 52, 10)); put('steel', Mj @ loc(sx_ * 28.2, -12.5, 57.6), p_sphere(1.9, 8, 5))
-put('brass', Mj @ loc(0, 0, 83.8), p_sphere(2.4, 8, 6))
-Mn_ = Mj @ loc(8.0, -17.8, 5.5 + 29.0) @ roty(7)
-put('vinyl', Mn_, p_box(11.5, 0.3, 7.6, 0.1))
-for sx_ in (-1, 1): put('rubber', Mn_ @ loc(sx_ * 5.4, -0.1, 3.6), p_box(2.2, 0.35, 1.2, 0.05))
-stroke_tubes('OUT OF', Mn_ @ loc(-4.7, -0.3, 0.7), 1.7, 0.5, 0.1, 'dark', 4); stroke_tubes('ORDER', Mn_ @ loc(-4.0, -0.3, -2.0), 1.7, 0.5, 0.1, 'dark', 4)
+# ---- jukebox (-x end): the modelled one from JUKE_SRC (appended at export) when it is there, else an arched cabinet built here ----
+def built_jukebox():
+    """An arched cabinet in cream and chrome, lit from inside."""
+    def arch_pts(w, h_rect, n=14):
+        R = w / 2; return [(-R, 0.0), (R, 0.0)] + [(R * math.cos(math.radians(a)), h_rect + R * math.sin(math.radians(a))) for a in np.linspace(0, 180, n)]
+    def arch_ring(Ro, Ri, h_rect, n=10):
+        return [(Ro * math.cos(math.radians(a)), h_rect + Ro * math.sin(math.radians(a))) for a in np.linspace(0, 180, n)] + [(Ri * math.cos(math.radians(a)), h_rect + Ri * math.sin(math.radians(a))) for a in np.linspace(180, 0, n)]
+    Mj = at_polar(180, 188, FL)
+    def jf(b, h=0.0): return Mj @ loc(0, b, h) @ rotx(90)               # a polygon in (a, h) extruded along the depth, front toward -b
+    put('steel', Mj @ loc(0, 0, 3), p_rbox(58, 34, 6, 0.9, 1))
+    put('vinyl', jf(0, 5), p_extrude(arch_pts(54, 50), 30))
+    put('steel', jf(-15.5, 5.5), p_extrude(arch_pts(49, 48), 1.4))
+    put('dark', jf(-16.1, 5.5), p_extrude(arch_pts(44.6, 46), 0.9))
+    for Ro, Ri, mat in ((22.0, 19.4, 'tealglow'), (19.4, 16.8, 'lamp'), (16.8, 14.2, 'neon')): put(mat, jf(-16.7, 5.5), p_extrude(arch_ring(Ro, Ri, 46), 0.7))
+    put('lamp', jf(-16.75, 5.5), p_extrude([(-14.2, 21.0), (14.2, 21.0), (14.2, 46.0)] + [(14.2 * math.cos(math.radians(a)), 46.0 + 14.2 * math.sin(math.radians(a))) for a in np.linspace(0, 180, 10)[1:-1]] + [(-14.2, 46.0)], 0.5))
+    for a, rr, lab in ((-5.0, 8.4, 'red'), (0.3, 9.6, 'seatteal'), (5.2, 7.8, 'gold')):
+        put('rubber', Mj @ loc(a, -17.6 - abs(a) * 0.04, 5.5 + 32.0) @ rotx(90), p_cyl(rr, 0.5, 20)); put(lab, Mj @ loc(a, -17.95 - abs(a) * 0.04, 5.5 + 32.0) @ rotx(90), p_cyl(rr * 0.33, 0.3, 12))
+    put('steel', Mj @ loc(0, -18.4, 5.5 + 42.8) @ rotx(90), p_cyl(0.7, 1.6, 8))
+    put('steel', Mj @ loc(0, -16.6, 5.5 + 31.5), p_tube([Vector((12.5, -1.4, 10.0)), Vector((5.0, -1.8, 3.5)), Vector((0.5, -1.6, -0.5))], 0.35, 4, True, 3))
+    put('dark', Mj @ loc(0, -16.3, 5.5 + 10.8), p_box(35.4, 0.8, 15.4, 0.3))
+    for k in range(8): put('steel', Mj @ loc(0, -16.9, 5.5 + 4.6 + k * 1.75), p_box(33.4, 0.7, 0.8, 0.1))
+    put('steel', Mj @ loc(0, -16.5, 5.5 + 19.8), p_box(35.4, 1.0, 2.8, 0.3))
+    for k in range(8): put('ledr' if k % 3 == 0 else ('ledg' if k % 3 == 1 else 'vinyl'), Mj @ loc(-14.4 + k * 2.05, -17.2, 5.5 + 19.8), p_cyl(0.6, 0.5, 6, cz=0))
+    put('brass', Mj @ loc(12.5, -17.1, 5.5 + 19.8), p_box(4.4, 0.5, 2.0, 0.1))
+    tube_pts = [Vector((25.3, -16.2, 5.5 + 3.0)), Vector((25.3, -16.2, 5.5 + 46.0))] + [Vector((25.3 * math.cos(math.radians(a)), -16.2, 5.5 + 46.0 + 25.3 * math.sin(math.radians(a)))) for a in range(10, 171, 20)] + [Vector((-25.3, -16.2, 5.5 + 46.0)), Vector((-25.3, -16.2, 5.5 + 3.0))]
+    put('tealglow', Mj, p_tube(tube_pts, 0.75, 5))
+    for sx_ in (-1, 1): put('steel', Mj @ loc(sx_ * 28.2, -12.5, 31), p_cyl(1.7, 52, 10)); put('steel', Mj @ loc(sx_ * 28.2, -12.5, 57.6), p_sphere(1.9, 8, 5))
+    put('brass', Mj @ loc(0, 0, 83.8), p_sphere(2.4, 8, 6))
+    Mn_ = Mj @ loc(8.0, -17.8, 5.5 + 29.0) @ roty(7)
+    put('vinyl', Mn_, p_box(11.5, 0.3, 7.6, 0.1))
+    for sx_ in (-1, 1): put('rubber', Mn_ @ loc(sx_ * 5.4, -0.1, 3.6), p_box(2.2, 0.35, 1.2, 0.05))
+    stroke_tubes('OUT OF', Mn_ @ loc(-4.7, -0.3, 0.7), 1.7, 0.5, 0.1, 'dark', 4); stroke_tubes('ORDER', Mn_ @ loc(-4.0, -0.3, -2.0), 1.7, 0.5, 0.1, 'dark', 4)
+if not os.path.exists(JUKE_SRC): built_jukebox()
 glow_wall(180, r_in(FL + 50) - 0.7, FL + 52, 110, 135, 'teal')
+LAMPS.append((polar(172.0, 180, FL + 45.0), 0xffc890, 420))
 glow_floor(168, 192, 150, 176, 'strip')
 AO_BLOBS.append((-188, 0, 22, 34, 0.5))
 
@@ -1024,6 +1213,7 @@ for sx_ in (-1, 1): put('wood', Mc @ loc(sx_ * 20.4, 0, 46), p_box(2.4, 15, 92, 
 put('wood', Mc @ loc(0, 0, 94), p_box(44, 15, 3.4, 0.6)); put('wood', Mc @ loc(0, 0, 7), p_box(42, 15, 14, 0.5))
 for hz in (34, 62): put('brass', Mc @ loc(0, -0.5, hz), p_box(38, 12, 1.0, 0.2))
 put('lamp', Mc @ loc(0, -5.5, 90), p_box(34, 1.4, 1.2))
+LAMPS.append((polar(189.0, 157.5, FL + 88.0), 0xffb868, 140))
 def trophy(M, s):
     outer = [(0, 0), (5.5, 0), (5.5, 1.4), (3.0, 2.4), (1.2, 3.6), (1.2, 7.5), (2.8, 8.6), (4.6, 10.5), (5.7, 14.5), (5.6, 18.0), (5.0, 18.2), (5.0, 17.4), (4.6, 14.4), (0, 10.8)]
     put('gold', M, p_lathe([[(r * s, z * s) for r, z in outer]], 14))
@@ -1181,8 +1371,11 @@ for k in range(8):
     tube_world('brass', [polar(14, th, APEX - 8), polar(30, th, APEX - 24), polar(44, th, APEX - 42)], 0.9, 5, 3)
     put('brass', at_polar(th, 44, APEX - 44.5), p_lathe([[(1.4, 3), (3.4, 0.5), (5.2, -2.5)]], 8))
     put('lamp', at_polar(th, 44, APEX - 51), p_sphere(6.2, 12, 8)); glow_quad(polar(44, th, APEX - 51), (1, 0, 0), (0, 0, 1), 38, 38, 'warm')
+    LAMPS.append((polar(44, th, APEX - 51), 0xffb868, 1100))
 tube_world('brass', [polar(0, 0, APEX - 8), polar(0, 0, APEX - 30)], 1.0, 6)
 put('lamp', at_polar(0, 0, APEX - 38), p_sphere(8.5, 14, 9)); glow_quad(polar(0, 0, APEX - 38), (1, 0, 0), (0, 0, 1), 52, 52, 'warm')
+LAMPS.append((polar(0, 0, APEX - 38), 0xffb868, 1600))
+for c in (-82.5, -67.5, -52.5, -37.5): LAMPS.append((polar(r_in(20) - 8.0, c, 20.0), 0xffb070, 380))     # the giant's light through the bay
 for k in range(24):
     th = 15 * k + 7.5; rr, yy = dome(0.16)
     put('lamp', at_polar(th, rr - 1.2, yy - 0.8, th + 90), p_box(9, 1.2, 1.2, 0.3))
@@ -1208,12 +1401,26 @@ im_dn = new_img('saucer_dais_normal', DN_, DN_, True); np_img(im_dn, dn)
 im_do = new_img('saucer_dais_orm', DN_ // 2, DN_ // 2, True); np_img(im_do, do[::2, ::2])
 gcol, galpha = glass_texture(max(64, int(512 * TS) // 4 * 4), max(32, int(256 * TS) // 4 * 4))
 im_ga = new_img('saucer_glass', gcol.shape[1], gcol.shape[0], alpha=True); np_img(im_ga, gcol, galpha)
-wv, wmean = wear_texture(max(128, int(512 * TS) // 4 * 4))
-im_wv = new_img('saucer_wear', wv.shape[1], wv.shape[0]); np_img(im_wv, wv)
-WEAR['img'] = im_wv; WEAR['mean'] = wmean
 glw = glow_texture(); im_gl = new_img('saucer_glow', GLOW_W, GLOW_H, alpha=True); np_img(im_gl, glw[..., :3], glw[..., 3])
 pnt = paint_texture(); im_pt = new_img('saucer_paint', PAINT_W, PAINT_H, alpha=True); np_img(im_pt, pnt[..., :3], pnt[..., 3])
-IMGS = [im_ha, im_hn, im_ho, im_ta, im_tn, im_to, im_da, im_dn, im_do, im_ga, im_wv, im_gl, im_pt]
+IMGS = [im_ha, im_hn, im_ho, im_ta, im_tn, im_to, im_da, im_dn, im_do, im_ga, im_gl, im_pt]
+print('saucer: surface sets')
+SN = max(128, int(512 * TS) // 4 * 4)
+def surf_imgs(kind, nrm, orm, alb=None, mean=1.0, albs=None):
+    S = {'mean': mean, 'albs': {}, 'alb': None}
+    S['n'] = new_img('saucer_%s_normal' % kind, nrm.shape[1], nrm.shape[0], True); np_img(S['n'], nrm)
+    S['orm'] = new_img('saucer_%s_orm' % kind, orm.shape[1], orm.shape[0], True); np_img(S['orm'], orm)
+    IMGS.extend([S['n'], S['orm']])
+    if alb is not None: S['alb'] = new_img('saucer_%s_albedo' % kind, alb.shape[1], alb.shape[0]); np_img(S['alb'], alb); IMGS.append(S['alb'])
+    for mat, a in (albs or {}).items():
+        im = new_img(mat + '_albedo', a.shape[1], a.shape[0]); np_img(im, a); S['albs'][mat] = im; IMGS.append(im)
+    SURF[kind] = S
+for kind, fn in (('steel', steel_set), ('brass', brass_set), ('leather', leather_set), ('plastic', plastic_set)):
+    a_, m_, n_, o_ = fn(SN); surf_imgs(kind, n_, o_, a_, m_)
+pn_, po_, PM = paint_set(SN)
+PAINTED = {'teal': 0x2a6670, 'dark': 0x262d32, 'caution': 0xd8a51e, 'red': 0xb3261e, 'ceil': 0x294a52}
+surf_imgs('paint', pn_, po_, albs={'saucer_' + k: paint_albedo(PM, h) for k, h in PAINTED.items()})
+wa_, wn_, wo_ = wood_set(SN * 2); surf_imgs('wood', wn_, wo_, albs={'saucer_wood': wa_})
 
 MATS = {
     'hull':  tex_mat('saucer_hull', im_ha, im_hn, im_ho, vcol=True),
@@ -1224,33 +1431,33 @@ MATS = {
     'paint': paint_mat('saucer_paint', im_pt),
 }
 MATS['glass'].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.06
-FLAT = {   # name: (hex, metal, rough, emissive hex, strength)
-    'ceil':   (0x294a52, 0.35, 0.62, None, 1),
-    'steel':  (0xc3ccd1, 1.0, 0.30, None, 1),
-    'dark':   (0x2a3238, 0.7, 0.5, None, 1),
-    'caution': (0xd8a51e, 0.0, 0.45, None, 1),
-    'teal':   (0x2a6670, 0.25, 0.55, None, 1),
-    'vinyl':  (0xd6c9a8, 0.0, 0.48, None, 1),
-    'seatteal': (0x2c7a82, 0.0, 0.40, None, 1),
-    'glassB': (0x7a4416, 0.0, 0.12, None, 1),
-    'drinkA': (0x8a4a10, 0.0, 0.2, 0xff9a2a, 1.7),
-    'drinkT': (0x15564e, 0.0, 0.2, 0x3ef0d0, 1.9),
-    'brass':  (0xd9a24a, 1.0, 0.34, None, 1),
-    'copper': (0xb8622a, 1.0, 0.40, None, 1),
-    'rubber': (0x0d0e10, 0.0, 0.85, None, 1),
-    'wood':   (0x54402e, 0.0, 0.42, None, 1),
-    'lamp':   (0xffe0b0, 0.0, 0.5, 0xffb868, 2.3),
-    'neon':   (0xffa24a, 0.0, 0.5, 0xff9a3c, 6.0),
-    'tealglow': (0x7ff5dc, 0.0, 0.5, 0x4fe8cc, 7.0),
-    'ledg':   (0x7dff9a, 0.0, 0.5, 0x4dff8a, 8.0),
-    'ledr':   (0xff6a4a, 0.0, 0.5, 0xff4a2a, 8.0),
-    'bottle': (0x7a4a14, 0.0, 0.2, 0xc9791f, 1.2),
-    'gold':   (0xe8b24a, 1.0, 0.26, None, 1),
-    'red':    (0xb3261e, 0.1, 0.42, None, 1),
-    'mustard': (0xb07a2a, 0.0, 0.46, None, 1),
-    'leather': (0x552a2e, 0.0, 0.36, None, 1),
+FLAT = {   # name: (hex, metal, rough, emissive hex, strength, surface kind); with a kind, metal and rough scale the set's ORM (painted and wood ones carry their own colour)
+    'ceil':   (0x294a52, 1.0, 1.0, None, 1, 'paint'),
+    'steel':  (0xc3ccd1, 1.0, 1.0, None, 1, 'steel'),
+    'dark':   (0x262d32, 1.0, 0.95, None, 1, 'paint'),
+    'caution': (0xd8a51e, 1.0, 0.9, None, 1, 'paint'),
+    'teal':   (0x2a6670, 1.0, 0.85, None, 1, 'paint'),
+    'vinyl':  (0xd6c9a8, 1.0, 0.55, None, 1, 'plastic'),
+    'seatteal': (0x2c7a82, 1.0, 0.85, None, 1, 'leather'),
+    'glassB': (0x7a4416, 0.0, 0.12, None, 1, None),
+    'drinkA': (0x8a4a10, 0.0, 0.2, 0xff9a2a, 1.7, None),
+    'drinkT': (0x15564e, 0.0, 0.2, 0x3ef0d0, 1.9, None),
+    'brass':  (0xd9a24a, 1.0, 1.0, None, 1, 'brass'),
+    'copper': (0xb8622a, 1.0, 1.0, None, 1, 'brass'),
+    'rubber': (0x0d0e10, 1.0, 1.0, None, 1, 'plastic'),
+    'wood':   (0x54402e, 1.0, 1.0, None, 1, 'wood'),
+    'lamp':   (0xffe0b0, 0.0, 0.5, 0xffb868, 2.3, None),
+    'neon':   (0xffa24a, 0.0, 0.5, 0xff9a3c, 6.0, None),
+    'tealglow': (0x7ff5dc, 0.0, 0.5, 0x4fe8cc, 7.0, None),
+    'ledg':   (0x7dff9a, 0.0, 0.5, 0x4dff8a, 8.0, None),
+    'ledr':   (0xff6a4a, 0.0, 0.5, 0xff4a2a, 8.0, None),
+    'bottle': (0x7a4a14, 0.0, 0.2, 0xc9791f, 1.2, None),
+    'gold':   (0xe8b24a, 1.0, 0.8, None, 1, 'steel'),
+    'red':    (0xb3261e, 1.0, 0.8, None, 1, 'paint'),
+    'mustard': (0xb07a2a, 1.0, 1.0, None, 1, 'leather'),
+    'leather': (0x552a2e, 1.0, 0.8, None, 1, 'leather'),
 }
-for k, (h, m, r, e, es) in FLAT.items(): MATS[k] = flat_mat('saucer_' + k, h, m, r, e, es)
+for k, (h, m, r, e, es, kd) in FLAT.items(): MATS[k] = flat_mat('saucer_' + k, h, m, r, e, es, kd)
 
 OBJS = []
 def make_mesh(name, V, F, smooth, mat, uv=None, colors=None):
@@ -1420,8 +1627,8 @@ for tt in (0.28, 0.62):
 # =============================================================================================
 sec('end')
 PROC_SKIP = {n for n, v in FLAT.items() if v[3] is not None}                 # lamps and neon stay clean
-def prop_attrs(A):
-    """Per-corner UVs (the wear map, projected along each face's dominant axis) and baked colour: floor contact, undersides, a little dirt."""
+def prop_attrs(A, tile):
+    """Per-corner UVs (the surface set, projected along each face's dominant axis, tile cm a repeat) and baked colour: floor contact, undersides, a little dirt."""
     V, F, S = A.V, A.F, A.S
     vn = [Vector((0, 0, 0)) for _ in V]; fn = []
     for f, sm in zip(F, S):
@@ -1438,7 +1645,7 @@ def prop_attrs(A):
         for i in f:
             n = vn[i].normalized() if sm and vn[i].length > 1e-9 else n0
             p = V[i]; gx, gy, gz = p.x, p.z, -p.y
-            UVs.append(((p.y, p.z), (p.x, p.z), (p.x, p.y))[ax]); UVs[-1] = (UVs[-1][0] / WEAR_TILE, UVs[-1][1] / WEAR_TILE)
+            UVs.append(((p.y, p.z), (p.x, p.z), (p.x, p.y))[ax]); UVs[-1] = (UVs[-1][0] / tile, UVs[-1][1] / tile)
             h = max(0.0, gy - (FY if math.hypot(gx, gz) < DAIS_R else FL))
             c = (1 - 0.50 * math.exp(-h / 3.2)) * (1 - 0.30 * max(0.0, -n.z))
             c *= 0.90 + 0.12 * (noise.fractal(Vector((gx, gy, gz)) / 38.0 + Vector((5.3, 1.9, 8.1)), 0.7, 2.0, 3) * 0.5 + 0.5)
@@ -1448,8 +1655,62 @@ def prop_attrs(A):
     return UVs, COL
 for name, A in ACC.items():
     if not A.F: continue
-    uv, cols = (None, None) if name in PROC_SKIP else prop_attrs(A)
+    uv, cols = (None, None) if name in PROC_SKIP else prop_attrs(A, SURF_TILE.get(FLAT[name][5], 26.0) if name in FLAT else 26.0)
     make_mesh('room_saucer_' + name, A.V, A.F, A.S, MATS[name], uv, cols)
+if os.path.exists(JUKE_SRC):
+    with bpy.data.libraries.load(JUKE_SRC, link=False) as (src_, dst_): dst_.objects = [n for n in src_.objects if n == 'jukebox']
+    for o in dst_.objects:
+        col.objects.link(o); OBJS.append(o)
+        for m in o.data.materials: m.use_backface_culling = True
+else: print('saucer: no', JUKE_SRC, '- built the old jukebox')
+
+# ---- the light bake: ambient occlusion and the room's own lamps, ray-traced per corner into the baked colour (glTF COLOR_0) ----------
+BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.46, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
+def bake_light():
+    from mathutils.bvhtree import BVHTree
+    t0 = time.time(); skip = {'saucer_glass', 'saucer_glow', 'saucer_paint'} | {'saucer_' + n for n in PROC_SKIP}
+    occ = [o for o in OBJS if o.data.materials[0].name not in skip]
+    V, P = [], []
+    for o in occ:
+        k = len(V); V.extend(o.matrix_world @ v.co for v in o.data.vertices); P.extend(tuple(k + i for i in p.vertices) for p in o.data.polygons)
+    bvh = BVHTree.FromPolygons(V, P, epsilon=0.0)
+    g = np.random.default_rng(SEED + 171); n_ = BAKE['rays']
+    u1 = (np.arange(n_) + g.random(n_)) / n_; u2 = g.random(n_)                                   # cosine-weighted hemisphere, stratified
+    hemi = np.stack([np.sqrt(u1) * np.cos(2 * math.pi * u2), np.sqrt(u1) * np.sin(2 * math.pi * u2), np.sqrt(1 - u1)], -1)
+    lamps = [(Vector(g2b(*p)), 0.45 + 0.55 * np.array(srgb(h)[:3]), s) for p, h, s in LAMPS]   # tints, not the raw glow colours
+    R, A0, AMB, SOFT = BAKE['reach'], BAKE['ao'], BAKE['amb'], BAKE['soft'] ** 2
+    cache = {}; done = 0
+    for o in occ:
+        if o.data.materials[0].name == 'saucer_dais': continue          # its map carries its own contact shadow, and the table light is live
+        me = o.data
+        if not me.color_attributes.get('Col'):
+            ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'CORNER'); ca.data.foreach_set('color', np.ones(len(me.loops) * 4, np.float32))
+        ca = me.color_attributes['Col']
+        if ca.domain != 'CORNER': continue
+        cols = np.zeros(len(me.loops) * 4, np.float32); ca.data.foreach_get('color', cols); cols = cols.reshape(-1, 4)
+        cn = np.zeros(len(me.loops) * 3, np.float32); me.corner_normals.foreach_get('vector', cn); cn = cn.reshape(-1, 3)
+        vi = np.zeros(len(me.loops), np.int32); me.loops.foreach_get('vertex_index', vi)
+        for li in range(len(me.loops)):
+            p = o.matrix_world @ me.vertices[vi[li]].co; n = Vector(cn[li]).normalized()
+            key = (round(p.x, 2), round(p.y, 2), round(p.z, 2), round(n.x, 1), round(n.y, 1), round(n.z, 1))
+            f = cache.get(key)
+            if f is None:
+                t = n.orthogonal().normalized(); b = n.cross(t); org = p + n * 0.06; occl = 0.0
+                for hx_, hy_, hz_ in hemi:
+                    hit = bvh.ray_cast(org, t * hx_ + b * hy_ + n * hz_, R)
+                    if hit[0] is not None: occl += 1.0 - hit[3] / R
+                ao = 1.0 - A0 * occl / n_
+                lit = np.full(3, AMB)
+                for lp, lc, ls in lamps:
+                    d = lp - org; dl = d.length; cos = n.dot(d) / max(dl, 1e-6)
+                    if cos <= 0.0 or ls / (dl * dl + SOFT) < 0.004: continue
+                    hit = bvh.ray_cast(org, d / dl, dl - 4.0)
+                    if hit[0] is None: lit = lit + lc * (ls * cos / (dl * dl + SOFT))
+                f = cache[key] = ao * lit / max(1.0, float(lit.max()))          # scaled, not clipped, so a pool keeps its lamp's tint
+            cols[li, :3] *= f
+        ca.data.foreach_set('color', cols.ravel()); done += len(me.loops)
+    print('saucer: light bake %d corners, %d unique, %.1fs' % (done, len(cache), time.time() - t0))
+bake_light()
 print('saucer: %d meshes' % len(OBJS))
 for k, v in sorted(SECS.items(), key=lambda kv: -kv[1]): print('   section %-22s %6d tris' % (k, v))
 tris = 0
@@ -1465,4 +1726,5 @@ kw = dict(filepath=GLB, export_format='GLB', use_selection=True, export_apply=Tr
           export_lights=False, export_cameras=False)
 try: bpy.ops.export_scene.gltf(export_vertex_color='ACTIVE', **kw)
 except TypeError: bpy.ops.export_scene.gltf(**kw)
+glb_factors(GLB, FACT)
 print('saucer: wrote', GLB, '%.1f MB' % (os.path.getsize(GLB) / 1048576))

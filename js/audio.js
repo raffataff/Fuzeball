@@ -252,6 +252,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
 
  // play a recorded take of `id`: false = none (caller synthesizes), true = played or held back by the voice gate
  // o: p (impact speed), src (a ball or {x,y,z,key}), vol, rate, send, bus, at (delay s), gate:false
+ // a lab take (D.lab) plays at its lab level x lab.gain at the speed it was rendered at (pAt, pAtHard for a hard set)
  play(id,o){if(!this.ctx||!this.bank)return false;o=o||{};
   const D=AUSND[id]||{},src=o.src||null,key=src&&src.key,
    n=(o.p==null||!D.pRef)?1:clamp(o.p/D.pRef,0,1),vi=this.vid(id);
@@ -266,8 +267,9 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    rt=(o.rate||1)*(1+(Math.random()*2-1)*(D.pitch||0))*(D.pRef&&D.pPitch?1+(n-.5)*D.pPitch:1);
   if(D.gate&&o.gate!==false&&!this.vgate(D.gate,buf.duration/rt))return true;
   this.last[use]=k;
-  const pf=D.pFloor||0,
-   v=(D.vol??1)*(o.vol??1)*(1+(Math.random()*2-1)*(D.volJ||0))*(D.pRef?pf+(1-pf)*Math.pow(n,D.pCurve||1):1);
+  const pf=D.pFloor||0,lv=x=>D.pRef?pf+(1-pf)*Math.pow(x,D.pCurve||1):1,
+   lab=D.lab?((AUMIX.lab&&AUMIX.lab.gain)??1)/lv((use.startsWith(id+'_hard')&&D.pAtHard!=null?D.pAtHard:D.pAt)??1):1,
+   v=(D.vol??1)*(o.vol??1)*(1+(Math.random()*2-1)*(D.volJ||0))*lv(n)*lab;
   this.fire(buf,o.bus||this.busOf(D),src,v,rt,(D.send||0)*(o.send??1),o.at);
   return true;},
  // One buffer, once. Global rate/vol apply here, like every other primitive.
@@ -572,10 +574,12 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   for(const n in V.parts)this.lpPart(V,V.parts[n]);
   V.on=true;},
  // a part's sources: one looping take per id that has files at this venue (vid), at its place on the speed line (the speed it was rendered at)
+ // a lab take is divided by the level curve at its own place, so there it plays at its lab level x lab.gain
  lpPart(V,P){const c=this.ctx;P.ls=[];
   P.C.ids.forEach((id,i)=>{const u=this.vid(id);if(!this.has(u))return;const bk=this.bank[u],k=auPick(bk.length,this.last[u]??-1,Math.random()),b=bk[k];this.last[u]=k;
    const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=true;g.gain.value=0;s.connect(g);g.connect(V.out);s.start(0,Math.random()*b.duration);
-   P.ls.push({id,s,g,at:P.C.at[i]??0,v:(AUSND[id]&&AUSND[id].vol)??1});});
+   const D=AUSND[id]||{},at=P.C.at[i]??0,lab=D.lab?((AUMIX.lab&&AUMIX.lab.gain)??1)/Math.pow(Math.max(.05,at),P.C.curve||1):1;
+   P.ls.push({id,s,g,at,v:(D.vol??1)*lab});});
   P.at=P.ls.map(l=>l.at);P.w=new Float32Array(P.ls.length);},
  lpStop(V){for(const n in V.parts){const P=V.parts[n];
    if(P.ls)for(const l of P.ls){try{l.s.stop();}catch(e){}l.g.disconnect();}

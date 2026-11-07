@@ -23,7 +23,7 @@ let TK=null;const takesMod=()=>TK||(TK=import(pathToFileURL(path.join(LAB,'src',
 
 async function api(req,res,p){
  if(p==='/__fz/catalog'){const C=AM.loadConfig();
-  return send(res,200,{ok:true,game:'Fuzeball',root:IO.ROOT,specs:SP.specs(C),base:SP.BASE,venues:SP.venues(C),map:IO.loadMap(),files:IO.files()});}
+  return send(res,200,{ok:true,game:'Fuzeball',root:IO.ROOT,specs:SP.specs(C),mix:{gain:SP.MIX_GAIN},base:SP.BASE,venues:SP.venues(C),map:IO.loadMap(),files:IO.files()});}
  if(req.method==='POST'&&p==='/__fz/map'){const j=JSON.parse((await body(req)).toString('utf8')),m=IO.loadMap();
   for(const k of IO.KINDS)if(j.venues&&j.venues[k]&&typeof j.venues[k]==='object')m.venues[k]=j.venues[k];
   if(j.actions&&typeof j.actions==='object')m.actions=j.actions;

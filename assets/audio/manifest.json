@@ -167,6 +167,30 @@
    "sfx/ball_kick_hard_03.wav",
    "sfx/ball_kick_hard_04.wav"
   ],
+  "ball_kick_hard_cannon": [
+   "sfx/ball_kick_hard_cannon_01.wav",
+   "sfx/ball_kick_hard_cannon_02.wav",
+   "sfx/ball_kick_hard_cannon_03.wav",
+   "sfx/ball_kick_hard_cannon_04.wav"
+  ],
+  "ball_kick_hard_golden": [
+   "sfx/ball_kick_hard_golden_01.wav",
+   "sfx/ball_kick_hard_golden_02.wav",
+   "sfx/ball_kick_hard_golden_03.wav",
+   "sfx/ball_kick_hard_golden_04.wav"
+  ],
+  "ball_kick_hard_knuckle": [
+   "sfx/ball_kick_hard_knuckle_01.wav",
+   "sfx/ball_kick_hard_knuckle_02.wav",
+   "sfx/ball_kick_hard_knuckle_03.wav",
+   "sfx/ball_kick_hard_knuckle_04.wav"
+  ],
+  "ball_kick_hard_split": [
+   "sfx/ball_kick_hard_split_01.wav",
+   "sfx/ball_kick_hard_split_02.wav",
+   "sfx/ball_kick_hard_split_03.wav",
+   "sfx/ball_kick_hard_split_04.wav"
+  ],
   "ball_kick_knuckle": [
    "sfx/ball_kick_knuckle_01.wav",
    "sfx/ball_kick_knuckle_02.wav",
@@ -195,11 +219,35 @@
    "sfx/ball_post_arena_03.wav",
    "sfx/ball_post_arena_04.wav"
   ],
+  "ball_post_cannon": [
+   "sfx/ball_post_cannon_01.wav",
+   "sfx/ball_post_cannon_02.wav",
+   "sfx/ball_post_cannon_03.wav",
+   "sfx/ball_post_cannon_04.wav"
+  ],
   "ball_post_circuit": [
    "sfx/ball_post_circuit_01.wav",
    "sfx/ball_post_circuit_02.wav",
    "sfx/ball_post_circuit_03.wav",
    "sfx/ball_post_circuit_04.wav"
+  ],
+  "ball_post_golden": [
+   "sfx/ball_post_golden_01.wav",
+   "sfx/ball_post_golden_02.wav",
+   "sfx/ball_post_golden_03.wav",
+   "sfx/ball_post_golden_04.wav"
+  ],
+  "ball_post_knuckle": [
+   "sfx/ball_post_knuckle_01.wav",
+   "sfx/ball_post_knuckle_02.wav",
+   "sfx/ball_post_knuckle_03.wav",
+   "sfx/ball_post_knuckle_04.wav"
+  ],
+  "ball_post_split": [
+   "sfx/ball_post_split_01.wav",
+   "sfx/ball_post_split_02.wav",
+   "sfx/ball_post_split_03.wav",
+   "sfx/ball_post_split_04.wav"
   ],
   "ball_roll_crawl": [
    "sfx/ball_roll_crawl_01.wav"
@@ -355,6 +403,14 @@
    "sfx/ball_wall_arena_05.wav",
    "sfx/ball_wall_arena_06.wav"
   ],
+  "ball_wall_cannon": [
+   "sfx/ball_wall_cannon_01.wav",
+   "sfx/ball_wall_cannon_02.wav",
+   "sfx/ball_wall_cannon_03.wav",
+   "sfx/ball_wall_cannon_04.wav",
+   "sfx/ball_wall_cannon_05.wav",
+   "sfx/ball_wall_cannon_06.wav"
+  ],
   "ball_wall_circuit": [
    "sfx/ball_wall_circuit_01.wav",
    "sfx/ball_wall_circuit_02.wav",
@@ -362,6 +418,30 @@
    "sfx/ball_wall_circuit_04.wav",
    "sfx/ball_wall_circuit_05.wav",
    "sfx/ball_wall_circuit_06.wav"
+  ],
+  "ball_wall_golden": [
+   "sfx/ball_wall_golden_01.wav",
+   "sfx/ball_wall_golden_02.wav",
+   "sfx/ball_wall_golden_03.wav",
+   "sfx/ball_wall_golden_04.wav",
+   "sfx/ball_wall_golden_05.wav",
+   "sfx/ball_wall_golden_06.wav"
+  ],
+  "ball_wall_knuckle": [
+   "sfx/ball_wall_knuckle_01.wav",
+   "sfx/ball_wall_knuckle_02.wav",
+   "sfx/ball_wall_knuckle_03.wav",
+   "sfx/ball_wall_knuckle_04.wav",
+   "sfx/ball_wall_knuckle_05.wav",
+   "sfx/ball_wall_knuckle_06.wav"
+  ],
+  "ball_wall_split": [
+   "sfx/ball_wall_split_01.wav",
+   "sfx/ball_wall_split_02.wav",
+   "sfx/ball_wall_split_03.wav",
+   "sfx/ball_wall_split_04.wav",
+   "sfx/ball_wall_split_05.wav",
+   "sfx/ball_wall_split_06.wav"
   ],
   "ir_arcade": [
    "ir/ir_arcade.wav"
@@ -371,9 +451,6 @@
   ],
   "ir_open": [
    "ir/ir_open.wav"
-  ],
-  "ir_pub": [
-   "ir/ir_pub.wav"
   ],
   "ir_saucer": [
    "ir/ir_saucer.wav"

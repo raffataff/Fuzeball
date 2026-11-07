@@ -13,17 +13,21 @@ bays on the far (-z) and right (+x) walls look out over the docks (build_arcade_
 KEPT from the old room (decoded from its GLB): the five cabinets and the vending machine on the left
 wall, the Fuzeball logo plaque and the poster. Everything else is built here.
 
-    floor     one 2048 map: tiles, a rubber court with a gold tape line, hazard aprons, scuffs, stains
-    wall      one tiling map: blue panels, a gold dado rail, cream plaster above
+    floor     one 2048 map + normal + ORM: tiles, a rubber court with a gold tape line, hazard aprons, a tread plate at the dock door, scuffs, stains
+    wall      one tiling map + normal + ORM: blue enamel panels, a brass dado rail, cream panels above
     glass     the two bays (alpha blend; the loader draws room glass first and never shadows it)
     glow      one blended atlas: lamp halos, the sign, the window light laid on the floor, screen spill
-    props     flat PBR materials x the shared wear map, baked colour; no lights are exported
+    props     surface sets (tools/roomlib.py: steel, brass, paint, plastic, raw wood), box-projected in each piece's own frame
+    bake      ambient occlusion + the room's own lamps (LAMPS) ray-traced per corner into the baked colour, the cabinets included; no lights are exported
 
 Authored in GAME units (X long axis, Y up, Z width) and converted with g2b.
 """
 import bpy, bmesh, os, sys, math
 import numpy as np
 from mathutils import Vector, Matrix
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import roomlib as R
+from roomlib import sstep, hx, tn, tfbm, seg_aa, gblur, height_to_normal
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 def arg(n, d): return type(d)(argv[argv.index(n) + 1]) if n in argv else d
@@ -48,8 +52,9 @@ GLASS_IN = 8.5                           # the glass sits this far into the wall
 NPANE = 7
 TILE_U, WALL_H = 96.0, CEIL - FL
 COURT = (-190.0, 190.0, -150.0, 150.0)   # the rubber court: x0, x1, z0, z1
+DX = 218.0                               # the dock door's centre on the far wall
+PLATE = (DX - 28.0, DX + 28.0, Z0 + 18.0, Z0 + 54.0)   # the tread plate inside the door's box
 def g2b(x, y, z): return Vector((x, -z, y))
-def sstep(a, b, x): t = np.clip((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t)
 
 # ---- scene + materials --------------------------------------------------------------------------
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -62,20 +67,33 @@ def set_active(*objs):
 def srgb(h):
     c = [((h >> s) & 255) / 255 for s in (16, 8, 0)]
     return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c) + (1.0,)
-def hx(h): return np.array([((h >> s) & 255) / 255 for s in (16, 8, 0)])
-WEAR = {'img': None, 'mean': 1.0}
-def flat_mat(name, hexc, metal=0.0, rough=0.6, emit=None, emit_str=1.0):
+SURF = {}      # kind -> {'alb', 'mean', 'n', 'orm', 'albs': {material: own albedo}}
+FACT = {}      # material -> (roughness, metallic) factors written into the GLB after export: glTF scales the ORM texture by them
+def link_orm(nt, b, img):
+    o = nt.nodes.new('ShaderNodeTexImage'); o.image = img
+    sp = nt.nodes.new('ShaderNodeSeparateColor'); nt.links.new(o.outputs['Color'], sp.inputs['Color'])
+    nt.links.new(sp.outputs['Green'], b.inputs['Roughness']); nt.links.new(sp.outputs['Blue'], b.inputs['Metallic'])
+def link_nrm(nt, b, img):
+    n = nt.nodes.new('ShaderNodeTexImage'); n.image = img
+    nm = nt.nodes.new('ShaderNodeNormalMap'); nt.links.new(n.outputs['Color'], nm.inputs['Color']); nt.links.new(nm.outputs['Normal'], b.inputs['Normal'])
+def flat_mat(name, hexc, metal=0.0, rough=0.6, emit=None, emit_str=1.0, kind=None):
+    """A prop material. With a surface kind it wears that set and metal / rough become the factors on its ORM; emissive ones stay plain."""
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; b = nt.nodes['Principled BSDF']; c = srgb(hexc)
     b.inputs['Metallic'].default_value = metal; b.inputs['Roughness'].default_value = rough
     if emit is not None:
         b.inputs['Emission Color'].default_value = srgb(emit); b.inputs['Emission Strength'].default_value = emit_str
-    if emit is None and WEAR['img'] is not None:
-        a = nt.nodes.new('ShaderNodeTexImage'); a.image = WEAR['img']
-        mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
-        ins = [i for i in mx.inputs if i.type == 'RGBA']
-        nt.links.new(a.outputs['Color'], ins[0]); ins[1].default_value = tuple(min(1.0, x / WEAR['mean']) for x in c[:3]) + (1.0,)
-        nt.links.new([o for o in mx.outputs if o.type == 'RGBA'][0], b.inputs['Base Color'])
+    S = SURF.get(kind) if emit is None else None
+    if S:
+        own = S['albs'].get(name); a = nt.nodes.new('ShaderNodeTexImage'); a.image = own or S['alb']
+        if own is None:                                       # neutral map x colour, lifted by the map's mean so the material keeps its value
+            mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
+            ins = [i for i in mx.inputs if i.type == 'RGBA']
+            nt.links.new(a.outputs['Color'], ins[0]); ins[1].default_value = tuple(min(1.0, x / S['mean']) for x in c[:3]) + (1.0,)
+            nt.links.new([o for o in mx.outputs if o.type == 'RGBA'][0], b.inputs['Base Color'])
+        else:
+            nt.links.new(a.outputs['Color'], b.inputs['Base Color'])
+        link_nrm(nt, b, S['n']); link_orm(nt, b, S['orm']); FACT[name] = (rough, metal)
     else:
         b.inputs['Base Color'].default_value = c
     m.diffuse_color = c; m.use_backface_culling = True
@@ -89,11 +107,11 @@ def np_img(im, arr, a=None):
     if a is not None: rgba[..., 3] = a
     im.pixels.foreach_set(rgba[::-1].ravel()); im.update()
     im.filepath_raw = os.path.join(BUILD, im.name + '.png'); im.file_format = 'PNG'; im.save()
-def tex_mat(name, albedo, normal=None, vcol=False, alpha_img=None, rough=0.7, metal=0.0):
+def tex_mat(name, albedo, normal=None, vcol=False, alpha_img=None, rough=0.7, metal=0.0, orm=None):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; b = nt.nodes['Principled BSDF']; m.use_backface_culling = alpha_img is None
     a = nt.nodes.new('ShaderNodeTexImage'); a.image = albedo
-    if vcol:
+    if vcol:                                                   # glTF: baseColor = texture x COLOR_0
         vc = nt.nodes.new('ShaderNodeVertexColor'); vc.layer_name = 'Col'
         mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
         ins = [i for i in mx.inputs if i.type == 'RGBA']
@@ -101,11 +119,9 @@ def tex_mat(name, albedo, normal=None, vcol=False, alpha_img=None, rough=0.7, me
         nt.links.new([o for o in mx.outputs if o.type == 'RGBA'][0], b.inputs['Base Color'])
     else:
         nt.links.new(a.outputs['Color'], b.inputs['Base Color'])
-    if normal is not None:
-        n = nt.nodes.new('ShaderNodeTexImage'); n.image = normal
-        nm = nt.nodes.new('ShaderNodeNormalMap'); nt.links.new(n.outputs['Color'], nm.inputs['Color'])
-        nt.links.new(nm.outputs['Normal'], b.inputs['Normal'])
+    if normal is not None: link_nrm(nt, b, normal)
     b.inputs['Roughness'].default_value = rough; b.inputs['Metallic'].default_value = metal
+    if orm is not None: link_orm(nt, b, orm)
     if alpha_img:
         nt.links.new(a.outputs['Alpha'], b.inputs['Alpha'])
         for k, v in (('surface_render_method', 'BLENDED'), ('blend_method', 'BLEND')):
@@ -126,35 +142,7 @@ def glow_mat(name, img):
         except Exception: pass
     return m
 
-# ---- tileable noise, strokes, the sign's alphabet -----------------------------------------------
-def tn(H, W, py, px, seed):
-    g = np.random.default_rng(seed).random((py, px))
-    ys = np.arange(H) / H * py; xs = np.arange(W) / W * px
-    y0 = ys.astype(int); x0 = xs.astype(int); fy = ys - y0; fx = xs - x0
-    fy = fy * fy * (3 - 2 * fy); fx = fx * fx * (3 - 2 * fx); y1 = (y0 + 1) % py; x1 = (x0 + 1) % px
-    a = g[y0][:, x0] * (1 - fx)[None] + g[y0][:, x1] * fx[None]
-    b = g[y1][:, x0] * (1 - fx)[None] + g[y1][:, x1] * fx[None]
-    return a * (1 - fy)[:, None] + b * fy[:, None]
-def tfbm(H, W, py, px, seed, octs=4, gain=0.5):
-    out = np.zeros((H, W)); amp = 1.0; tot = 0.0
-    for o in range(octs):
-        out += amp * tn(H, W, py * 2 ** o, px * 2 ** o, seed + o * 31); tot += amp; amp *= gain
-    return out / tot
-def seg_aa(img, p0, p1, w, val=1.0):
-    h, wd = img.shape; x0, y0 = p0; x1, y1 = p1; pad = w + 2
-    xa, xb = int(max(0, min(x0, x1) - pad)), int(min(wd, max(x0, x1) + pad + 1))
-    ya, yb = int(max(0, min(y0, y1) - pad)), int(min(h, max(y0, y1) + pad + 1))
-    if xb <= xa or yb <= ya: return
-    X, Y = np.meshgrid(np.arange(xa, xb) + 0.5, np.arange(ya, yb) + 0.5)
-    dx, dy = x1 - x0, y1 - y0; L2 = dx * dx + dy * dy + 1e-9
-    t = np.clip(((X - x0) * dx + (Y - y0) * dy) / L2, 0, 1)
-    d = np.hypot(X - (x0 + t * dx), Y - (y0 + t * dy))
-    img[ya:yb, xa:xb] = np.maximum(img[ya:yb, xa:xb], np.clip(w * 0.5 + 0.5 - d, 0, 1) * val)
-def gblur(a, s):
-    pad = int(s * 3.5) + 1; a = np.pad(a, ((pad, pad), (pad, pad)))
-    fy = np.fft.fftfreq(a.shape[0])[:, None]; fx = np.fft.rfftfreq(a.shape[1])[None, :]
-    r = np.fft.irfft2(np.fft.rfft2(a) * np.exp(-2 * (math.pi * s) ** 2 * (fx * fx + fy * fy)), s=a.shape)
-    return r[pad:-pad, pad:-pad]
+# ---- the sign's alphabet (noise, strokes and blur come from roomlib) --------------------------------
 GLYPH = {
  'A': [[(0,0),(1.7,6),(2.3,6),(4,0)], [(0.9,2.3),(3.1,2.3)]],
  'C': [[(4,5),(3,6),(1,6),(0,5),(0,1),(1,0),(3,0),(4,1)]],
@@ -195,39 +183,41 @@ def draw_text(img, text, cx, cy, height, track, stroke):
 # =============================================================================================
 # TEXTURES
 # =============================================================================================
-def height_to_normal(Hf, px_x, px_y, k=1.0):
-    gy, gx = np.gradient(Hf, px_y, px_x)
-    n = np.stack([-gx * k, gy * k, np.ones_like(Hf)], -1); n /= np.linalg.norm(n, axis=-1, keepdims=True)
-    return n * 0.5 + 0.5
-
 def floor_texture(W, H):
-    """One map over the whole floor. Row 0 = z Z0. Returns albedo, normal."""
+    """One map over the whole floor. Row 0 = z Z0. Returns albedo, normal, ORM: sealed tiles with a sheen (each laid a little out of true),
+    rough grout and rubber, a path polished by feet, glossy drink rings, a steel tread plate in the dock door's box."""
     px = W / W_ROOM
     X = (X0 + (np.arange(W) + .5) / W * W_ROOM)[None, :] * np.ones((H, 1))
     Z = (Z0 + (np.arange(H) + .5) / H * D_ROOM)[:, None] * np.ones((1, W))
     TILE = 40.0
     ix = np.floor((X - X0) / TILE).astype(int); iz = np.floor((Z - Z0) / TILE).astype(int)
-    dx = np.abs(((X - X0) % TILE) - TILE / 2); dz = np.abs(((Z - Z0) % TILE) - TILE / 2)
-    edge = TILE / 2 - np.minimum(dx, dz)                     # distance to the nearest seam
-    ph = (((ix * 73856093) ^ (iz * 19349663)) % 1000) / 1000.0
+    lx = ((X - X0) % TILE) - TILE / 2; lz = ((Z - Z0) % TILE) - TILE / 2
+    edge = TILE / 2 - np.maximum(np.abs(lx), np.abs(lz))       # distance to the nearest seam
+    hsh = (ix * 73856093) ^ (iz * 19349663)
+    ph = (hsh % 1000) / 1000.0; tx = ((hsh // 7) % 997) / 997.0 - 0.5; tz = ((hsh // 13) % 991) / 991.0 - 0.5
     base = hx(0x474f52)[None, None] * (0.86 + 0.26 * ph)[..., None]
     base = base * (0.88 + 0.24 * tfbm(H, W, 7, 9, SEED + 1, 5))[..., None]
     grout = sstep(0.9, 0.3, edge)                              # 1 on the seam
     alb = base * (1 - 0.55 * grout[..., None]) + hx(0x1d2022)[None, None] * (0.55 * grout[..., None])
-    Hh = -0.5 * grout + (tfbm(H, W, 40, 50, SEED + 2, 3) - 0.5) * 0.08
+    Hh = -0.5 * grout + (tfbm(H, W, 40, 50, SEED + 2, 3) - 0.5) * 0.08 + 0.05 * (tx * lx + tz * lz) * (1 - grout)
+    rough = 0.34 + 0.10 * (ph - 0.5) + 0.12 * (tfbm(H, W, 12, 15, SEED + 9, 4) - 0.5)
+    rough = rough * (1 - grout) + 0.86 * grout
+    metal = np.zeros((H, W))
     # the rubber court: no seams, a fine pebble, a gold tape line round it
     cx0, cx1, cz0, cz1 = COURT
     inside = (X >= cx0) & (X <= cx1) & (Z >= cz0) & (Z <= cz1)
     peb = tfbm(H, W, 200, 260, SEED + 3, 2)
     rub = hx(0x25292b)[None, None] * (0.8 + 0.4 * peb)[..., None] * (0.9 + 0.2 * tfbm(H, W, 4, 5, SEED + 4, 3))[..., None]
     alb = np.where(inside[..., None], rub, alb); Hh = np.where(inside, (peb - 0.5) * 0.18, Hh)
+    rough = np.where(inside, 0.8 + 0.12 * (peb - 0.5), rough)
     tape = (np.abs(np.maximum(np.abs(X - (cx0 + cx1) / 2) - (cx1 - cx0) / 2, np.abs(Z - (cz0 + cz1) / 2) - (cz1 - cz0) / 2)) < 1.3)
     tw = (1 - 0.7 * sstep(0.55, 0.8, tfbm(H, W, 18, 24, SEED + 5, 5)))                     # worn through in patches
     alb = np.where(tape[..., None], alb * (1 - 0.92 * tw[..., None]) + hx(0xc9993a) * (0.92 * tw[..., None]), alb)
-    # centre line and circle, the faintest echo of a pitch
+    rough = np.where(tape, rough * (1 - tw) + 0.5 * tw, rough); Hh = Hh + 0.08 * tape * tw
+    # centre line, the faintest echo of a pitch
     cl = (np.abs(X) < 0.55) & (np.abs(Z) < cz1 - 1.5)
     alb = np.where(cl[..., None], alb * 0.78 + hx(0x8b8f90) * 0.22, alb)
-    # hazard aprons under both bays
+    # hazard aprons under both bays: paint worn back to the tile where feet go
     stripe = (((X + Z) / 5.6) % 2.0) < 1.0
     hb = (np.abs(X) < BX + 14) & (Z < Z0 + 15) & (Z > Z0 + 1)
     hr = (np.abs(Z) < RZ + 14) & (X > X1 - 15) & (X < X1 - 1)
@@ -235,96 +225,135 @@ def floor_texture(W, H):
     hzw = 1 - 0.75 * sstep(0.5, 0.75, tfbm(H, W, 10, 40, SEED + 6, 5))
     hcol = np.where(stripe[..., None], hx(0xc99a2a), hx(0x16181a))
     alb = np.where(haz[..., None], hcol * (0.75 + 0.25 * hzw[..., None]) + hx(0x45494b) * (0.25 * (1 - hzw[..., None])), alb)
-    # the dock door's box and arrow, on the back wall's right pier
-    box = (X > 188) & (X < 248) & (Z > Z0 + 18) & (Z < Z0 + 54)
-    boxe = box & ((X < 190.4) | (X > 245.6) | (Z < Z0 + 20.4) | (Z > Z0 + 51.6))
-    alb = np.where(boxe[..., None], hx(0xc99a2a) * (0.6 + 0.4 * hzw[..., None]), alb)
+    rough = np.where(haz, 0.48 * hzw + rough * (1 - hzw), rough); Hh = Hh + 0.06 * haz * hzw
+    # the dock door's box (yellow) round a diamond tread plate
+    px0, px1, pz0, pz1 = PLATE
+    box = (X > px0) & (X < px1) & (Z > pz0) & (Z < pz1)
+    inner = (X > px0 + 2.4) & (X < px1 - 2.4) & (Z > pz0 + 2.4) & (Z < pz1 - 2.4)
+    boxe = box & ~inner
+    alb = np.where(boxe[..., None], hx(0xc99a2a) * (0.6 + 0.4 * hzw[..., None]), alb); rough = np.where(boxe, 0.5, rough)
+    P = 3.2; ci = np.floor((X - px0) / P).astype(int); cj = np.floor((Z - pz0) / P).astype(int)
+    u = ((X - px0) % P) / P - 0.5; v = ((Z - pz0) % P) / P - 0.5; sg = np.where((ci + cj) % 2 == 0, 1.0, -1.0)
+    a_ = (u + sg * v) * 0.7071; b_ = (v - sg * u) * 0.7071
+    lug = np.clip(1 - (a_ / 0.36) ** 2 - (b_ / 0.085) ** 2, 0, 1) ** 0.5                  # the raised lozenges, alternating
+    pgr = sstep(0.45, 0.8, tfbm(H, W, 5, 7, SEED + 10, 4))
+    steel = hx(0x8d9398)[None, None] * (0.78 + 0.22 * tfbm(H, W, 20, 20, SEED + 11, 3))[..., None]
+    steel = steel * (1 - 0.45 * (1 - lug) * (0.4 + 0.6 * pgr))[..., None] * (1 + 0.12 * lug)[..., None]
+    pedge = np.minimum.reduce([X - px0 - 2.4, px1 - 2.4 - X, Z - pz0 - 2.4, pz1 - 2.4 - Z])
+    alb = np.where(inner[..., None], steel, alb)
+    Hh = np.where(inner, 0.22 * lug + 0.25 * sstep(0.0, 0.6, pedge), Hh)
+    rough = np.where(inner, 0.3 + 0.18 * (1 - lug) + 0.22 * pgr, rough); metal = np.where(inner, 1.0 - 0.25 * pgr * (1 - lug), metal)
     # the polished path: from the door across the court corner to the cabinets
     def pth(x0, z0, x1, z1, w):
         t = np.clip(((X - x0) * (x1 - x0) + (Z - z0) * (z1 - z0)) / ((x1 - x0) ** 2 + (z1 - z0) ** 2), 0, 1)
         return np.exp(-(np.hypot(X - (x0 + t * (x1 - x0)), Z - (z0 + t * (z1 - z0))) / w) ** 2)
     path = np.maximum(pth(218, Z0 + 30, -200, -40, 16), pth(-200, -40, -200, 130, 22)) * (0.4 + 0.6 * tfbm(H, W, 6, 12, SEED + 7, 4))
-    alb = alb * (1 - 0.0) + (hx(0x7c8688)[None, None] - alb) * (0.20 * path)[..., None] * (~inside)[..., None]
-    # scuffs: short curved strokes, darker and lighter
+    off = (~inside) & (~inner)
+    alb = alb + (hx(0x7c8688)[None, None] - alb) * (0.20 * path * off)[..., None]
+    rough = rough - 0.16 * path * off
+    # scuffs: short curved strokes, darker rubber marks and lighter scratches, both duller than the seal
     scr = np.zeros((H, W)); lit = np.zeros((H, W))
     for _ in range(int(900 * TS + 200)):
         x = rng.uniform(0, W); y = rng.uniform(0, H); a = rng.uniform(0, math.pi); l = rng.uniform(5, 26) * px / 2
         seg_aa(lit if rng.random() < 0.4 else scr, (x, y), (x + l * math.cos(a), y + l * math.sin(a)), 1.0, rng.uniform(0.15, 0.55))
     alb = alb * (1 - 0.35 * scr[..., None]) + 0.30 * lit[..., None] * 0.7
-    # stains and drink rings
+    rough = rough + 0.14 * scr + 0.16 * lit; Hh = Hh - 0.05 * lit
+    # grime, drink rings (dried glossy), gum
     stain = sstep(0.62, 0.82, tfbm(H, W, 6, 8, SEED + 8, 5)) * 0.45
-    alb *= (1 - stain)[..., None]
+    alb *= (1 - stain)[..., None]; rough = rough + 0.3 * stain
     for (sx, sz, r) in ((-60, 112, 4.5), (96, -88, 3.2), (150, 100, 5.0), (-150, -60, 3.8), (30, 135, 4.0), (-205, 20, 4.4)):
-        d = np.hypot(X - sx, Z - sz); alb *= (1 - 0.30 * np.exp(-((d - r) / 0.55) ** 2))[..., None]
-        alb *= (1 - 0.12 * np.exp(-(d / (r * 0.8)) ** 2))[..., None]
-    for _ in range(40):                                        # gum
+        d = np.hypot(X - sx, Z - sz); ring = np.exp(-((d - r) / 0.55) ** 2); pool = np.exp(-(d / (r * 0.8)) ** 2)
+        alb *= (1 - 0.30 * ring)[..., None] * (1 - 0.12 * pool)[..., None]
+        rough = rough - 0.22 * np.maximum(ring, pool) * (1 - grout)
+    for _ in range(40):
         gx, gz = rng.uniform(X0 + 20, X1 - 20), rng.uniform(Z0 + 20, Z1 - 20)
-        alb *= (1 - 0.35 * np.exp(-(np.hypot(X - gx, Z - gz) / 0.8) ** 2))[..., None]
+        gm = np.exp(-(np.hypot(X - gx, Z - gz) / 0.8) ** 2)
+        alb *= (1 - 0.35 * gm)[..., None]; rough = rough + 0.3 * gm; Hh = Hh + 0.25 * gm
     # cable runs: from the left wall to each cabinet and the vending machine
     for z in (-155, -112, -52, 4, 150):
         cab = (X < X0 + 30) & (np.abs(Z - z) < 0.9)
-        alb = np.where(cab[..., None], hx(0x0c0d0e), alb)
-    # contact shadow: walls, cabinets, the table, the bay sills
+        alb = np.where(cab[..., None], hx(0x0c0d0e), alb); rough = np.where(cab, 0.7, rough)
+        Hh = Hh + 0.35 * np.sqrt(np.clip(1 - ((Z - z) / 0.9) ** 2, 0, 1)) * (X < X0 + 30)
+    # contact shadow: walls and cabinets a little (the bake adds its own), the table (not in the bake)
     ao = np.ones((H, W))
-    ao *= 1 - 0.55 * np.exp(-np.minimum.reduce([X - X0, X1 - X, Z - Z0, Z1 - Z]) / 9.0)
-    ao *= 1 - 0.50 * np.exp(-np.maximum(np.abs(X - (-228)) - 28, 0) / 7) * (X < -186) * (np.abs(Z) < 190) * 0.0
+    ao *= 1 - 0.35 * np.exp(-np.minimum.reduce([X - X0, X1 - X, Z - Z0, Z1 - Z]) / 9.0)
     cabs = ((-253, -197, -183, -140), (-245, -196, -133, -84), (-256, -193, -77, -29), (-257, -193, -24, 32), (-242, -190, 119, 185))
     for xa, xb, za, zb in cabs:
         dxx = np.maximum(np.maximum(xa - X, X - xb), 0); dzz = np.maximum(np.maximum(za - Z, Z - zb), 0)
-        ao *= 1 - 0.5 * np.exp(-np.hypot(dxx, dzz) / 8.0)
+        ao *= 1 - 0.35 * np.exp(-np.hypot(dxx, dzz) / 8.0)
     dxx = np.maximum(np.abs(X) - 66, 0); dzz = np.maximum(np.abs(Z) - 38, 0)
     ao *= 1 - 0.5 * np.exp(-np.hypot(dxx, dzz) / 14.0)
     alb *= ao[..., None]
-    return np.clip(alb, 0, 1), height_to_normal(Hh, 1 / px, 1 / px, 1.3)
+    orm = np.stack([np.ones((H, W)), np.clip(rough, 0.06, 1), np.clip(metal, 0, 1)], -1)
+    return np.clip(alb, 0, 1), height_to_normal(Hh, 1 / px, 1 / px, 1.3), orm
 
 def wall_texture(W, H):
-    """One repeat of the wall: U = TILE_U units, V = the wall's full height. Row 0 = the ceiling."""
+    """One repeat of the wall: U = TILE_U units, V = the wall's full height. Row 0 = the ceiling. Returns albedo, normal, ORM.
+    A rubber kick plate; blue enamel panels that bow between their seams, worn to primer and steel at the edges and low down, glossier where
+    people lean; a brass dado rail; matte cream panels above, yellowed by smoke toward the ceiling, a few water runs from the top joint."""
     xx = ((np.arange(W) + .5) / W * TILE_U)[None, :] * np.ones((H, 1))
     yy = ((1 - (np.arange(H) + .5) / H) * WALL_H)[:, None] * np.ones((1, W))
-    PW = TILE_U / 2.0
-    dv = np.abs(((xx + PW / 2) % PW) - PW / 2)
-    low = yy < 47.0; rail = (yy >= 47.0) & (yy < 50.5)
-    ph = (((np.floor(xx / PW).astype(int) * 7919) % 100) / 100.0)
-    blue = hx(0x2c4b5f)[None, None] * (0.92 + 0.14 * ph)[..., None]
-    plaster = hx(0xcbbfa3)[None, None] * (0.93 + 0.1 * ph)[..., None]
-    alb = np.where(low[..., None], blue, plaster)
-    alb = np.where(rail[..., None], hx(0xb9893a)[None, None] * (0.8 + 0.4 * sstep(47, 50.5, yy))[..., None], alb)
-    mott = tfbm(H, W, 6, 4, SEED + 21, 5)
-    alb *= (0.84 + 0.30 * mott)[..., None]
-    seam = np.exp(-(dv / 0.28) ** 2) * (yy < 47.0)
-    kick = (yy < 9.0)
-    alb = np.where(kick[..., None], hx(0x20272b)[None, None] * (0.8 + 0.4 * mott)[..., None], alb)
-    alb *= (1 - 0.5 * seam)[..., None]
-    # seams in the plaster, soft
-    alb *= (1 - 0.14 * np.exp(-(dv / 0.5) ** 2) * (yy >= 50.5))[..., None]
-    Hh = -0.5 * seam + (tfbm(H, W, 20, 14, SEED + 22, 3) - 0.5) * 0.12
-    # rivets along the seams and the panel tops
+    PW = TILE_U / 2.0; JT = 100.0                             # panel width, the upper panels' joint height
     pxu, pxv = TILE_U / W, WALL_H / H
+    kick = yy < 9.0; low = (yy >= 9.0) & (yy < 47.0); rail = (yy >= 47.0) & (yy < 50.5); up = yy >= 50.5
+    dv = np.abs(((xx + PW / 2) % PW) - PW / 2)
+    dh = np.min(np.stack([np.abs(yy - 9.0), np.abs(yy - 47.0), np.abs(yy - 50.5), np.abs(yy - JT)]), 0)
+    dmin = np.where(rail, 99.0, np.minimum(dv, dh))
+    pid = np.floor(xx / PW).astype(int) * 7 + (yy >= JT) * 3 + low * 5
+    ph = ((pid * 2654435761) % 1000) / 1000.0
+    mott = tfbm(H, W, 6, 4, SEED + 21, 5)
+    alb = np.zeros((H, W, 3))
+    alb[kick] = hx(0x1d2124); alb[low] = hx(0x2c4b5f); alb[up] = hx(0xc9bea4)
+    alb *= (0.93 + 0.12 * ph)[..., None] * (0.88 + 0.24 * mott)[..., None]
+    tarn = sstep(0.4, 0.75, tfbm(H, W, 3, 8, SEED + 33, 4))
+    alb = np.where(rail[..., None], hx(0xb9893a)[None, None] * (0.85 + 0.3 * sstep(47, 50.5, yy))[..., None] * (1 - 0.25 * tarn)[..., None], alb)
+    # height: grooves at the seams, the rail's half-round, panels bowing between seams (a reflection wobbles across each)
+    seam = np.exp(-(dmin / 0.24) ** 2)
+    Hh = -0.5 * seam + 0.12 * np.exp(-((dmin - 0.7) / 0.3) ** 2) * (~up) + (tfbm(H, W, 20, 14, SEED + 22, 3) - 0.5) * 0.1
+    Hh += 1.0 * (tfbm(H, W, 9, 6, SEED + 34, 3) - 0.5) * sstep(0.4, 3.0, dmin) * (low + 0.4 * up)
+    Hh += np.where(rail, 0.9 * np.sqrt(np.clip(1 - ((yy - 48.75) / 1.75) ** 2, 0, 1)), 0.0) + 0.25 * kick
+    alb *= (1 - 0.45 * seam * (~up) - 0.12 * seam * up)[..., None]
     def rivet(cx, cy, rr=0.65):
         ix, iy = int(cx / pxu), int((WALL_H - cy) / pxv); wr = int(rr / pxu) + 2
         ya, yb, xa, xb = max(0, iy - wr), min(H, iy + wr + 1), max(0, ix - wr), min(W, ix + wr + 1)
         if yb <= ya or xb <= xa: return
         d2 = ((xx[ya:yb, xa:xb] - cx) ** 2 + (yy[ya:yb, xa:xb] - cy) ** 2) / (rr * rr)
-        Hh[ya:yb, xa:xb] += 0.5 * np.sqrt(np.clip(1 - d2, 0, 1)); alb[ya:yb, xa:xb] *= (1 - 0.2 * np.clip(1 - d2 * 0.6, 0, 1))[..., None]
+        Hh[ya:yb, xa:xb] += 0.45 * np.sqrt(np.clip(1 - d2, 0, 1)); alb[ya:yb, xa:xb] *= (1 - 0.18 * np.clip(1 - d2 * 0.6, 0, 1))[..., None]
     for k in range(2):
         for sx in (k * PW + 2.4, k * PW + PW - 2.4):
             for yv in np.arange(11.0, 45.0, 6.5): rivet(sx % TILE_U, yv)
-    # chips to bare metal low down and at the seams; rust streaks off them
-    chip = sstep(0.0, 0.05, tfbm(H, W, 30, 20, SEED + 23, 5) + 0.25 * np.exp(-yy / 14.0) + 0.2 * seam - 0.78) * (yy < 47)
-    alb = alb * (1 - chip[..., None]) + hx(0x70777a)[None, None] * chip[..., None]
-    rust = sstep(0.58, 0.78, tfbm(H, W, 3, 36, SEED + 24, 4, 0.6)) * np.clip(np.exp(-dv / 2.0) * 0.6 + np.exp(-(yy - 9) / 12.0) * (yy > 9) * 0.3, 0, 1) * (yy < 47) * (1 - chip)
-    alb = alb * (1 - 0.55 * rust[..., None]) + hx(0x7a3f1c) * (0.55 * rust[..., None])
-    # plaster: water stains running off the rail, smoke at the ceiling, grime
-    drip = sstep(0.55, 0.8, tfbm(H, W, 2, 40, SEED + 25, 4, 0.55)) * (yy >= 50.5) * np.exp(-(yy - 50.5) / 34.0)
-    alb *= (1 - 0.30 * drip)[..., None]
-    alb *= (1 - 0.32 * sstep(CEIL - FL - 28, CEIL - FL, yy))[..., None]
-    alb *= (0.84 + 0.28 * tfbm(H, W, 5, 3, SEED + 26, 4))[..., None]
+        for xv in np.arange(k * PW + 6.0, (k + 1) * PW - 3, 6.0): rivet(xv, 44.6); rivet(xv, 11.4)
+    # wear: chips (sunk to the primer or steel) near the seams and the floor, rust under the rivets, scuffs low down, grime
+    score = tfbm(H, W, 40, 24, SEED + 23, 5) + 0.26 * np.exp(-dmin / 1.4) + 0.2 * np.exp(-(yy - 9) / 10.0) - 0.82
+    chip = sstep(0.0, 0.05, score) * low; prim = sstep(-0.03, 0.0, score) * low * (1 - chip)
+    prime = np.where((tfbm(H, W, 8, 5, SEED + 35, 3) > 0.5)[..., None], hx(0x6e4a3a), hx(0x868a8c))
+    alb = alb * (1 - prim[..., None] * 0.5) + hx(0x5a4a42) * (0.5 * prim[..., None])
+    alb = alb * (1 - chip[..., None]) + prime * chip[..., None]; Hh -= 0.3 * chip
+    rust = sstep(0.7, 0.86, tfbm(H, W, 3, 36, SEED + 24, 4, 0.6)) * np.clip(np.exp(-dv / 1.5) * 0.6 + np.exp(-(yy - 9) / 8.0) * 0.3, 0, 1) * low * (1 - chip)
+    alb = alb * (1 - 0.35 * rust[..., None]) + hx(0x5e3624) * (0.35 * rust[..., None])
     scr = np.zeros((H, W))
-    for _ in range(int(220 * TS + 60)):
-        x = rng.uniform(0, W); y = rng.uniform(H * 0.64, H); a = rng.uniform(0, math.pi); l = rng.uniform(5, 30) * TS * 2
+    for _ in range(int(240 * TS + 60)):
+        x = rng.uniform(0, W); y = H - rng.uniform(0, H * (44.0 / WALL_H)); a = rng.uniform(0, math.pi); l = rng.uniform(5, 30) * TS * 2
         seg_aa(scr, (x, y), (x + l * math.cos(a), y + l * math.sin(a) * 0.5), 1.0, rng.uniform(0.15, 0.55))
-    alb = alb * (1 - 0.35 * scr[..., None]) + 0.25 * scr[..., None] * 0.8
-    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.0)
+    alb = alb * (1 - 0.3 * scr[..., None]) + 0.25 * scr[..., None] * 0.8
+    # the upper panels: smoke toward the ceiling, a few water runs off the top joint and the ceiling, grime
+    smoke = sstep(WALL_H - 36, WALL_H, yy) * up
+    alb *= (1 - 0.36 * smoke)[..., None] * (np.array([1.0, 0.96, 0.88])[None, None] ** smoke[..., None])
+    rub = np.exp(-(yy - 50.5) / 7.0) * up * sstep(0.4, 0.7, tfbm(H, W, 2, 5, SEED + 38, 4))           # shoulders and chair backs above the rail
+    alb *= (1 - 0.18 * rub)[..., None] * (1 + 0.06 * (ph - 0.5) * up)[..., None]
+    col = sstep(0.62, 0.8, tfbm(1, W, 1, 9, SEED + 36, 3))[0][None, :]
+    runs = sstep(0.55, 0.85, tfbm(H, W, 3, 60, SEED + 25, 3, 0.6)) * col * up * (np.exp(-(WALL_H - yy) / 26.0) + 0.7 * np.exp(-np.abs(yy - JT) / 14.0) * (yy < JT))
+    alb *= (1 - 0.22 * runs)[..., None]
+    grime = tfbm(H, W, 5, 3, SEED + 26, 4)
+    alb *= (0.84 + 0.28 * grime)[..., None]
+    # roughness: enamel, glossier where people lean, matte under grime; matte paint above; a tarnished rail; steel at the chips
+    hands = np.exp(-((yy - 36.0) / 9.0) ** 2) * sstep(0.45, 0.75, tfbm(H, W, 3, 2, SEED + 37, 4)) * low
+    rough = np.select([kick, low, up], [0.72, 0.36, 0.74], 0.3) + 0.08 * (tfbm(H, W, 20, 12, SEED + 27, 3) - 0.5)
+    rough = rough + 0.22 * sstep(0.5, 0.85, grime) + 0.2 * rust + 0.2 * scr - 0.16 * hands + 0.12 * runs + 0.1 * smoke + 0.3 * prim + 0.2 * seam - 0.18 * rub
+    rough = np.where(rail, 0.22 + 0.3 * tarn, rough); rough = np.where(chip > 0.5, 0.4, rough)
+    metal = np.where(rail, 1.0 - 0.2 * tarn, chip * np.where(prime[..., 1] > 0.4, 1.0, 0.2))
+    orm = np.stack([np.ones((H, W)), np.clip(rough, 0.06, 1), np.clip(metal, 0, 1)], -1)
+    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.0, wrap_x=True), orm
 
 def glass_texture(W, H):
     X, Y = np.meshgrid((np.arange(W) + .5) / W, (np.arange(H) + .5) / H)
@@ -350,7 +379,7 @@ def glow_texture():
     x0, y0, x1, y1, h, w = region('sign')
     ink = np.zeros((h, w)); draw_text(ink, 'STARPORT ARCADE', w / 2, h / 2 - 4, 82.0, 1.0, 9.0)
     rule = np.zeros((h, w)); seg_aa(rule, (w * 0.17, h - 15), (w * 0.83, h - 15), 4.0)
-    halo = 1 - np.exp(-(1.8 * gblur(ink, 4.0) + 2.4 * gblur(ink, 12.0) + 3.0 * gblur(ink, 30.0)))
+    halo = 1 - np.exp(-(1.8 * gblur(ink, 4.0, False) + 2.4 * gblur(ink, 12.0, False) + 3.0 * gblur(ink, 30.0, False)))
     a = np.clip(np.maximum(halo * 0.78, np.maximum(ink, rule * 0.8)), 0, 1)
     solid = np.clip(np.maximum(ink, rule * 0.85), 0, 1)
     gold = np.array([1.0, 0.72, 0.30]); warm = np.array([1.0, 0.55, 0.18])
@@ -395,37 +424,27 @@ def attract_screen(N, kind):
     img = img + np.array(cols[1])[None, None] * np.clip(ink + b * 0.6, 0, 1)[..., None] + np.array(cols[0])[None, None] * top[..., None] * 0.8
     return np.clip(img * scan[..., None], 0, 1)
 
-def wear_texture(N):
-    smudge = sstep(0.52, 0.80, tfbm(N, N, 5, 5, SEED + 41, 5))
-    fine = tfbm(N, N, 60, 60, SEED + 42, 3)
-    pits = sstep(0.62, 0.74, tfbm(N, N, 90, 90, SEED + 43, 2)) * 0.55
-    streak = sstep(0.55, 0.85, tfbm(N, N, 2, 22, SEED + 44, 3, 0.55))
-    dark = np.zeros((N, N)); light = np.zeros((N, N))
-    def seg_wrap(img, p0, p1, w, val):
-        for ox in (-N, 0, N):
-            for oy in (-N, 0, N):
-                if min(p0[0], p1[0]) + ox > N + 4 or max(p0[0], p1[0]) + ox < -4 or min(p0[1], p1[1]) + oy > N + 4 or max(p0[1], p1[1]) + oy < -4: continue
-                seg_aa(img, (p0[0] + ox, p0[1] + oy), (p1[0] + ox, p1[1] + oy), w, val)
-    for _ in range(int(210 * TS + 60)):
-        x = rng.uniform(0, N); y = rng.uniform(0, N); a = rng.uniform(0, math.pi); l = rng.uniform(8, 70) * TS * 2
-        seg_wrap(light if rng.random() < 0.6 else dark, (x, y), (x + l * math.cos(a), y + l * math.sin(a)), 1.0, rng.uniform(0.25, 0.8))
-    Wm = 0.80 - 0.20 * smudge - 0.14 * streak * (0.4 + 0.6 * smudge) - 0.22 * pits + 0.06 * (fine - 0.5) * 2
-    Wm = np.clip(Wm + 0.20 * light - 0.22 * dark, 0.22, 1.0)
-    tint = np.stack([Wm, Wm * (1 - 0.03 * smudge - 0.01), Wm * (1 - 0.10 * smudge)], -1)
-    mean = float(Wm.mean())
-    e = np.where(tint <= 0.0031308, tint * 12.92, 1.055 * np.power(np.clip(tint, 1e-6, 1), 1 / 2.4) - 0.055)
-    return np.clip(e, 0, 1), mean
-
 # =============================================================================================
 # GEOMETRY
 # =============================================================================================
 class Acc:
-    def __init__(s): s.V, s.F, s.S = [], [], []
+    """V world (game) corners, L the same in the piece's own frame and O a per-piece UV offset (the surface set is projected in the piece's frame)."""
+    def __init__(s): s.V, s.L, s.O, s.F, s.S = [], [], [], [], []
     def add(s, M, parts):
+        off = (float(rng.uniform(0, 64)), float(rng.uniform(0, 64)))
         for V, F, sm in parts:
-            o = len(s.V); s.V.extend((M @ v) for v in V); s.F.extend(tuple(o + i for i in f) for f in F); s.S.extend([sm] * len(F))
+            o = len(s.V); s.V.extend((M @ v) for v in V); s.L.extend(Vector(v) for v in V); s.O.extend([off] * len(V))
+            s.F.extend(tuple(o + i for i in f) for f in F); s.S.extend([sm] * len(F))
 ACC = {}
 def put(name, M, parts): ACC.setdefault(name, Acc()).add(M, parts)
+LAMPS = []     # (game xyz, colour hex, strength): the room's own lamps for the bake (strength = brightness x cm^2 at the lamp)
+def grid(mat, p0, eu, ev, nu, nv, nrm):
+    """A flat rectangle p0 + eu*s + ev*t split nu x nv, facing nrm, into a prop material (so the bake has corners to shade)."""
+    p0, eu, ev = Vector(p0), Vector(eu), Vector(ev)
+    if eu.cross(ev).dot(Vector(nrm)) < 0: eu, ev, nu, nv = ev, eu, nv, nu
+    V = [p0 + eu * (i / nu) + ev * (j / nv) for j in range(nv + 1) for i in range(nu + 1)]
+    F = [(j * (nu + 1) + i, j * (nu + 1) + i + 1, (j + 1) * (nu + 1) + i + 1, (j + 1) * (nu + 1) + i) for j in range(nv) for i in range(nu)]
+    put(mat, Matrix.Identity(4), [(V, F, False)])
 def loc(x, y, z): return Matrix.Translation((x, y, z))
 def rot_y(deg): return Matrix.Rotation(math.radians(deg), 4, 'Y')
 def rot_z(deg): return Matrix.Rotation(math.radians(deg), 4, 'Z')
@@ -503,51 +522,69 @@ def glow_floor(x0, x1, z0, z1, reg, vfrom='z0', y=None):
 # =============================================================================================
 print('arcade: textures')
 FW = max(256, int(2048 * TS) // 4 * 4); FH = int(FW * D_ROOM / W_ROOM) // 4 * 4
-fa, fn = floor_texture(FW, FH)
+fa, fn, fo = floor_texture(FW, FH)
 im_fa = new_img('arcade_floor_albedo', FW, FH); np_img(im_fa, fa)
 im_fn = new_img('arcade_floor_normal', FW // 2, FH // 2, True); np_img(im_fn, fn[::2, ::2])
+im_fo = new_img('arcade_floor_orm', FW // 2, FH // 2, True); np_img(im_fo, fo[::2, ::2])
 WW, WH_ = max(128, int(1024 * TS) // 4 * 4), max(192, int(1536 * TS) // 4 * 4)
-wa, wn = wall_texture(WW, WH_)
+wa, wn, wo = wall_texture(WW, WH_)
 im_wa = new_img('arcade_wall_albedo', WW, WH_); np_img(im_wa, wa)
 im_wn = new_img('arcade_wall_normal', WW, WH_, True); np_img(im_wn, wn)
+im_wo = new_img('arcade_wall_orm', WW // 2, WH_ // 2, True); np_img(im_wo, wo[::2, ::2])
 gcol, galpha = glass_texture(max(64, int(512 * TS) // 4 * 4), max(64, int(512 * TS) // 4 * 4))
 im_gl = new_img('arcade_glass', gcol.shape[1], gcol.shape[0], alpha=True); np_img(im_gl, gcol, galpha)
-wv, wmean = wear_texture(max(128, int(512 * TS) // 4 * 4))
-im_wv = new_img('arcade_wear', wv.shape[1], wv.shape[0]); np_img(im_wv, wv)
-WEAR['img'] = im_wv; WEAR['mean'] = wmean
 glw = glow_texture(); im_gw = new_img('arcade_glow', GLOW_W, GLOW_H, alpha=True); np_img(im_gw, glw[..., :3], glw[..., 3])
 AN = max(128, int(256 * TS) // 4 * 4)
 im_sa = new_img('arcade_screen_a', AN, AN); np_img(im_sa, attract_screen(AN, 0))
 im_sb = new_img('arcade_screen_b', AN, AN); np_img(im_sb, attract_screen(AN, 1))
-IMGS = [im_fa, im_fn, im_wa, im_wn, im_gl, im_wv, im_gw, im_sa, im_sb]
+IMGS = [im_fa, im_fn, im_fo, im_wa, im_wn, im_wo, im_gl, im_gw, im_sa, im_sb]
+
+print('arcade: surface sets')
+SN = max(128, int(512 * TS) // 4 * 4)
+def surf_imgs(kind, nrm, orm, alb=None, mean=1.0, albs=None):
+    S = {'mean': mean, 'albs': {}, 'alb': None}
+    S['n'] = new_img('arcade_%s_normal' % kind, nrm.shape[1], nrm.shape[0], True); np_img(S['n'], nrm)
+    S['orm'] = new_img('arcade_%s_orm' % kind, orm.shape[1], orm.shape[0], True); np_img(S['orm'], orm)
+    IMGS.extend([S['n'], S['orm']])
+    if alb is not None: S['alb'] = new_img('arcade_%s_albedo' % kind, alb.shape[1], alb.shape[0]); np_img(S['alb'], alb); IMGS.append(S['alb'])
+    for mat, a in (albs or {}).items():
+        im = new_img(mat + '_albedo', a.shape[1], a.shape[0]); np_img(im, a); S['albs'][mat] = im; IMGS.append(im)
+    SURF[kind] = S
+for kind, fn_ in (('steel', R.steel_set), ('brass', R.brass_set), ('plastic', R.plastic_set)):
+    a_, m_, n_, o_ = fn_(SN, SEED); surf_imgs(kind, n_, o_, a_, m_)
+pn_, po_, PM = R.paint_set(SN, SEED)
+PAINTED = {'gun': 0x2e353a, 'ceil': 0x24262a, 'red': 0xa5322a, 'yellow': 0xd2a21e, 'door': 0x3b474e}
+surf_imgs('paint', pn_, po_, albs={'arcade_' + k: R.paint_albedo(PM, h) for k, h in PAINTED.items()})
+wn_, wo_, WM = R.wood_set(SN, SEED, raw=True)
+surf_imgs('wood', wn_, wo_, albs={'arcade_crate': R.wood_albedo(WM, 0xb48a58, 0x7a5532), 'arcade_wood': R.wood_albedo(WM, 0x8a7860, 0x4e4234)})
 
 MATS = {
-    'floor': tex_mat('arcade_floor', im_fa, im_fn, rough=0.72),
-    'wall':  tex_mat('arcade_wall', im_wa, im_wn, vcol=True, rough=0.78),
+    'floor': tex_mat('arcade_floor', im_fa, im_fn, vcol=True, orm=im_fo),
+    'wall':  tex_mat('arcade_wall', im_wa, im_wn, vcol=True, orm=im_wo),
     'glass': tex_mat('arcade_glass', im_gl, None, alpha_img=True, rough=0.06),
     'glow':  glow_mat('arcade_glow', im_gw),
 }
-FLAT = {   # name: (hex, metal, rough, emissive hex, strength)
-    'ceil':   (0x24262a, 0.2, 0.8, None, 1),
-    'gun':    (0x2e353a, 0.6, 0.48, None, 1),
-    'steel':  (0x9aa3a8, 0.9, 0.34, None, 1),
-    'brass':  (0xc9973f, 1.0, 0.36, None, 1),
-    'rubber': (0x121315, 0.0, 0.85, None, 1),
-    'cream':  (0xcfc5ac, 0.0, 0.6, None, 1),
-    'blue':   (0x2c4b5f, 0.2, 0.55, None, 1),
-    'teal':   (0x2c6a70, 0.2, 0.5, None, 1),
-    'red':    (0xa5322a, 0.1, 0.5, None, 1),
-    'yellow': (0xd2a21e, 0.0, 0.5, None, 1),
-    'wood':   (0x5a4331, 0.0, 0.5, None, 1),
-    'crate':  (0x7d5c38, 0.0, 0.62, None, 1),
-    'door':   (0x3b474e, 0.5, 0.5, None, 1),
-    'lamp':   (0xffe0b0, 0.0, 0.5, 0xffb868, 2.2),
-    'tube':   (0xf2f0e6, 0.0, 0.5, 0xdfe8f0, 2.4),
-    'screen': (0x103030, 0.0, 0.3, 0x6fe0c0, 1.5),
-    'doorlt': (0x301008, 0.0, 0.4, 0xff6a3a, 2.0),
-    'plant':  (0x3f6a3a, 0.0, 0.6, None, 1),
+FLAT = {   # name: (hex, metal, rough, emissive hex, strength, surface kind); with a kind, metal and rough scale the set's ORM (painted and wood ones carry their own colour)
+    'ceil':   (0x24262a, 1.0, 1.0, None, 1, 'paint'),
+    'gun':    (0x2e353a, 1.0, 0.85, None, 1, 'paint'),
+    'steel':  (0x9aa3a8, 1.0, 1.0, None, 1, 'steel'),
+    'brass':  (0xc9973f, 1.0, 1.0, None, 1, 'brass'),
+    'rubber': (0x121315, 1.0, 0.95, None, 1, 'plastic'),
+    'cream':  (0xcfc5ac, 1.0, 0.9, None, 1, 'plastic'),
+    'blue':   (0x2c4b5f, 1.0, 0.9, None, 1, 'plastic'),
+    'cork':   (0x8f6a46, 1.0, 1.0, None, 1, 'plastic'),
+    'red':    (0xa5322a, 1.0, 0.8, None, 1, 'paint'),
+    'yellow': (0xd2a21e, 1.0, 0.9, None, 1, 'paint'),
+    'wood':   (0x5a4331, 1.0, 1.0, None, 1, 'wood'),
+    'crate':  (0x7d5c38, 1.0, 1.0, None, 1, 'wood'),
+    'door':   (0x3b474e, 1.0, 0.8, None, 1, 'paint'),
+    'lamp':   (0xffe0b0, 0.0, 0.5, 0xffb868, 2.2, None),
+    'tube':   (0xf2f0e6, 0.0, 0.5, 0xdfe8f0, 2.4, None),
+    'screen': (0x103030, 0.0, 0.3, 0x6fe0c0, 1.5, None),
+    'doorlt': (0x301008, 0.0, 0.4, 0xff6a3a, 2.0, None),
+    'plant':  (0x3f6a3a, 1.0, 0.75, None, 1, 'plastic'),
 }
-for k, (h, m, r, e, es) in FLAT.items(): MATS[k] = flat_mat('arcade_' + k, h, m, r, e, es)
+for k, (h, m, r, e, es, kd) in FLAT.items(): MATS[k] = flat_mat('arcade_' + k, h, m, r, e, es, kd)
 
 # =============================================================================================
 # THE SHELL: floor, walls, the two bays, ceiling
@@ -562,7 +599,7 @@ def wall_ao(p):
     return max(0.35, min(1.0, a * (0.88 + 0.26 * (n * 0.5 + 0.5))))
 def wall_piece(axis, a0, a1, y0, y1):
     """A room-facing wall rectangle. axis: 'z0' back (z=Z0), 'z1' front, 'x0' left, 'x1' right; a = x for the z walls, z for the x walls."""
-    nu = max(1, int(math.ceil(abs(a1 - a0) / 24.0))); nv = max(1, int(math.ceil((y1 - y0) / 24.0)))
+    nu = max(1, int(math.ceil(abs(a1 - a0) / 12.0))); nv = max(1, int(math.ceil((y1 - y0) / 12.0)))     # cells the bake shades
     if axis in ('z0', 'z1'):
         zz = Z0 if axis == 'z0' else Z1; nrm = (0, 0, 1) if axis == 'z0' else (0, 0, -1)
         p0 = (a0, y0, zz); eu = (a1 - a0, 0, 0); uvf = lambda p: ((p[0] - X0) / TILE_U, (p[1] - FL) / WALL_H)
@@ -571,13 +608,13 @@ def wall_piece(axis, a0, a1, y0, y1):
         p0 = (xx, y0, a0); eu = (0, 0, a1 - a0); uvf = lambda p: ((p[2] - Z0) / TILE_U, (p[1] - FL) / WALL_H)
     tquad('wall', p0, eu, (0, y1 - y0, 0), nrm, nu, nv, uvf, wall_ao)
 
-tquad('floor', (X0, FL, Z0), (W_ROOM, 0, 0), (0, 0, D_ROOM), (0, 1, 0), 1, 1, lambda p: ((p[0] - X0) / W_ROOM, 1 - (p[2] - Z0) / D_ROOM))
+tquad('floor', (X0, FL, Z0), (W_ROOM, 0, 0), (0, 0, D_ROOM), (0, 1, 0), 52, 41, lambda p: ((p[0] - X0) / W_ROOM, 1 - (p[2] - Z0) / D_ROOM))
 wall_piece('z0', X0, -BX, FL, CEIL); wall_piece('z0', BX, X1, FL, CEIL)
 wall_piece('z0', -BX, BX, FL, SILL); wall_piece('z0', -BX, BX, HEAD, CEIL)
 wall_piece('x1', Z0, -RZ, FL, CEIL); wall_piece('x1', RZ, Z1, FL, CEIL)
 wall_piece('x1', -RZ, RZ, FL, SILL); wall_piece('x1', -RZ, RZ, HEAD, CEIL)
 wall_piece('x0', Z0, Z1, FL, CEIL); wall_piece('z1', X0, X1, FL, CEIL)
-box('ceil', ((X0 + X1) / 2, CEIL + 0.5, (Z0 + Z1) / 2), (W_ROOM, 1.0, D_ROOM))
+grid('ceil', (X0, CEIL, Z0), (W_ROOM, 0, 0), (0, 0, D_ROOM), 43, 34, (0, -1, 0))
 
 # ---- the bays: frame slabs inside the opening, a sill shelf, mullions, glass --------------------
 def bay(axis, half):
@@ -607,6 +644,8 @@ def bay(axis, half):
         for q, uv in zip(quad, uvs): A['V'].append(g2b(*q)); A['UV'].append(uv); A['COL'].append((1, 1, 1, 1))
         A['F'].append((o, o + 1, o + 2, o + 3))
 bay('z0', BX); bay('x1', RZ)
+for x in np.arange(-150.0, 151.0, 50.0): LAMPS.append(((float(x), 20.0, Z0 - 3.0), 0x9cc2ff, 450))      # the docks' light through the bays
+for z in np.arange(-110.0, 111.0, 44.0): LAMPS.append(((X1 + 3.0, 20.0, float(z)), 0x9cc2ff, 360))
 
 # ---- ceiling furniture: beams, pipes, long tubes ------------------------------------------------
 for x in (-175.0, -58.0, 58.0, 175.0): box('gun', (x, CEIL - 5.0, 0), (9.0, 10.0, D_ROOM))
@@ -616,6 +655,7 @@ cyl('steel', (X1 - 7.0, CEIL - 9.0, 0), 3.0, D_ROOM, 12, axis='z')
 for sx, sz in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
     box('tube', (sx * 118.0, CEIL - 1.8, sz * 70.0), (70.0, 1.6, 7.0))
     box('gun', (sx * 118.0, CEIL - 0.9, sz * 70.0), (74.0, 0.8, 9.0))
+    for dx in (-24.0, 0.0, 24.0): LAMPS.append(((sx * 118.0 + dx, CEIL - 4.0, sz * 70.0), 0xdfe8f0, 1200))
 
 # =============================================================================================
 # PROPS, LIGHT CARDS, THE SIGN
@@ -625,9 +665,9 @@ print('arcade: props')
 box('gun', (0, 76, Z0 + 2.0), (154, 34, 3.0))
 glow_quad((0, 76, Z0 + 3.9), (1, 0, 0), (0, 1, 0), 146, 27.4, 'sign')
 for sx in (-1, 1): box('brass', (sx * 79, 76, Z0 + 2.0), (2.5, 34, 3.4))
+for x in (-50.0, 0.0, 50.0): LAMPS.append(((x, 76.0, Z0 + 9.0), 0xffb848, 450))
 
 # the dock door in the far wall's right pier
-DX = 218.0
 for sx in (-1, 1): box('gun', (DX + sx * 29.0, (FL + 40) / 2, Z0 + 3.0), (6, 84, 6))
 box('gun', (DX, 38, Z0 + 3.0), (64, 6, 6))
 box('door', (DX, (FL + 35) / 2, Z0 + 1.5), (52, 79, 3))
@@ -635,13 +675,15 @@ for yy in (FL + 3, 33.0): box('yellow', (DX, yy, Z0 + 3.2), (52, 3, 0.6))
 box('steel', (DX + 17, -4, Z0 + 4.5), (3, 22, 3))
 cyl('steel', (DX, 14, Z0 + 3.4), 8.8, 1.8, 20, axis='z'); cyl('doorlt', (DX, 14, Z0 + 4.4), 6.4, 0.8, 20, axis='z')
 glow_quad((DX, 14, Z0 + 5.0), (1, 0, 0), (0, 1, 0), 30, 30, 'door')
+LAMPS.append(((DX, 14.0, Z0 + 8.0), 0xff6a3a, 200))
 
-# wall lamps on the far wall's piers: bracket, bulb, halo, and the cone they throw down the wall
-for sx in (-236.0, -196.0, 194.0, 242.0):
-    box('brass', (sx, 58, Z0 + 2.2), (4, 11, 4.4))
-    cyl('lamp', (sx, 60, Z0 + 5.6), 3.0, 7.0, 12)
-    glow_quad((sx, 60, Z0 + 7.2), (1, 0, 0), (0, 1, 0), 30, 30, 'warm')
-    glow_quad((sx, 38, Z0 + 0.7), (1, 0, 0), (0, 1, 0), 34, 46, 'cone')
+# wall lamps on the far wall's piers and either side of the notice board: bracket, bulb, halo, the cone they throw down the wall
+for sx, zw, sg in ((-236.0, Z0, 1), (-196.0, Z0, 1), (194.0, Z0, 1), (242.0, Z0, 1), (-14.0, Z1, -1), (134.0, Z1, -1)):
+    box('brass', (sx, 58, zw + sg * 2.2), (4, 11, 4.4))
+    cyl('lamp', (sx, 60, zw + sg * 5.6), 3.0, 7.0, 12)
+    glow_quad((sx, 60, zw + sg * 7.2), (sg, 0, 0), (0, 1, 0), 30, 30, 'warm')
+    glow_quad((sx, 38, zw + sg * 0.7), (sg, 0, 0), (0, 1, 0), 34, 46, 'cone')
+    LAMPS.append(((sx, 60.0, zw + sg * 9.0), 0xffb868, 1100))
 
 # a cable tray along the left wall, conduit, and the cabinets' sockets
 box('gun', (X0 + 3, 88, 0), (6, 3.0, D_ROOM - 6))
@@ -654,6 +696,7 @@ box('gun', (-248, FL + 34, CZ), (22, 68, 32)); box('steel', (-236.5, FL + 40, CZ
 box('screen', (-236.0, FL + 52, CZ), (1.0, 7, 13)); box('brass', (-236.0, FL + 40, CZ - 8), (1.2, 8, 1.4)); box('rubber', (-236.0, FL + 22, CZ), (1.6, 5, 11))
 box('red', (-236.0, FL + 61, CZ), (0.8, 3, 24))
 glow_floor(-236, -190, CZ - 24, CZ + 24, 'scrA')
+LAMPS.append(((-231.0, FL + 52.0, CZ), 0x6fe0c0, 120))
 cyl('steel', (-246, FL + 10, 104), 6.5, 20, 14); cyl('rubber', (-246, FL + 20.5, 104), 7.0, 2.0, 14)
 
 # a corner of crates (front right), a pallet under them
@@ -661,8 +704,10 @@ box('wood', (222, FL + 2, 176), (36, 4, 36)); box('crate', (222, FL + 14, 176), 
 box('crate', (196, FL + 10, 186), (22, 16, 22), yaw=-14); box('crate', (221, FL + 33, 177), (20, 18, 20), yaw=26)
 box('cream', (196, FL + 20.5, 186), (23, 1.2, 23), yaw=-14)
 
-# the front wall: notice board, an extinguisher, a hazard strip
-box('wood', (60, 12, Z1 - 1.2), (118, 62, 2.4))
+# the front wall: a cork notice board in a wooden frame, an extinguisher, a hazard strip
+box('cork', (60, 12, Z1 - 1.2), (114, 58, 2.4))
+for (fx, fy, fw, fh) in ((60, 42, 120, 2.5), (60, -18, 120, 2.5), (1.25, 12, 2.5, 58), (118.75, 12, 2.5, 58)):
+    box('wood', (fx, fy, Z1 - 1.5), (fw, fh, 3.0))
 for (px_, py_, c_) in ((30, 28, 'cream'), (52, 20, 'yellow'), (78, 30, 'cream'), (96, 14, 'blue'), (44, 2, 'cream'), (70, 4, 'red'), (92, 36, 'cream')):
     box(c_, (px_, py_, Z1 - 2.7), (11, 14, 0.5), yaw=0)
 box('red', (-60, FL + 18, Z1 - 4.5), (8.5, 28, 8.5)); box('gun', (-60, FL + 34, Z1 - 4.5), (3, 6, 3)); box('rubber', (-60, FL + 30, Z1 - 2.0), (2, 6, 2))
@@ -751,32 +796,47 @@ if 'arcade_OFF.001' in idx: planar_uv(cab, idx['arcade_OFF.001']); retexture(cab
 if 'vender_front' in idx:
     b = cab.data.materials[idx['vender_front']].node_tree.nodes['Principled BSDF']
     b.inputs['Emission Color'].default_value = srgb(0x7ac8e8); b.inputs['Emission Strength'].default_value = 0.8
+for nm in ('arcade_guardians', 'arcade_OFF', 'arcade_RP'):                      # vinyl side art over laminate: a little sheen, not chalk
+    if nm in idx: cab.data.materials[idx[nm]].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.6
+# a lamp in front of every lit screen, at the area-weighted centre of its faces
+bpy.context.view_layer.update()
+def b2g(v): return (v.x, v.z, -v.y)
+Mw = cab.matrix_world; R3 = Mw.to_3x3()
+for nm, h, st in (('arcade_avenger.screen', 0x7f9cff, 260), ('arcade_RP.001', 0x9fe0a0, 260), ('blank_screen', 0x6fd0c0, 260),
+                  ('arcade_OFF.001', 0xffb060, 260), ('vender_front', 0x7ac8e8, 320)):
+    ps = [p for p in cab.data.polygons if nm in idx and p.material_index == idx[nm]]
+    if not ps: print('arcade: no faces for screen', nm); continue
+    ar = sum(p.area for p in ps); c = sum(((Mw @ p.center) * p.area for p in ps), Vector()) / ar
+    n = sum(((R3 @ p.normal) * p.area for p in ps), Vector()).normalized()
+    LAMPS.append((b2g(c + n * 8.0), h, st))
 
 # =============================================================================================
 # ASSEMBLE + EXPORT
 # =============================================================================================
-PROC_SKIP = {n for n, v in FLAT.items() if v[3] is not None}
-WEAR_TILE = 26.0
-def prop_attrs(A):
-    """Per-corner UVs (the wear map projected along each face's dominant axis) and baked colour: floor contact, undersides, a little dirt."""
-    V, F, S = A.V, A.F, A.S
-    vn = [Vector((0, 0, 0)) for _ in V]; fn = []
+PROC_SKIP = {n for n, v in FLAT.items() if v[3] is not None}                 # lamps and screens stay clean
+def newell(pts):
+    n = Vector((0, 0, 0))
+    for k in range(len(pts)):
+        a, b = pts[k], pts[(k + 1) % len(pts)]
+        n += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
+    return n / n.length if n.length > 1e-9 else Vector((0, 1, 0))
+def prop_attrs(A, tile):
+    """Per-corner UVs (the surface set projected along each face's dominant axis in the piece's own frame, tile cm a repeat, offset per piece)
+    and baked colour: floor contact, undersides, a little dirt, near the walls."""
+    V, L, O, F, S = A.V, A.L, A.O, A.F, A.S
+    vn = [Vector((0, 0, 0)) for _ in V]; fn = []; ln = []
     for f, sm in zip(F, S):
-        pts = [V[i] for i in f]; n = Vector((0, 0, 0))
-        for k in range(len(pts)):
-            a, b = pts[k], pts[(k + 1) % len(pts)]
-            n += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
-        L = n.length; n = n / L if L > 1e-9 else Vector((0, 1, 0)); fn.append(n)
+        n = newell([V[i] for i in f]); fn.append(n); ln.append(newell([L[i] for i in f]))
         if sm:
             for i in f: vn[i] += n
     UVs, COL = [], []
-    for f, sm, n0 in zip(F, S, fn):
-        ax = max(range(3), key=lambda k: abs(n0[k]))
+    for f, sm, n0, l0 in zip(F, S, fn, ln):
+        ax = max(range(3), key=lambda k: abs(l0[k]))
         for i in f:
             n = vn[i].normalized() if sm and vn[i].length > 1e-9 else n0
-            p = V[i]
-            uv = ((p.z, p.y), (p.x, p.z), (p.x, p.y))[ax]
-            UVs.append((uv[0] / WEAR_TILE, uv[1] / WEAR_TILE))
+            p = V[i]; q = L[i]; o = O[i]
+            uv = ((q.z, q.y), (q.x, q.z), (q.x, q.y))[ax]
+            UVs.append(((uv[0] + o[0]) / tile, (uv[1] + o[1]) / tile))
             h = max(0.0, p.y - FL)
             c = (1 - 0.50 * math.exp(-h / 3.2)) * (1 - 0.30 * max(0.0, -n.y))
             c *= 0.90 + 0.12 * (mnoise.fractal(Vector((p.x, p.y, p.z)) / 38.0 + Vector((5.3, 1.9, 8.1)), 0.7, 2.0, 3) * 0.5 + 0.5)
@@ -801,9 +861,17 @@ if GLW['F']:
     make_mesh('room_arcade_glow', GLW['V'], GLW['F'], [False] * len(GLW['F']), MATS['glow'], [GLW['UV'][vi] for f in GLW['F'] for vi in f])
 for name, A in ACC.items():
     if not A.F: continue
-    uv, cols = (None, None) if name in PROC_SKIP else prop_attrs(A)
+    uv, cols = (None, None) if name in PROC_SKIP else prop_attrs(A, R.SURF_TILE[FLAT[name][5]])
     Vb = [g2b(v.x, v.y, v.z) for v in A.V]
     make_mesh('room_arcade_' + name, Vb, A.F, A.S, MATS[name], uv, cols)
+
+# ---- the light bake: ambient occlusion and the room's own lamps, ray-traced per corner into the baked colour (glTF COLOR_0) ----------
+BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.46, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
+bpy.context.view_layer.update()
+skip = {'arcade_glass', 'arcade_glow'} | {'arcade_' + n for n in PROC_SKIP}
+occ = [o for o in OBJS if o.data.materials[0].name not in skip] + list(KEEP.values())
+R.bake_light(occ, occ, [(g2b(*p), R.lamp_tint(h), s) for p, h, s in LAMPS], seed=SEED, tag='arcade', **BAKE)
+print('arcade: %d lamps' % len(LAMPS))
 tris = 0
 for o in OBJS:
     o.data.calc_loop_triangles(); tris += len(o.data.loop_triangles)
@@ -816,5 +884,6 @@ set_active(*(OBJS + list(KEEP.values())))
 kw = dict(filepath=GLB, export_format='GLB', use_selection=True, export_apply=True, export_yup=True, export_lights=False, export_cameras=False)
 try: bpy.ops.export_scene.gltf(export_vertex_color='ACTIVE', **kw)
 except TypeError: bpy.ops.export_scene.gltf(**kw)
+R.glb_factors(GLB, FACT)
 print('arcade: wrote', GLB, '%.1f MB' % (os.path.getsize(GLB) / 1048576))
 

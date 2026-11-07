@@ -678,117 +678,117 @@
   "balls": {
    "classic": {
     "from": {
-     "ball": "Stitched Leather"
+     "ball": "FB Leather"
     },
     "ref": {
-     "ball": "preset:leather"
+     "ball": "user:pmw446avu01"
     },
     "ball": {
      "diameter": 38.1,
-     "density": 900,
-     "E": 150,
-     "nu": 0.45,
-     "loss": 0.18,
+     "density": 1370,
+     "E": 64.7,
+     "nu": 0.38,
+     "loss": 0.5,
      "hollow": 0,
-     "shell": 2,
+     "shell": 1.9,
      "roughness": 70,
-     "texDepth": 260,
-     "texCount": 12,
+     "texDepth": 78,
+     "texCount": 125,
      "runout": 140,
-     "mu": 0.55,
+     "mu": 0.68,
      "color": "#E9E1CF"
     }
    },
    "cannon": {
     "from": {
-     "ball": "Cast Iron Shot"
+     "ball": "FB Cannonball"
     },
     "ref": {
-     "ball": "preset:castiron"
+     "ball": "user:pmw4488qt02"
     },
     "ball": {
-     "diameter": 38.1,
-     "density": 7200,
-     "E": 110000,
-     "nu": 0.26,
-     "loss": 0.004,
+     "diameter": 34,
+     "density": 1200,
+     "E": 186,
+     "nu": 0.36,
+     "loss": 0.12,
      "hollow": 0,
-     "shell": 2,
-     "roughness": 30,
-     "texDepth": 0,
-     "texCount": 0,
-     "runout": 150,
-     "mu": 0.25,
-     "color": "#26272A"
+     "shell": 8,
+     "roughness": 40,
+     "texDepth": 132,
+     "texCount": 47,
+     "runout": 40,
+     "mu": 0.42,
+     "color": "#2A2A2C"
     }
    },
    "golden": {
     "from": {
-     "ball": "Hollow Brass"
+     "ball": "FB Metal"
     },
     "ref": {
-     "ball": "preset:brass"
+     "ball": "user:pmw44ag3t03"
     },
     "ball": {
-     "diameter": 38.1,
+     "diameter": 30,
      "density": 8000,
-     "E": 100000,
-     "nu": 0.34,
-     "loss": 0.002,
-     "hollow": 1,
-     "shell": 1.1,
-     "roughness": 1,
-     "texDepth": 0,
+     "E": 370,
+     "nu": 0.33,
+     "loss": 0.329,
+     "hollow": 0,
+     "shell": 2,
+     "roughness": 0.5,
+     "texDepth": 16,
      "texCount": 0,
-     "runout": 20,
-     "mu": 0.22,
-     "color": "#E0A93C"
+     "runout": 15,
+     "mu": 0.3,
+     "color": "#C8CCD2"
     }
    },
    "split": {
     "from": {
-     "ball": "Stitched Leather"
+     "ball": "FB Soft"
     },
     "ref": {
-     "ball": "preset:leather"
+     "ball": "user:pmw44gv2z04"
     },
     "ball": {
-     "diameter": 38.1,
-     "density": 900,
-     "E": 150,
-     "nu": 0.45,
-     "loss": 0.18,
-     "hollow": 0,
-     "shell": 2,
-     "roughness": 70,
-     "texDepth": 260,
-     "texCount": 12,
-     "runout": 140,
-     "mu": 0.55,
-     "color": "#E9E1CF"
+     "diameter": 38,
+     "density": 2170,
+     "E": 17.2,
+     "nu": 0.49,
+     "loss": 0.104,
+     "hollow": 0.11,
+     "shell": 4.2,
+     "roughness": 0.683,
+     "texDepth": 16,
+     "texCount": 0,
+     "runout": 15,
+     "mu": 0.94,
+     "color": "#C8CCD2"
     }
    },
    "knuckle": {
     "from": {
-     "ball": "Stitched Leather"
+     "ball": "FB Soft"
     },
     "ref": {
-     "ball": "preset:leather"
+     "ball": "user:pmw44gv2z04"
     },
     "ball": {
-     "diameter": 38.1,
-     "density": 900,
-     "E": 150,
-     "nu": 0.45,
-     "loss": 0.18,
-     "hollow": 0,
-     "shell": 2,
-     "roughness": 70,
-     "texDepth": 260,
-     "texCount": 12,
-     "runout": 140,
-     "mu": 0.55,
-     "color": "#E9E1CF"
+     "diameter": 38,
+     "density": 2170,
+     "E": 17.2,
+     "nu": 0.49,
+     "loss": 0.104,
+     "hollow": 0.11,
+     "shell": 4.2,
+     "roughness": 0.683,
+     "texDepth": 16,
+     "texCount": 0,
+     "runout": 15,
+     "mu": 0.94,
+     "color": "#C8CCD2"
     }
    }
   }
@@ -799,463 +799,463 @@
    "seed": 1,
    "speed": 1,
    "takes": 6,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.710Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.594Z"
   },
   "ball_floor": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.737Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.621Z"
   },
   "ball_post": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.762Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.647Z"
   },
   "ball_goal": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.814Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.688Z"
   },
   "ball_drop": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.844Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.734Z"
   },
   "rod_bump": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.866Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.759Z"
   },
   "ball_roll_slow": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.927Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.837Z"
   },
   "ball_roll_fast": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.960Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.867Z"
   },
   "ball_scrape": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.017Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.926Z"
   },
   "rod_slide_slow": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.068Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.977Z"
   },
   "rod_slide_fast": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.118Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:22.031Z"
   },
   "rod_spin": {
    "seed": 1,
    "speed": 1,
    "takes": 2,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.150Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:22.064Z"
   },
   "ball_wall_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.174Z"
+   "at": "2026-11-05T22:34:22.092Z"
   },
   "ball_post_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.198Z"
+   "at": "2026-11-05T22:34:22.118Z"
   },
   "ball_goal_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.228Z"
+   "at": "2026-11-05T22:34:22.149Z"
   },
   "rod_bump_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.254Z"
+   "at": "2026-11-05T22:34:22.175Z"
   },
   "ball_scrape_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.283Z"
+   "at": "2026-11-05T22:34:22.203Z"
   },
   "rod_slide_slow_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.336Z"
+   "at": "2026-11-05T22:34:22.260Z"
   },
   "rod_slide_fast_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.385Z"
+   "at": "2026-11-05T22:34:22.314Z"
   },
   "rod_spin_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 2,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.416Z"
+   "at": "2026-11-05T22:34:22.346Z"
   },
   "ball_wall_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.440Z"
+   "at": "2026-11-05T22:34:22.374Z"
   },
   "ball_post_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.466Z"
+   "at": "2026-11-05T22:34:22.401Z"
   },
   "ball_goal_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.495Z"
+   "at": "2026-11-05T22:34:22.431Z"
   },
   "rod_bump_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.519Z"
+   "at": "2026-11-05T22:34:22.460Z"
   },
   "ball_scrape_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.559Z"
+   "at": "2026-11-05T22:34:22.487Z"
   },
   "rod_slide_slow_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.608Z"
+   "at": "2026-11-05T22:34:22.541Z"
   },
   "rod_slide_fast_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.658Z"
+   "at": "2026-11-05T22:34:22.597Z"
   },
   "rod_spin_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 2,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.690Z"
+   "at": "2026-11-05T22:34:22.630Z"
   },
   "ball_floor_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.713Z"
+   "at": "2026-11-05T22:34:22.659Z"
   },
   "ball_drop_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.740Z"
+   "at": "2026-11-05T22:34:22.686Z"
   },
   "ball_roll_slow_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.800Z"
+   "at": "2026-11-05T22:34:22.751Z"
   },
   "ball_roll_fast_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.833Z"
+   "at": "2026-11-05T22:34:22.781Z"
   },
   "ball_floor_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:06.884Z"
+   "at": "2026-11-05T22:34:22.835Z"
   },
   "ball_drop_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:06.910Z"
+   "at": "2026-11-05T22:34:22.859Z"
   },
   "ball_roll_slow_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:06.969Z"
+   "at": "2026-11-05T22:34:22.917Z"
   },
   "ball_roll_fast_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:06.997Z"
+   "at": "2026-11-05T22:34:22.948Z"
   },
   "ball_floor_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.047Z"
+   "at": "2026-11-05T22:34:23.004Z"
   },
   "ball_drop_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.073Z"
+   "at": "2026-11-05T22:34:23.033Z"
   },
   "ball_roll_slow_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.151Z"
+   "at": "2026-11-05T22:34:23.112Z"
   },
   "ball_roll_fast_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.179Z"
+   "at": "2026-11-05T22:34:23.140Z"
   },
   "ball_floor_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.233Z"
+   "at": "2026-11-05T22:34:23.191Z"
   },
   "ball_drop_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.262Z"
+   "at": "2026-11-05T22:34:23.217Z"
   },
   "ball_roll_slow_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.332Z"
+   "at": "2026-11-05T22:34:23.282Z"
   },
   "ball_roll_fast_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.362Z"
+   "at": "2026-11-05T22:34:23.311Z"
   },
   "ball_floor_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.409Z"
+   "at": "2026-11-05T22:34:23.363Z"
   },
   "ball_drop_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.436Z"
+   "at": "2026-11-05T22:34:23.392Z"
   },
   "ball_roll_slow_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.494Z"
+   "at": "2026-11-05T22:34:23.473Z"
   },
   "ball_roll_fast_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.536Z"
+   "at": "2026-11-05T22:34:23.504Z"
   },
   "ball_floor_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.588Z"
+   "at": "2026-11-05T22:34:23.556Z"
   },
   "ball_drop_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.615Z"
+   "at": "2026-11-05T22:34:23.582Z"
   },
   "ball_roll_slow_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.677Z"
+   "at": "2026-11-05T22:34:23.650Z"
   },
   "ball_roll_fast_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.704Z"
+   "at": "2026-11-05T22:34:23.681Z"
   },
   "ball_floor_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.755Z"
+   "at": "2026-11-05T22:34:23.733Z"
   },
   "ball_drop_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.780Z"
+   "at": "2026-11-05T22:34:23.757Z"
   },
   "ball_roll_slow_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.838Z"
+   "at": "2026-11-05T22:34:23.817Z"
   },
   "ball_roll_fast_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.867Z"
+   "at": "2026-11-05T22:34:23.848Z"
   },
   "ball_floor_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:07.919Z"
+   "at": "2026-11-05T22:34:23.903Z"
   },
   "ball_drop_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:07.946Z"
+   "at": "2026-11-05T22:34:23.933Z"
   },
   "ball_roll_slow_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:08.008Z"
+   "at": "2026-11-05T22:34:23.994Z"
   },
   "ball_roll_fast_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:08.038Z"
+   "at": "2026-11-05T22:34:24.025Z"
   },
   "ball_floor_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 5,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.090Z"
+   "at": "2026-11-05T22:34:24.084Z"
   },
   "ball_drop_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 3,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.114Z"
+   "at": "2026-11-05T22:34:24.126Z"
   },
   "ball_roll_slow_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.171Z"
+   "at": "2026-11-05T22:34:24.183Z"
   },
   "ball_roll_fast_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.201Z"
+   "at": "2026-11-05T22:34:24.211Z"
   },
   "ir_open": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Void",
-   "at": "2026-11-05T00:54:08.248Z"
+   "at": "2026-11-05T22:34:24.286Z"
   },
   "ir_saucer": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "Flying Saucer",
-   "at": "2026-11-05T00:54:08.269Z"
+   "at": "2026-11-05T21:56:10.623Z"
   },
   "ir_pub": {
    "seed": 1,
@@ -1269,238 +1269,322 @@
    "speed": 1,
    "takes": 1,
    "from": "Modern Loft",
-   "at": "2026-11-05T00:54:08.312Z"
+   "at": "2026-11-05T21:56:10.650Z"
   },
   "ir_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Moon Base",
-   "at": "2026-11-05T00:54:08.340Z"
+   "at": "2026-11-05T21:56:10.681Z"
   },
   "ball_roll_crawl": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.897Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.788Z"
   },
   "ball_roll_rush": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.990Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.900Z"
   },
   "ball_roll_crawl_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.771Z"
+   "at": "2026-11-05T22:34:22.719Z"
   },
   "ball_roll_rush_cork": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Cork",
-   "at": "2026-11-05T00:54:06.862Z"
+   "at": "2026-11-05T22:34:22.810Z"
   },
   "ball_roll_crawl_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:06.939Z"
+   "at": "2026-11-05T22:34:22.888Z"
   },
   "ball_roll_rush_royal": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.026Z"
+   "at": "2026-11-05T22:34:22.979Z"
   },
   "ball_roll_crawl_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.121Z"
+   "at": "2026-11-05T22:34:23.062Z"
   },
   "ball_roll_rush_cyatron": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.210Z"
+   "at": "2026-11-05T22:34:23.170Z"
   },
   "ball_roll_crawl_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.301Z"
+   "at": "2026-11-05T22:34:23.252Z"
   },
   "ball_roll_rush_neon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.389Z"
+   "at": "2026-11-05T22:34:23.340Z"
   },
   "ball_roll_crawl_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.465Z"
+   "at": "2026-11-05T22:34:23.446Z"
   },
   "ball_roll_rush_verdantia": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Laminate",
-   "at": "2026-11-05T00:54:07.566Z"
+   "at": "2026-11-05T22:34:23.532Z"
   },
   "ball_roll_crawl_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.645Z"
+   "at": "2026-11-05T22:34:23.615Z"
   },
   "ball_roll_rush_champions_green": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.732Z"
+   "at": "2026-11-05T22:34:23.710Z"
   },
   "ball_roll_crawl_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.810Z"
+   "at": "2026-11-05T22:34:23.788Z"
   },
   "ball_roll_rush_champions_purple": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Grass",
-   "at": "2026-11-05T00:54:07.894Z"
+   "at": "2026-11-05T22:34:23.877Z"
   },
   "ball_roll_crawl_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:07.974Z"
+   "at": "2026-11-05T22:34:23.963Z"
   },
   "ball_roll_rush_moon": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Moon Dust",
-   "at": "2026-11-05T00:54:08.067Z"
+   "at": "2026-11-05T22:34:24.060Z"
   },
   "ball_roll_crawl_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.143Z"
+   "at": "2026-11-05T22:34:24.155Z"
   },
   "ball_roll_rush_deck": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Deck Plate",
-   "at": "2026-11-05T00:54:08.229Z"
+   "at": "2026-11-05T22:34:24.262Z"
   },
   "ball_scrape_fast": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.043Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.951Z"
   },
   "ball_scrape_fast_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.308Z"
+   "at": "2026-11-05T22:34:22.230Z"
   },
   "ball_scrape_fast_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.582Z"
+   "at": "2026-11-05T22:34:22.515Z"
   },
   "rod_slide_mid": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:06.095Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:22.004Z"
   },
   "rod_slide_mid_arena": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers",
-   "at": "2026-11-05T00:54:06.361Z"
+   "at": "2026-11-05T22:34:22.286Z"
   },
   "rod_slide_mid_circuit": {
    "seed": 1,
    "speed": 1,
    "takes": 1,
    "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block",
-   "at": "2026-11-05T00:54:06.631Z"
+   "at": "2026-11-05T22:34:22.569Z"
   },
   "ball_kick": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.655Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.537Z"
   },
   "ball_kick_hard": {
    "seed": 1,
    "speed": 1,
    "takes": 4,
-   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, Stitched Leather",
-   "at": "2026-11-05T00:54:05.680Z"
+   "from": "FB Silent Steel, soft rubber bumpers, Maple Butcher Block, FB Men, FB Pub Classic, FB Leather",
+   "at": "2026-11-05T22:34:21.566Z"
   },
   "ball_kick_cannon": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
-   "from": "Cast Iron Shot",
-   "at": "2026-11-05T00:54:08.362Z"
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:10.714Z"
   },
   "ball_kick_split": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
    "from": "Stitched Leather",
-   "at": "2026-11-05T00:54:08.386Z"
+   "at": "2026-11-05T21:56:10.812Z"
   },
   "ball_kick_knuckle": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
    "from": "Stitched Leather",
-   "at": "2026-11-05T00:54:08.408Z"
+   "at": "2026-11-05T21:56:10.901Z"
   },
   "ball_kick_golden": {
    "seed": 1,
    "speed": 1,
    "takes": 6,
-   "from": "Hollow Brass",
-   "at": "2026-11-05T00:54:08.452Z"
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:10.988Z"
+  },
+  "ball_kick_hard_cannon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:10.748Z"
+  },
+  "ball_wall_cannon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:10.769Z"
+  },
+  "ball_post_cannon": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:10.789Z"
+  },
+  "ball_kick_hard_split": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.837Z"
+  },
+  "ball_wall_split": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.856Z"
+  },
+  "ball_post_split": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.878Z"
+  },
+  "ball_kick_hard_knuckle": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.926Z"
+  },
+  "ball_wall_knuckle": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.947Z"
+  },
+  "ball_post_knuckle": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Stitched Leather",
+   "at": "2026-11-05T21:56:10.966Z"
+  },
+  "ball_kick_hard_golden": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:11.014Z"
+  },
+  "ball_wall_golden": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 6,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:11.032Z"
+  },
+  "ball_post_golden": {
+   "seed": 1,
+   "speed": 1,
+   "takes": 4,
+   "from": "Hard Rubber",
+   "at": "2026-11-05T21:56:11.054Z"
   }
  }
 }

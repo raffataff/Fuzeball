@@ -85,7 +85,7 @@ function resetRodRotation(){
  for(const r of rods){
   r.angle=0;r.prevAngle=0;
    r.kickT=-1;r.kickStyle=null;r.raise=false;r.raiseKeep=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
-   r.padAngleOn=false;r.padAngleTarget=0;r.padCarry=false;r.kickHold=false;   // a stick angle or held kick left on a rod outranks the rest-drop; they die with the rally
+   r.padAngleOn=false;r.padAngleTarget=0;r.padCarry=false;r.kickHold=false;r.exStk=false;   // a stick angle, held kick or stick-swing latch left on a rod outranks the rest-drop; they die with the rally
   shotReset(r);                                    // charge/arming/tremble die with the rally (js/shots.js)
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
@@ -192,7 +192,7 @@ function updateRods(dt){
   Au.rodFeed(r);                             // audio.js: slide / spin loops and the end-stop bump, read before prevOffset moves on
   r.prevAngle=r.angle;r.prevOffset=r.offset;
   r.cd=Math.max(0,r.cd-dt);
-  stExertTick(r,dt);                         // stamina: swing exertion bleeds off (CONFIG.stats.kickFat.recover)
+  stExertTick(r,dt);stExertStick(r);         // stamina: swing exertion bleeds off (CONFIG.stats.kickFat.recover); a pad stick swing banks its own
   r.evadeCd=Math.max(0,(r.evadeCd||0)-dt);   // evade re-entry lockout (CONFIG.ai.evade.cd)
   r.lhT=Math.max(0,(r.lhT||0)-dt);           // back guard is holding this rod's lift (CONFIG.ai.backGuard.holdT); ai.js reads it
   r.laneCd=Math.max(0,(r.laneCd||0)-dt);     // lane-clear re-entry lockout (CONFIG.ai.clearLane.cd)

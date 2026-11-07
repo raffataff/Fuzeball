@@ -1,5 +1,5 @@
 // tic-tac harness. node tools/tictac-harness.js
-// slices the real collideRod + sideBounce (physics.js), pinUpdate / pinBallStep, holdCfg and shotHoldUpdate and runs them on live CONFIG
+// slices the real collideRod + sideTake / sideGive (physics.js), pinUpdate / pinBallStep, holdCfg and shotHoldUpdate and runs them on live CONFIG
 // question: does a ball tapped along a rod behave like a ball (a down man bounces it back, a raised man lets it through, a raised-back man lets it roll under and pin it) while the front touch, the tap's strength, a swing and the player's hold stay as they were; each mutation must break an assertion
 'use strict';
 const fs=require('fs'),vm=require('vm');
@@ -89,6 +89,13 @@ function slideAt(X,boot,ballV,o){
  for(let i=0;i<Math.round(0.5*HZ);i++){frame(X,r,b,Math.min(14,boot*i/HZ),0,st);pk=Math.max(pk,b.v.z);}
  return pk;
 }
+// a man sliding away at w from a ball rolling into his side at v (the cushion): the speed it leaves him at, against him
+function retreatHit(X,v,w){
+ const P=X.CONFIG.physics,r=mkRod(X,[0]),b=mkBall(X,0,-(P.footBox.z+P.ballR+1),0,v),st={o:0,a:0,nofr:true};
+ let hit=-1,off=0;
+ for(let i=0;i<Math.round(0.6*HZ);i++){off+=w/HZ;frame(X,r,b,off,0,st);if(hit<0&&Math.abs(b.v.z-v)>1e-6)hit=i;if(hit>=0&&i>hit+Math.round(0.1*HZ))break;}
+ return w-b.v.z;
+}
 // the same ball crossing a man held at a fixed rod angle: where it ends up
 function cross(X,angle,v){
  const r=mkRod(X,[0],{angle:angle}),b=mkBall(X,0,-9,0,v),st={o:0,a:angle};
@@ -144,22 +151,31 @@ function suite(X){
 
  // ---- the bounce ----
  const o10=sideHit(X,10),o25=sideHit(X,25),o45=sideHit(X,45);
- ok('a ball hitting a down man\'s side comes BACK (about sideRest of its speed, less the grip)',[o10,o25,o45].every((o,i)=>{const v=[10,25,45][i];return o>0.3*v*KS&&o<=KS*v;}),o10.toFixed(1)+' / '+o25.toFixed(1)+' / '+o45.toFixed(1));
+ ok('a ball hitting a down man\'s side comes BACK at sideRest of its speed (the grip takes none of it)',[o10,o25,o45].every((o,i)=>{const v=[10,25,45][i];return near(o,KS*v,0.02*v);}),o10.toFixed(1)+' / '+o25.toFixed(1)+' / '+o45.toFixed(1));
  ok('...harder in, harder out',o10<o25&&o25<o45);
  const dead=at(KRest,()=>sideHit(X,45));
  ok('sideRest = rest is the old dead stop (the knob goes all the way back)',dead<0.05*45,dead.toFixed(2));
  ok('the other side of the man bounces the same (-z and +z)',near(sideHit(X,25,{sign:-1}),o25,1e-6));
- ok('a heavy ball (fire, 1.5) still plows into the side as before: mass scales this like every contact',sideHit(X,25,{type:'fire'})<0.2*o25,'fire '+sideHit(X,25,{type:'fire'}).toFixed(1)+' vs '+o25.toFixed(1));
+ const hv=sideHit(X,25,{type:'cannon'});
+ ok('a heavy ball bounces off the side the same as a light one (mass does not scale the side bounce)',X.BALL_TYPES.cannon.mass>X.BALL_TYPES.classic.mass&&near(hv,o25,0.02*25),'cannon '+hv.toFixed(1)+' vs '+o25.toFixed(1));
 
  // ---- everything that must not move ----
  const f0=at(0,()=>frontHit(X,30)),f1=frontHit(X,30);
  ok('the FRONT touch is untouched (a pass into a down man still dies)',f1===f0&&Math.abs(f1)<3,'vx '+f1.toFixed(2)+' vs '+f0.toFixed(2));
  ok('a tap is no stronger: a man sliding into a loose ball hands it the same speed',near(at(0,()=>slideAt(X,80,0)),slideAt(X,80,0),1e-9),slideAt(X,80,0).toFixed(1)+' u/s');
  ok('a man chasing a ball that is already leaving pushes it as before',near(at(0,()=>slideAt(X,80,10,{chase:true})),slideAt(X,80,10,{chase:true}),1e-9));
- ok('a swing is exempt (its own restitution is already higher)',near(at(0,()=>sideHit(X,25,{rod:{kickT:0.03}})),sideHit(X,25,{rod:{kickT:0.03}}),1e-9));
+ const kw=(K.powFrom+K.powTo)/2,sw=sideHit(X,25,{rod:{kickT:kw}});
+ ok('a swing inside its power window still bounces at sideRest when that is over its own restitution',KS<=K.restPower||near(sw,KS*25,0.05*25),sw.toFixed(1));
+ const swLo=at(K.restPower/2,()=>sideHit(X,25,{rod:{kickT:kw}}));
+ ok('...with sideRest under it, the swing\'s own restitution (the side bounce stays out)',near(swLo,at(0,()=>sideHit(X,25,{rod:{kickT:kw}})),1e-9),swLo.toFixed(1));
+ const rt=retreatHit(X,40,20);
+ ok('a man sliding away with the ball (the cushion) bounces only what it closes at, not the ball\'s whole speed',rt>0&&rt<1.5*20,rt.toFixed(1)+' against him, closing at 20');
 
  // ---- the player's hold cushions ----
- ok('finesse held full cushions a side hit dead',sideHit(X,45,{hold:1})<0.05*45,sideHit(X,45,{hold:1}).toFixed(2));
+ const hf=sideHit(X,45,{hold:1}),hs=(HC.side!=null?HC.side:0)*KS;
+ ok('finesse held full bounces a side hit at shots.hold.side',hs<=HC.rest?hf<0.05*45:near(hf,hs*45,0.02*45),hf.toFixed(2)+' want '+(hs*45).toFixed(1));
+ const hd=(()=>{const k=HC.side;HC.side=0;try{return sideHit(X,45,{hold:1});}finally{HC.side=k;}})();
+ ok('...and hold.side 0 is a dead stop',hd<0.05*45,hd.toFixed(2));
  ok('at the very start of the squeeze it is exactly the free bounce (no step)',near(sideHit(X,45,{hold:HC.from+1e-9}),o45,1e-6),sideHit(X,45,{hold:HC.from+1e-9}).toFixed(2)+' vs '+o45.toFixed(2));
  const half=sideHit(X,45,{hold:(HC.from+1)/2});
  ok('half a squeeze is in between',half>sideHit(X,45,{hold:1})&&half<o45,half.toFixed(1));
@@ -198,11 +214,13 @@ const MUT=[
  {n:'only the +z face bounces',part:'phys',from:'Math.abs(nz)<KICK.sideDot',to:'nz<KICK.sideDot'},
  {n:'the player\'s hold ignores the side bounce',part:'phys',from:'(HLD?(HLD.sideRest||0):KICK.sideRest)',to:'KICK.sideRest'},
  {n:'the AI\'s holds bounce too',part:'phys',from:'(HLD.sideRest||0)',to:'KICK.sideRest'},
- {n:'the bounce stacks on a swing\'s own restitution',part:'phys',from:':KICK.sideRest)-rest,bn=',to:':KICK.sideRest),bn='},
- {n:'the bounce ignores the ball\'s mass',part:'phys',from:'-e*bn/b.t.mass:0',to:'-e*bn:0'},
- {n:'a ball leaving the face is slowed by it',part:'phys',from:'(e>0&&bn<0)',to:'(e>0)'},
- {n:'the squeeze never cushions a side hit',part:'shots',from:'h.sideRest=lerp(KICK.sideRest,0,t);',to:'h.sideRest=KICK.sideRest;'},
- {n:'the squeeze cushions it all at once',part:'shots',from:'h.sideRest=lerp(KICK.sideRest,0,t);',to:'h.sideRest=0;'}
+ {n:'sideRest under a swing\'s restitution still takes over',part:'phys',from:'if(sr<=rest||bn>=0)return 0;',to:'if(bn>=0)return 0;'},
+ {n:'a ball leaving the face is turned back by it',part:'phys',from:'if(sr<=rest||bn>=0)return 0;',to:'if(sr<=rest)return 0;'},
+ {n:'the bounce is scaled by the ball\'s mass again',part:'phys',from:'KICK.sideRest)*bn;',to:'KICK.sideRest)*bn/b.t.mass;'},
+ {n:'the grip eats the rebound again',part:'phys',from:':cvz,g);if(sb)sideGive(b,nx,ny,nz,sb,HLD);',to:':cvz,g);'},
+ {n:'a retreating man bounces the whole speed of the ball',part:'phys',from:'bn=Math.max(b.v.x*nx+b.v.y*ny+b.v.z*nz,vn);',to:'bn=b.v.x*nx+b.v.y*ny+b.v.z*nz;'},
+ {n:'the squeeze never cushions a side hit',part:'shots',from:'h.sideRest=KICK.sideRest*lerp(1,H.side!=null?H.side:0,t);',to:'h.sideRest=KICK.sideRest;'},
+ {n:'the squeeze softens it all at once',part:'shots',from:'h.sideRest=KICK.sideRest*lerp(1,H.side!=null?H.side:0,t);',to:'h.sideRest=KICK.sideRest*H.side;'}
 ];
 let missed=0;
 for(const m of MUT){

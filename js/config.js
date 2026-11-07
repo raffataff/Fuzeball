@@ -265,11 +265,11 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:750,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:450,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
    prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back, and the foot box's rear face is this far behind the leg
    head:{ len:2.0, r:1.1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
-   footBox:{x:1.75,y:1.1,z:1.1},   // foot box half-extents: x along leg, y perpendicular, z along rod
+   footBox:{x:1.75,y:1.1,z:0.9},   // foot box half-extents: x along leg, y perpendicular, z along rod
    footBoxOff:{x:-1.26,y:0.44},    // foot box centre offset from foot-base, rod-local: the box runs 3.89..7.39 down the leg, its sole 0.11 over the pitch (the drawn soles sit -0.03..0.13)
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.005,                // random velocity nudge after a foot hit (stops perfect oscillations)
@@ -299,21 +299,21 @@ physics:{
 kick:{
    // swing-angle curve keyframes: time windows and peak angles
    windup:0,  windupA:0,   // pull-back window / angle
-   strike:0.04,  strikeA:0.9,     // strike ramp end / peak forward angle
+   strike:0.01,  strikeA:0.7,     // strike ramp end / peak forward angle
    hold:0.15,                     // hold peak until this time
    drop:0.25,                     // fully returned by this time
-   raiseA:-1.3, raiseLerp:18, dropLerp:15, // lift-men angle + settle rates
+   raiseA:-1.2, raiseLerp:25, dropLerp:35, // lift-men angle + settle rates
    padAngleLerp:40,                // right-stick angle smoothing (0 = direct 1:1, no easing)
    userSpeed:80,                  // slide speed of the player-driven rod (u/s)
    aiOwnMult:1.,                // slide-speed multiplier for AI rods on the user's team
    boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse, strikes only), freeze (speed)
    boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
-   rest:0, restPower:0.8,      // passive touch / struck shot
-   powFrom:0.003, powTo:0.04,       // swing-time window in which restPower is used instead of rest
-   grip:0.6,                     // fraction of the foot's velocity lerped into the ball on contact
-   slidePush:0.9,
-   sideRest:0.9,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
+   rest:0, restPower:0.6,      // passive touch / struck shot
+   powFrom:0.001, powTo:0.02,       // swing-time window in which restPower is used instead of rest
+   grip:0.4,                     // fraction of the foot's velocity lerped into the ball on contact
+   slidePush:0.6,
+   sideRest:0.35,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
    rearDot:0.3,                   // a contact is the back of a man when its normal points at least this far backward (dir-relative x)
    rearCarry:0,                   // share of the rod's slide the back of an unposed man hands a ball: 0 = it is left behind, 1 = dragged along as before
@@ -330,7 +330,7 @@ kick:{
       sweet:0.10,    // a clean centre strike earns this much more ceiling
       shot:0.75,     // a player shot adds this x its power trim (r.shotPow-1): finesse lowers the ceiling, a timed charge raises it
       boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
-      pin:0.30,      // ceiling added to EVERY contact of a pin / trap-shot swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
+      pin:0.20,      // ceiling added to EVERY contact of a pin / trap-shot swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
       snake:0.40,    // ...and of a snake (shots.snake)
       keep:true,     // true = a re-hit by a boot faster than the ball keeps the heading the strike gave it (speed and lift as before); false = every re-hit re-aims it (an off-centre kick comes off straight)
       held:0.9,      // with keep: a clipped contact whose ball arrived at this share of the speed it leaves at or more is a re-hit, and aims nothing (no aim or wall assist)
@@ -388,7 +388,8 @@ kick:{
    on:true,
    from:0.15,        // trigger depth (past mod.dead, rescaled 0..1) at which the grip starts
    rest:0,           // restitution at full squeeze (0 = the boot kills the ball's relative speed)
-   grip:0.55,        // how far the ball is lerped toward the boot's velocity, which carries it
+   side:0.5,         // share of kick.sideRest a side face keeps at full squeeze, eased in as finesse goes down (0 = a held man's side stops a ball dead, 1 = no softer than free)
+   grip:0.55,       // how far the ball is lerped toward the boot's velocity, which carries it
    carry:0.45,       // slide-speed multiplier while carrying: a dribble is a shuffle, not a swipe (the over-run knob)
    lead:0.02         // while held (or pinned) the slide target runs at most this many seconds ahead of the rod: the man stops when the hand does
    },
@@ -396,9 +397,9 @@ kick:{
   // finesse held with the leg down squares the foot onto a ball beside a man (shots.js shotSquare): its side meets the ball's centre, for a tap
   square:{
    on:true,
-   back:-5.0, front:5.0,   // a ball this deep behind / ahead of the rod (dir-relative x): the foot's face reaches it
+   back:-6.5, front:7.0,   // a ball this deep behind / ahead of the rod (dir-relative x): the foot's face reaches it
    zMax:16,         // ...within this of a man's z, beside him (in his lane the leg is held where it is)
-   lerp:20,        // ease rate onto the angle
+   lerp:25,        // ease rate onto the angle
    dead:0.03       // the target only moves for a change bigger than this (rad)
    },
 
@@ -412,10 +413,10 @@ kick:{
    lower:22,         // a player's leg coming down toward upright onto a ball, either pin (a rolling ball is aimed 1/lower s ahead, the leg's own lag)
    capA:0.12,        // rod within this of the pose's target (rad) = posed, so a ball can be caught
    band:[-1.3,-0.2], // rod-local angles a right stick can pin from without the pose
-   back:-5.4,        // catch window behind the rod (dir-relative x)
-   front:0.45,        // …and in front of it
-   fwdFront:5.7,     // …a rod posed as a forward pin (r.pinFwd: the leg over a ball lying ahead) catches as far out as this: past it the man is laid out flat
-   fwdBack:2.3,      // …and from this near the rod (dir-relative x)
+   back:-6.4,        // catch window behind the rod (dir-relative x)
+   front:0.15,        // …and in front of it
+   fwdFront:7.5,     // …a rod posed as a forward pin (r.pinFwd: the leg over a ball lying ahead) catches as far out as this: past it the man is laid out flat
+   fwdBack:2.6,      // …and from this near the rod (dir-relative x); a ball from behind stops against the forward foot at 2.9, so keep this under it
    touch:0.1,        // the ball is under the foot when the foot box is within this of it (contact tolerance, not reach: the solver leaves a resting ball exactly touching)
    down:0.75,        // …and touches it from above: the contact normal at least this far down (1 = on top, 0.75 = within 41 degrees); a shin, or the foot's side, is not a pin
    yTol:0.6,         // …on the floor (centre no higher than BALL_R + this)
@@ -424,7 +425,7 @@ kick:{
    zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
    breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
    releaseA:0.35,    // rod turned this far off the pin angle (a stick flick) lets the ball go
-   swing:{strike:0.07,powTo:0.08},   // the pin shot is the trapShot curve with these: slower, or from the deep pose the boot overtakes the ball past upright and scoops it over the bar
+   swing:{strike:0.05,powTo:0.04},   // the pin shot is the trapShot curve with these: slower, or from the deep pose the boot overtakes the ball past upright and scoops it over the bar
    pass:{windup:0},  // a pass from the pin is the passShot curve with these: no wind-up, the leg is already back (passShot's pull-back to -0.35 would swing the boot forward past the ball)
    carryOut:0.9,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
@@ -436,7 +437,7 @@ kick:{
     angle:0.9,      // rod-local forward tilt with no ball there: the foot comes down on a ball lying 3 ahead (a ball from behind takes ai.catch.recv.angle, assist.recv)
     lerp:14,         // ease rate into the pose, and so the speed of the stroke through a ball lying in the way: about 6 u/s per unit (4 = 23, 8 = 47, 14 = 83); the old soft pass left at ~50
     stroke:1.5,     // a leg going forward through a ball faster than this (rad/s) is a stroke: a swing touch for the pass ledger
-    holdNear:0.5,   // let go with a ball lying holdNear to holdFar ahead the leg goes up and forward off it and drops once it is clear (the toe presses a ball out to ~7 back toward the rod)
+    holdNear:3,   // let go with a ball lying holdNear to holdFar ahead the leg goes up and forward off it and drops once it is clear (the toe presses a ball out to ~7 back toward the rod)
     holdFar:7.5,
     holdV:30,       // ...a ball slower than this against the rod (one stopped by the leg and carried along is at rest to it)
     lead:0.2,       // a man counts where the slide has him this many seconds on, so the leg is up before the rod arrives (a neighbouring man comes in as one leaves)
@@ -526,18 +527,18 @@ kick:{
   snake:{
    on:true,
    dbl:0.25,         // the second kick press within this of the first (s)
-   spin:0.25,         // from the pin pose over the top, round and through the ball to strikeA past a full turn (s); quicker = a faster shot, but past ~20 rad/s at the ball the foot overtakes it and scoops it
+   spin:0.15,         // from the pin pose over the top, round and through the ball to strikeA past a full turn (s); quicker = a faster shot, but past ~20 rad/s at the ball the foot overtakes it and scoops it
    ease:1.2,           // 1 = an even spin; higher leaves the ball slower and arrives faster
    strikeA:1.1,      // rod-local follow-through past the full turn
    follow:0.06,      // ...held there this long after the spin (s)
    back:0.12,        // ...then eased back to rest over this long (s)
    powFrom:0, powTo:0.36,   // swing time in which restPower is used instead of rest: keep it past spin
-   rest:0.01, restPower:0.8,
+   rest:0.01, restPower:0.9,
    loft:0.12,        // the most a snake's contact launches the ball above the pitch (rad), turned down without losing speed: a ball held deep (4.5+ ahead) is met late in the foot's arc and left at up to 24 degrees, over the bar; null = the raw contact
    pow:1.15,         // power trim (r.shotPow), as the pin shot
    ctl:0.6,          // control (r.shotCtl): no spray
-   carry:1,          // the ball keeps this much of the slide it was carried at (the man keeps pin.carry of his until the strike, so the two stay together)
-   exert:3.5         // stamina charged, in plain swings (a full-power swing is mod.hardExert)
+   carry:0.8,          // the ball keeps this much of the slide it was carried at (the man keeps pin.carry of his until the strike, so the two stay together)
+   exert:3.2         // stamina charged, in plain swings (a full-power swing is mod.hardExert)
    },
 
   charge:{
@@ -719,12 +720,12 @@ ai:{
       on:true,
       roles:['ATT','MID','DEF'],  // roles allowed to trap-shot (never GK)
       windup:0.0,  windupA:-0.65,   // shallow pull-back to get the boot behind the ball
-      strike:0.05,  strikeA:1.0,   // forward sweep end time / peak angle (≈23.5 rad/s)
+      strike:0.05,  strikeA:0.4,   // forward sweep end time / peak angle (≈23.5 rad/s)
       hold:0.25,                     // hold peak
       drop:0.3,                     // return to neutral
-      powFrom:0.03, powTo:0.05,     // power window (opens with the strike so it covers the contact)
-      restPower:0.95,                // restitution inside the power window
-      rest:0                     // passive touch outside it
+      powFrom:0.03, powTo:0.04,     // power window (opens with the strike so it covers the contact)
+      restPower:0.7,                // restitution inside the power window
+      rest:0.1                     // passive touch outside it
    },
 // dribble: ball at the feet, men down, no way forward: slide it instead of hitting it into the row opposite
    dribble:{
@@ -1609,14 +1610,20 @@ ai:{
       teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
-   {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
-      src:'assets/fuzeball_alienZargon.glb',scale:0.875, rodY:8.63,
-      mug:'assets/renders/render_zargon_mugshot.png',   
-      renderTop:51,
-      teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
-      explosionSrc:'assets/animations/zargon_explosion.glb'
-      },
-   {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
+    {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
+       src:'assets/fuzeball_alienZargon.glb',scale:0.875, rodY:8.63,
+       mug:'assets/renders/render_zargon_mugshot.png',   
+       renderTop:51,
+       teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
+       explosionSrc:'assets/animations/zargon_explosion.glb'
+       },
+    {id:'alienDrako',name:'Drako',blurb:'Fierce and mysterious',
+       src:'assets/fuzeball_alienDrako.glb',scale:0.875, rodY:8.63,
+       renderTop:131,
+       teamParts:['kit_drako'],hairParts:[],
+       explosionSrc:'assets/animations/drako_explosion.glb'
+       },
+    {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
       src: 'assets/fuzeball_animalAzlar.glb', scale:0.875, rodY:8.63,
       mug: 'assets/renders/render_azlar_mugshot.png',
       renderTop:7,
@@ -1700,7 +1707,7 @@ ai:{
   assistBase:.045,    // aim-assist heading bend at base accuracy (rad)
   assistMax:.10,      // …and at max accuracy (rad)
   assistCone:.6,      // only bend shots already within this angle of goal centre (rad)
-  assistMinVX:20,     // only bend shots moving goalward faster than this (u/s)
+  assistMinVX:40,     // only bend shots moving goalward faster than this (u/s)
   rea:.10,            // AI reaction lag −10%/pt above base
   cd:.08,             // kick cooldown −8%/pt above base
   iq:.15,             // multiplier on the difficulty's iq roll, ±15%/pt
@@ -1715,9 +1722,10 @@ ai:{
    on:true,
    weight:.55,      // share of the ramp driven by swinging (the clock keeps the rest)
    per:1,           // exertion banked per swing
-   full:30,         // swings at which this channel is fully spent
-   recover:.12,     // exertion bled off per second
+   full:12,         // swings at which this channel is fully spent (fewer = each shot tires more)
+   recover:.03,     // exertion bled off per second (1.8 swings a minute); a rod swinging slower than this never tires from it
    cap:1.25,        // ceiling as a multiple of `full`
+   stickW:8,        // a pad stick turning the leg forward faster than this (rad/s) is a swing too (it never calls kickRod); 0 = stick swings are free
    userDrain:true  // whether human-held rods accrue it too
   }
  },
@@ -2148,7 +2156,8 @@ deadball:{
      {f:'music/match_drive.ogg',   name:'Drive'},
      //{f:'music/match_strings.ogg', name:'Strings'},
      {f:'music/match_pulse.ogg',   name:'Pulse'},
-     {f:'music/match_void.ogg',    name:'Void'}
+     {f:'music/match_void.ogg',    name:'Void'},
+     {f:'music/match_drift.ogg',   name:'Drift'}
     ],
     vol:0.7,                        // under the Options > Audio > Music slider; the file is mastered to -17 LUFS
     matchVol:0.5,                   // the match track's level, times the slider
@@ -2188,28 +2197,31 @@ deadball:{
    //   bus = fx|crowd|ui, vol = level, pitch/volJ = random spread per play, send = reverb send (x the room's), gate = shared voice cap with its synth
    //   pRef = impact speed at full level (falls toward pFloor on a pCurve), pPitch = pitch rise soft to hard, exc = crowd lift, syn:false = recorded only
    //   by = the venue part it follows: 'pitch' | 'table' plays <id>_<pitchId> / <id>_<tableId> there when that file exists (tools/soundlab-server.js exports them)
+   //   lab:true = a Sound Lab take, exported at one shared gain (tools/soundlab/spec.js MIX_GAIN) so the files keep the lab's balance: it plays at its lab level x lab.gain at the speed it was rendered at
+   //   (a hit at pAt x pRef, pAtHard for its _hard set; a loop at its `at` on the speed line), vol a trim on that (1 = the lab's balance); pAt / pAtHard / `at` changes need a render (node tools/soundlab-render.mjs)
    // what each sound is lives in the Fuzeball Sound List artifact
+   lab:{gain:5.5},                 // every lab:true take: the table's level against the crowd, music and menus
    sounds:{
     // the table
-    ball_kick:   {bus:'fx', vol:0.6, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7},
-    ball_wall:   {bus:'fx', vol:0.4, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1, by:'table'},
-    ball_floor:  {bus:'fx', vol:0.5, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1, by:'pitch'},
+    ball_kick:   {bus:'fx', vol:1, lab:true, pitch:0.05, volJ:0.1, send:1,   gate:'kick', pRef:90, pFloor:0.15, pCurve:0.8, pPitch:0.08, hardFrom:0.7, pAt:0.45, pAtHard:0.9},
+    ball_wall:   {bus:'fx', vol:1, lab:true, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.08, pCurve:1, pAt:0.6, by:'table'},
+    ball_floor:  {bus:'fx', vol:1, lab:true, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:60, pFloor:0.08, pCurve:1, pAt:0.6, by:'pitch'},
     ball_hit:    {bus:'fx', vol:0.5, pitch:0.06, volJ:0.1, send:1,   gate:'wall', pRef:80, pFloor:0.1,  pCurve:1},    // ball on ball
-    ball_post:   {bus:'fx', vol:0.6, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8, by:'table'},
-    ball_goal:   {bus:'fx', vol:0.6, pitch:0.04, volJ:0.08, send:1, syn:false, by:'table'},   // into the goal and down the return
-    ball_drop:   {bus:'fx', vol:0.5, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
-    rod_bump:    {bus:'fx', vol:0.35, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, syn:false, by:'table'},   // a rod hitting the end of its travel
-    // loops (audioMix.loops): vol = the level at full speed
-    ball_roll_crawl:{bus:'fx', vol:0.5, send:1, syn:false, by:'pitch'},   // the ball barely rolling on the pitch
-    ball_roll_slow:{bus:'fx', vol:0.5,  send:1, syn:false, by:'pitch'},   // ...rolling slowly: a low rumble
-    ball_roll_fast:{bus:'fx', vol:0.6,  send:1, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
-    ball_roll_rush:{bus:'fx', vol:0.6,  send:1, syn:false, by:'pitch'},   // ...a shot along the floor
-    ball_scrape:   {bus:'fx', vol:0.75, send:1, syn:false, by:'table'},   // rolling along a wall, slowly (its take is 5.5 dB quieter: all peaks)
-    ball_scrape_fast:{bus:'fx', vol:0.49, send:1, syn:false, by:'table'}, // ...fast
-    rod_slide_slow:{bus:'fx', vol:0.35, send:1, syn:false, by:'table'},   // a rod sliding gently in its bearings
-    rod_slide_mid: {bus:'fx', vol:0.4,  send:1, syn:false, by:'table'},   // ...an AI rod's working pace
-    rod_slide_fast:{bus:'fx', vol:0.45, send:1, syn:false, by:'table'},   // ...jerked hard: louder, rattling
-    rod_spin:      {bus:'fx', vol:0.3,  send:1, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
+    ball_post:   {bus:'fx', vol:1, lab:true, pitch:0.02, volJ:0.1, send:1.4, gate:'post', pRef:90, pFloor:0.25, pCurve:0.8, pAt:0.7, by:'table'},
+    ball_goal:   {bus:'fx', vol:1, lab:true, pitch:0.04, volJ:0.08, send:1, syn:false, by:'table'},   // into the goal and down the return
+    ball_drop:   {bus:'fx', vol:1, lab:true, pitch:0.04, volJ:0.08, send:1, syn:false, by:'pitch'},   // the serve: fed in, rattling onto the pitch
+    rod_bump:    {bus:'fx', vol:0.065, lab:true, pitch:0.06, volJ:0.1, send:0.8, gate:'bump', pRef:80, pFloor:0.12, pCurve:1, pAt:1, syn:false, by:'table'},   // a rod hitting the end of its travel; trimmed 23.6 dB: the lab's raw slam is that far over a kick (its live limiter squashes it)
+    // loops (audioMix.loops); the rolls are trimmed 20 dB as one, so their lab slope across speeds stays
+    ball_roll_crawl:  {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // the ball barely rolling on the pitch
+    ball_roll_slow:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...rolling slowly: a low rumble
+    ball_roll_fast:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
+    ball_roll_rush:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...a shot along the floor
+    ball_scrape:      {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // rolling along a wall, slowly
+    ball_scrape_fast: {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...fast
+    rod_slide_slow:   {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // a rod sliding gently in its bearings
+    rod_slide_mid:    {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...an AI rod's working pace
+    rod_slide_fast:   {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...jerked hard
+    rod_spin:         {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
     // match
     whistle:     {bus:'fx', vol:0.8, pitch:0.02, send:0.8},
     whistle_end: {bus:'fx', vol:0.8, send:0.8, syn:false},   // full time as one take; without it, three singles
@@ -2259,7 +2271,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:1.,maxV:400,w:100,trail:'#ffffff',
+      mass:2.,maxV:400,w:100,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -2289,7 +2301,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:5,maxV:210,w:50,trail:'#000000',
+      mass:10,maxV:210,w:50,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2304,7 +2316,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:1.25,maxV:400,w:6,splits:true,trail:'#c39bff',
+      mass:2,maxV:400,w:6,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -2321,7 +2333,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:1.25,maxV:400,w:6,trail:'#8fffda',light:0x33cfff,
+      mass:2,maxV:400,w:6,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.3,0.8], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -2336,7 +2348,7 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:1.5,maxV:400,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:2,maxV:400,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2409,8 +2421,8 @@ deadball:{
  // No comments INSIDE a room entry: the room editor's export (F2) replaces the whole block, and tools/roomlights-harness.js checks for it. Notes on a room go here.
  //   sky: six cube faces <src>_px ... _nz (models.js ensureSky); r128 can't rotate or dim a background, so both are baked in
  //   open (Void): tools/build_void_asteroid.py then ktx2-encode.mjs, nebula tools/build_nebula_sky.py then sky-encode.mjs; no GLB lights, warm shadowless dir key
- //   moon: tools/build_moon_base.py + ktx2-encode, sky tools/build_moon_sky.py; dir.pos must point along the sky's SUN_DIR (sky-harness); `shots.home` sits low so Earth clears the rim
- //   arcade (Starport Arcade): tools/build_arcade_room.py then ktx2-encode (raw GLB in tools/build/arcade/, the cabinets come from the old GLB decoded by ktx2-decode), sky tools/build_arcade_sky.py then sky-encode; the bays are the far (-z) and right (+x) walls and look DOWN onto the planet, so every camera sees the band -25..+5 deg; fog takes the bg colour, so keep both dark and warm; the 4th spot is the window light and is free (the pool already holds 3 spots); props are baked, except the stools
+ //   moon: tools/build_moon_base.py (shapes from the owner's hand-edited tools/build/moon/moon_base.blend; surface sets + light bake from tools/roomlib.py) then ktx2-encode (raw GLB in tools/build/moon/), sky tools/build_moon_sky.py; dir.pos must point along the sky's SUN_DIR (sky-harness); `shots.home` sits low so Earth clears the rim
+ //   arcade (Starport Arcade): tools/build_arcade_room.py (surface sets + light bake from tools/roomlib.py) then ktx2-encode (raw GLB in tools/build/arcade/, the cabinets come from the old GLB decoded by ktx2-decode); reflect stays false (the room's own env darkens the table's rods and bumpers), sky tools/build_arcade_sky.py then sky-encode; the bays are the far (-z) and right (+x) walls and look DOWN onto the planet, so every camera sees the band -25..+5 deg; fog takes the bg colour, so keep both dark and warm; the 4th spot is the window light and is free (the pool already holds 3 spots); props are baked, except the stools
  //   saucer: tools/build_saucer_room.py then ktx2-encode (raw GLB in tools/build/saucer/), sky tools/build_saucer_sky.py then sky-encode; the giant sits at azimuth -73 just under the horizon and shows through the low-sill bay panes (-90..-30), saucer-harness checks they agree; props are baked in the GLB (not props.js), glows and floor paint are the two blended decal sheets
   rooms:{
    open:{
@@ -2443,23 +2455,6 @@ deadball:{
       ],
       props:[],
       led:{idle:'rainbow'}
-   },
-   pub:{
-      name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
-      light:{gain:3.6,reach:3.2},
-      lightsOff:['room_light_fire'],
-      bg:0x120c07, fog:[190,410],
-      hemi:{sky:0xffd9a3,ground:0x140a04,int:0,on:true},
-      dir:{color:0xffcf95,int:1.31,pos:[40,90,30],on:false,shadow:false},
-      env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
-      lights:[
-        {type:'spot', pos:[-55,26,0], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
-        {type:'spot', pos:[56,26,0], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
-        {type:'spot', pos:[-0.26,97.08,1.86], look:[-0.26,95.61,1.86], color:0xffd899, int:0.415, dist:310.7, decay:2, angle:0.698, penumbra:0.35}
-      ],
-      props:[],
-      led:{idle:'rainbow',color:0xffb454}
    },
    arcade:{
       name:'Starport Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:false,
@@ -2500,6 +2495,26 @@ deadball:{
       led:{idle:'rainbow'}
    },
   },
+  // British Pub: out of the game while it is reworked; move this entry back into rooms to restore it (a saved cfg.room 'pub' falls back to the theme's room)
+  /*
+   pub:{
+      name:'British Pub', folder:'assets/rooms/pub/', glb:'fuzeball_room_pub.glb', reflect:true,
+      light:{gain:3.6,reach:3.2},
+      lightsOff:['room_light_fire'],
+      bg:0x120c07, fog:[190,410],
+      hemi:{sky:0xffd9a3,ground:0x140a04,int:0,on:true},
+      dir:{color:0xffcf95,int:1.31,pos:[40,90,30],on:false,shadow:false},
+      env:{shell:0x1a1108,panels:[[0xffa94d,-240,40,-100,260,140],[0xff7b2e,240,40,100,260,140],[0xffe6c0,0,150,0,160,160]]},
+      lights:[
+        {type:'spot', pos:[-55,26,0], look:[-40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.2, dist:70, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
+        {type:'spot', pos:[56,26,0], look:[40,0,0], color:0xffffff, int:2.35, dist:290, decay:2, angle:0.6, penumbra:0.32, shadow:true},
+        {type:'spot', pos:[-0.26,97.08,1.86], look:[-0.26,95.61,1.86], color:0xffd899, int:0.415, dist:310.7, decay:2, angle:0.698, penumbra:0.35}
+      ],
+      props:[],
+      led:{idle:'rainbow',color:0xffb454}
+   },
+  */
   /* ---- atmosphere (js/haze.js): kept out of `rooms` because the room editor's export drops unknown keys ---- */
   // haze: [density at base, height falloff, base y, cap] (exponential height fog, mixed before the room's linear fog); start: clear air this far from the camera; range: none past it (a dome's radius)
   // glow: the haze brightens toward dir (a window, a sun): pow = how tight, str = how bright; lamps: [x,y,z, str, colour, soft radius] light hanging in the air (High)
@@ -2538,7 +2553,7 @@ deadball:{
    }
   },
   // Legacy theme-key → room-id map, for old saves.
-  themeToRoom:{classic:'open',royal:'pub',verdant:'open',neon:'arcade',cyatron:'arcade'},
+  themeToRoom:{classic:'open',royal:'saucer',verdant:'open',neon:'arcade',cyatron:'arcade'},
 
   /* ---- pitches ------- */
   pitches:{

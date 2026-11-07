@@ -1,5 +1,5 @@
 // harness for the STARPORT ARCADE room: the shipped GLB and sky, the config entry, and the two things the room's look rests on. Run: node tools/arcade-harness.js
-// must hold: the encoded GLB is KTX2-only and light-free, has exactly two blended materials (the window glass and the glow sheet), opaque ones single-sided, every flat prop sharing one wear map, the floor faces up and every wall faces the room, it is inside the triangle and mesh budget; all six sky faces ship; the planet in build_arcade_sky.py sits a little under the horizon and the bays in build_arcade_room.py straddle the horizon, so a camera above the table sees it; the room's authored lights fit the pool
+// must hold: the encoded GLB is KTX2-only and light-free, has exactly two blended materials (the window glass and the glow sheet), opaque ones single-sided, every textured prop wearing a surface set (normal + metallic-roughness maps, a few sets shared) and the floor and wall their own, the light bake reaching the kept cabinets (COLOR_0), the floor faces up and every wall faces the room, it is inside the texture, triangle and mesh budget; all six sky faces ship; the planet in build_arcade_sky.py sits a little under the horizon and the bays in build_arcade_room.py straddle the horizon, so a camera above the table sees it; the room's authored lights fit the pool
 // asset and source files are read from the repo
 'use strict';
 const fs=require('fs'),path=require('path');
@@ -61,10 +61,18 @@ function assetSuite(cfgSrc,tweak){
   const blend=(j.materials||[]).filter(m=>m.alphaMode==='BLEND');
   t(blend.length===2&&['glass','glow'].every(k=>blend.some(m=>m.name==='arcade_'+k)),'exactly two transparent materials: the window glass and the glow sheet',blend.map(m=>m.name).join());
   t((j.materials||[]).filter(m=>m.alphaMode!=='BLEND').every(m=>!m.doubleSided),'every opaque material is single-sided',(j.materials||[]).filter(m=>m.alphaMode!=='BLEND'&&m.doubleSided).map(m=>m.name).join());
-  const flat=(j.materials||[]).filter(m=>/^arcade_(gun|steel|brass|rubber|cream|blue|red|yellow|wood|crate|door|ceil|plant)$/.test(m.name)&&m.pbrMetallicRoughness&&m.pbrMetallicRoughness.baseColorTexture);
-  const wearSrc=new Set(flat.map(m=>j.textures[m.pbrMetallicRoughness.baseColorTexture.index].source));
-  t(flat.length>=10&&wearSrc.size===1,'every flat prop material wears the one shared wear map (one image, not one per material)',flat.length+' materials, '+wearSrc.size+' images');
-  t((j.images||[]).length<=20,'image count (the textures are the real cost of a room)',(j.images||[]).length);
+  const props=(j.materials||[]).filter(m=>/^arcade_(gun|steel|brass|rubber|cream|blue|cork|red|yellow|wood|crate|door|ceil|plant)$/.test(m.name));
+  const bare=props.filter(m=>!m.normalTexture||!(m.pbrMetallicRoughness||{}).metallicRoughnessTexture);
+  t(props.length>=12&&!bare.length,'every prop material wears a surface set (normal + metallic-roughness maps, not flat roughness)',props.length+' materials; bare: '+bare.map(m=>m.name).join());
+  const srcOf=ti=>{const T=j.textures[ti];return T.source!==undefined?T.source:((T.extensions||{}).KHR_texture_basisu||{}).source;};
+  const nSrc=new Set(props.filter(m=>m.normalTexture).map(m=>srcOf(m.normalTexture.index)));
+  t(nSrc.size>=3&&nSrc.size<=6,'the prop materials share a few surface sets (not one set per material)',nSrc.size+' normal maps');
+  const shell=['floor','wall'].map(k=>(j.materials||[]).find(m=>m.name==='arcade_'+k));
+  t(shell.every(m=>m&&m.normalTexture&&(m.pbrMetallicRoughness||{}).metallicRoughnessTexture),'the floor and the wall carry their own normal and metallic-roughness maps');
+  const cabN=j.nodes.find(n=>n.name==='room_arcade_cabinets');
+  t(cabN&&cabN.mesh!==undefined&&j.meshes[cabN.mesh].primitives.every(p=>p.attributes.COLOR_0!==undefined),'the light bake reaches the kept cabinets (COLOR_0 on every primitive)');
+  let texels=0;for(const im of j.images||[]){const v=j.bufferViews[im.bufferView];if(v&&im.mimeType==='image/ktx2'){const o=v.byteOffset||0;texels+=bin.readUInt32LE(o+20)*bin.readUInt32LE(o+24);}}
+  t((j.images||[]).length<=44&&texels<=36e6,'texture budget (the textures are the real cost of a room): <=44 images, <=36M texels at the top level',(j.images||[]).length+' images, '+(texels/1e6).toFixed(1)+'M texels');
   t(j.meshes.length<=32,'mesh (draw call) budget',j.meshes.length);
   let tris=0;for(const m of j.meshes)for(const p of m.primitives)tris+=(p.indices!==undefined?j.accessors[p.indices].count:j.accessors[p.attributes.POSITION].count)/3;
   t(tris>10000&&tris<=40000,'triangle budget (10k..40k; the Saucer is 70k, the pub 5k)',tris);
@@ -131,7 +139,10 @@ const MUT=[
  ['an opaque material goes double-sided','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').doubleSided=true;}],
  ['a third transparent material','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND'&&/^arcade_gun$/.test(m.name)).alphaMode='BLEND';}],
  ['the draw-call budget blows','glb',j=>{for(let i=0;i<10;i++)j.meshes.push(j.meshes[0]);}],
- ['a prop material gets its own wear image','glb',j=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:0})-1,nt=j.textures.push({source:ni})-1;j.materials.find(m=>m.name==='arcade_gun').pbrMetallicRoughness.baseColorTexture.index=nt;}],
+ ['a prop material goes back to flat roughness','glb',j=>{const m=j.materials.find(m=>m.name==='arcade_steel');delete m.normalTexture;delete m.pbrMetallicRoughness.metallicRoughnessTexture;}],
+ ['every prop material gets a set of its own','glb',j=>{j.materials.filter(m=>m.normalTexture&&/^arcade_(gun|steel|brass|rubber|cream|blue|cork|red|yellow|wood|crate|door|ceil|plant)$/.test(m.name)).forEach(m=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:j.images[0].bufferView})-1;m.normalTexture={index:j.textures.push({source:ni})-1};});}],
+ ['the wall loses its ORM','glb',j=>{delete j.materials.find(m=>m.name==='arcade_wall').pbrMetallicRoughness.metallicRoughnessTexture;}],
+ ['the cabinets miss the bake','glb',j=>{const n=j.nodes.find(n=>n.name==='room_arcade_cabinets');delete j.meshes[n.mesh].primitives[0].attributes.COLOR_0;}],
  ['the floor is wound face down','glb',(j,bin)=>{meshTris(j,bin,'room_arcade_floor',true);}],
  ['the walls are wound inside-out','glb',(j,bin)=>{meshTris(j,bin,'room_arcade_wall',true);}],
  ['the glow sheet goes missing','glb',j=>{j.nodes.forEach(n=>{if(n.name==='room_arcade_glow')n.name='x';});}]
