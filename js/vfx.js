@@ -352,10 +352,19 @@ function vfxNetUpdate(rdt){
  for(let gi=0;gi<VFX.net.length;gi++){
   const n=VFX.net[gi],m=netMats[gi],U=m&&m.userData.rip;
   if(!U)continue;
-  if(n.a<=0){if(U.uRipA.value!==0){U.uRipA.value=0;U.uRipC.value.set(0,0,0);if(m.emissive)m.emissive.setRGB(0,0,0);}continue;}
+  const gf=goalFrames[gi],hidden=!!(gf&&gf.userData&&gf.userData.hideNetAtRest);
+  const parts=gf&&gf.userData&&gf.userData.net;
+  if(hidden&&m.userData.netRestOpacity===undefined)m.userData.netRestOpacity=m.opacity;
+  if(n.a<=0){
+   if(hidden&&parts)parts.forEach(p=>{p.visible=false;});
+   if(U.uRipA.value!==0){U.uRipA.value=0;U.uRipC.value.set(0,0,0);if(m.emissive)m.emissive.setRGB(0,0,0);}continue;
+  }
   n.t+=rdt;
   const G=VF.goal.net,decay=Math.exp(-n.t*2.3);
   n.a=n.t>2.2?0:1;
+  // A portal-style skin hides the net at rest, but briefly reveals the existing
+  // goal ripple and fades it back into the cavity after a score.
+  if(hidden){if(parts)parts.forEach(p=>{p.visible=!!n.a;});m.opacity=m.userData.netRestOpacity*decay;}
   U.uRip.value.set(n.x,n.y,n.z,n.t);
   U.uRipA.value=G.ripple*n.a;
   U.uRipC.value.set(n.col.r,n.col.g,n.col.b).multiplyScalar(G.pulse);
@@ -421,6 +430,7 @@ function vfxClear(){
  for(const e of VFX.lights){if(e.l){if(e.pooled)fxLightPut(e.l);else e.l.intensity=0;}}
  VFX.lights.length=0;
  for(const n of VFX.net)n.a=0;
+ vfxNetUpdate(0);  // clear the ripple and re-hide portal-style nets immediately
  VFX.fade=1;VFX.fadeD=0;VFX.u.uFade.value=1;VFX.dirty=false;
  const q=VFX.cam;q.f=q.fv=q.x=q.xv=q.z=q.zv=0;
 }

@@ -159,7 +159,7 @@
   return rows;
  }
  // the HUD with a ball held under the forward leg: the snake's plate (hud.js hudPinHint)
- async function snPlate(){S.seedNext=1;startMatchNow('red');await new Promise(q=>setTimeout(q,3000));const a=snScene({ri:5,R:3.5,stop:'pin'});const t0=HUD.t;for(let i=0;i<20;i++){HUD.t+=1/60;hudRender(1/60);}return {held:!!(a.r&&a.r.pinB),fwd:!!(a.r&&a.r.pinFwd),plate:HUD.pin.on,snk:HUD.pin.snk,shots:[HUD.c.toDataURL('image/png')],info:{}};}
+ async function snPlate(){S.seedNext=1;startMatchNow('red');await new Promise(q=>setTimeout(q,3000));const a=snScene({ri:5,R:3.5,stop:'pin'});const t0=HUD.t;for(let i=0;i<20;i++){HUD.t+=1/60;hudRender(1/60);}return {held:!!(a.r&&a.r.pinB),fwd:!!(a.r&&a.r.pinFwd),plate:HUD.pin.on,snk:HUD.pin.k==='snk',shots:[HUD.c.toDataURL('image/png')],info:{}};}
  function snAll(){return {grid:snGrid(),slide:snSlide(),keeper:snKeeper(),cost:snCost(),gap:snGap()};}
  window.snScene=snScene;window.snGrid=snGrid;window.snSlide=snSlide;window.snKeeper=snKeeper;window.snCost=snCost;window.snGap=snGap;window.snTune=snTune;window.snPlate=snPlate;window.snShots=snShots;window.snVsAI=snVsAI;window.snAll=snAll;
 })();

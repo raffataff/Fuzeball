@@ -123,18 +123,20 @@
   roll(r,b,B,D){rollBot(r,b,B,D);},
   // pin shot: the back pin takes the served ball, the man carries it beside the keeper, the kick fires from the pin
   pinShot(r,b,B,D){
-   if(B.st==='shot'){if(B.f-B.kf>8)I.kick(false);return;}
+   if(B.st==='shot'){shotTwice(B);return;}
    I.raise(true);I.fin(true);
    if(r.pinB===b){aimShot(r,b,B);return;}
    const a=arrive(r,b,-3.6),m=bestMan(r,a.z);if(m)slideTo(r,m.o,60);
   },
   // roll and fire: a roll first, then the pin it reached carries it beside the keeper and shoots
   rollShot(r,b,B,D){
-   if(B.st==='shot'){if(B.f-B.kf>8)I.kick(false);return;}
+   if(B.st==='shot'){shotTwice(B);return;}
    if(D.pin&&D.pin.roll&&r.pinB===b){I.raise(true);I.fin(true);aimShot(r,b,B);return;}
    rollBot(r,b,B,D);
   }
  };
+ // two quick kicks: the pin shot (one is the pin pass on a rod that has one, shots.pin.press)
+ function shotTwice(B){const t=B.f-B.kf;if(t===3||t>12)I.kick(false);else if(t===6)I.kick(true);}
  // carry the pinned ball to a lane beside the keeper (±aim, or as near as this man reaches), stop, kick
  function aimShot(r,b,B){
   const p=b.m.position,m=nearMan(r,p.z),dz=p.z-mz(r,m),lo=r.baseZ[m]-r.maxOff+dz,hi=r.baseZ[m]+r.maxOff+dz;

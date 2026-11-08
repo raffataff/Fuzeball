@@ -233,7 +233,11 @@ matchStats:{
    room:null,                                // no backdrop; uses the shared ground plane
    defTheme:'neon',                          // metadata only
    defSkin:'standard',
-   skins:{ standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'} },
+   skins:{
+    standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'},
+    obsidianVolt:{name:'Obsidian Volt', glb:'fuzeball_table_circuit_obsidian.glb'},
+    silverCircuit:{name:'Silver Circuit', glb:'fuzeball_table_circuit_silver.glb', hideGoalNet:true}
+   },
    rods:'classic',                           // circuit rods not built yet
    deadzones:[
     {xMin:46, zMin:14.}   // corner pockets
@@ -302,7 +306,7 @@ kick:{
    strike:0.01,  strikeA:0.7,     // strike ramp end / peak forward angle
    hold:0.15,                     // hold peak until this time
    drop:0.25,                     // fully returned by this time
-   raiseA:-1.2, raiseLerp:25, dropLerp:35, // lift-men angle + settle rates
+   raiseA:-1.3, raiseLerp:25, dropLerp:25, // lift-men angle + settle rates
    padAngleLerp:40,                // right-stick angle smoothing (0 = direct 1:1, no easing)
    userSpeed:80,                  // slide speed of the player-driven rod (u/s)
    aiOwnMult:1.,                // slide-speed multiplier for AI rods on the user's team
@@ -430,6 +434,14 @@ kick:{
    carryOut:0.9,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
    ctl:0.6,            // pin shot control (r.shotCtl): no spray
+   // a player's kick on a back-pinned ball: one press is the pin pass (the AI's pin pass curve, `pass` above), two within `dbl` the pin shot (shots.js shotPinPass)
+   press:{
+    on:true,        // false = every kick from the back pin is the pin shot (kick held after it is the pass the receiver takes)
+    roles:['GK','DEF','MID'],   // rods that pass on one press; the rest (the ATT, nothing ahead to pass to) shoot on the first press
+    dbl:0.1,        // the second press within this of the first is the shot (s); the pass waits this long for it, so longer = a later pass
+    swing:{strike:0.1},    // laid over the pin pass curve (ai.passShot + `pass`): the ball leaves at the boot's speed, so the sweep time is the pass speed: 0.2 (the AI's) 62 u/s, 0.13 94, 0.1 122, 0.09 131, 0.07 too quick to receive (the pin shot ~200); a plain swing, no shot trim
+    recv:true       // a clicked pass is received too while finesse is held (the stroke's receive, assist.recv.strokeT); false = only kick held after it poses the man ahead
+    },
    // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, kick pressed twice is the snake (shots.snake)
    fwd:{
     on:true,        // false = finesse + kick is the assisted pass swing again (shots.pass)
@@ -1462,7 +1474,7 @@ ai:{
    // ROBOTS
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
       src:'assets/fuzeball_cyborg.glb',scale:0.9, rodY:8.63,
-      mug:'assets/renders/render_cyborg_mugshot.png',
+      mug:'assets/renders/render_cyborg_mugshot_v2.png',
       renderTop:64,
       teamParts:['kit_cyborg', 'kit_cyborg_visor'],
       hairParts:['kit_cyborg_hair'],
@@ -1470,21 +1482,21 @@ ai:{
    },
    {id:'deltaborg',name:'Deltaborg',blurb:'Ruthless and fast',
       src:'assets/fuzeball_deltaborg.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_deltaborg_mugshot.png',
+      mug:'assets/renders/render_deltaborg_mugshot_v2.png',
       renderTop:41,
       teamParts:['kit_deltaborg'],hairParts:[],
       explosionSrc:'assets/animations/deltaborg_explosion.glb'
    },
    {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
       src:'assets/fuzeball_irnman.glb',scale:0.87, rodY:8.63,
-      mug:'assets/renders/render_irnman_mugshot.png',
+      mug:'assets/renders/render_irnman_mugshot_v2.png',
       renderTop:51,
       teamParts:['kit_irnman','kit_irnman_centre'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
       src:'assets/fuzeball_mechaman.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_mechaman_mugshot.png',   
+      mug:'assets/renders/render_mechaman_mugshot_v2.png',   
       renderTop:90,
       teamParts:['kit_mechaman_new'],hairParts:[],
       explosionSrc:'assets/animations/mechaman_explosion.glb'
@@ -1493,7 +1505,7 @@ ai:{
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_rocko_mugshot.png',   
+      mug:'assets/renders/render_rocko_mugshot_v2.png',   
       renderTop:33,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
       explosionSrc:'assets/animations/rocko_explosion.glb'
@@ -1502,21 +1514,21 @@ ai:{
    // MEN
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
       src:'assets/fuzeball_manRichie.glb',scale:0.845, rodY:8.63,
-      mug:'assets/renders/render_richie_mugshot.png',   
+      mug:'assets/renders/render_richie_mugshot_v2.png',   
       renderTop:38,
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
    {id:'manDeano',name:'Deano',blurb:'Calm and clinical',
       src:'assets/fuzeball_manDeano.glb',scale:0.885, rodY:8.63,
-      mug:'assets/renders/render_deano_mugshot.png',
+      mug:'assets/renders/render_deano_mugshot_v2.png',
       renderTop:89,
       teamParts:['kit_deano'],hairParts:[],
       explosionSrc:'assets/animations/deano_explosion.glb'
    },
    {id:'manLeo',name:'Leo',blurb:'Calm and clinical',
       src:'assets/fuzeball_manLeo.glb',scale:0.885, rodY:8.63,
-      mug:'assets/renders/render_leo_mugshot.png',
+      mug:'assets/renders/render_leo_mugshot_v2.png',
       renderTop:109,
       teamParts:['kit_leo'],hairParts:['kit_leo_hair'],
       explosionSrc:'assets/animations/leo_explosion.glb'
@@ -1525,42 +1537,42 @@ ai:{
    // WOMEN
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
       src:'assets/fuzeball_womanMaria.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_maria_mugshot.png',   
+      mug:'assets/renders/render_maria_mugshot_v2.png',   
       renderTop:70,
       teamParts:['kit_maria'],hairParts:['kit_maria_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
    },
    {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSasha.glb',scale:0.86, rodY:8.63,
-      mug:'assets/renders/render_sasha_mugshot.png',
+      mug:'assets/renders/render_sasha_mugshot_v2.png',
       renderTop:136,
       teamParts:['kit_sasha'],hairParts:[],
       explosionSrc:'assets/animations/sasha_explosion.glb'
    },
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
       src:'assets/fuzeball_womanKimi.glb',scale:0.875, rodY:8.63,
-      mug:'assets/renders/render_kimi_mugshot.png',   
+      mug:'assets/renders/render_kimi_mugshot_v2.png',   
       renderTop:85,
       teamParts:['kit_kimi'],hairParts:[ 'kit_kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
    {id:'womanSandy',name:'Sandy',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSandy.glb',scale:0.885, rodY:8.63,
-      mug:'assets/renders/render_sandy_mugshot.png',
+      mug:'assets/renders/render_sandy_mugshot_v2.png',
       renderTop:90,
       teamParts:['kit_sandy'],hairParts:['kit_sandy_hair'],
       explosionSrc:'assets/animations/sandy_explosion.glb'
    },
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
       src:'assets/fuzeball_womanTalia.glb',scale:0.885, rodY:8.63,
-      mug:'assets/renders/render_talia_mugshot.png',   
+      mug:'assets/renders/render_talia_mugshot_v2.png',   
       renderTop:89,
       teamParts:['kit_talia', 'kit_talia_centre'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
       },
    {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
       src:'assets/fuzeball_womanTanya.glb',scale:0.875, rodY:8.63,
-      mug:'assets/renders/render_tanya_mugshot.png',   
+      mug:'assets/renders/render_tanya_mugshot_v2.png',   
       renderTop:52,
       teamParts:['kit_tanya', 'kit_tanya_centre'],hairParts:[ 'kit_tanya_hair' ],
       explosionSrc:'assets/animations/tanya_explosion.glb'   
@@ -1568,7 +1580,7 @@ ai:{
     
    {id:'womanFaye',name:'Faye',blurb:'Bold and fearless',
       src:'assets/fuzeball_womanFaye.glb',scale:0.86, rodY:8.63,
-      mug:'assets/renders/render_faye_mugshot.png',
+      mug:'assets/renders/render_faye_mugshot_v2.png',
       renderTop:125,
       teamParts:['kit_faye'],hairParts:['kit_faye_hair'],
       explosionSrc:'assets/animations/faye_explosion.glb'
@@ -1577,55 +1589,56 @@ ai:{
    // ALIENS
    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
       src:'assets/fuzeball_womanZaneesh.glb',scale:0.885, rodY:8.63,
-      mug:'assets/renders/render_zaneesh_mugshot.png',   
+      mug:'assets/renders/render_zaneesh_mugshot_v2.png',   
       renderTop:131,
       teamParts:['kit_zaneesh'],hairParts:[],
       explosionSrc:'assets/animations/zaneesh_explosion.glb'
    }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.87, rodY:8.63,
-      mug:'assets/renders/render_tamirok_mugshot.png',   
+      mug:'assets/renders/render_tamirok_mugshot_v2.png',   
       renderTop:83,
       teamParts:['kit_tamirok', 'kit_tamirok_centre'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
    {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
       src:'assets/fuzeball_alienGrimlot.glb',scale:0.865, rodY:8.63,
-      mug:'assets/renders/render_grimlot_mugshot.png',   
+      mug:'assets/renders/render_grimlot_mugshot_v2.png',   
       renderTop:82,
       teamParts:['kit_Grimlot'],hairParts:[],
       explosionSrc:'assets/animations/grimlot_explosion.glb'
       },
    {id:'alienKatum',name:'Katum',blurb:'Fierce and aggressive',
       src:'assets/fuzeball_alienKatum.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_katum_mugshot.png',   
+      mug:'assets/renders/render_katum_mugshot_v2.png',   
       renderTop:10,
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
       },
    {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
       src:'assets/fuzeball_alienKodus.glb',scale:0.875, rodY:8.63,
-      mug:'assets/renders/render_kodus_mugshot.png',   
+      mug:'assets/renders/render_kodus_mugshot_v2.png',   
       renderTop:84,
       teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
     {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
        src:'assets/fuzeball_alienZargon.glb',scale:0.875, rodY:8.63,
-       mug:'assets/renders/render_zargon_mugshot.png',   
+       mug:'assets/renders/render_zargon_mugshot_v2.png',   
        renderTop:51,
        teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
        explosionSrc:'assets/animations/zargon_explosion.glb'
        },
     {id:'alienDrako',name:'Drako',blurb:'Fierce and mysterious',
        src:'assets/fuzeball_alienDrako.glb',scale:0.875, rodY:8.63,
+       mug:'assets/renders/render_drako_mugshot_v2.png',
        renderTop:131,
        teamParts:['kit_drako'],hairParts:[],
        explosionSrc:'assets/animations/drako_explosion.glb'
        },
     {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
       src: 'assets/fuzeball_animalAzlar.glb', scale:0.875, rodY:8.63,
-      mug: 'assets/renders/render_azlar_mugshot.png',
+      mug: 'assets/renders/render_azlar_mugshot_v2.png',
       renderTop:7,
       teamParts: ['kit_Azlar', 'kit_azlar_claws'], hairParts: ['kit_azlar_hair'],
       explosionSrc: 'assets/animations/azlar_explosion.glb'
@@ -2149,7 +2162,7 @@ deadball:{
    // music/ is not a sound id folder: the manifest builder leaves it alone
    music:{
     on:true,
-    menu:'music/menu_anthem.ogg',   // the main menu track (music/menu_theme.ogg is the first, calmer one)
+    menu:'music/menu_anthem_v2.ogg',   // the main menu track; mastered at -14 LUFS, ~3 dB over v1 (music/menu_anthem.ogg) and the match tracks
     // in a match (play, count, goal); training, trials, the tutorial and photo mode get none
     // the first plays unless the player picked another: the music key (M) or a pad's touchpad steps through them, kept in cfg.musicMatch
     match:[
@@ -2163,11 +2176,28 @@ deadball:{
     matchVol:0.5,                   // the match track's level, times the slider
     duck:0.35,                      // x matchVol in pause and the goal replay
     duckT:0.3,                      // s to get to a new level
-    fadeOut:1.2                     // s to fade out when the music changes; back in the menus it starts again from its intro
-   },
+     fadeOut:1.2                     // s to fade out when the music changes; back in the menus it starts again from its intro
+    },
 
-   // stereo placement from the ball's on-screen position; width 1 = hard left/right, keep it well under 1
-   pan:{on:true, width:0.7},
+    // ---- room ambience ----
+    // a looping background bed per room, fetched lazily from assets/audio/ambience/ on a bus of its own
+    // keys are CONFIG.rooms ids; a room with no entry (or a missing file) simply has no bed
+    // vol = base level before the Options > Audio > Ambience slider; fade = crossfade when the venue changes
+    ambience:{
+     on:true,
+     vol:0.45,
+     fade:0.8,
+     rooms:{
+      open:  'ambience/background_void_1.wav',
+      arcade:'ambience/background_arcade_1.wav',
+      moon:  'ambience/background_moonbase__1.wav',
+      saucer:'ambience/background_spacebar__1.wav',
+      pub:   'ambience/background_spacebar__1.wav'
+     }
+    },
+
+    // stereo placement from the ball's on-screen position; width 1 = hard left/right, keep it well under 1
+    pan:{on:true, width:0.7},
 
    // ---- room reverb ----
    // sends into the room, scaled by each room's fx/crowd; 1 = the Sound Lab's default send, so a recorded ir_<roomId> (exported at the lab's level) sounds as wet as the room in the lab
@@ -2567,6 +2597,8 @@ deadball:{
    champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple', grass:true},
    moon:             {folder:'assets/pitches/', glb:'pitch_moon.glb',             tex:'pitches/moon.jpeg',            name:'Moon Dust'},   // tools/build_moon_pitch.mjs
    deck:             {folder:'assets/pitches/', glb:'pitch_deck.glb',             tex:'pitches/deck.jpeg',            name:'Deck Plate'},  // tools/build_deck_pitch.mjs
+   obsidian_volt:    {folder:'assets/pitches/', glb:'pitch_obsidian_volt.glb',    tex:'pitches/obsidian_volt.jpeg',   name:'Obsidian Volt'},
+   silver_circuit:   {folder:'assets/pitches/', glb:'pitch_silver_circuit.glb',   tex:'pitches/silver_circuit.jpeg',  name:'Silver Circuit', ior:1.2222222},
    },
 
   // ---- blade grass (js/grass.js) ----
@@ -2879,8 +2911,8 @@ deadball:{
     kbm:'Hold [finesse] and tap [kick] to pass. Keep [finesse] held: control jumps to your attack, and its foot comes down on the ball.',
     pad:'Hold {LT} and tap {A} to pass. Keep {LT} held: control jumps to your attack, and its foot comes down on the ball.'},
    {id:'pinPass',name:'PIN PASS',rods:['MID','ATT'],start:'MID',ball:{x:6,z:0,vx:-17},lift:false,auto:true,centre:true,check:'pinPass',
-    kbm:'Pin the ball with [finesse] and [raise], then keep [finesse] held and hold [kick]. A held kick from the pin is a pass: your attack takes it.',
-    pad:'Pin the ball with {LT} and {X}, then keep {LT} held and hold {A}. A held kick from the pin is a pass: your attack takes it.'},
+    kbm:'Pin the ball with [finesse] and [raise], then keep [finesse] held and press [kick] once. One kick from the pin is a pass: your attack takes it. Two quick kicks shoot.',
+    pad:'Pin the ball with {LT} and {X}, then keep {LT} held and press {A} once. One kick from the pin is a pass: your attack takes it. Two quick kicks shoot.'},
    {id:'tictac',name:'TIC-TAC',rods:['ATT'],ball:{x:21,z:9.25,zRod:true},row:true,centre:true,check:'tictac',
     kbm:'Hold [finesse] and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.',
     pad:'Hold {LT} and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.'},
@@ -2995,7 +3027,7 @@ deadball:{
     hold:'DEF',rods:{show:['0|DEF']},
     goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-26,26],min:14}},limit:75,
     medals:{gold:18,silver:31,bronze:53}},
-   {id:'dPinShot',name:'PIN SHOT',cat:'DEF',set:'pin',blurb:'Pin the ball as it comes, then shoot from the pin, the length of the table. Three goals.',
+   {id:'dPinShot',name:'PIN SHOT',cat:'DEF',set:'pin',blurb:'Pin the ball as it comes, then kick twice to shoot from the pin, the length of the table. Three goals.',
     seed:52329,table:'classic',
     ball:{type:'classic',x:-24,z:0},
     hold:'DEF',rods:{show:['0|DEF']},
@@ -3013,7 +3045,7 @@ deadball:{
     hold:'DEF',rods:{show:['0|DEF']},
     goal:{kind:'drill',move:'roll',n:3},limit:60,
     medals:{gold:15,silver:26,bronze:45}},
-   {id:'dRollShot',name:'ROLL AND FIRE',cat:'DEF',set:'walk',blurb:'Roll it to the other defender, pin it, shoot the length of the table. Two goals, each off a roll.',
+   {id:'dRollShot',name:'ROLL AND FIRE',cat:'DEF',set:'walk',blurb:'Roll it to the other defender, pin it, kick twice to shoot the length of the table. Two goals, each off a roll.',
     seed:52399,table:'classic',
     ball:{type:'classic',x:-41.1,z:-6},
     hold:'DEF',rods:{show:['0|DEF']},
@@ -3057,7 +3089,7 @@ deadball:{
     hold:'MID',rods:{show:['0|MID']},
     goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-24,24],min:12}},limit:75,
     medals:{gold:20,silver:35,bronze:60}},
-   {id:'mPinShot',name:'PIN SHOT',cat:'MID',set:'pin',blurb:'Pin the ball as it comes, then shoot from the pin, from halfway. Three goals.',
+   {id:'mPinShot',name:'PIN SHOT',cat:'MID',set:'pin',blurb:'Pin the ball as it comes, then kick twice to shoot from the pin, from halfway. Three goals.',
     seed:63329,table:'classic',
     ball:{type:'classic',x:6,z:0},
     hold:'MID',rods:{show:['0|MID']},
@@ -3075,7 +3107,7 @@ deadball:{
     hold:'MID',rods:{show:['0|MID']},
     goal:{kind:'drill',move:'roll',n:6},limit:60,
     medals:{gold:14,silver:24,bronze:41}},
-   {id:'mRollShot',name:'ROLL AND FIRE',cat:'MID',set:'walk',blurb:'Roll it from one midfielder to the next, pin it, shoot. Two goals, each off a roll.',
+   {id:'mRollShot',name:'ROLL AND FIRE',cat:'MID',set:'walk',blurb:'Roll it from one midfielder to the next, pin it, kick twice to shoot. Two goals, each off a roll.',
     seed:63399,table:'classic',
     ball:{type:'classic',x:-11.1,z:-18.5},
     hold:'MID',rods:{show:['0|MID']},
@@ -3396,7 +3428,7 @@ const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
 // the in-menu options, distinct from the CONFIG tuning knobs above
 let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,atmos:'high',table:'classic',pitch:'pub_classic',skins:{},special:true,power:true,auto:true,sound:true,ambience:true,replay:true,
  // Options > Audio: bus volumes 0..1 (square curve in Au.mix); muteBg silences an unfocused window
- volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,muteBg:false,
+  volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,volAmbience:1,muteBg:false,
  // the in-match track picked with the music key (a CONFIG.audioMix.music.match file); '' = the first
  musicMatch:'',
  // the tutorial (js/tutorial.js): offered once before the first match, and finished at least once
@@ -3443,7 +3475,7 @@ const CFG_MACHINE=new Set([
  'particles','marks','rodHoles','reflections','atmos','profiler',
  'layouts',        // per-screen panel arrangements (width-relative since v:2 so they'd survive syncing; kept local for now)
  'padDeadzone',    // stick calibration: a drifty pad on ONE machine, not a preference
- 'volMaster','volFx','volCrowd','volUi','volMusic','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
+  'volMaster','volFx','volCrowd','volUi','volMusic','volAmbience','muteBg'   // volume is set to THIS machine's speakers, not carried to a Deck
 ]);
 // Follows the person. Identity, choices, progress.
 const CFG_PLAYER=new Set([

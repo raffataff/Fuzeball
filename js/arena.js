@@ -246,7 +246,15 @@ function applySkin(id){
  // rod-hole rings follow the same rule; empty for a skin with no rings (the arena bowl), which makes fx.js inert
  rodHoleMeshes=(active&&skinRodHoles[id]&&skinRodHoles[id][sk])||[];
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
- goalFrames.forEach(gf=>{if(gf.userData&&gf.userData.front)gf.userData.front.visible=!custom;});
+ const hideNet=!!(active&&T.skins&&T.skins[sk]&&T.skins[sk].hideGoalNet);
+ goalFrames.forEach(gf=>{if(!gf.userData)return;
+  if(gf.userData.front)gf.userData.front.visible=!custom;
+  // Nets are cosmetic; a skin can expose its own dark goal cavity at rest.
+  gf.userData.hideNetAtRest=hideNet;
+  if(gf.userData.net)gf.userData.net.forEach(n=>{n.visible=!hideNet;
+   const m=n.material;if(m&&m.userData&&m.userData.netRestOpacity!==undefined)m.opacity=m.userData.netRestOpacity;
+  });
+ });
  if(typeof shadowDirty==='function')shadowDirty();   // table shell swapped — casters changed
 }
 // pick a skin for a table (Skin dropdown): remember it, lazy-load, show, then evict past cacheSkins after the new one lands

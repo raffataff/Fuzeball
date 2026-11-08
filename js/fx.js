@@ -389,7 +389,9 @@ function bigGoalUpdate(rdt){
   const g=goalFrames[gi],m=g.scale.z;                          // shared lerped multiplier for this goal
   const grow=glbGoalGrow[gi];for(let k=0;k<grow.length;k++)grow[k].scale.z=m;
   const wall=glbGoalWall[gi];
-  for(let k=0;k<wall.length;k++){const w=wall[k],ni=w.sgn*F.goalHalf*m,a=(w.outer-ni)/(w.outer-w.inner);
+  // Preserve each material primitive's authored inner edge at rest. Bevels
+  // can put it slightly off goalHalf; snapping every piece to goalHalf opens seams.
+  for(let k=0;k<wall.length;k++){const w=wall[k],ni=w.inner+w.sgn*F.goalHalf*(m-1),a=(w.outer-ni)/(w.outer-w.inner);
    w.o.scale.z=a;w.o.position.z=w.outer-a*w.outer;}                 // inner edge to goalHalf*mult, outer edge pinned
   // net taper: counter-scale each panel's local z toward the back so the world width eases from m at the mouth to backM at the rear; only while open, +1 restore frame on settle
   const nets=g.userData.net;if(nets){

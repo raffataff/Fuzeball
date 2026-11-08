@@ -221,6 +221,14 @@ function suite(src,verbose){
   ok('a recorded impulse plays at its own level, unnormalized',Au.rv.id==='moon'&&Au.rv.f.buffer===b&&Au.rv.f.normalize===false&&Au.rv.c.normalize===false,[Au.rv.f.normalize,Au.rv.c.normalize]);
   delete Au.bank.ir_moon;ctx.activeRoom=CONFIG.rooms.saucer;Au.tick(1/60);
   ok('a generated impulse is normalized',Au.rv.f.buffer===Au.irs.saucer&&Au.rv.f.normalize===true&&Au.rv.c.normalize===true,Au.rv.f.normalize);}
+ /* 6b. the room ambience */
+ {const m=Au.amb,AMB=AUMIX.ambience,want=AMB.rooms[Au.rv.id],b=buf(A,1);
+  m.tr[want]=b;ctx.S.phase='play';Au.tick(1/60);const s=m.src;
+  ok('the room ambience plays in a match',!!s&&m.cur===want);
+  ok('…on the ambience bus',!!s&&reach(s,Au.ab)&&!reach(s,Au.mg)&&!reach(s,Au.mu)&&!reach(s,Au.cb));
+  ctx.S.phase='menu';Au.tick(1/60);
+  ok('…and not in the menus',!!s&&s.stopAt>0&&!m.src);
+  ctx.S.phase='play';}
  /* 7. the bed */
  {Au.syn.crowd_bed_calm=buf(A,1);Au.syn.crowd_bed_wild=buf(A,1);Au.bedSync();const B=Au.bed,cl=B.layers.find(l=>l.t==='calm'),wl=B.layers.find(l=>l.t==='wild');
   ok('the stand-in bed has a calm and a wild layer',!!(cl&&wl)&&B.layers.length===2);
@@ -461,6 +469,7 @@ mutate("if(bt&&hd&&this.has(id+'_hard_'+bt))use=id+'_hard_'+bt;","if(false);",'a
  mutate("if(k==='goal'){this.exc=1;","if(k==='goal'){",'a goal does not lift the room'),
  mutate('if(ok)this.exc=Math.min(1,this.exc+(D.exc||0));','','reactions do not lift the room'),
  mutate('B.lvl+=((live?lerp(C.volLo,C.volHi,B.x):0)-B.lvl)','B.lvl+=((lerp(C.volLo,C.volHi,B.x))-B.lvl)','the crowd plays in the menus'),
+ mutate('if(!A||!A.on||!cfg.sound||!this.inMatch())return null;','if(!A||!A.on||!cfg.sound)return null;','the room ambience plays in the menus'),
  mutate("if(typeof S==='undefined'||S.trn||S.trial||S.tut||S.photo)return null;","if(typeof S==='undefined')return null;",'training, trials and the tutorial get music'),
  mutate("if(S.phase==='pause'||S.phase==='replay')return{tr:'match',duck:true};","if(S.phase==='pause'||S.phase==='replay')return{tr:'match',duck:false};",'pause does not duck the match track'),
  mutate("return typeof introLeft==='undefined'||introLeft?{tr:'menu',duck:false}:null;","return {tr:'menu',duck:false};",'the music starts behind the intro'),

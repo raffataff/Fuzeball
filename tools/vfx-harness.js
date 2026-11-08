@@ -206,7 +206,8 @@ function suite(X){
  /* 11. the goal */
  fresh(X);
  X.vfxGoal(0,{x:61,y:2,z:3});
- ok(X.VFX.si>100&&X.VFX.ci>50&&X.VFX.bi>=6,'a goal throws sparks, confetti and blasts ('+X.VFX.si+'/'+X.VFX.ci+'/'+X.VFX.bi+')');
+ ok(X.VFX.si>100&&X.VF.goal.confetti.n>0&&X.VFX.ci===X.VF.goal.confetti.n%X.VFX.cf.n&&X.VFX.bi>=6,
+  'a goal throws sparks, the configured confetti and blasts ('+X.VFX.si+'/'+X.VFX.ci+'/'+X.VFX.bi+')');
  const ang=[];for(let i=0;i<X.VFX.si;i++)ang.push(X.VFX.sp.A.aV.array[i*4]);
  ok(ang.filter(v=>v<0).length>ang.length*0.5,'a goal into +x throws its sparks back toward the table (-x)');
  ok(X.VFX.lights.length>=2,'it pulses the goal light and a pooled one');

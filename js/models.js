@@ -70,6 +70,12 @@ function loadSkin(id,skinId,cb){
     c.castShadow=true;c.receiveShadow=true;
     c.userData.skinKey=key;                        // ownership stamp — read by disposeTableSkin's registry sweep
     const n=onm(c);
+    // The Silver Circuit halo is a transparent visual overlay, not a solid
+    // goal part: it must neither cast a rectangular shadow nor write depth.
+    if(n.startsWith('goal_frame_silver_halo_')){
+     c.castShadow=false;
+     (Array.isArray(c.material)?c.material:[c.material]).forEach(m=>{if(m){m.depthWrite=false;m.needsUpdate=true;}});
+    }
     if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
     else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
     else if(n.startsWith('goal_net'))c.visible=false;                            // keep the built-in diamond net
@@ -756,10 +762,27 @@ function ensurePitch(id,cb){
   newGLTF().load(url,gltf=>{
    try{
     const g=gltf.scene;
+    const physicalMats=new Map(); // shared source materials stay shared after the optional IOR conversion
     g.traverse(c=>{
       if(!c.isMesh)return;
       c.castShadow=false;c.receiveShadow=true;
-      const m=c.material;
+      let m=c.material;
+      // r128's GLTFLoader predates KHR_materials_ior.  Use its native
+      // physical shader when a pitch registry entry supplies the same IOR.
+      if(m&&m.isMeshStandardMaterial&&Number.isFinite(P.ior)&&P.ior>=1&&P.ior<=2.333){
+       let phys=physicalMats.get(m);
+       if(!phys){
+        if(m.isMeshPhysicalMaterial)phys=m;
+        else{
+         phys=new THREE.MeshPhysicalMaterial();
+         THREE.MeshStandardMaterial.prototype.copy.call(phys,m);
+         phys.defines={STANDARD:'',PHYSICAL:''};
+         m.dispose();
+        }
+        phys.ior=P.ior;physicalMats.set(m,phys);
+       }
+       c.material=phys;m=phys;
+      }
       if(m){
         if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
         if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;

@@ -178,7 +178,7 @@ const AU_STING={
  trophy:{v:.045,bell:[[1174.66,0,1.4],[1567.98,.09,1.4],[1760,.18,1.6],[2349.32,.27,2]],brass:[[146.83,.27,1.4],[293.66,.27,1.4],[440,.27,1.4]]},
  medal: {v:.05,bell:[[1174.66,0,1.2],[1567.98,.08,1.2],[1760,.16,1.6]]}};
 
-const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
+const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
  dst:null, // beep/noise/wood/bell/brass route here instead of mg while set (route() / ui point it)
  bg:false, // window is unfocused / hidden — silenced when cfg.muteBg
  vc:{},   // per-key voice bookkeeping for vgate(): last fire time + a ring of voice end-times
@@ -194,8 +194,9 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
  bed:null,    // the crowd bed: {layers, x (excitement heard), ten (tension), lvl, g, s}
  rv:null,     // the room: {rm, id, A (its acoustic), f / c (fx / crowd convolvers)}
  mx:null,     // the music: tr {menu, match} = {buf, ls / le (loop points, s), f (its file)}, mi (the match track picked, an index into music.match), cur (the track playing), src / g (the voice, or null), lv (its level)
+ amb:null,    // room ambience: tr (file → loop-ready buffer), cur / want (room file), src / g (the voice), pending (fetches in flight)
 
- // BUSES (Options > Audio): mg = effects, cb = crowd, ub = menu clicks, mu = music; all sum into `sum` (the clip recorder's tap), then `out` (master + Sound switch), limiter, speakers
+ // BUSES (Options > Audio): mg = effects, cb = crowd, ub = menu clicks, mu = music, ab = room ambience; all sum into `sum` (the clip recorder's tap), then `out` (master + Sound switch), limiter, speakers
  // the crowd bus passes the room's band-limit first (cHp / cLp)
  init(){if(this.ctx)return;try{
   this.ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -207,11 +208,12 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    this.lim.attack.value=L.attack;this.lim.release.value=L.release;this.lim.connect(c.destination);}
   this.out=c.createGain();this.out.connect(this.lim||c.destination);
   this.sum=c.createGain();this.sum.connect(this.out);
-  this.mg=c.createGain();this.cb=c.createGain();this.ub=c.createGain();this.mu=c.createGain();
+  this.mg=c.createGain();this.cb=c.createGain();this.ub=c.createGain();this.mu=c.createGain();this.ab=c.createGain();
   this.cHp=c.createBiquadFilter();this.cHp.type='highpass';this.cHp.frequency.value=20;
   this.cLp=c.createBiquadFilter();this.cLp.type='lowpass';this.cLp.frequency.value=20000;
-  this.mg.connect(this.sum);this.cb.connect(this.cHp);this.cHp.connect(this.cLp);this.cLp.connect(this.sum);this.ub.connect(this.sum);this.mu.connect(this.sum);
+  this.mg.connect(this.sum);this.cb.connect(this.cHp);this.cHp.connect(this.cLp);this.cLp.connect(this.sum);this.ub.connect(this.sum);this.mu.connect(this.sum);this.ab.connect(this.sum);
   this.mx={tr:{},mi:0,cur:null,src:null,g:null,lv:-1};
+  this.amb={tr:{},pending:{},cur:null,src:null,g:null};
   this.mix();
   this.nbuf=this.mkNoise(3);
   this.bed={layers:[],x:0,ten:0,lvl:0,g:c.createGain(),s:null};this.bed.g.gain.value=0;this.bed.g.connect(this.cb);
@@ -227,7 +229,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
   const t=this.ctx.currentTime,v=k=>{const x=clamp(+cfg[k],0,1);return x===x?x*x:1;},
    set=(n,g)=>n.gain.setTargetAtTime(g,t,.015);
   set(this.out,cfg.sound&&!(cfg.muteBg&&this.bg)?AUMIX.master*v('volMaster'):0);
-  set(this.mg,v('volFx'));set(this.cb,v('volCrowd'));set(this.ub,v('volUi'));set(this.mu,v('volMusic'));},
+  set(this.mg,v('volFx'));set(this.cb,v('volCrowd'));set(this.ub,v('volUi'));set(this.mu,v('volMusic'));set(this.ab,v('volAmbience'));},
 
  inMatch(){return typeof S!=='undefined'&&S.phase!=='menu'&&S.phase!=='win';},
 
@@ -318,6 +320,45 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
    s.connect(g);g.connect(this.mu);s.onended=()=>g.disconnect();s.start();m.src=s;m.g=g;m.cur=tr;m.lv=-1;}
   if(m.src){const lv=(tr==='menu'?M.vol:M.matchVol)*(w.duck?M.duck:1);
    if(m.lv<0)m.g.gain.value=lv;else if(lv!==m.lv)m.g.gain.setTargetAtTime(lv,c.currentTime,M.duckT);m.lv=lv;}},
+
+ // ---- room ambience ----
+ // one looping bed per room, on a bus of its own (the Ambience slider). Polled like the room: the file is
+ // fetched and decoded lazily, the loop seam crossfaded once (no sidecar), and the voice crossfades on a venue change
+ ambWant(){const A=AUMIX.ambience;
+  if(!A||!A.on||!cfg.sound||!this.inMatch())return null;
+  const id=this.rv&&this.rv.id;
+  return id&&A.rooms[id]?A.rooms[id]:null;},
+ ambFetch(f){const m=this.amb,F=AUMIX.samples;
+  if(m.tr[f]||m.pending[f]||!F||!F.on||typeof fetch!=='function')return;
+  m.pending[f]=true;
+  fetch(F.folder+f).then(r=>r.ok?r.arrayBuffer():null)
+   .then(a=>a?this.ctx.decodeAudioData(a):null).catch(()=>null)
+   .then(b=>{if(b)m.tr[f]=this.ambLoop(b);});},
+ // equal-power fold of the tail into the head so a whole-file loop has no seam click (~80ms)
+ ambLoop(b){const c=this.ctx,n=b.numberOfChannels,len=b.length,
+   xf=Math.min(Math.floor(b.sampleRate*.08),Math.floor(len/4));
+  if(xf<2)return b;
+  const outLen=len-xf,out=c.createBuffer(n,outLen,b.sampleRate);
+  for(let ch=0;ch<n;ch++){const s=b.getChannelData(ch),d=out.getChannelData(ch);
+   d.set(s.subarray(0,outLen));
+   for(let j=0;j<xf;j++){const u=j/xf,a=Math.sin(u*Math.PI/2),w=Math.cos(u*Math.PI/2);
+    d[j]=s[j]*a+s[outLen+j]*w;}}
+  return out;},
+ ambTick(){const A=AUMIX.ambience,m=this.amb;if(!A||!A.on||!this.ctx||!m)return;
+  const want=this.ambWant();
+  if(want&&!m.tr[want])this.ambFetch(want);
+  const d=want&&m.tr[want]?m.tr[want]:null,c=this.ctx,t=c.currentTime;
+  if(m.src&&(m.cur!==want||!d)){
+   m.g.gain.setTargetAtTime(0,t,A.fade/5);
+   m.src.stop(t+A.fade);
+   m.src=m.g=null;m.cur=null;}
+  if(!m.src&&d){const s=c.createBufferSource(),g=c.createGain();
+   s.buffer=d;s.loop=true;
+   s.connect(g);g.connect(this.ab);
+   g.gain.value=0;g.gain.setTargetAtTime(A.vol,t,A.fade/3);
+   s.onended=()=>{try{g.disconnect();}catch(e){}};
+   s.start();
+   m.src=s;m.g=g;m.cur=want;}},
 
  // ---- the room ----
  // polled, not hooked (activeRoom); a new convolver per room so old tails ring out and are disconnected when done
@@ -507,7 +548,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,sum:null,out:null,lim:null,nb
 
  tick(dt){if(!this.ctx)return;
   this.exc=Math.max(0,this.exc-dt*(AUC.excDecay??.3));
-  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.lpTick(dt);this.chargeVoice(dt);this.musicTick();},
+  this.rvTick();this.bedTick(dt);this.rollTick(dt);this.lpTick(dt);this.chargeVoice(dt);this.musicTick();this.ambTick();},
 
  // physics reports rolling contact here per ball per surface per frame (rollProbe, and the arena's inelastic branch); MAX not sum
  // k: 0 = floor, 1 = wall; aC = the ball type's audio block (.roll picks the character); b = the ball (pans the recorded loops)
