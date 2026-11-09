@@ -27,19 +27,25 @@ for(let j=0;j<H;j++) for(let i=0;i<W;i++){
                    segmentDistance(xx,zz,54,29-off,56,31-off));
   trace=Math.max(trace,1-sstep(.04,.12,d));
  }
- const wash=.92+.10*grain+.035*cloud;
+ // Subtle hexagonal composite.
+ const hx=i/18, hy=j/15.588;
+ const row=Math.round(hy), col=Math.round(hx-(row%2)*.5);
+ const ux=Math.abs(hx-col-(row%2)*.5), uy=Math.abs(hy-row);
+ const edge=Math.max(ux, ux*.5+uy*.75);
+ const hex=sstep(.42,.49,edge);
+ const wash=.94+.055*grain+.025*cloud-.19*hex;
  for(let c=0;c<3;c++){
   const ground=[10,24,39][c]*wash+[3,38,51][c]*glow;
   const etched=ground*(1-trace)+[36,111,129][c]*trace;
-  a[k+c]=clamp(Math.round(etched*(1-line)+[95,148,159][c]*line),0,255);
-  e[k+c]=Math.round(Math.max(line*.55,trace*.9)*[35,112,132][c]);
+  a[k+c]=clamp(Math.round(etched*(1-line)+[166,181,187][c]*line),0,255);
+  e[k+c]=Math.round(trace*.35*[35,112,132][c]);
  }
  // Fine microtexture rather than a perfectly flat normal.
- n[k]=clamp(Math.round(128+(hash(i+1,j)-grain)*2),0,255);
- n[k+1]=clamp(Math.round(128+(hash(i,j+1)-grain)*2),0,255);n[k+2]=255;
+ n[k]=clamp(Math.round(128+(hash(i+1,j)-grain)*2+(hex-.5)*3),0,255);
+ n[k+1]=clamp(Math.round(128+(hash(i,j+1)-grain)*2+(hex-.5)*3),0,255);n[k+2]=255;
  // The reference is a dark satin playing surface, with broad subdued
  // highlights rather than a metallic, mirror-like sheen.
- m[k]=255;m[k+1]=Math.round((192+grain*8)*(1-line)+162*line);m[k+2]=0;
+ m[k]=255;m[k+1]=Math.round((192+grain*8+hex*12)*(1-line)+105*line);m[k+2]=Math.round(210*line);
 }
 await writePitch('silver_circuit',a,n,m,.04);
 // Keep the reduced dielectric reflection in the GLB itself for modern viewers.
@@ -53,3 +59,6 @@ const emPng=await sharp(e,{raw:{width:W,height:H,channels:3}}).png().toBuffer();
 const em=doc.createTexture('silver_circuit_emissive').setImage(new Uint8Array(emPng)).setMimeType('image/png');
 mat.setEmissiveTexture(em).setEmissiveFactor([.45,.65,.70]);
 await io.write(path,doc);
+
+// Derive the surface finish from the exported livery.
+await import('./texture_silver_pitch.mjs');

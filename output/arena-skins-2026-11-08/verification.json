@@ -1,0 +1,21 @@
+{
+  "source": "C:\\Users\\Owner\\Documents\\Fuzeball\\Fuzeball\\assets\\tables\\arena\\fuzeball_table_arena_standard.glb",
+  "source_sha256": "708ce4a180dfe1f985709b415cbd239ccb8c809316b8825bc6be5755b4e45ddc",
+  "mesh_sha256_before": "fd925439d48e0ac4670fdb016001f0306258563e3c09aa102fba53749401d7bd",
+  "mesh_sha256_after": "fd925439d48e0ac4670fdb016001f0306258563e3c09aa102fba53749401d7bd",
+  "geometry_unchanged": true,
+  "skins": [
+    {
+      "id": "federation-finals-grand-v2",
+      "name": "Federation Finals Grand",
+      "wood": "754625",
+      "outer": "123747",
+      "inner": "193E4B",
+      "trim": "D5A64C",
+      "base": "694025",
+      "light": "F3D694",
+      "pitch": "193C35",
+      "accent": "D9B765"
+    }
+  ]
+}

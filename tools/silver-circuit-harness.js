@@ -54,10 +54,10 @@ vm.createContext(c);vm.runInContext(['onm','skinKey','touchSkin','rodHoleShader'
  const root=c.skinGroups.circuit.silverCircuit.children[0],halos=[];let goal;
  root.traverse(o=>{if(o.isMesh&&o.name.startsWith('goal_frame_silver_halo_'))halos.push(o);
   if(o.name==='goal_frame_l001')goal=o;});
- assert.equal(halos.length,4);assert(halos.every(o=>o.material.transparent&&!o.material.depthWrite&&!o.castShadow));
- assert(goal&&goal.material.emissiveIntensity>2,'goal emission strength');
+ assert.equal(halos.length,0,'no cyan goal halos');
+ assert(goal&&goal.material.map&&goal.material.normalMap&&goal.material.metalnessMap,'brushed metal goal frame');
+ assert(!goal.material.emissiveMap&&goal.material.emissive.getHex()===0,'goal frame does not glow');
  assert.equal(c.skinRodHoles.circuit.silverCircuit.length,8,'all rod rings');
- assert(c.glbGoalGrow.every(a=>a.filter(o=>o.name.includes('halo')).length===2),'halos follow both goals');
  let pitch;assert(c.pitchGroups.silver_circuit,'pitch resident');
  c.pitchGroups.silver_circuit.traverse(o=>{if(o.isMesh)pitch=o;});
  assert(pitch&&pitch.material.isMeshPhysicalMaterial&&Math.abs(pitch.material.ior-P.ior)<1e-6);

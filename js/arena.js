@@ -67,9 +67,26 @@ let rodHoleMeshes=[];                  // the ACTIVE skin's rings, and the only 
 const tablePrimObjs={};                // table id -> [procedural fallback meshes], shown only when the active skin has no GLB
 // big-goal morph of the baked arena shell (arena_bowl + led ring): registered from the arena GLB load, driven by arenaMorphUpdate
 let arenaMorph=[],arenaMorphDirty=false;
-// smooth normals for the baked bowl: weld verts by rest position, orient each triangle toward the interior once, then average area-weighted face normals per weld group (computeVertexNormals on split verts shades every face flat)
+// Smooth split bowl vertices during a morph while preserving each surface's authored normal direction, including the outward-facing shell.
+// Give interleaved or normalized normals their own float buffer before morphing.
+// Three r128 getters/setters expose raw normalized integers.
+function prepareArenaNormals(geo){
+ const n=geo.attributes.normal;if(!n||(!n.normalized&&!n.isInterleavedBufferAttribute))return n;
+ const raw=n.array||(n.data&&n.data.array);if(!raw)return n;
+ let scale=1,signed=false;
+ if(n.normalized){
+  if(raw instanceof Int8Array){scale=127;signed=true;}
+  else if(raw instanceof Uint8Array){scale=255;}
+  else if(raw instanceof Int16Array){scale=32767;signed=true;}
+  else if(raw instanceof Uint16Array){scale=65535;}
+  else return n;
+ }
+ const values=new Float32Array(n.count*3),decode=v=>signed?Math.max(v/scale,-1):v/scale;
+ for(let i=0;i<n.count;i++){values[i*3]=decode(n.getX(i));values[i*3+1]=decode(n.getY(i));values[i*3+2]=decode(n.getZ(i));}
+ const promoted=new THREE.BufferAttribute(values,3);geo.setAttribute('normal',promoted);return promoted;
+}
 function arenaWeld(geo,base,N){
- const idx=geo.index,T=(idx?idx.count:N)/3,key=new Map(),grp=new Uint32Array(N),tri=new Uint32Array(T*3),sg=new Float32Array(T);
+ const idx=geo.index,norm=geo.attributes.normal,T=(idx?idx.count:N)/3,key=new Map(),grp=new Uint32Array(N),tri=new Uint32Array(T*3),sg=new Float32Array(T);
  let G=0;
  for(let i=0;i<N;i++){const k=Math.round(base[i*3]*1e3)+','+Math.round(base[i*3+1]*1e3)+','+Math.round(base[i*3+2]*1e3);let g=key.get(k);if(g===undefined){g=G++;key.set(k,g);}grp[i]=g;}
  for(let t=0;t<T;t++){
@@ -77,9 +94,12 @@ function arenaWeld(geo,base,N){
   tri[t*3]=a;tri[t*3+1]=b;tri[t*3+2]=c;
   const ux=base[b*3]-base[a*3],uy=base[b*3+1]-base[a*3+1],uz=base[b*3+2]-base[a*3+2],vx=base[c*3]-base[a*3],vy=base[c*3+1]-base[a*3+1],vz=base[c*3+2]-base[a*3+2];
   const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
-  const cx=(base[a*3]+base[b*3]+base[c*3])/3,cz=(base[a*3+2]+base[b*3+2]+base[c*3+2])/3;
-  const g=arenaGrad(cx,cz,F.goalHalf,F.goalHalf);
-  sg[t]=(-g.x*nx+0.6*ny-g.z*nz)>=0?1:-1;   // inward = -grad + up
+  // Imported meshes include both the inner bowl and exterior fascia. Use
+  // their original normals as the orientation reference, not an inward SDF.
+  if(norm){
+   const rx=norm.getX(a)+norm.getX(b)+norm.getX(c),ry=norm.getY(a)+norm.getY(b)+norm.getY(c),rz=norm.getZ(a)+norm.getZ(b)+norm.getZ(c);
+   sg[t]=(nx*rx+ny*ry+nz*rz)>=0?1:-1;
+  }else sg[t]=1;
  }
  return {tri,grp,sg,T,acc:new Float32Array(G*3)};
 }
@@ -261,11 +281,14 @@ function applySkin(id){
 // onReady fires once the skin GLB and, on the live table, its rod set are resident (sync if cached), so flow.js venueLoad stages both behind the veil
 function selectSkin(id,skinId,onReady){
  cfg.skins=cfg.skins||{};cfg.skins[id]=skinId;
- let left=2;
+ const pitch=CONFIG.tables[id]?.skins?.[skinId]?.pitch;
+ if(pitch&&CONFIG.pitches[pitch]){cfg.pitch=pitch;const sel=document.getElementById('setPitch');if(sel)sel.value=pitch;}
+ let left=3;
  const settled=()=>{if(--left===0&&onReady)onReady();};
+ if(typeof drawField==='function')drawField(settled);else settled();
  if(typeof loadSkin==='function'){
   loadSkin(id,skinId,()=>{
-   applySkin(id);if(typeof drawField==='function')drawField();
+   applySkin(id);
    if(typeof pruneSkins==='function')pruneSkins(id+'/'+skinId);
    settled();
   });
@@ -309,8 +332,9 @@ function registerArenaMorph(root){
    dR[j+2]=lip.x>0?lip.z*(M-1)*gate( lip.x,azR):0;   // widen right mouth (+x half only) — uniform per column, x delta stays 0
    dL[j+2]=lip.x<0?lip.z*(M-1)*gate(-lip.x,azR):0;   // widen left  mouth (−x half only)
   }
-  const w={o:c,pos,base,dR,dL,N,sm:(n.startsWith('arena_bowl')||pn.startsWith('arena_bowl'))?arenaWeld(c.geometry,base,N):null};
-  arenaMorph.push(w);if(w.sm)arenaSmoothNorm(w);
+  const normals=prepareArenaNormals(c.geometry);
+  const w={o:c,pos,base,dR,dL,N,normalBase:normals?new Float32Array(normals.array):null,sm:(n.startsWith('arena_bowl')||pn.startsWith('arena_bowl'))?arenaWeld(c.geometry,base,N):null};
+  arenaMorph.push(w); // Keep the authored shading until the shell actually deforms.
  });
  console.log('arena shell morph: '+arenaMorph.length+' mesh(es)');
 }
@@ -324,7 +348,9 @@ function arenaMorphUpdate(){
  for(let m=0;m<arenaMorph.length;m++){const w=arenaMorph[m],p=w.pos,b=w.base,dR=w.dR,dL=w.dL;
   for(let i=0;i<w.N;i++){const j=i*3;
    p.setXYZ(i,b[j]+dR[j]*tR+dL[j]*tL,b[j+1],b[j+2]+dR[j+2]*tR+dL[j+2]*tL);}
-  p.needsUpdate=true;if(w.sm)arenaSmoothNorm(w);else w.o.geometry.computeVertexNormals();
+  p.needsUpdate=true;
+  if(!active&&w.normalBase){const n=w.o.geometry.attributes.normal;n.array.set(w.normalBase);n.needsUpdate=true;}
+  else if(w.sm)arenaSmoothNorm(w);else w.o.geometry.computeVertexNormals();
  }
  arenaMorphDirty=active;
 }

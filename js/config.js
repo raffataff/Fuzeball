@@ -168,7 +168,13 @@ matchStats:{
 // a skin's `rods` picks one, else its table's `rods`, else the stock assets/rods/; a size missing from a set borrows the stock rod
  rodSets:{
   classic:{ folder:'assets/tables/classic/rods/' },   // files:{1:'name.glb'} overrides one size's file name
-  wood:{ folder:'assets/rods/wood/' }
+  wood:{ folder:'assets/rods/wood/' },
+  alien:{ folder:'assets/rods/alien/' },
+  synapticRelic:{ folder:'assets/rods/synaptic_relic/' },
+  silverCircuit:{ folder:'assets/rods/silver_circuit/' },
+  obsidianVolt:{ folder:'assets/rods/obsidian_volt/' },
+  arenaComet:{ folder:'assets/rods/arena_comet/' },
+
  },
 
 /* ---- table registry --------------------------------------------------- */
@@ -181,14 +187,14 @@ matchStats:{
    room:null,                               // no backdrop; uses the shared ground plane
    defTheme:'classic',
    defSkin:'wood', // must match a skins entry
-   rods:'classic',                          // CONFIG.rodSets id; a skin's own rods:'<id>' wins
+   rods:'wood',                          // CONFIG.rodSets id; a skin's own rods:'<id>' wins
    skins:{
       wood:{name:'Wood', glb:'fuzeball_table_classic_wood.glb', rods:'wood'},
       sundayLeague:{name:'Sunday League', glb:'fuzeball_table_classic_sundayLeague.glb'},
       proLeague:{name:'Pro League', glb:'fuzeball_table_classic_proLeague.glb'},
       premierLeague:{name:'Premier League', glb:'fuzeball_table_classic_premierLeague.glb'},
       strike:{name:'Strike', glb:'fuzeball_table_classic_strike.glb'},
-      alienTech:{name:'Alien Tech', glb:'fuzeball_table_classic_alienTech.glb'},                            
+      alienTech:{name:'Alien Tech', glb:'fuzeball_table_classic_alienTech.glb', rods:'alien', pitch:'alien_tech'},                            
       //alienShip: {name:'Alien Ship',  glb:'fuzeball_table_classic.glb', glbFallback:'assets/fuzeball_table.glb'}, 
    },
    // corner pockets where the dead-ball timer runs faster (|x|>xMin and |z|>zMin, all four corners); `mult` overrides zoneMult
@@ -200,11 +206,12 @@ matchStats:{
    name:'Arena',
    folder:'assets/tables/arena/',
    collision:'bowl',                        // curved bowl (arena.js SDF)
-   room:'fuzeball_room_arena.glb',          // arcade-room backdrop (relative to folder)
    defTheme:'neon',
    defSkin:'standard',
-   skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena_standard.glb'} },
-   rods:'classic',
+   skins:{ standard:{name:'Standard', glb:'fuzeball_table_arena_standard.glb'},
+           federationFinals:{name:'Federation Finals', glb:'fuzeball_table_arena_federation.glb', pitch:'federation_finals'},
+           heliosRunners:{name:'Helios Runners', glb:'fuzeball_table_arena_helios.glb', pitch:'helios_runners'} },
+   rods:'arenaComet',
    bowl:{
    length:120,        // bowl length along x — keep at the table length (see TUNING.md)
    width:68,          // bowl width along z
@@ -232,13 +239,15 @@ matchStats:{
    },
    room:null,                                // no backdrop; uses the shared ground plane
    defTheme:'neon',                          // metadata only
-   defSkin:'standard',
+   defSkin:'silverCircuit',                          // metadata only
    skins:{
-    standard:{name:'Circuit', glb:'fuzeball_table_circuit.glb'},
-    obsidianVolt:{name:'Obsidian Volt', glb:'fuzeball_table_circuit_obsidian.glb'},
-    silverCircuit:{name:'Silver Circuit', glb:'fuzeball_table_circuit_silver.glb', hideGoalNet:true}
+    standard:     {name:'Circuit',        glb:'fuzeball_table_circuit.glb'},
+    obsidianVolt: {name:'Obsidian Volt',  glb:'fuzeball_table_circuit_obsidian.glb',      pitch:'obsidian_volt',     rods:'obsidianVolt'},
+    silverCircuit:{name:'Silver Circuit', glb:'fuzeball_table_circuit_silver.glb',        pitch:'silver_circuit',    rods:'silverCircuit' },
+    synapticRelic:{name:'Synaptic Relic', glb:'fuzeball_table_circuit_synaptic_relic.glb', pitch:'synaptic_relic',   rods:'synapticRelic'},
+    solarForge:   {name:'Solar Forge',    glb:'fuzeball_table_circuit_solar_forge.glb',   pitch:'solar_forge',       }
    },
-   rods:'classic',                           // circuit rods not built yet
+   rods:'arenaComet',                           // circuit rods not built yet
    deadzones:[
     {xMin:46, zMin:14.}   // corner pockets
    ]
@@ -2398,7 +2407,7 @@ deadball:{
   debug:{
    useBallModel:true,  // true = use the ball GLB, false = a generated sphere
    fractureFx:true,     // false = skip the explosion GLBs and vanish instantly
-   roomEditor:false,
+   roomEditor:true,
         // true = F2 opens the room editor (js/roomedit.js)
    figEditor:true,      // true = F4 in the menus opens the Figurine Sizer (js/figedit.js)
   },
@@ -2460,12 +2469,11 @@ deadball:{
       bg:0x05060f, fog:[210,440],
       sky:{src:'assets/rooms/void/sky/nebula'},
       hemi:{sky:0xcdd9ff,ground:0x1c1610,int:0.6,on:true},
-      dir:{color:0xffd2a0,int:1.1,pos:[-140,70,-90],on:true,shadow:false},
+      dir:{color:0xffd2a0,int:1.1,pos:[-140,70,-90],on:true,shadow:true},
       env:{shell:0x07111c,panels:[[0x3f8fa8,-250,30,-110,260,120],[0xb8621f,250,30,110,260,120],[0x123f5e,0,150,-250,340,90],[0xdcecff,0,155,0,150,150]]},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xffffff, int:2.65, dist:150, decay:2, angle:0.6, penumbra:0.32},
-        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xffffff, int:2.95, dist:65, decay:1, angle:0.68, penumbra:0.24},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xffffff, int:2.6, dist:150, decay:2, angle:0.6, penumbra:0.32}
+        {type:'spot', pos:[76,37,-47.51], look:[37,0,0], color:0xffffff, int:1.9, dist:105, decay:0.5, angle:0.41, penumbra:0.54, shadow:true},
+        {type:'spot', pos:[-77,37,-47.51], look:[-36,0,0], color:0xffffff, int:1.9, dist:105, decay:0.5, angle:0.41, penumbra:0.54, shadow:true}
       ],
       props:[],
       led:{idle:'rainbow'}
@@ -2595,9 +2603,14 @@ deadball:{
    verdantia:        {folder:'assets/pitches/', glb:'pitch_verdant.glb',          tex:'pitches/verdantia.jpeg',       name:'Verdantia'},
    champions_green:  {folder:'assets/pitches/', glb:'pitch_champions_green.glb',  tex:'pitches/champions_green.png',  name:'Champions Green', grass:true},
    champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple', grass:true},
+   federation_finals:{folder:'assets/pitches/', glb:'pitch_federation_finals.glb', tex:'pitches/federation_finals.jpeg', name:'Federation Finals'},
+   helios_runners: {folder:'assets/pitches/', glb:'pitch_helios_runners.glb', tex:'pitches/helios_runners.jpeg', name:'Helios Runners'},
    moon:             {folder:'assets/pitches/', glb:'pitch_moon.glb',             tex:'pitches/moon.jpeg',            name:'Moon Dust'},   // tools/build_moon_pitch.mjs
    deck:             {folder:'assets/pitches/', glb:'pitch_deck.glb',             tex:'pitches/deck.jpeg',            name:'Deck Plate'},  // tools/build_deck_pitch.mjs
+   alien_tech:       {folder:'assets/pitches/', glb:'pitch_alien_tech.glb',       tex:'pitches/alien_tech.jpeg',      name:'Alien Tech'},
    obsidian_volt:    {folder:'assets/pitches/', glb:'pitch_obsidian_volt.glb',    tex:'pitches/obsidian_volt.jpeg',   name:'Obsidian Volt'},
+   synaptic_relic:   {folder:'assets/pitches/', glb:'pitch_synaptic_relic.glb', tex:'pitches/synaptic_relic.jpeg', name:'Synaptic Relic'},
+   solar_forge:      {folder:'assets/pitches/', glb:'pitch_solar_forge.glb', tex:'pitches/solar_forge.jpeg', name:'Solar Forge'},
    silver_circuit:   {folder:'assets/pitches/', glb:'pitch_silver_circuit.glb',   tex:'pitches/silver_circuit.jpeg',  name:'Silver Circuit', ior:1.2222222},
    },
 

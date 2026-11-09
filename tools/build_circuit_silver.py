@@ -117,6 +117,8 @@ rail_maps=maps('rail',(.72,.74,.76),(.48,.52,.55),.9,.27)
 
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT,'assets','tables','circuit','fuzeball_table_circuit.glb'))
+for ob in list(bpy.context.scene.objects):
+    if ob.name.startswith('standard_goal_floor_'): bpy.data.objects.remove(ob,do_unlink=True)
 
 def textured_material(name, maps):
     albedo,rough_img,metal_img,normal_img=maps
@@ -144,9 +146,9 @@ side_panel=textured_material('Silver Circuit | composed side panel',panel_maps)
 end_panel=textured_material('Silver Circuit | goal end panel',end_panel_maps)
 foot_panel=textured_material('Silver Circuit | stand end panel',foot_maps)
 under_panel=textured_material('Silver Circuit | navy underbody',under_maps)
-frame=solid('Silver Circuit | cyan goal frame',(0.025,0.20,0.23),0.5,0.26,(0.025,0.65,0.78))
 metalmat=solid('Silver Circuit | rod collars',(0.16,0.22,0.25),0.85,0.26)
 railmat=textured_material('Silver Circuit | brushed silver rail',rail_maps)
+frame=railmat
 pedestal=solid('Silver Circuit | silver stand',(0.54,0.59,0.62),0.72,0.29)
 goal_floor=solid('Silver Circuit | dark goal cavity',(.012,.025,.04),.85,.75)
 inner=textured_material('Silver Circuit | inner wall circuitry',inside_maps)
@@ -171,8 +173,12 @@ for ob in list(bpy.context.scene.objects):
                 poly.material_index=foot_index
             elif center.z < -2 and abs(center.x)<59 and poly.normal.z>.75:
                 poly.material_index=under_index
+            axis=max(range(3),key=lambda i:abs(poly.normal[i]))
             for li,p in zip(poly.loop_indices,pts):
-                uv.data[li].uv=((p.x+65)/130,(p.y+35)/70) if poly.material_index==under_index else ((p.y+28)/56,(p.z+43)/33)
+                if poly.material_index==under_index: uv.data[li].uv=((p.x+65)/130,(p.y+35)/70)
+                elif axis==0: uv.data[li].uv=((p.y+28)/56,.5+(p.z+26)/56)
+                elif axis==1: uv.data[li].uv=((p.x+68.5)/137,(p.z+43)/34.25)
+                else: uv.data[li].uv=((p.x+68.5)/137,(p.y+35.6)/34.25)
     elif ob.name.startswith(('wall_','goal_frame_header')):
         uv=ob.data.uv_layers.active or ob.data.uv_layers.new(name='UVMap')
         for poly in ob.data.polygons:
@@ -184,6 +190,8 @@ for ob in list(bpy.context.scene.objects):
                     uv.data[li].uv=((p.x+68.5)/137,(abs(p.y)-34)/3)
                 elif top:
                     uv.data[li].uv=((p.y+34)/68,(abs(p.x)-60)/8.5)
+                elif abs(n.z)>0.7:
+                    uv.data[li].uv=((p.x+68.5)/137,(p.y+34)/34.25)
                 elif ob.name.startswith('wall_side'):
                     uv.data[li].uv=((p.x+68.5)/137,(p.z+0.6)/16.2)
                 else:
@@ -208,6 +216,13 @@ for ob in list(bpy.context.scene.objects):
     elif ob.name.startswith('rod_hole'):
         for i in range(len(ob.data.materials)): ob.data.materials[i]=metalmat
 
+# Extend the floor through each goal mouth to the outer wall.
+for end in (-1,1):
+    bpy.ops.mesh.primitive_cube_add(size=1,location=(end*64.23,0,-.055))
+    slab=bpy.context.object; slab.name='silver_goal_floor_'+('left' if end<0 else 'right')
+    slab.dimensions=(8.50,22,.10); bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+    slab.data.materials.append(goal_floor)
+
 # Fine rounded metal lips catch the light along both edges of the brushed rim.
 # They follow the stock collision boundary and do not change the playing area.
 rim_lip=solid('Silver Circuit | polished rim lip',(.62,.66,.69),.92,.22)
@@ -219,7 +234,7 @@ for label,hx,hy in (('outer',68.45,36.98),('inner',60.03,34.03)):
     ob=bpy.data.objects.new('silver_rim_lip_'+label,curve); bpy.context.collection.objects.link(ob); ob.data.materials.append(rim_lip)
     bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True); bpy.context.view_layer.objects.active=ob; bpy.ops.object.convert(target='MESH')
 
-# The concept lights the outside of the goal as well as the playing-side frame.
+# Match the outside of the goal to the brushed playing-side frame.
 for side in (-1,1):
     curve=bpy.data.curves.new('silver outer goal','CURVE'); curve.dimensions='3D'; curve.bevel_depth=0.20; curve.bevel_resolution=3
     r=1.15; half=10.9; top=8.75; x=side*68.58
@@ -233,40 +248,10 @@ for side in (-1,1):
     ob=bpy.data.objects.new('goal_frame_silver_outer_'+('l' if side<0 else 'r'),curve); bpy.context.collection.objects.link(ob); ob.data.materials.append(frame)
     bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True); bpy.context.view_layer.objects.active=ob; bpy.ops.object.convert(target='MESH')
 
-# A translucent halo follows the real goal opening.  It gives the light a soft
-# falloff in the game's forward renderer, which has no post-process bloom.
-gh,gw=512,1024
-gy,gx=np.mgrid[0:gh,0:gw]
-yy=-14+28*gx/(gw-1); zz=-1+14*gy/(gh-1)
-side_dist=np.hypot(np.abs(yy)-10.9,zz-np.clip(zz,.2,8.0))
-top_dist=np.hypot(yy-np.clip(yy,-9.75,9.75),zz-8.75)
-dist=np.minimum(side_dist,top_dist)
-alpha=.15*np.exp(-np.square(dist/.75))+.055*np.exp(-np.square(dist/1.9))
-edge=np.minimum.reduce((gx/50,(gw-1-gx)/50,gy/40,(gh-1-gy)/40,np.ones_like(gx)))
-rgba=np.empty((gh,gw,4),dtype=np.float32); rgba[:,:,:3]=(0.08,.62,.9); rgba[:,:,3]=alpha*np.clip(edge,0,1)
-halo_img=bpy.data.images.new('silver_goal_halo',width=gw,height=gh,alpha=True)
-halo_img.colorspace_settings.name='sRGB'; halo_img.pixels.foreach_set(rgba.ravel())
-halo_img.filepath_raw=os.path.join(OUT,'goal_halo.png'); halo_img.file_format='PNG'; halo_img.save()
-halo_mat=bpy.data.materials.new('Silver Circuit | goal light halo'); halo_mat.use_nodes=True
-try: halo_mat.surface_render_method='BLENDED'
-except (AttributeError,TypeError):
-    try: halo_mat.blend_method='BLEND'
-    except (AttributeError,TypeError): pass
-halo_mat.use_backface_culling=False
-nodes=halo_mat.node_tree.nodes; links=halo_mat.node_tree.links; bs=nodes.get('Principled BSDF')
-tex=nodes.new('ShaderNodeTexImage'); tex.image=halo_img
-links.new(tex.outputs['Color'],bs.inputs['Base Color']); links.new(tex.outputs['Color'],bs.inputs['Emission Color'])
-links.new(tex.outputs['Alpha'],bs.inputs['Alpha']); bs.inputs['Roughness'].default_value=1
-bs.inputs['Emission Strength'].default_value=1
-for side in (-1,1):
-    for label,x in (('inner',side*59.28),('outer',side*68.75)):
-        mesh=bpy.data.meshes.new('silver goal halo')
-        mesh.from_pydata([(x,-14,-1),(x,14,-1),(x,14,13),(x,-14,13)],[],[(0,1,2,3)])
-        mesh.update(); uv=mesh.uv_layers.new(name='UVMap')
-        for loop,coord in zip(mesh.polygons[0].loop_indices,[(0,0),(1,0),(1,1),(0,1)]): uv.data[loop].uv=coord
-        ob=bpy.data.objects.new('goal_frame_silver_halo_'+label+'_'+('l' if side<0 else 'r'),mesh)
-        bpy.context.collection.objects.link(ob); mesh.materials.append(halo_mat)
-
 target=os.path.join(ROOT,'assets','tables','circuit','fuzeball_table_circuit_silver.glb')
 bpy.ops.export_scene.gltf(filepath=target,export_format='GLB',export_yup=True,export_apply=True)
+# Apply the same tactile finish used by the shipped GLB.
+import subprocess
+subprocess.run(['node', os.path.join(ROOT, 'tools', 'texture_silver_circuit.cjs')], check=True)
+subprocess.run(['node', os.path.join(ROOT, 'tools', 'apply_silver_image_texture.cjs')], check=True)
 print('Wrote',target)

@@ -1,15 +1,27 @@
-// Companion pitch for the Obsidian Volt Circuit skin.
-import { L, WD, W, H, PPU, clamp, sstep, hash, lineDist, spot, writePitch } from './pitchlib.mjs';
+// Pack the image-authored Obsidian Volt livery and material maps into the pitch GLB.
+import { W, H, P, sharp, writePitch } from './pitchlib.mjs';
 
-const a=Buffer.alloc(W*H*3), n=Buffer.alloc(W*H*3), m=Buffer.alloc(W*H*3);
-for(let j=0;j<H;j++) for(let i=0;i<W;i++){
- const x=-L/2+(i+.5)/PPU, z=-WD/2+(j+.5)/PPU, k=(j*W+i)*3;
- const grain=hash(i*.71,j*.67), noise=hash(Math.floor(i/23),Math.floor(j/23));
- const line=Math.max(1-sstep(.08,.19,lineDist(x,z)),1-sstep(0,.13,spot(x,z)));
- const wash=.9+.1*noise+.035*grain;
- const base=[7,21,34], paint=[49,124,138];
- for(let c=0;c<3;c++)a[k+c]=clamp(Math.round(base[c]*wash*(1-line)+paint[c]*line),0,255);
- n[k]=128;n[k+1]=128;n[k+2]=255;
- m[k]=255;m[k+1]=Math.round(108+grain*9);m[k+2]=25;
+const src=P('assets/pitches/obsidian_volt');
+const image=async(name,mono=false)=>{
+ let pipe=sharp(`${src}/${name}.png`).resize(W,H,{fit:'fill'}).removeAlpha();
+ if(mono)pipe=pipe.greyscale();
+ return (await pipe.raw().toBuffer({resolveWithObject:true})).data;
+};
+const [a,height,roughness,metallic]=await Promise.all([
+ image('livery'),image('height',true),image('roughness',true),image('metallic',true)
+]);
+const n=Buffer.alloc(W*H*3), m=Buffer.alloc(W*H*3);
+for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+ const i=y*W+x, k=i*3;
+ // Convert the supplied height image into an OpenGL tangent-space normal map.
+ const dx=(height[y*W+Math.min(W-1,x+1)]-height[y*W+Math.max(0,x-1)])/255;
+ const dy=(height[Math.min(H-1,y+1)*W+x]-height[Math.max(0,y-1)*W+x])/255;
+ const nx=-dx*1.4, ny=dy*1.4, length=Math.hypot(nx,ny,1);
+ n[k]=Math.round((nx/length*.5+.5)*255);n[k+1]=Math.round((ny/length*.5+.5)*255);n[k+2]=Math.round((1/length*.5+.5)*255);
+ m[k]=255;m[k+1]=roughness[i];m[k+2]=metallic[i];
 }
+await Promise.all([
+ sharp(n,{raw:{width:W,height:H,channels:3}}).png().toFile(`${src}/normal.png`),
+ sharp(m,{raw:{width:W,height:H,channels:3}}).png().toFile(`${src}/metallic_roughness.png`)
+]);
 await writePitch('obsidian_volt',a,n,m,.08);

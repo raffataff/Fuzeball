@@ -33,14 +33,17 @@ panel=panel[np.linspace(0,len(panel)-1,512).astype(int)]
 panel=np.clip(panel*1.45,0,1)
 plum=panel[:,:,0]*0.2126+panel[:,:,1]*0.7152+panel[:,:,2]*0.0722
 pmask=np.clip((panel[:,:,1]-panel[:,:,0]-0.006)*7,0,0.8)
-ph=0.5+(plum-0.02)*0.5-pmask*0.012
+pmat=np.clip(pmask*2.2,0,1)
+ph=0.5+(plum-0.02)*0.85-pmat*0.065
 pdy,pdx=np.gradient(ph)
-pn=np.stack((-pdx*2,-pdy*2,np.ones_like(pdx)),axis=-1)
+pn=np.stack((-pdx*3.2,-pdy*3.2,np.ones_like(pdx)),axis=-1)
 pn=pn/np.maximum(np.linalg.norm(pn,axis=-1,keepdims=True),1e-6)*0.5+0.5
+panel_rough=np.clip(0.54-plum*0.32-pmat*0.21,0.27,0.58)
+panel_metal=np.clip(0.07+pmat*0.53,0,1)
 panel_maps=(
     save_image('panel_basecolor',panel,'sRGB'),
-    save_image('panel_roughness',np.repeat(np.clip(0.48-plum*0.2,0.32,0.5)[:,:,None],3,axis=2),'Non-Color'),
-    save_image('panel_metallic',np.repeat(np.clip(0.32+plum*0.4,0.32,0.5)[:,:,None],3,axis=2),'Non-Color'),
+    save_image('panel_roughness',np.repeat(panel_rough[:,:,None],3,axis=2),'Non-Color'),
+    save_image('panel_metallic',np.repeat(panel_metal[:,:,None],3,axis=2),'Non-Color'),
     save_image('panel_normal',pn,'Non-Color'),
     save_image('panel_emissive',np.stack((pmask*0.02,pmask*0.5,pmask*0.6),axis=-1),'sRGB'))
 
@@ -57,12 +60,13 @@ foot=fp.reshape(1024,1024,4)[25:999,25:999,:3]
 foot=np.clip(foot[np.linspace(0,len(foot)-1,1024).astype(int)][:,np.linspace(0,foot.shape[1]-1,1024).astype(int)]*1.85,0,1)
 flum=foot[:,:,0]*0.2126+foot[:,:,1]*0.7152+foot[:,:,2]*0.0722
 fmask=np.clip((foot[:,:,1]-foot[:,:,0]-0.005)*6,0,0.7)
-fh=0.5+flum*0.35-fmask*0.01
-fdy,fdx=np.gradient(fh); fn=np.stack((-fdx*2,-fdy*2,np.ones_like(fdx)),axis=-1)
+fmat=np.clip(fmask*2.2,0,1)
+fh=0.5+flum*0.7-fmat*0.06
+fdy,fdx=np.gradient(fh); fn=np.stack((-fdx*3,-fdy*3,np.ones_like(fdx)),axis=-1)
 fn=fn/np.maximum(np.linalg.norm(fn,axis=-1,keepdims=True),1e-6)*0.5+0.5
 foot_maps=(save_image('foot_basecolor',foot,'sRGB'),
-    save_image('foot_roughness',np.repeat(np.clip(0.44-flum*0.2,0.3,0.5)[:,:,None],3,axis=2),'Non-Color'),
-    save_image('foot_metallic',np.repeat(np.clip(0.36+flum*0.3,0.3,0.55)[:,:,None],3,axis=2),'Non-Color'),
+    save_image('foot_roughness',np.repeat(np.clip(0.52-flum*0.28-fmat*0.19,0.27,0.56)[:,:,None],3,axis=2),'Non-Color'),
+    save_image('foot_metallic',np.repeat(np.clip(0.07+fmat*0.53,0,1)[:,:,None],3,axis=2),'Non-Color'),
     save_image('foot_normal',fn,'Non-Color'),
     save_image('foot_emissive',np.stack((fmask*0.01,fmask*0.38,fmask*0.46),axis=-1),'sRGB'))
 
@@ -73,8 +77,8 @@ fine=rng.random((512,2048),dtype=np.float32)
 brushed=0.085+streak*0.035+fine*0.008
 etch=np.clip(pmask*3,0,0.65)
 rail_color=np.stack((brushed*0.83+etch*0.01,brushed*0.93+etch*0.20,brushed+etch*0.23),axis=-1)
-rail_rough=np.clip(0.25+streak*0.045+fine*0.018,0,1)
-rail_metal=np.full_like(streak,0.75)
+rail_rough=np.clip(0.25+streak*0.045+fine*0.018+etch*0.16,0,1)
+rail_metal=np.clip(0.86-etch*0.25,0,1)
 rd_y,rd_x=np.gradient(etch); rail_n=np.stack((-rd_x*0.8,-rd_y*0.8,np.ones_like(rd_x)),axis=-1)
 rail_n=rail_n/np.maximum(np.linalg.norm(rail_n,axis=-1,keepdims=True),1e-6)*0.5+0.5
 rail_maps=(save_image('rail_basecolor',rail_color,'sRGB'),
@@ -85,6 +89,8 @@ rail_maps=(save_image('rail_basecolor',rail_color,'sRGB'),
 
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT,'assets','tables','circuit','fuzeball_table_circuit.glb'))
+for ob in list(bpy.context.scene.objects):
+    if ob.name.startswith('standard_goal_floor_'): bpy.data.objects.remove(ob,do_unlink=True)
 
 def textured_material(name, maps):
     albedo,rough_img,metal_img,normal_img,emissive_img=maps
@@ -96,7 +102,7 @@ def textured_material(name, maps):
     links.new(tex(albedo,'Base color').outputs['Color'],bs.inputs['Base Color'])
     links.new(tex(rough_img,'Roughness').outputs['Color'],bs.inputs['Roughness'])
     links.new(tex(metal_img,'Metallic').outputs['Color'],bs.inputs['Metallic'])
-    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=0.55
+    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=0.85
     links.new(tex(normal_img,'Normal').outputs['Color'],nm.inputs['Color']); links.new(nm.outputs['Normal'],bs.inputs['Normal'])
     links.new(tex(emissive_img,'Emissive traces').outputs['Color'],bs.inputs['Emission Color'])
     bs.inputs['Emission Strength'].default_value=1.0
@@ -129,7 +135,11 @@ for ob in list(bpy.context.scene.objects):
             center=sum(pts,Vector())/len(pts)
             if center.z < -12 and abs(center.x)>39 and abs(poly.normal.x)>.6 and center.x*poly.normal.x>0:
                 poly.material_index=foot_index
-            for li,p in zip(poly.loop_indices,pts): uv.data[li].uv=((p.y+28)/56,(p.z+43)/33)
+            axis=max(range(3),key=lambda i:abs(poly.normal[i]))
+            for li,p in zip(poly.loop_indices,pts):
+                if axis==0: uv.data[li].uv=((p.y+28)/56,.5+(p.z+26)/56)
+                elif axis==1: uv.data[li].uv=((p.x+68.5)/137,(p.z+43)/34.25)
+                else: uv.data[li].uv=((p.x+68.5)/137,(p.y+35.6)/34.25)
     elif ob.name.startswith(('wall_','goal_frame_header')):
         uv=ob.data.uv_layers.active or ob.data.uv_layers.new(name='UVMap')
         for poly in ob.data.polygons:
@@ -141,6 +151,8 @@ for ob in list(bpy.context.scene.objects):
                     uv.data[li].uv=((p.x+68.5)/137,(abs(p.y)-34)/3)
                 elif top:
                     uv.data[li].uv=((p.y+34)/68,(abs(p.x)-60)/8.5)
+                elif abs(n.z)>0.7:
+                    uv.data[li].uv=((p.x+68.5)/137,(p.y+34)/34.25)
                 elif ob.name.startswith('wall_side'):
                     uv.data[li].uv=((p.x+68.5)/137,(p.z+0.6)/16.2)
                 else:
@@ -160,6 +172,14 @@ for ob in list(bpy.context.scene.objects):
         for i in range(len(ob.data.materials)): ob.data.materials[i]=frame
     elif ob.name.startswith('rod_hole'):
         for i in range(len(ob.data.materials)): ob.data.materials[i]=metalmat
+
+# Extend the floor through each goal mouth to the outer wall.
+goal_floor=solid('Obsidian Volt | goal floor',(.012,.016,.022),.12,.66)
+for end in (-1,1):
+    bpy.ops.mesh.primitive_cube_add(size=1,location=(end*64.23,0,-.055))
+    slab=bpy.context.object; slab.name='obsidian_goal_floor_'+('left' if end<0 else 'right')
+    slab.dimensions=(8.50,22,.10); bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+    slab.data.materials.append(goal_floor)
 
 for side in (-1,1):
     bpy.ops.mesh.primitive_cube_add(size=1,location=(0,side*34.08,15.61))
