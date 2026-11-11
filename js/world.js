@@ -432,8 +432,6 @@ function buildTable(){
  [-1,1].forEach(sx=>{[-1,1].forEach(sz=>{const w=new THREE.Mesh(ewG,wallMat);
   w.position.set(sx*(F.L/2+1.5),(F.wallH+2)/2-1,sz*(F.goalHalf+segW/2));w.castShadow=true;primTable.add(w);});});
  ledMat=primLedMat=new THREE.MeshStandardMaterial({color:0x38e0ff,emissive:0x38e0ff,emissiveIntensity:1.1,roughness:.4});
- const stripG=new THREE.BoxGeometry(F.L+10,.7,.7);
- [-1,1].forEach(s=>{const st=new THREE.Mesh(stripG,ledMat);st.position.set(0,F.wallH+1.15,s*(F.W/2+1.5));primTable.add(st);});
  // --- goal cages: round posts, crossbar, back frame, diamond-mesh net, on the goal line x=±L/2 ---
  const netTex=makeNetTex();
  [-1,1].forEach((sx,i)=>{
@@ -823,7 +821,7 @@ function buildRoomLightPool(){
 // every pooled light keeps its own target in the scene or its matrix never updates
 function rlpAdd(t,l,cast,mapSize){
  l.visible=true;l.intensity=0;l.castShadow=!!cast;l._rlFree=true;
- if(cast&&l.shadow){l.shadow.mapSize.setScalar(mapSize||1024);l.shadow.bias=-0.0015;l.shadow.normalBias=0.6;
+ if(cast&&l.shadow){l.shadow.mapSize.setScalar(mapSize||1024);l.shadow.bias=-0.0005;l.shadow.normalBias=0.1;
   // a free shadow slot must not cost a pass: castShadow stays true, per-light autoUpdate/needsUpdate skips it
   l.shadow.autoUpdate=false;l.shadow.needsUpdate=false;
   if(l.shadow.camera&&l.shadow.camera.isPerspectiveCamera){l.shadow.camera.near=1;l.shadow.camera.far=600;}}

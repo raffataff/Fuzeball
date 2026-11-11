@@ -260,6 +260,7 @@ function dbgKickGate(r,g){
  else if(!g.low)why='ball-high';
  else if(g.wait)why='wait-sweetspot';
  else if(g.holdShot)why='hold-for-lane';
+ else if(g.shut)why='lane-shut';
  else why='?';
  const kind='BLK:'+why.split(' ')[0];             // dedupe on the REASON, not the numbers riding on it
  if(dbgLogNew('gate',kind))dbgLogPush(dbgFmtT(now)+'  ·blocked  '+why+(g.act?('  act='+g.act):''),'gate|'+kind);

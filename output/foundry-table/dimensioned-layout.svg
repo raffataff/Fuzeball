@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 990" width="1300" height="990" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L7 4 L0 8" fill="none" stroke="#243237"/></marker>
+    <pattern id="net" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="#3f5355"/><path d="M0 0 H10 M0 0 V10" stroke="#8b9d9b" stroke-width=".85"/></pattern>
+  </defs>
+<rect x="0" y="0" width="1300" height="990" fill="#f5f1ea" stroke="none" stroke-width="1"/>
+<text x="52" y="50" font-size="30" fill="#243237" text-anchor="start" font-weight="700">FUZEBALL / FOUNDRY</text>
+<text x="52" y="82" font-size="17" fill="#505f61" text-anchor="start" font-weight="400">Dimensioned concept  /  All measurements in mm</text>
+<text x="1248" y="48" font-size="14" fill="#a94622" text-anchor="end" font-weight="700">PLAN + GOAL ELEVATION</text>
+<line x1="52" y1="101" x2="1248" y2="101" stroke="#cdc6ba" stroke-width="1" />
+<rect x="114.5" y="197" width="1071" height="546" fill="#d7ad7b" stroke="#243237" stroke-width="1.5"/>
+<rect x="114.5" y="194" width="1071" height="4" fill="#a94622" stroke="none" stroke-width="1"/>
+<rect x="114.5" y="743" width="1071" height="4" fill="#a94622" stroke="none" stroke-width="1"/>
+<rect x="200" y="215" width="900" height="510" fill="#547676" stroke="#243237" stroke-width="1.5"/>
+<rect x="132.5" y="387.5" width="67.5" height="165" fill="url(#net)" stroke="#243237" stroke-width="1"/>
+<rect x="1100" y="387.5" width="67.5" height="165" fill="url(#net)" stroke="#243237" stroke-width="1"/>
+<line x1="200" y1="387.5" x2="200" y2="552.5" stroke="#fff4da" stroke-width="2" stroke-dasharray="6 4"/>
+<line x1="1100" y1="387.5" x2="1100" y2="552.5" stroke="#fff4da" stroke-width="2" stroke-dasharray="6 4"/>
+<line x1="650" y1="215" x2="650" y2="725" stroke="#fff4da" stroke-width="1.5" />
+<circle cx="650" cy="470" r="64" fill="none" stroke="#fff4da" stroke-width="1.5"/>
+<circle cx="650" cy="470" r="3" fill="#fff4da" stroke="none" stroke-width="1"/>
+<line x1="256.25" y1="185" x2="256.25" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="251.25" y="756" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="256.25" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="256.25" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="256.25" cy="470" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<text x="256.25" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">75</text>
+<line x1="368.75" y1="185" x2="368.75" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="363.75" y="756" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="368.75" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="368.75" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="368.75" cy="380" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="368.75" cy="560" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<text x="368.75" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">225</text>
+<line x1="481.25" y1="185" x2="481.25" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="476.25" y="150" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="481.25" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="481.25" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="481.25" cy="331.25" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="481.25" cy="470" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="481.25" cy="608.75" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<text x="481.25" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">375</text>
+<line x1="593.75" y1="185" x2="593.75" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="588.75" y="756" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="593.75" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="593.75" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="593.75" cy="291.5" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="593.75" cy="380.75" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="593.75" cy="470" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="593.75" cy="559.25" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="593.75" cy="648.5" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<text x="593.75" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">525</text>
+<line x1="706.25" y1="185" x2="706.25" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="701.25" y="150" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="706.25" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="706.25" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="706.25" cy="291.5" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="706.25" cy="380.75" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="706.25" cy="470" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="706.25" cy="559.25" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="706.25" cy="648.5" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<text x="706.25" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">675</text>
+<line x1="818.75" y1="185" x2="818.75" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="813.75" y="756" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="818.75" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="818.75" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="818.75" cy="331.25" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="818.75" cy="470" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<circle cx="818.75" cy="608.75" r="9" fill="#17696a" stroke="#e3eee6" stroke-width="1.25"/>
+<text x="818.75" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">825</text>
+<line x1="931.25" y1="185" x2="931.25" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="926.25" y="150" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="931.25" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="931.25" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="931.25" cy="380" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<circle cx="931.25" cy="560" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<text x="931.25" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">975</text>
+<line x1="1043.75" y1="185" x2="1043.75" y2="755" stroke="#d4dedb" stroke-width="2" />
+<rect x="1038.75" y="150" width="10" height="34" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="1043.75" cy="215" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="1043.75" cy="725" r="4" fill="#243237" stroke="none" stroke-width="1"/>
+<circle cx="1043.75" cy="470" r="9" fill="#fff4da" stroke="#544e42" stroke-width="1.25"/>
+<text x="1043.75" y="782" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">1125</text>
+<line x1="200" y1="127" x2="200" y2="197" stroke="#505f61" stroke-width="1" />
+<line x1="1100" y1="127" x2="1100" y2="197" stroke="#505f61" stroke-width="1" />
+<line x1="200" y1="142" x2="1100" y2="142" stroke="#243237" stroke-width="1.2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="650" y="133" font-size="17" fill="#243237" text-anchor="middle" font-weight="700">1200 between goal lines</text>
+<line x1="75" y1="215" x2="114.5" y2="215" stroke="#505f61" stroke-width="1" />
+<line x1="75" y1="725" x2="114.5" y2="725" stroke="#505f61" stroke-width="1" />
+<line x1="84" y1="215" x2="84" y2="725" stroke="#243237" stroke-width="1.2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<g transform="rotate(-90 69 470)"><text x="69" y="470" font-size="16" fill="#243237" text-anchor="middle" font-weight="700">680 clear pitch width</text></g>
+<line x1="1167.5" y1="155" x2="1167.5" y2="197" stroke="#505f61" stroke-width="1" />
+<line x1="1100" y1="165" x2="1167.5" y2="165" stroke="#243237" stroke-width="1.2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="1133.75" y="156" font-size="15" fill="#243237" text-anchor="middle" font-weight="700">90</text>
+<text x="1225" y="194" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">Net recess</text>
+<text x="650" y="808" font-size="14" fill="#505f61" text-anchor="middle" font-weight="400">Rod centre positions measured from left goal line. Handles shown schematically.</text>
+<line x1="52" y1="831" x2="1248" y2="831" stroke="#cdc6ba" stroke-width="1" />
+<text x="52" y="859" font-size="14" fill="#a94622" text-anchor="start" font-weight="700">GOAL ELEVATION FROM PITCH</text>
+<rect x="66" y="885" width="340" height="60" fill="#d7ad7b" stroke="#243237" stroke-width="1"/>
+<rect x="181" y="894" width="110" height="51" fill="url(#net)" stroke="#243237" stroke-width="1"/>
+<line x1="181" y1="920" x2="291" y2="920" stroke="#243237" stroke-width="1.2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<rect x="217" y="907" width="38" height="22" fill="#f5f1ea" stroke="none" stroke-width="1"/>
+<text x="236" y="924" font-size="14" fill="#243237" text-anchor="middle" font-weight="700">220</text>
+<line x1="291" y1="894" x2="446" y2="894" stroke="#505f61" stroke-width="1" />
+<line x1="406" y1="945" x2="446" y2="945" stroke="#505f61" stroke-width="1" />
+<line x1="432" y1="894" x2="432" y2="945" stroke="#243237" stroke-width="1.2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="445" y="925" font-size="14" fill="#243237" text-anchor="start" font-weight="700">102</text>
+<line x1="54" y1="945" x2="409" y2="945" stroke="#243237" stroke-width="2" />
+<text x="66" y="968" font-size="14" fill="#505f61" text-anchor="start" font-weight="400">Opening flush with pitch</text>
+<text x="570" y="859" font-size="14" fill="#a94622" text-anchor="start" font-weight="700">MECHANICAL LAYOUT</text>
+<text x="570" y="890" font-size="17" fill="#243237" text-anchor="start" font-weight="400">75 rod axis above pitch  /  150 between rod axes</text>
+<text x="570" y="918" font-size="17" fill="#243237" text-anchor="start" font-weight="400">38 ball diameter  /  850 pitch height above floor</text>
+<text x="570" y="946" font-size="17" fill="#243237" text-anchor="start" font-weight="400">1428 × 728 plywood envelope, before steel aprons and rods</text>
+<text x="1248" y="973" font-size="13" fill="#505f61" text-anchor="end" font-weight="400">Concept dimensions</text>
+</svg>

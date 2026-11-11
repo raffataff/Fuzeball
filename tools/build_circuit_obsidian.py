@@ -70,22 +70,26 @@ foot_maps=(save_image('foot_basecolor',foot,'sRGB'),
     save_image('foot_normal',fn,'Non-Color'),
     save_image('foot_emissive',np.stack((fmask*0.01,fmask*0.38,fmask*0.46),axis=-1),'sRGB'))
 
-# Brushed metal is a separate material from the printed cabinet panels.
-rng=np.random.default_rng(19)
-streak=np.repeat(rng.random((512,1),dtype=np.float32),2048,axis=1)
-fine=rng.random((512,2048),dtype=np.float32)
-brushed=0.085+streak*0.035+fine*0.008
-etch=np.clip(pmask*3,0,0.65)
-rail_color=np.stack((brushed*0.83+etch*0.01,brushed*0.93+etch*0.20,brushed+etch*0.23),axis=-1)
-rail_rough=np.clip(0.25+streak*0.045+fine*0.018+etch*0.16,0,1)
-rail_metal=np.clip(0.86-etch*0.25,0,1)
-rd_y,rd_x=np.gradient(etch); rail_n=np.stack((-rd_x*0.8,-rd_y*0.8,np.ones_like(rd_x)),axis=-1)
+# Image-authored rail art, cropped to keep its proportions on the narrow tops.
+rail_src=bpy.data.images.load(os.path.join(OUT,'rail_imagegen_source.png'),check_existing=False)
+rail_src.scale(2048,683)
+rp=np.empty(2048*683*4,dtype=np.float32); rail_src.pixels.foreach_get(rp)
+rail=np.clip(rp.reshape(683,2048,4)[241:433,:,:3]*1.45,0,1)
+for i in range(96):
+    blend=0.5*(1-i/96)
+    left=rail[:,i,:].copy(); right=rail[:,-1-i,:].copy()
+    rail[:,i,:]=left*(1-blend)+right*blend; rail[:,-1-i,:]=right*(1-blend)+left*blend
+rlum=rail[:,:,0]*0.2126+rail[:,:,1]*0.7152+rail[:,:,2]*0.0722
+rmask=np.clip((rail[:,:,1]-rail[:,:,0]-0.006)*7,0,0.8)
+rmat=np.clip(rmask*2.2,0,1)
+height=0.5+(rlum-0.02)*0.85-rmat*0.065
+rd_y,rd_x=np.gradient(height); rail_n=np.stack((-rd_x*3.2,-rd_y*3.2,np.ones_like(rd_x)),axis=-1)
 rail_n=rail_n/np.maximum(np.linalg.norm(rail_n,axis=-1,keepdims=True),1e-6)*0.5+0.5
-rail_maps=(save_image('rail_basecolor',rail_color,'sRGB'),
-    save_image('rail_roughness',np.repeat(rail_rough[:,:,None],3,axis=2),'Non-Color'),
-    save_image('rail_metallic',np.repeat(rail_metal[:,:,None],3,axis=2),'Non-Color'),
+rail_maps=(save_image('rail_basecolor',rail,'sRGB'),
+    save_image('rail_roughness',np.repeat(np.clip(0.54-rlum*0.32-rmat*0.21,0.27,0.58)[:,:,None],3,axis=2),'Non-Color'),
+    save_image('rail_metallic',np.repeat(np.clip(0.07+rmat*0.53,0,1)[:,:,None],3,axis=2),'Non-Color'),
     save_image('rail_normal',rail_n,'Non-Color'),
-    save_image('rail_emissive',np.stack((etch*0.006,etch*0.16,etch*0.19),axis=-1),'sRGB'))
+    save_image('rail_emissive',np.stack((rmask*0.02,rmask*0.5,rmask*0.6),axis=-1),'sRGB'))
 
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT,'assets','tables','circuit','fuzeball_table_circuit.glb'))
@@ -102,7 +106,7 @@ def textured_material(name, maps):
     links.new(tex(albedo,'Base color').outputs['Color'],bs.inputs['Base Color'])
     links.new(tex(rough_img,'Roughness').outputs['Color'],bs.inputs['Roughness'])
     links.new(tex(metal_img,'Metallic').outputs['Color'],bs.inputs['Metallic'])
-    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=0.85
+    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=2.5
     links.new(tex(normal_img,'Normal').outputs['Color'],nm.inputs['Color']); links.new(nm.outputs['Normal'],bs.inputs['Normal'])
     links.new(tex(emissive_img,'Emissive traces').outputs['Color'],bs.inputs['Emission Color'])
     bs.inputs['Emission Strength'].default_value=1.0
@@ -148,9 +152,9 @@ for ob in list(bpy.context.scene.objects):
             for li in poly.loop_indices:
                 p=ob.matrix_world @ ob.data.vertices[ob.data.loops[li].vertex_index].co
                 if top and ob.name.startswith('wall_side'):
-                    uv.data[li].uv=((p.x+68.5)/137,(abs(p.y)-34)/3)
+                    uv.data[li].uv=((p.x+68.5)/32,(abs(p.y)-34)/3)
                 elif top:
-                    uv.data[li].uv=((p.y+34)/68,(abs(p.x)-60)/8.5)
+                    uv.data[li].uv=((p.y+34)/32,(abs(p.x)-60)/3)
                 elif abs(n.z)>0.7:
                     uv.data[li].uv=((p.x+68.5)/137,(p.y+34)/34.25)
                 elif ob.name.startswith('wall_side'):

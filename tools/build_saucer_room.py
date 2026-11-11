@@ -71,8 +71,8 @@ def polar(r, th, y=0.0): t = math.radians(th); return (r * math.cos(t), y, r * m
 def sstep(a, b, x): t = np.clip((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t)
 GLOW_W, GLOW_H = 1024, 384        # the glow atlas; regions are pixel boxes (x0, y0, x1, y1), y from the top
 GA = {'sign': (0, 0, 1024, 256), 'warm': (0, 256, 128, 384), 'teal': (128, 256, 256, 384), 'strip': (256, 256, 768, 384), 'red': (768, 256, 896, 384)}
-PAINT_W, PAINT_H = 1024, 512       # the paint atlas: worn markings and stains laid on the deck
-PA = {'haz': (0, 0, 512, 192), 'stencil': (512, 0, 1024, 64), 'line': (512, 64, 1024, 96), 'stain': (0, 192, 256, 448), 'worn': (256, 192, 512, 448), 'spill': (512, 192, 768, 448)}
+PAINT_W, PAINT_H = 2048, 1024       # worn markings, stains and bar insignia
+PA = {'haz': (0, 0, 512, 192), 'stencil': (512, 0, 1024, 64), 'line': (512, 64, 1024, 96), 'stain': (0, 192, 256, 448), 'worn': (256, 192, 512, 448), 'spill': (512, 192, 768, 448), 'crest': (1024, 0, 1280, 256), 'cup': (1280, 0, 1536, 256), 'orbit': (1536, 0, 1792, 256), 'service': (1792, 0, 2048, 256), 'fuze': (1024, 256, 1280, 512), 'federation': (1280, 256, 1536, 512), 'challenge': (1536, 256, 1792, 512), 'goodgame': (1792, 256, 2048, 512), 'venue_cert': (1024, 512, 1280, 768), 'play_cert': (1280, 512, 1536, 768)}
 SIGN_X, SIGN_Y0, SIGN_Y1 = 85.3, 12.0, 54.7   # what the sign region covers: +-x cm along the arc, y cm above the deck
 
 # ---- scene + materials -------------------------------------------------------------------------
@@ -340,7 +340,7 @@ def hull_textures(W, H):
                     if y0 <= sy + dy <= y1: rivet(xv, sy + dy)
     # wear: chips (sunk to the primer or steel) near seams and the floor, rust under the rivets, scuffs low down, grime
     chip_n = tfbm(H, W, 40, 24, SEED + 3, 5)
-    score = chip_n + 0.26 * np.exp(-dmin / 1.4) + 0.2 * np.exp(-yy / 12.0) + 0.04 * (kind == 1) - 0.8
+    score = chip_n + 0.31 * np.exp(-dmin / 1.4) + 0.2 * np.exp(-yy / 12.0) + 0.07 * (kind == 1) - 0.79
     chip = sstep(0.0, 0.05, score) * (kind != 2)
     Hh -= 0.3 * chip
     prime = np.where((tfbm(H, W, 8, 5, SEED + 4, 3) > 0.5)[..., None], hx(0x7a4a36), hx(0x868a8c))
@@ -569,6 +569,14 @@ def paint_texture():
         put_rgba(reg, np.array(col), np.clip(edge * k + ring, 0, 1) * 0.9)
     x0, y0, x1, y1 = box('worn'); h, w = y1 - y0, x1 - x0; yy, xx = np.mgrid[0:h, 0:w]; v = 1 - (yy + .5) / h
     put_rgba('worn', np.array([0.70, 0.74, 0.76]), np.exp(-((v - 0.5) / 0.22) ** 2) * 0.22 * (0.45 + 0.9 * tfbm(h, w, 5, 9, SEED + 67, 4)) * sstep(0, 0.12, xx / w) * (1 - sstep(0.88, 1.0, xx / w)))
+    art_path = os.path.join(ROOT, 'assets', 'rooms', 'saucer', 'art', 'saucer-decals.png')
+    art = bpy.data.images.load(art_path, check_existing=True)
+    pixels = np.empty(1024 * 768 * 4, np.float32); art.pixels.foreach_get(pixels)
+    artwork = pixels.reshape(768, 1024, 4)[::-1].copy()
+    for i, reg in enumerate(('crest', 'cup', 'orbit', 'service', 'fuze', 'federation', 'challenge', 'goodgame', 'venue_cert', 'play_cert')):
+        x0, y0, x1, y1 = box(reg); tile = artwork[(i // 4) * 256:(i // 4 + 1) * 256, (i % 4) * 256:(i % 4 + 1) * 256]
+        img[y0:y1, x0:x1, :3] = tile[..., :3]
+        img[y0:y1, x0:x1, 3] = tile[..., 3] * (1.0 if i >= 8 else wear(256, 256, SEED + 180 + i, 0.61, 0.75))
     rgb_ = img[..., :3]; empty = img[..., 3] < 1e-3
     for c in range(3): rgb_[..., c] = np.where(empty, 0.3, rgb_[..., c])
     return np.clip(img, 0, 1)
@@ -585,7 +593,7 @@ def seg_wrap(img, p0, p1, w, val):
 # kind: cm one repeat covers, normal strength. A neutral albedo (steel, brass, leather, plastic) is multiplied by the material's colour;
 # paint and wood carry their own colours. The ORM green channel is absolute roughness for the roughest wearer; the others scale it (FACT).
 SURF_TILE = {'steel': 22.0, 'brass': 30.0, 'paint': 56.0, 'leather': 14.0, 'wood': 64.0, 'plastic': 20.0}
-SURF_K    = {'steel': 0.9, 'brass': 1.1, 'paint': 1.3, 'leather': 1.6, 'wood': 1.2, 'plastic': 0.7}
+SURF_K    = {'steel': 1.1, 'brass': 1.3, 'paint': 1.7, 'leather': 2.0, 'wood': 1.2, 'plastic': 0.7}
 def worley(N, cells, seed):
     """Periodic F1, F2 (in cell widths) to one jittered point per cell; cells x cells over the tile."""
     g = np.random.default_rng(seed).random((cells, cells, 2))
@@ -654,7 +662,7 @@ def paint_set(N):
     Returns the normal, the ORM and the masks paint_albedo colours."""
     s = N / 512.0
     cl = sstep(0.38, 0.78, tfbm(N, N, 3, 3, SEED + 121, 4))
-    sc = tfbm(N, N, 26, 26, SEED + 122, 5) + 0.10 * (tfbm(N, N, 96, 96, SEED + 123, 2) - 0.5) + 0.22 * cl - 0.915
+    sc = tfbm(N, N, 26, 26, SEED + 122, 5) + 0.10 * (tfbm(N, N, 96, 96, SEED + 123, 2) - 0.5) + 0.24 * cl - 0.91
     chip = sstep(0.0, 0.01, sc); rim = sstep(-0.016, 0.0, sc) * (1 - chip)
     peel = tfbm(N, N, 72, 72, SEED + 124, 2); mott = tfbm(N, N, 8, 8, SEED + 125, 4)
     grime = sstep(0.52, 0.86, tfbm(N, N, 4, 4, SEED + 126, 5))
@@ -1054,6 +1062,15 @@ def paint_arc(th0, th1, r0, r1, reg, y=None, step=3.0):
         t = th0 + (th1 - th0) * k / n
         for r, v in ((r0, 0), (r1, 1)): PNT['V'].append(Vector(g2b(*polar(r, t, y)))); PNT['UV'].append(paint_uv(reg, k / n, v))
     for k in range(n): PNT['F'].append((o + 2 * k, o + 2 * k + 1, o + 2 * k + 3, o + 2 * k + 2))
+def paint_wall(th, r, y, width, height, reg, tilt=0):
+    n = 4; radius = r_in(y) - 0.8 if r is None else r; o = len(PNT['V']); a = math.radians(tilt)
+    for k in range(n + 1):
+        for yy, v in ((y - height / 2, 0), (y + height / 2, 1)):
+            dx = (k / n - 0.5) * width; dy = yy - y
+            t = th + math.degrees((dx * math.cos(a) - dy * math.sin(a)) / radius)
+            yy = y + dx * math.sin(a) + dy * math.cos(a)
+            PNT['V'].append(g2b(*polar(r_in(yy) - 0.8 if r is None else r, t, yy))); PNT['UV'].append(paint_uv(reg, k / n, v))
+    for k in range(n): PNT['F'].append((o + 2*k, o + 2*k + 1, o + 2*k + 3, o + 2*k + 2))
 GLV, GLF = [], []                                                   # thin glass shells, joined to the window glass mesh
 def tumbler(M, liquid=None):
     """A tapered tumbler: glass shell (the window material), the drink glowing inside."""
@@ -1119,6 +1136,13 @@ SGH = math.degrees(SIGN_X / (BF - 2.5))
 glow_arc(-135 - SGH, -135 + SGH, BF - 2.1, FL + SIGN_Y0, FL + SIGN_Y1, 'sign')
 for th in (-145, -125): LAMPS.append((polar(BF - 6.0, th, FL + 30.0), 0xff9a3c, 300))
 
+for th, y, width, height, reg, tilt in ((-164, FL+70, 19, 19, 'crest', -4), (-154, FL+75, 12, 12, 'cup', 5), (-150, FL+65, 8, 8, 'goodgame', -8), (-141, FL+69, 18, 18, 'orbit', 3), (-128, FL+76, 14, 14, 'fuze', -5), (-119, FL+67, 16, 16, 'federation', 6), (-107, FL+40, 15, 15, 'service', -5)):
+    paint_wall(th, BF - 1.35, y, width, height, reg, tilt)
+for th, y, width, height, reg in ((108.5, FL+48, 10, 10, 'goodgame'), (116.5, FL+48, 11, 11, 'cup'), (124.5, FL+49, 11, 11, 'fuze'), (132.5, FL+48, 10, 10, 'orbit')):
+    paint_wall(th, 185.4, y, width, height, reg)
+for th, y, width, height, reg in ((48, 83, 25, 25, 'challenge'), (82, 84, 24, 24, 'federation'), (145, 82, 23, 23, 'service')):
+    paint_wall(th, None, y, width, height, reg)
+
 # on the counter: a tap tower, bottles, glasses on a tray and a till
 sec('bar top')
 def bar_at(th, off, yaw=None): return at_polar(th, BF + off, BT, th + 180 if yaw is None else yaw)
@@ -1151,11 +1175,11 @@ def stool(th, r, H=60.0, seat='mustard', yaw=None, lean=0.0, tape=False, tip=Fal
     put('dark', M, p_lathe([[(11.6, 0.0), (12.0, 0.5), (12.0, 1.2), (10.4, 1.9), (7.0, 3.3), (4.2, 5.6), (3.2, 8.0)]], 16))
     for k in range(3):
         a = math.radians(120 * k + 15); put('steel', M @ loc(10.0 * math.cos(a), 10.0 * math.sin(a), 2.1), p_cyl(0.8, 0.8, 5, cz=0.2, caps=False)); put('steel', M @ loc(10.0 * math.cos(a), 10.0 * math.sin(a), 2.5), p_cyl(0.8, 0.1, 5, cz=0.0))
-    put('steel', M, p_cyl(2.05, H - 12.0, 10, cz=6.0 + (H - 12.0) / 2))
-    put('steel', M, p_cyl(3.1, 1.6, 10, cz=8.6)); put('steel', M, p_cyl(3.1, 2.2, 10, cz=zr))
-    put('steel', M, p_torus(10.4, 0.85, 16, 5, cz=zr))
+    put('brass', M, p_cyl(2.05, H - 12.0, 10, cz=6.0 + (H - 12.0) / 2))
+    put('brass', M, p_cyl(3.1, 1.6, 10, cz=8.6)); put('brass', M, p_cyl(3.1, 2.2, 10, cz=zr))
+    put('brass', M, p_torus(10.4, 0.85, 16, 5, cz=zr))
     for k in range(4):
-        a = math.radians(90 * k + 45); put('steel', M, p_tube([Vector((2.6 * math.cos(a), 2.6 * math.sin(a), zr)), Vector((10.2 * math.cos(a), 10.2 * math.sin(a), zr))], 0.55, 6, False))
+        a = math.radians(90 * k + 45); put('brass', M, p_tube([Vector((2.6 * math.cos(a), 2.6 * math.sin(a), zr)), Vector((10.2 * math.cos(a), 10.2 * math.sin(a), zr))], 0.55, 6, False))
     put('dark', M, p_lathe([[(0, H - 3.9), (9.0, H - 3.9), (10.1, H - 3.4), (10.1, H - 2.8)]], 20))
     put('steel', M, p_cyl(5.4, 1.0, 10, cz=H - 4.6, caps=False))
     put(seat, M, p_lathe([[(9.9, H - 3.4), (10.3, H - 2.8), (10.6, H - 2.0), (10.6, H - 1.5), (10.1, H - 1.0), (9.0, H - 0.4), (6.0, H + 0.1), (0.0, H + 0.3)]], 22))
@@ -1334,11 +1358,9 @@ for sx_ in (-1, 1):
     put('caution', Mw_ @ loc(0, sx_ * 4.6, 11.5) @ rotx(sx_ * 11), p_rbox(12, 1.1, 24, 0.45, 1))
     put('dark', Mw_ @ loc(0, sx_ * 4.6, 17.5) @ rotx(sx_ * 11), p_box(12.2, 1.3, 3.4, 0.1))
 AO_BLOBS.append((120 * math.cos(math.radians(-93)), 120 * math.sin(math.radians(-93)), 12, 12, 0.4))
-# framed sanctioning certificates either side of the hatch
-for th in (-17, 17):
-    Mf = at_wall(th, FL + 66, 0.8)
-    put('gold', Mf, p_box(17, 1.4, 23, 0.5)); put('vinyl', Mf @ loc(0, -0.9, 0), p_box(14.2, 0.6, 20.2)); put('red', Mf @ loc(0, -1.4, -6.5) @ rotx(90), p_cyl(2.1, 0.7, 14))
-    for yv in (4.5, 1.5, -1.5): put('dark', Mf @ loc(0, -1.4, yv), p_box(9.0 - 1.0 * (yv < 0), 0.3, 0.7))
+# Framed certificates on clear hull panels.
+paint_wall(-17, None, 89, 22, 29, 'venue_cert')
+paint_wall(64, None, 80, 22, 29, 'play_cert')
 
 sec('floor')
 # ---- the deck: what a venue leaves on it -----------------------------------------------------------------------
@@ -1454,7 +1476,7 @@ FLAT = {   # name: (hex, metal, rough, emissive hex, strength, surface kind); wi
     'bottle': (0x7a4a14, 0.0, 0.2, 0xc9791f, 1.2, None),
     'gold':   (0xe8b24a, 1.0, 0.8, None, 1, 'steel'),
     'red':    (0xb3261e, 1.0, 0.8, None, 1, 'paint'),
-    'mustard': (0xb07a2a, 1.0, 1.0, None, 1, 'leather'),
+    'mustard': (0x9b5929, 1.0, 1.0, None, 1, 'leather'),
     'leather': (0x552a2e, 1.0, 0.8, None, 1, 'leather'),
 }
 for k, (h, m, r, e, es, kd) in FLAT.items(): MATS[k] = flat_mat('saucer_' + k, h, m, r, e, es, kd)
@@ -1665,7 +1687,7 @@ if os.path.exists(JUKE_SRC):
 else: print('saucer: no', JUKE_SRC, '- built the old jukebox')
 
 # ---- the light bake: ambient occlusion and the room's own lamps, ray-traced per corner into the baked colour (glTF COLOR_0) ----------
-BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.46, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
+BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.56, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
 def bake_light():
     from mathutils.bvhtree import BVHTree
     t0 = time.time(); skip = {'saucer_glass', 'saucer_glow', 'saucer_paint'} | {'saucer_' + n for n in PROC_SKIP}

@@ -40,10 +40,13 @@ if(typeof SCREENS!=='undefined'){SCREENS.league.onHide=lgVenueExit;SCREENS.champ
 // venue a division plays at: the save's frozen copy (LG.divs) wins over the config default; `theme` is the legacy key
 function lgDivVenue(t){
  const d=(LG&&LG.divs&&LG.divs[t])||{},c=LGC.divisions[t]||{};
+ // Existing Premier saves captured the old default pitch in their venue.
+ // Upgrade only that original default combination; retain custom venues.
+ const legacyPremier=t===2&&(d.table||c.table)==='classic'&&(d.skin||c.skin)==='premierLeague'&&roomIdOf(d.room||d.theme||c.room)==='arcade'&&d.pitch==='royal';
  return{table:d.table||c.table||'classic',
         skin:d.skin||c.skin||null,
         room:roomIdOf(d.room||d.theme||c.room||c.theme),
-        pitch:d.pitch||c.pitch||'grass1'};
+        pitch:legacyPremier?'premier_championship':(d.pitch||c.pitch||'grass1')};
 }
 // Cup venue: pitch drawn at random once and remembered on the tie so the bracket, tape and match agree.
 function cupVenue(){

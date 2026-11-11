@@ -1,0 +1,44 @@
+
+### tools\build\arcade\fuzeball_room_arcade.raw.glb
+  [0] 512x512           normal                       UASTC 0.3MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [1] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [2] 512x512           metallicRoughness            UASTC 0.1MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [3] 512x512           normal                       UASTC 0.1MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [4] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [5] 512x512           metallicRoughness            UASTC 0.2MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [6] 512x512           normal                       UASTC 0.3MB -> 0.3MB file, 1.3MB -> 0.3MB vram
+  [7] 2048x2048         baseColor+emissive           ETC1S 1.4MB -> 0.4MB file, 21.3MB -> 5.3MB vram
+  [8] 2048x2048         baseColor                    ETC1S 1.4MB -> 0.5MB file, 21.3MB -> 5.3MB vram
+  [9] 2048x2048         baseColor                    ETC1S 2.0MB -> 0.5MB file, 21.3MB -> 5.3MB vram
+  [10] 256x256           baseColor+emissive           ETC1S 0.0MB -> 0.0MB file, 0.3MB -> 0.1MB vram
+  [11] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [12] 1376x768          baseColor+emissive           ETC1S 0.5MB -> 0.2MB file, 5.4MB -> 1.3MB vram
+  [13] 256x256           baseColor+emissive           ETC1S 0.0MB -> 0.0MB file, 0.3MB -> 0.1MB vram
+  [14] 1024x1024         baseColor                    ETC1S 0.5MB -> 0.1MB file, 5.3MB -> 1.3MB vram
+  [15] 512x512           baseColor+emissive           ETC1S 0.2MB -> 0.1MB file, 1.3MB -> 0.3MB vram
+  [16] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [17] 512x512           metallicRoughness            UASTC 0.1MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [18] 512x512           normal                       UASTC 0.3MB -> 0.3MB file, 1.3MB -> 0.3MB vram
+  [19] 512x512           baseColor                    ETC1S 0.3MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [20] 512x512           metallicRoughness            UASTC 0.2MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [21] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [22] 1024x810>1024x812 normal                       UASTC 1.5MB -> 0.8MB file, 4.2MB -> 1.1MB vram  (aligned)
+  [23] 2048x1620         baseColor                    ETC1S 2.6MB -> 0.3MB file, 16.9MB -> 4.2MB vram
+  [24] 1024x810>1024x812 metallicRoughness            UASTC 0.6MB -> 0.6MB file, 4.2MB -> 1.1MB vram  (aligned)
+  [25] 512x512           baseColor                    ETC1S 0.2MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [26] 1024x512          baseColor+emissive           ETC1S 0.1MB -> 0.1MB file, 2.7MB -> 0.7MB vram
+  [27] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [28] 1920x1080         baseColor+metallicRoughness  ETC1S 0.5MB -> 0.2MB file, 10.5MB -> 2.6MB vram
+  [29] 896x1200          baseColor+emissive           ETC1S 0.5MB -> 0.1MB file, 5.5MB -> 1.4MB vram
+  [30] 512x512           baseColor                    ETC1S 0.2MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [31] 512x512           normal                       UASTC 0.1MB -> 0.1MB file, 1.3MB -> 0.3MB vram
+  [32] 512x512           baseColor                    ETC1S 0.1MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [33] 512x512           metallicRoughness            UASTC 0.1MB -> 0.2MB file, 1.3MB -> 0.3MB vram
+  [34] 1024x1536         normal                       UASTC 0.6MB -> 0.8MB file, 8.0MB -> 2.0MB vram
+  [35] 1024x1536         baseColor                    ETC1S 0.6MB -> 0.1MB file, 8.0MB -> 2.0MB vram
+  [36] 512x768           metallicRoughness            UASTC 0.1MB -> 0.2MB file, 2.0MB -> 0.5MB vram
+  [37] 512x512           baseColor                    ETC1S 0.3MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  [38] 512x512           baseColor                    ETC1S 0.2MB -> 0.0MB file, 1.3MB -> 0.3MB vram
+  = 39 encoded, 0 skipped | VRAM 168.0MB -> 42.0MB | file 18.1MB -> 8.5MB
+
+TOTAL  VRAM 168.0MB -> 42.0MB  (4.0x)   |   on disk 18.1MB -> 8.5MB

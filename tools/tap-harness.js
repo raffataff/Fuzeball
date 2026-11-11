@@ -132,7 +132,8 @@ function suite(X){
   ok('...but only when the caller asks for it (retrieve shares this carry and cannot tap)',v!==3&&!pk);}
  {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.settleT-0.05);back();ok('...not before the held ball has settled',v===0);}
  {const r=stuck({tapN:TP.maxChain});pinned(X,r,0,-0.7);const v=play(r);back();ok('...not once it has been tapped maxChain times on this possession',v!==3);}
- {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.holdT+0.01);back();ok('...a ball held too long is played (late), not tapped',v===1);}
+ {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.holdT+0.01);back();ok('...a ball held too long with its lane shut is still tapped, never shot into the row (ai.lanes)',v===3);}
+ {X.AIC.lanes.on=false;const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.holdT+0.01);back();X.AIC.lanes.on=true;ok('...with the gate off it is played (late), not tapped',v===1);}
  {const r=stuck();pinned(X,r,0,-0.7);X.setPick({score:60,x:7.5,z:5,clr:4,onward:3,rod:{role:'MID'}});const v=play(r);back();X.setPick(null);
   ok('a better-placed mate does not beat a tap: the tap goes before the pass',v===3,'v='+v);}
  {const sm=CA.slideMax;CA.slideMax=0;const r=stuck({tapN:TP.maxChain});pinned(X,r,0,-0.7);X.setPick({score:60,x:7.5,z:5,clr:4,onward:3,rod:{role:'MID'}});const v=play(r);back();X.setPick(null);CA.slideMax=sm;

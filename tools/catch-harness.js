@@ -82,7 +82,8 @@ function suite(X){
  {const r=world(X);const b=pinned(X,r,0);const best=view(X,-0.5,0);
   const v=X.pinPlay(r,best,0.5,dt);
   ok('blocked everywhere in reach and no pass: play nothing',v===0);
-  ok('…until holdT, then play it',X.pinPlay(r,best,CA.holdT+0.01,dt)===1);}
+  ok('…nor at holdT: a shot needs a lane (ai.lanes; lanes-harness)',X.pinPlay(r,best,CA.holdT+0.01,dt)===0);
+  X.AIC.lanes.on=false;ok('…with the lane gate off it is played at holdT (the old rule)',X.pinPlay(r,best,CA.holdT+0.01,dt)===1);X.AIC.lanes.on=true;}
  {const r=world(X,{maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);X.setPick({score:30,x:7.5,z:5,clr:4,onward:3,rod:{role:'MID'}});
   const v=X.pinPlay(r,best,0.5,dt);
   ok('blocked, nowhere to carry it, and a mate is better placed: pass (to him)',v===2&&r.catPk&&r.catPk.x===7.5);
@@ -544,7 +545,8 @@ function suite(X){
    const v=X.pinPlay(r,view(X,3.5,-6),1,dt),ln=X.laneObs(0,bx,gx,SN.shotV),ls=X.laneObs(0,bx,gx,CA.shotV),oa=X.pinOutlet(r,bx,-6,ln,gx,0)>=SN.clear,ob2=X.pinOutlet(r,bx,-6,ls,gx,0)>=SN.clear;ob.vz=0;
    ok('the rows are read at the snake\'s speed',oa!==ob2&&v===(oa?1:0),'v='+v+' at150='+oa+' at105='+ob2);}
   {const r=hold(3.5,0,{defOff:0}),v=X.pinPlay(r,view(X,3.5,0),CA.holdT+0.1,dt);
-   ok('late with the lane shut it is the snake too, not a re-seat',v===1&&r.pcSn);}
+   ok('late with the lane shut a snake hold is held on (ai.lanes), not re-seated',v===0&&r.pcSn);
+   r.force=true;ok('…the dead-ball push fires it as the snake',X.pinPlay(r,view(X,3.5,0),CA.holdT+0.1,dt)===1&&r.pcSn);}
   {const r=hold(3.5,0);X.setPick({score:30,x:7.5,z:5,clr:4,onward:3,rod:{role:'MID'}});const ok1=reseated(r,0,3.5);X.setPick(null);   // world() clears the pick
    ok('a pass from a snake hold still re-seats (the snake is a shot)',ok1&&r.pcSn,'kicks='+JSON.stringify(X.KICKS.map(k=>k.style)));}
   Object.assign(SN,JSON.parse(K0));X.setRng(0.99);CA.tictac.first=TF;}
@@ -619,7 +621,7 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 const MUT=[
  {n:'a held ball is played before it has settled',part:'catch',from:' if(t<CA.settleT)return 0;',to:''},
  {n:'every lane counts as open',part:'catch',from:'open=now>=(sn?SN.clear:CA.lineClear),',to:'open=true,'},
- {n:'a ball with no way forward is never played, however long it is held',part:'catch',from:'else if(late){v=1;',to:'else if(false){v=1;'},
+ {n:'a ball with no way forward is never played, however long it is held',part:'catch',from:'if(lnow>=laneMin(r)){v=1;',to:'if(false){v=1;'},
  {n:'a pass is made without asking the strike gate',part:'catch',from:'&&strikeOn(r,best,\'pass\',pinSwing(true)))',to:')'},
  {n:'the passes are looked at even with an open lane (the attacker)',part:'catch',from:'const pk=((open&&!OP)||mull)?null:passPick(r,p.x,p.z,\'pin\');',to:'const pk=mull?null:passPick(r,p.x,p.z,\'pin\');'},
  {n:'no rod looks at the passes with an open lane',part:'catch',from:'const OP=open&&CA.open?CA.open[r.role]:null;',to:'const OP=null;'},
@@ -698,7 +700,7 @@ const MUT=[
  {n:'a ball knocked out of the pin keeps the catch alive',part:'catch',from:'if(r.catPh===\'hold\'){CAS.lost++;catchEnd(r,CA.cd,\'knocked\');return;}',to:''},
  {n:'the pose is not frozen once caught',part:'catch',from:'r.pinOn=true;r.pinPose=true;r.pinA=r.angle;                     // frozen where it caught',to:'r.pinOn=true;r.pinPose=true;r.pinA=CA.front.angle*dir;'},
  {n:'ending leaves the pin held',part:'catch',from:' if(r.pinB)pinRelease(r);\n r.pinOn=false;',to:' r.pinOn=false;'},
- {n:'ending leaves the pin flags up',part:'catch',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;r.puPh=null;\n r.act=null;r.catPh=null;',to:' r.puPh=null;\n r.act=null;r.catPh=null;'},
+ {n:'ending leaves the pin flags up',part:'catch',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;r.puPh=null;r.unPh=null;\n r.act=null;r.catPh=null;',to:' r.puPh=null;r.unPh=null;\n r.act=null;r.catPh=null;'},
  {n:'ending sets no cooldown',part:'catch',from:'r.catCd=cd||0;',to:'r.catCd=0;'},
  {n:"the re-seat lets the ball go in place, no lift",part:'catch',from:"if(AIC.catch.recv.lift.on){fliftStart(r,'retrieve');return;}",to:""},
  {n:"…even with the lift switched off",part:'catch',from:"if(AIC.catch.recv.lift.on)",to:"if(true)"},
@@ -806,7 +808,7 @@ const MUT=[
  {n:"every role snakes",part:'catch',from:"||SN.roles.indexOf(r.role)<0",to:""},
  {n:"the snake share is drawn every frame",part:'catch',from:"if(r.pcSnD==null){",to:"{"},
  {n:"the snake share is ignored",part:'catch',from:"rngAi(r.idx)()<u",to:"true"},
- {n:"a new hold keeps the last snake draw",part:'catch',from:"r.pcSn=false;r.pcSnD=null;r.puPh",to:"r.pcSn=false;r.puPh"},
+ {n:"a new hold keeps the last snake draw",part:'catch',from:"r.pcSn=false;r.pcSnD=null;r.pcLn=0;r.puPh",to:"r.pcSn=false;r.pcLn=0;r.puPh"},
  {n:"a sliding snake is braked",part:'catch',from:"(!sn||SN.brake)",to:"true"},
  {n:"the snake brake switch is ignored",part:'catch',from:"(!sn||SN.brake)",to:"!sn"},
  {n:"a snake hold judges the pin shot push",part:'catch',from:"if(r.pcSn){const SN=AIC.catch.snake;return pinOutlet(r,bx,bz+SN.drift*sv,obs,goalX,SN.k*sv);}",to:""},
@@ -855,7 +857,7 @@ const MUT=[
  {n:"the burst speed is dropped for its swing",part:'catch',from:"r.puB=r.puPh==='burst';",to:"r.puB=false;"},
  {n:"pushBurst ignores the burst",part:'catch',from:"?AIC.catch.push.play.burst:0;}",to:"?0:0;}"},
  {n:"pushBurst outlives the ball",part:'catch',from:"(r.puPh==='burst'&&r.pinB)",to:"(r.puPh==='burst')"},
- {n:"the catch end leaves the pull running",part:'catch',from:"r.ftPh=null;r.puPh=null;\n",to:"r.ftPh=null;\n"},
+ {n:"the catch end leaves the pull running",part:'catch',from:"r.puPh=null;r.unPh=null;\n",to:"r.unPh=null;\n"},
 ];
 let missed=0;
 for(const m of MUT){

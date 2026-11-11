@@ -11,7 +11,7 @@ on a deck of an orbital starport. The table sits on a rubber court in a worn con
 bays on the far (-z) and right (+x) walls look out over the docks (build_arcade_sky.py). 1 unit = 1 cm.
 
 KEPT from the old room (decoded from its GLB): the five cabinets and the vending machine on the left
-wall, the Fuzeball logo plaque and the poster. Everything else is built here.
+wall and the Fuzeball logo plaque. Everything else is built here.
 
     floor     one 2048 map + normal + ORM: tiles, a rubber court with a gold tape line, hazard aprons, a tread plate at the dock door, scuffs, stains
     wall      one tiling map + normal + ORM: blue enamel panels, a brass dado rail, cream panels above
@@ -203,20 +203,38 @@ def floor_texture(W, H):
     rough = 0.34 + 0.10 * (ph - 0.5) + 0.12 * (tfbm(H, W, 12, 15, SEED + 9, 4) - 0.5)
     rough = rough * (1 - grout) + 0.86 * grout
     metal = np.zeros((H, W))
-    # the rubber court: no seams, a fine pebble, a gold tape line round it
-    cx0, cx1, cz0, cz1 = COURT
-    inside = (X >= cx0) & (X <= cx1) & (Z >= cz0) & (Z <= cz1)
+    # Staggered rubber coins, with a rounded shoulder and a dark edge where each meets the mat.
+    rubber = (X < X1 - 16) & (Z > Z0 + 16)
     peb = tfbm(H, W, 200, 260, SEED + 3, 2)
-    rub = hx(0x25292b)[None, None] * (0.8 + 0.4 * peb)[..., None] * (0.9 + 0.2 * tfbm(H, W, 4, 5, SEED + 4, 3))[..., None]
-    alb = np.where(inside[..., None], rub, alb); Hh = np.where(inside, (peb - 0.5) * 0.18, Hh)
-    rough = np.where(inside, 0.8 + 0.12 * (peb - 0.5), rough)
-    tape = (np.abs(np.maximum(np.abs(X - (cx0 + cx1) / 2) - (cx1 - cx0) / 2, np.abs(Z - (cz0 + cz1) / 2) - (cz1 - cz0) / 2)) < 1.3)
-    tw = (1 - 0.7 * sstep(0.55, 0.8, tfbm(H, W, 18, 24, SEED + 5, 5)))                     # worn through in patches
-    alb = np.where(tape[..., None], alb * (1 - 0.92 * tw[..., None]) + hx(0xc9993a) * (0.92 * tw[..., None]), alb)
-    rough = np.where(tape, rough * (1 - tw) + 0.5 * tw, rough); Hh = Hh + 0.08 * tape * tw
-    # centre line, the faintest echo of a pitch
-    cl = (np.abs(X) < 0.55) & (np.abs(Z) < cz1 - 1.5)
-    alb = np.where(cl[..., None], alb * 0.78 + hx(0x8b8f90) * 0.22, alb)
+    mottled = tfbm(H, W, 14, 18, SEED + 4, 4)
+    pitch = 3.9
+    row = np.floor(Z / pitch)
+    du = (X + pitch * 0.5 * (row % 2)) % pitch - pitch / 2
+    dv = Z % pitch - pitch / 2
+    radius = np.hypot(du, dv)
+    coin = 1 - sstep(1.02, 1.48, radius)
+    crown = np.clip(1 - (radius / 1.48) ** 2, 0, 1)
+    rim = np.exp(-((radius - 1.48) / 0.24) ** 2)
+    seam = np.exp(-(np.abs((Z + 28) % 56 - 28) / 0.30) ** 2)
+    rub = hx(0x211b1a) * (0.66 + 0.55 * mottled + 0.20 * peb + 0.17 * coin - 0.17 * rim - 0.17 * seam)[..., None]
+    alb = np.where(rubber[..., None], rub, alb)
+    Hh = np.where(rubber, 0.105 * coin + 0.055 * crown - 0.025 * seam + (peb - 0.5) * 0.035, Hh)
+    rough = np.where(rubber, 0.74 - 0.14 * coin + 0.24 * (mottled - 0.5), rough)
+
+    # Inlaid colour follows the court, leaving the aisle under the cabinets in the same rubber.
+    cx0, cx1, cz0, cz1 = COURT
+    cx0 += 46
+    cz0 -= 11
+    turn = 20.0
+    qx = np.abs(X - (cx0 + cx1) / 2) - (cx1 - cx0) / 2 + turn
+    qz = np.abs(Z - (cz0 + cz1) / 2) - (cz1 - cz0) / 2 + turn
+    border = np.hypot(np.maximum(qx, 0), np.maximum(qz, 0)) + np.minimum(np.maximum(qx, qz), 0) - turn
+    wear = sstep(0.46, 0.76, 0.65 * mottled + 0.35 * peb)
+    for offset, colour in ((0.0, 0xaf3156), (-4.2, 0x268c92)):
+        band = (1 - sstep(1.1, 1.55, np.abs(border - offset))) * (0.93 - 0.55 * wear)
+        ink = hx(colour) * (0.82 + 0.20 * coin - 0.18 * rim)[..., None]
+        alb += (ink - alb) * band[..., None]
+        rough -= 0.08 * band
     # hazard aprons under both bays: paint worn back to the tile where feet go
     stripe = (((X + Z) / 5.6) % 2.0) < 1.0
     hb = (np.abs(X) < BX + 14) & (Z < Z0 + 15) & (Z > Z0 + 1)
@@ -248,9 +266,10 @@ def floor_texture(W, H):
         t = np.clip(((X - x0) * (x1 - x0) + (Z - z0) * (z1 - z0)) / ((x1 - x0) ** 2 + (z1 - z0) ** 2), 0, 1)
         return np.exp(-(np.hypot(X - (x0 + t * (x1 - x0)), Z - (z0 + t * (z1 - z0))) / w) ** 2)
     path = np.maximum(pth(218, Z0 + 30, -200, -40, 16), pth(-200, -40, -200, 130, 22)) * (0.4 + 0.6 * tfbm(H, W, 6, 12, SEED + 7, 4))
-    off = (~inside) & (~inner)
-    alb = alb + (hx(0x7c8688)[None, None] - alb) * (0.20 * path * off)[..., None]
-    rough = rough - 0.16 * path * off
+    off = ~inner
+    alb = alb + (hx(0x7c8688)[None, None] - alb) * (np.where(rubber, 0.045, 0.20) * path * off)[..., None]
+    rough -= 0.20 * path * off
+    Hh -= 0.028 * path * coin * rubber
     # scuffs: short curved strokes, darker rubber marks and lighter scratches, both duller than the seal
     scr = np.zeros((H, W)); lit = np.zeros((H, W))
     for _ in range(int(900 * TS + 200)):
@@ -283,9 +302,17 @@ def floor_texture(W, H):
         ao *= 1 - 0.35 * np.exp(-np.hypot(dxx, dzz) / 8.0)
     dxx = np.maximum(np.abs(X) - 66, 0); dzz = np.maximum(np.abs(Z) - 38, 0)
     ao *= 1 - 0.5 * np.exp(-np.hypot(dxx, dzz) / 14.0)
+    # Warm cabinet pools have a broad falloff and a sharper sheen on worn coin tops.
+    amber = np.zeros((H, W))
+    for zc in (-102, -45, 13):
+        d = ((X + 171) / 29) ** 2 + ((Z - zc) / 18) ** 2
+        amber += 0.48 * np.exp(-d) + 0.52 * np.exp(-2.8 * d)
+    sheen = np.clip(amber, 0, 1) * rubber * (0.38 + 0.32 * coin + 0.46 * mottled + 0.15 * peb - 0.20 * rim)
+    alb += hx(0xc66924) * sheen[..., None]
+    rough -= 0.16 * sheen
     alb *= ao[..., None]
     orm = np.stack([np.ones((H, W)), np.clip(rough, 0.06, 1), np.clip(metal, 0, 1)], -1)
-    return np.clip(alb, 0, 1), height_to_normal(Hh, 1 / px, 1 / px, 1.3), orm
+    return np.clip(alb, 0, 1), height_to_normal(Hh, 1 / px, 1 / px, 2.0), orm
 
 def wall_texture(W, H):
     """One repeat of the wall: U = TILE_U units, V = the wall's full height. Row 0 = the ceiling. Returns albedo, normal, ORM.
@@ -303,7 +330,7 @@ def wall_texture(W, H):
     ph = ((pid * 2654435761) % 1000) / 1000.0
     mott = tfbm(H, W, 6, 4, SEED + 21, 5)
     alb = np.zeros((H, W, 3))
-    alb[kick] = hx(0x1d2124); alb[low] = hx(0x2c4b5f); alb[up] = hx(0xc9bea4)
+    alb[kick] = hx(0x1d2124); alb[low] = hx(0x315c68); alb[up] = hx(0xc9bea4)
     alb *= (0.93 + 0.12 * ph)[..., None] * (0.88 + 0.24 * mott)[..., None]
     tarn = sstep(0.4, 0.75, tfbm(H, W, 3, 8, SEED + 33, 4))
     alb = np.where(rail[..., None], hx(0xb9893a)[None, None] * (0.85 + 0.3 * sstep(47, 50.5, yy))[..., None] * (1 - 0.25 * tarn)[..., None], alb)
@@ -353,7 +380,7 @@ def wall_texture(W, H):
     rough = np.where(rail, 0.22 + 0.3 * tarn, rough); rough = np.where(chip > 0.5, 0.4, rough)
     metal = np.where(rail, 1.0 - 0.2 * tarn, chip * np.where(prime[..., 1] > 0.4, 1.0, 0.2))
     orm = np.stack([np.ones((H, W)), np.clip(rough, 0.06, 1), np.clip(metal, 0, 1)], -1)
-    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.0, wrap_x=True), orm
+    return np.clip(alb, 0, 1), height_to_normal(Hh, pxu, pxv, 1.7, wrap_x=True), orm
 
 def glass_texture(W, H):
     X, Y = np.meshgrid((np.arange(W) + .5) / W, (np.arange(H) + .5) / H)
@@ -390,14 +417,14 @@ def glow_texture():
         fill(reg, rgbc, (np.exp(-(d / 0.4) ** 2) * 0.75 + np.exp(-(d / 0.8) ** 2) * 0.3) * (1 - sstep(0.7, 1.0, d)))
     x0, y0, x1, y1, h, w = region('cone'); yy, xx = np.mgrid[0:h, 0:w]; u = (xx + .5) / w - .5; v = (yy + .5) / h
     fill('cone', (1.0, 0.72, 0.4), np.exp(-(u / (0.04 + 0.5 * v)) ** 2) * (1 - v) ** 1.6 * 0.5)       # a lamp's cone down a wall: v = 0 at the lamp
-    for reg, rgbc in (('scrA', (0.40, 0.85, 0.78)), ('scrB', (1.0, 0.68, 0.30)), ('scrC', (0.52, 0.64, 1.0))):
+    for reg, rgbc in (('scrA', (0.40, 0.85, 0.78)), ('scrB', (1.0, 0.53, 0.20)), ('scrC', (0.52, 0.64, 1.0))):
         x0, y0, x1, y1, h, w = region(reg); yy, xx = np.mgrid[0:h, 0:w]; d = np.hypot((xx + .5) / w - .5, (yy + .5) / h - .5) * 2
-        fill(reg, rgbc, np.exp(-(d / 0.62) ** 2) * 0.42 * (1 - sstep(0.75, 1.0, d)))
+        fill(reg, rgbc, np.exp(-(d / 0.62) ** 2) * 0.27 * (1 - sstep(0.75, 1.0, d)))
     x0, y0, x1, y1, h, w = region('win'); yy, xx = np.mgrid[0:h, 0:w]; u = (xx + .5) / w; v = 1 - (yy + .5) / h
     pane = (u * NPANE) % 1.0
     bar = sstep(0.0, 0.07, pane) * sstep(0.0, 0.07, 1 - pane)                         # the mullion shadows between panes
     reach = np.exp(-(v / 0.55) ** 2) * (1 - sstep(0.6, 1.0, v))
-    fill('win', (0.80, 0.90, 1.0), bar * reach * 0.36 * sstep(0.0, 0.04, v))
+    fill('win', (0.80, 0.90, 1.0), bar * reach * 0.21 * sstep(0.0, 0.04, v))
     x0, y0, x1, y1, h, w = region('strip'); yy, xx = np.mgrid[0:h, 0:w]; u = (xx + .5) / w; v = (yy + .5) / h
     fill('strip', (0.95, 0.97, 1.0), np.exp(-((v - 0.5) / 0.28) ** 2) * 0.34 * sstep(0, 0.08, u) * (1 - sstep(0.92, 1, u)))
     rgb = img[..., :3]; empty = img[..., 3] < 1e-3
@@ -524,7 +551,7 @@ print('arcade: textures')
 FW = max(256, int(2048 * TS) // 4 * 4); FH = int(FW * D_ROOM / W_ROOM) // 4 * 4
 fa, fn, fo = floor_texture(FW, FH)
 im_fa = new_img('arcade_floor_albedo', FW, FH); np_img(im_fa, fa)
-im_fn = new_img('arcade_floor_normal', FW // 2, FH // 2, True); np_img(im_fn, fn[::2, ::2])
+im_fn = new_img('arcade_floor_normal', FW, FH, True); np_img(im_fn, fn)
 im_fo = new_img('arcade_floor_orm', FW // 2, FH // 2, True); np_img(im_fo, fo[::2, ::2])
 WW, WH_ = max(128, int(1024 * TS) // 4 * 4), max(192, int(1536 * TS) // 4 * 4)
 wa, wn, wo = wall_texture(WW, WH_)
@@ -708,8 +735,9 @@ box('cream', (196, FL + 20.5, 186), (23, 1.2, 23), yaw=-14)
 box('cork', (60, 12, Z1 - 1.2), (114, 58, 2.4))
 for (fx, fy, fw, fh) in ((60, 42, 120, 2.5), (60, -18, 120, 2.5), (1.25, 12, 2.5, 58), (118.75, 12, 2.5, 58)):
     box('wood', (fx, fy, Z1 - 1.5), (fw, fh, 3.0))
-for (px_, py_, c_) in ((30, 28, 'cream'), (52, 20, 'yellow'), (78, 30, 'cream'), (96, 14, 'blue'), (44, 2, 'cream'), (70, 4, 'red'), (92, 36, 'cream')):
-    box(c_, (px_, py_, Z1 - 2.7), (11, 14, 0.5), yaw=0)
+# Pins hold the flyers and snapshots to the board.
+for px_, py_, c_ in ((17, 35, 'red'), (37, 34, 'yellow'), (57, 35, 'blue'), (78, 34, 'red'), (100, 34, 'yellow'), (28, 10, 'blue'), (53, 12, 'red'), (76, 9, 'yellow'), (99, 10, 'blue')):
+    box(c_, (px_, py_, Z1 - 3.8), (1.2, 1.2, 1.0))
 box('red', (-60, FL + 18, Z1 - 4.5), (8.5, 28, 8.5)); box('gun', (-60, FL + 34, Z1 - 4.5), (3, 6, 3)); box('rubber', (-60, FL + 30, Z1 - 2.0), (2, 6, 2))
 box('yellow', (0, FL + 2, Z1 - 0.4), (W_ROOM - 40, 4, 0.8))
 
@@ -721,13 +749,14 @@ cyl('cream', (X1 - 3.5, SILL + 3 + 2.4, 48), 2.4, 4.8, 10)
 # ---- light cards: the window light laid on the floor, screen spill, the fluorescent halos -------
 glow_floor(-BX, BX, Z0 + 1.0, Z0 + 104.0, 'win', 'z0')
 glow_floor(X1 - 104.0, X1 - 1.0, -RZ, RZ, 'win', 'x1')
-for zc, reg in ((-161, 'scrA'), (-108, 'scrC'), (-53, 'scrB'), (4, 'scrA'), (152, 'cool')):
+for zc, reg in ((-161, 'scrA'), (-108, 'scrB'), (-53, 'scrB'), (4, 'scrB'), (152, 'cool')):
     glow_floor(-206, -134, zc - 32, zc + 32, reg)
+    LAMPS.append(((-185, 5, zc), 0xffa45c if reg == 'scrB' else 0x6fc8d5, 850))
 for sx, sz in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
     glow_quad((sx * 118.0, CEIL - 3.0, sz * 70.0), (1, 0, 0), (0, 0, 1), 96, 40, 'strip')
 
 # =============================================================================================
-# THE CABINETS, THE LOGO, THE POSTER: kept from the old room
+# THE CABINETS AND LOGO: kept from the old room
 # =============================================================================================
 print('arcade: importing the old room')
 before = set(bpy.data.objects)
@@ -737,7 +766,6 @@ KEEP = {}
 for o in imported:
     if o.name.startswith('room_cab2_body'): KEEP['cab'] = o
     elif o.name.startswith('room_sign'): KEEP['logo'] = o
-    elif o.name.startswith('room_poster'): KEEP['poster'] = o
     else: bpy.data.objects.remove(o, do_unlink=True)
 cab = KEEP['cab']; cab.name = 'room_arcade_cabinets'
 def old_bounds(o):
@@ -749,8 +777,7 @@ def place(o, centre_game, scale=1.0):
     o.scale = (scale, scale, scale)
     o.location = g2b(*centre_game) - c * scale
 place(KEEP['logo'], (-215.0, 90.0, Z0 + 1.2), 0.8)
-place(KEEP['poster'], (DX, 70.0, Z0 + 0.8), 1.0)
-KEEP['logo'].name = 'room_arcade_logo'; KEEP['poster'].name = 'room_arcade_poster'
+KEEP['logo'].name = 'room_arcade_logo'
 for o in KEEP.values():
     for c in list(o.users_collection): c.objects.unlink(o)
     col.objects.link(o)
@@ -798,6 +825,14 @@ if 'vender_front' in idx:
     b.inputs['Emission Color'].default_value = srgb(0x7ac8e8); b.inputs['Emission Strength'].default_value = 0.8
 for nm in ('arcade_guardians', 'arcade_OFF', 'arcade_RP'):                      # vinyl side art over laminate: a little sheen, not chalk
     if nm in idx: cab.data.materials[idx[nm]].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.6
+# Keep the original cabinet artwork while giving its laminate a tactile surface.
+for nm in ('arcade_avenger', 'arcade_vending_1', 'arcade_guardians', 'arcade_OFF', 'arcade_RP', 'vender_side'):
+    if nm in idx:
+        m = cab.data.materials[idx[nm]]; b = m.node_tree.nodes.get('Principled BSDF')
+        if b:
+            link_nrm(m.node_tree, b, SURF['paint']['n'])
+            b.inputs['Roughness'].default_value = 0.48
+            b.inputs['Metallic'].default_value = 0.12
 # a lamp in front of every lit screen, at the area-weighted centre of its faces
 bpy.context.view_layer.update()
 def b2g(v): return (v.x, v.z, -v.y)
@@ -871,6 +906,57 @@ bpy.context.view_layer.update()
 skip = {'arcade_glass', 'arcade_glow'} | {'arcade_' + n for n in PROC_SKIP}
 occ = [o for o in OBJS if o.data.materials[0].name not in skip] + list(KEEP.values())
 R.bake_light(occ, occ, [(g2b(*p), R.lamp_tint(h), s) for p, h, s in LAMPS], seed=SEED, tag='arcade', **BAKE)
+# Posters, notices and player prints.
+ART_DIR = os.path.join(ROOT, 'assets', 'rooms', 'arcade', 'art')
+art_files = {
+    'cup': 'tournament.png', 'match': 'match.png', 'open': 'open_table.png',
+    'sasha_mech': 'match_sasha_mech.png', 'leo_drako': 'match_leo_drako.png',
+    'sasha_drako': 'match_sasha_drako.png', 'leo_mech': 'match_leo_mech.png',
+    'sandy': 'hero_sandy.png',
+    'fixture': 'notice_fixture.png', 'league': 'notice_league.png', 'repair': 'notice_repair.png',
+    'sasha': 'poster_womanSasha.png', 'mech': 'poster_mechaman.png',
+}
+art_mats = {}
+for key, filename in art_files.items():
+    im = bpy.data.images.load(os.path.join(ART_DIR, filename), check_existing=True)
+    im.pack()
+    art_mats[key] = tex_mat('arcade_print_' + key, im, rough=1.0)
+
+def paper(key, x, y, z, w, h, angle=0):
+    a = math.radians(angle); ca, sa = math.cos(a), math.sin(a)
+    def point(u, v): return g2b(x + u * ca - v * sa, y + u * sa + v * ca, z)
+    verts = [point(-w/2, -h/2), point(-w/2, h/2), point(w/2, h/2), point(w/2, -h/2)]
+    make_mesh('room_arcade_print_' + key, verts, [(0, 1, 2, 3)], [False], art_mats[key], [(1,0), (1,1), (0,1), (0,0)])
+
+for i, (key, x, y, w, h, a) in enumerate((
+    ('fixture', 17, 25, 16, 21, -5), ('cup', 37, 24, 17, 22, 4),
+    ('league', 57, 25, 15, 21, -3), ('open', 78, 24, 18, 22, 5),
+    ('sasha_mech', 100, 24, 16, 21, -4), ('sasha', 28, 0, 15, 20, 5),
+    ('repair', 53, 1, 19, 20, -5), ('mech', 76, -1, 15, 20, 4),
+    ('leo_drako', 99, 0, 17, 20, -3))):
+    paper(key, x, y, Z1 - 3.02 - i * 0.035, w, h, a)
+for key, x, y, w, h, a in (
+    ('cup', -192, 38, 34, 45, -2), ('open', -148, 36, 30, 40, 2),
+    ('sasha_mech', 158, 35, 32, 43, 3), ('leo_drako', 202, 39, 30, 40, -2)):
+    paper(key, x, y, Z1 - 0.18, w, h, a)
+
+def side_paper(key, z, y, w, h):
+    x = X1 - 0.18
+    verts = [g2b(x, y-h/2, z-w/2), g2b(x, y-h/2, z+w/2),
+             g2b(x, y+h/2, z+w/2), g2b(x, y+h/2, z-w/2)]
+    make_mesh('room_arcade_side_print_' + key, verts, [(0, 1, 2, 3)], [False], art_mats[key], [(0,0), (1,0), (1,1), (0,1)])
+
+def back_paper(key, x, y, w, h):
+    z = Z0 + 0.18
+    verts = [g2b(x+w/2, y-h/2, z), g2b(x+w/2, y+h/2, z),
+             g2b(x-w/2, y+h/2, z), g2b(x-w/2, y-h/2, z)]
+    make_mesh('room_arcade_back_print_' + key, verts, [(0, 1, 2, 3)], [False], art_mats[key], [(1,0), (1,1), (0,1), (0,0)])
+
+side_paper('sasha_drako', -167, 28, 31, 43)
+side_paper('leo_mech', 166, 28, 31, 43)
+back_paper('leo_mech', -216, 23, 28, 39)
+paper('sandy', -78, 31, Z1 - 0.18, 38, 52, -1)
+
 print('arcade: %d lamps' % len(LAMPS))
 tris = 0
 for o in OBJS:
@@ -886,4 +972,5 @@ try: bpy.ops.export_scene.gltf(export_vertex_color='ACTIVE', **kw)
 except TypeError: bpy.ops.export_scene.gltf(**kw)
 R.glb_factors(GLB, FACT)
 print('arcade: wrote', GLB, '%.1f MB' % (os.path.getsize(GLB) / 1048576))
+
 

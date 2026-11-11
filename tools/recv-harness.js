@@ -32,7 +32,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.inlane,g.catch,g.calm,g.seat,
-  ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,DIFFS:DIFFS,recvReady:recvReady,recvPossess:recvPossess,recvReadyNow:recvReadyNow,recvArm:recvArm,recvBall:recvBall,recvStart:recvStart,recvStep:recvStep,recvEnd:recvEnd,recvRelease:recvRelease,gkHold:gkHold,clearRodAI:clearRodAI,SHOT_capV:SHOT.pin.capV,SHOT_back:SHOT.pin.back,SHOT_front:SHOT.pin.front,SHOT_fwdBack:SHOT.pin.fwdBack,SHOT_fwdFront:SHOT.pin.fwdFront};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,DIFFS:DIFFS,recvReady:recvReady,recvPossess:recvPossess,recvReadyNow:recvReadyNow,recvArm:recvArm,recvBall:recvBall,recvStart:recvStart,recvStep:recvStep,recvEnd:recvEnd,recvRelease:recvRelease,gkHold:gkHold,clearRodAI:clearRodAI,SHOT_capV:SHOT.pin.capV,SHOT_back:SHOT.pin.back,SHOT_front:SHOT.pin.front,SHOT_fwdBack:SHOT.pin.fwdBack,SHOT_fwdFront:SHOT.pin.fwdFront,FOOT_BOX:FOOT_BOX};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -327,7 +327,7 @@ RD.maxBall=0;
   ok('…and a pass in flight too (the ball is dead, the whistle wins)',r.act===null);}
  // ---- a pass the leg has stopped dead --------------------------------------------------------------------------------------
  {const {from,r}=world(X);X.recvArm(from,{x:-7.5,z:12});X.recvStart(r);X.S.time+=RV.grace+0.1;
-  X.S.balls=[ball(X,r.x+3.0,12,0,0.8)];r.target=3;r.offset=2;X.recvStep(r,null,D,dt);
+  X.S.balls=[ball(X,r.x+3.0,14,0,0.8)];r.target=3;r.offset=2;X.recvStep(r,null,D,dt);
   ok('a ball the leg has stopped dead is waited for: the pose is held for the pin and the man stays where he is',r.act==='recv'&&r.pinOn===true&&r.pinPose===true&&near(r.pinA,RV.angle)&&r.target===2);
   X.S.time+=RV.rest/2;X.recvStep(r,null,D,dt);
   ok('…for part of RV.rest',r.act==='recv');
@@ -340,6 +340,7 @@ RD.maxBall=0;
   ok('…nor one nearer than the forward foot reaches',mk(X.SHOT_fwdBack-1,12,0,0).act===null);
   ok('…nor one in the air',mk(3.0,12,0,0,4).act===null);
   ok('…nor one past the foot',mk(X.SHOT_fwdFront+1,12,0,0).act===null);
+  ok('…nor one off the man\'s line (its centre past the foot\'s side: the pin never takes it)',mk(3.0,12+X.FOOT_BOX.z+0.2,0,0).act===null&&mk(3.0,12-X.FOOT_BOX.z+0.1,0,0).act==='recv');
   const w=world(X);X.recvArm(w.from,{x:-7.5,z:12});X.recvStart(w.r);X.S.time+=RV.grace+0.1;const pb=ball(X,w.r.x+3.0,12,0,0);pb.pinR=w.blue;X.S.balls=[pb];X.recvStep(w.r,null,D,dt);
   ok('…nor one another rod already holds',w.r.act===null);
   const w2=world(X);X.recvArm(w2.from,{x:-7.5,z:12});X.recvStart(w2.r);X.S.time+=RV.grace+0.1;const sc=ball(X,w2.r.x+3.0,12,0,0);sc.scored=true;X.S.balls=[sc];X.recvStep(w2.r,null,D,dt);
@@ -513,13 +514,14 @@ const MUT=[
  {n:'…the wait never starts, so it is waited for as long as it lies there',part:'catch',from:'(r.rvRestT||(r.rvRestT=S.time))',to:'(r.rvRestT||0)'},
  {n:'…the pose is not held',part:'catch',from:'r.target=r.offset;r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;   // stopped against the leg: held for the pin',to:'r.target=r.offset;'},
  {n:'…the man is sent after the aim',part:'catch',from:'r.target=r.offset;r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;   // stopped against the leg',to:'r.pinOn=true;r.pinPose=true;r.pinA=RV.angle*dir;   // stopped against the leg'},
- {n:'…a quick ball counts as stopped',part:'catch',from:'Math.hypot(b.v.x,b.v.z-r.vz)<=P.capV)return true;',to:'true)return true;'},
- {n:'…the rod\'s own slide is not discounted',part:'catch',from:'Math.hypot(b.v.x,b.v.z-r.vz)<=P.capV)return true;',to:'Math.hypot(b.v.x,b.v.z)<=P.capV)return true;'},
- {n:'…a ball in the air counts',part:'catch',from:'p.y<=BALL_R+P.yTol&&Math.hypot',to:'Math.hypot'},
+ {n:'…a quick ball counts as stopped',part:'catch',from:'||Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;',to:')continue;'},
+ {n:'…the rod\'s own slide is not discounted',part:'catch',from:'Math.hypot(b.v.x,b.v.z-r.vz)>P.capV)continue;',to:'Math.hypot(b.v.x,b.v.z)>P.capV)continue;'},
+ {n:'…a ball in the air counts',part:'catch',from:'||p.y>BALL_R+P.yTol||Math.hypot',to:'||Math.hypot'},
+ {n:'…a ball off the man\'s line counts',part:'catch',from:'Math.abs(p.z-(r.baseZ[i]+r.offset))<=FOOT_BOX.z)return true;',to:'true)return true;'},
  {n:'…a ball nearer than the foot counts',part:'catch',from:'fwd?rel>P.fwdBack&&rel<P.fwdFront:',to:'fwd?rel<P.fwdFront:'},
  {n:'…a ball past the foot counts',part:'catch',from:'fwd?rel>P.fwdBack&&rel<P.fwdFront:',to:'fwd?rel>P.fwdBack:'},
- {n:'…a ball already held counts',part:'catch',from:'if(b.scored||b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if((fwd',to:'if(b.scored)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if((fwd'},
- {n:'…a scored ball counts',part:'catch',from:'if(b.scored||b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if((fwd',to:'if(b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if((fwd'},
+ {n:'…a ball already held counts',part:'catch',from:'if(b.scored||b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if(!(fwd',to:'if(b.scored)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if(!(fwd'},
+ {n:'…a scored ball counts',part:'catch',from:'if(b.scored||b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if(!(fwd',to:'if(b.pinR)continue;\n  const p=b.m.position,rel=(p.x-r.x)*r.kickDir;\n  if(!(fwd'},
  {n:'a pass arms the passer as well',part:'catch',from:'if(q.team===from.team&&q!==from&&Math.abs(q.x-aim.x)<0.5){rx=q;break;}',to:'if(q.team===from.team&&Math.abs(q.x-aim.x)<0.5){rx=q;break;}'},
  {n:'a pass arms a rod of the other team',part:'catch',from:'if(q.team===from.team&&q!==from&&',to:'if(q!==from&&'},
  {n:'switched off, a pass still arms',part:'catch',from:'if(!RV||!RV.on)return;\n let rx=null;',to:'if(!RV)return;\n let rx=null;'},

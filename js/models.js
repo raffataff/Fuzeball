@@ -77,7 +77,10 @@ function loadSkin(id,skinId,cb){
      (Array.isArray(c.material)?c.material:[c.material]).forEach(m=>{if(m){m.depthWrite=false;m.needsUpdate=true;}});
     }
     if(n.startsWith('field'))c.visible=false;       // themed pitch plane stays instead
-    else if(n.startsWith('led')){ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // applySkin repoints LED fx per active skin
+    else if(n.startsWith('led')){
+     if(id==='classic')c.visible=false;            // classic skins embed the unwanted wall-top strips
+     else{ledMat=c.material;(skinLed[id]=skinLed[id]||{})[skinId]=c.material;} // LED fx follow other tables
+    }
     else if(n.startsWith('goal_net'))c.visible=false;                            // keep the built-in diamond net
     else if(/^(goal_post|goal_crossbar)/.test(n)){hasFrame=true;if(hasNewFrame)c.visible=false;} // legacy posts/crossbar: count as a custom frame but are hidden if goal_frame_l/r is present
     else if(n.startsWith('goal_frame'))hasFrame=true;                            // custom posts: hide the primitive front frame

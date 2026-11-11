@@ -1,0 +1,135 @@
+C:\Users\Owner\Documents\Fuzeball\Fuzeball\tools\build_arcade_room.py:111: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  m = bpy.data.materials.new(name); m.use_nodes = True
+C:\Users\Owner\Documents\Fuzeball\Fuzeball\tools\build_arcade_room.py:132: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  m = bpy.data.materials.new(name); m.use_nodes = True; nt = m.node_tree; b = nt.nodes['Principled BSDF']
+C:\Users\Owner\Documents\Fuzeball\Fuzeball\tools\build_arcade_room.py:81: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  m = bpy.data.materials.new(name); m.use_nodes = True
+Extensions: writing cache failed ([Errno 13] Permission denied: 'C:\\Users\\Owner\\AppData\\Roaming\\Blender Foundation\\Blender\\5.2\\extensions\\.cache\\compat.dat').
+arcade: textures
+arcade: surface sets
+arcade: shell
+arcade: props
+arcade: importing the old room
+23:27:03 | INFO: Data are loaded, start creating Blender stuff
+23:27:03 | INFO: Blender create Mesh node meshes[0].002
+23:27:03 | INFO: Blender create Mesh node room_ceiling.001
+23:27:03 | INFO: Blender create Mesh node room_floor.001
+23:27:03 | INFO: Blender create Mesh node room_led_ceil_b.001
+23:27:03 | INFO: Blender create Mesh node room_led_ceil_f.001
+23:27:03 | INFO: Blender create Mesh node room_led_floor_b.001
+23:27:03 | INFO: Blender create Mesh node room_led_floor_f.001
+23:27:03 | INFO: Blender create Mesh node room_led_floor_l.001
+23:27:03 | INFO: Blender create Mesh node room_led_floor_r.001
+23:27:03 | INFO: Blender create Mesh node room_poster_2.001
+23:27:03 | INFO: Blender create Mesh node room_sign.001
+23:27:03 | INFO: Blender create Mesh node Cube.001
+23:27:03 | INFO: Blender create Mesh node room_wall_back.001
+23:27:03 | INFO: Blender create Mesh node room_wall_front.001
+23:27:03 | INFO: Blender create Mesh node room_wall_left.001
+23:27:03 | INFO: Blender create Mesh node room_wall_right.001
+23:27:03 | INFO: glTF import finished in 0.07s
+00:16.828  image.write      | ERROR OpenImageIO write failed: Could not open file "C:\Users\Owner\.thumbnails\large\blender_14896_f868d8d53896e441ef27970015e20c48.png.png"
+arcade: light bake 60439 corners, 15586 unique, 3.2s
+arcade: 46 lamps
+arcade: 22 meshes, 12594 tris new, 12041 in the cabinets
+   room_arcade_floor                4264 tris
+   room_arcade_wall                 3446 tris
+   room_arcade_glass                  28 tris
+   room_arcade_glow                   52 tris
+   room_arcade_ceil                 2924 tris
+   room_arcade_gun                   444 tris
+   room_arcade_steel                 328 tris
+   room_arcade_brass                 132 tris
+   room_arcade_tube                   48 tris
+   room_arcade_door                   12 tris
+   room_arcade_yellow                 48 tris
+   room_arcade_doorlt                 76 tris
+   room_arcade_lamp                  264 tris
+   room_arcade_rubber                136 tris
+   room_arcade_screen                 12 tris
+   room_arcade_red                    80 tris
+   room_arcade_wood                   60 tris
+   room_arcade_crate                  36 tris
+   room_arcade_cream                 144 tris
+   room_arcade_cork                   12 tris
+   room_arcade_blue                   12 tris
+   room_arcade_plant                  36 tris
+Info: Saved as "arcade_room.blend"
+INFO Draco is available, use library at C:\Program Files\Blender Foundation\Blender 5.2\5.2\scripts\addons_core\io_scene_gltf2\bf_intern_draco_bridge.dll
+INFO MeshOptimizer is available, use library at C:\Program Files\Blender Foundation\Blender 5.2\5.2\scripts\addons_core\io_scene_gltf2\bf_intern_meshopt_bridge.dll
+23:27:07 | INFO: Starting glTF 2.0 export
+23:27:07 | INFO: Extracting primitive: room_arcade_blue
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_brass
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: meshes[0].002
+23:27:07 | INFO: Primitives created: 19
+23:27:07 | INFO: Extracting primitive: room_arcade_ceil
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_cork
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_crate
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_cream
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_door
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_doorlt
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_floor
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_glass
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_glow
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_gun
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_lamp
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_sign.001
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 3
+23:27:07 | INFO: Extracting primitive: room_arcade_plant
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_poster_2.001
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_red
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_rubber
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_screen
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_steel
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_tube
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_wall
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_wood
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Extracting primitive: room_arcade_yellow
+23:27:07 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:27:07 | INFO: Primitives created: 1
+23:27:07 | INFO: Finished glTF 2.0 export in 0.3674328327178955 s
+
+arcade: wrote C:\Users\Owner\Documents\Fuzeball\Fuzeball\tools\build\arcade\fuzeball_room_arcade.raw.glb 18.1 MB
+Blender 5.2.1 LTS (hash 9e2066aef7ef built 2026-08-25 02:38:20)
+
+Blender quit

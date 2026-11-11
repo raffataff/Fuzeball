@@ -574,7 +574,7 @@ function reditMarkers(){
     const c=wire(g.cone,col,0.14);
     const end=K.clone().sub(P).normalize().multiplyScalar(len).add(P);
     c.scale.set(rad,len,rad);c.position.copy(P).lerp(end,0.5);
-    c.lookAt(end);c.rotateX(Math.PI/2);          // ConeGeometry points +y; aim it down the throw
+    c.lookAt(P);c.rotateX(Math.PI/2);            // ConeGeometry's tip is +y: put it on the bulb, the wide end at the floor
    }
   }
   // the reach ring is selection-only (a ring on every lamp would block the view)
