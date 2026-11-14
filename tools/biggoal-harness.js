@@ -8,6 +8,7 @@ require('../vendor/GLTFLoader.js');
 THREE.TextureLoader.prototype.load=function(_url,onLoad){
  const t=new THREE.Texture();queueMicrotask(()=>onLoad(t));return t;
 };
+const compressedTextureLoader={load:THREE.TextureLoader.prototype.load};
 function extract(src,name){
  const start=src.indexOf('function '+name+'(');if(start<0)throw Error('Missing '+name);
  let depth=0;for(let i=src.indexOf('{',start);i<src.length;i++){
@@ -16,14 +17,17 @@ function extract(src,name){
  throw Error('Unbalanced '+name);
 }
 const models=fs.readFileSync('js/models.js','utf8'),fx=fs.readFileSync('js/fx.js','utf8');
-const files=['assets/tables/circuit/fuzeball_table_circuit.glb',
- 'assets/tables/circuit/fuzeball_table_circuit_silver.glb'];
+const files=['assets/tables/circuit/fuzeball_table_circuit_worn.glb',
+ 'assets/tables/circuit/fuzeball_table_circuit_silver.glb',
+ 'assets/tables/circuit/fuzeball_table_circuit_solar_forge.glb'];
 // This optional skin may be present in a workspace without being checked in.
 const obsidian='assets/tables/circuit/fuzeball_table_circuit_obsidian.glb';
 if(fs.existsSync(obsidian))files.push(obsidian);
+const synaptic='assets/tables/circuit/fuzeball_table_circuit_synaptic_relic.glb';
+if(fs.existsSync(synaptic))files.push(synaptic);
 async function check(file){
  const bytes=fs.readFileSync(file);
- const g=await new Promise((resolve,reject)=>new THREE.GLTFLoader().parse(
+ const g=await new Promise((resolve,reject)=>new THREE.GLTFLoader().setKTX2Loader(compressedTextureLoader).parse(
   bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'',resolve,reject));
   g.scene.updateMatrixWorld(true);
   const c={THREE,glbGoalGrow:[[],[]],glbGoalWall:[[],[]],glbGoalSplit:[],
@@ -37,7 +41,10 @@ async function check(file){
   // Older Silver builds included a halo; current Silver omits it. If one
   // is present, verify it follows the frame without requiring it to exist.
   const before=halo&&new THREE.Box3().setFromObject(halo);
+  const rim=g.scene.getObjectByName('forge_wall_rim');
+  const rimBefore=rim&&rim.matrixWorld.clone();
   c.bigGoalUpdate(1);g.scene.updateMatrixWorld(true);
+  if(rim)assert(rim.matrixWorld.equals(rimBefore),'the welded rim spans the widened goals');
   if(halo){const widened=new THREE.Box3().setFromObject(halo);
    assert(Math.abs(widened.max.z/before.max.z-1.5)<1e-5,'halo follows the goal');}
   for(const w of walls){

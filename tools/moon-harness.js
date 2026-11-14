@@ -44,8 +44,8 @@ function editVerts(j,bin,name,pass,fn){
   for(let k=0;k<a.count;k++){const o=off+k*stride,v=[0,1,2].map(c=>bin.readFloatLE(o+c*w));if(pass(v)){const nv=fn(v);nv.forEach((x,c)=>bin.writeFloatLE(x,o+c*w));}}}
 }
 const roomBlock=src=>{const a=src.indexOf('\n   moon:{\n'),b=src.indexOf('\n  },',a);if(a<0||b<0)throw new Error('ANCHOR LOST: moon room block');return src.slice(a,b);};
-const PROPS=/^moon_(steel|visor|panel|door|tank|suitwhite)$/;
-const BAKED=['floor','wall','steel','panel','door','tank','suitwhite','visor','terrain'];
+const PROPS=/^moon_(steel|kick|visor|panel|door|tank|suitwhite)$/;
+const BAKED=['floor','wall','steel','kick','panel','door','tank','suitwhite','visor','terrain'];
 
 /* ---- 1. the shipped files ----------------------------------------------- */
 function assetSuite(cfgSrc,tweak){
@@ -70,11 +70,12 @@ function assetSuite(cfgSrc,tweak){
   const two=(j.materials||[]).filter(m=>m.alphaMode!=='BLEND'&&m.doubleSided).map(m=>m.name);
   t(two.length===1&&two[0]==='moon_flag','every opaque material is single-sided but the flag (cloth, seen from both sides)',two.join());
   const props=(j.materials||[]).filter(m=>PROPS.test(m.name)),bare=props.filter(m=>!m.normalTexture||!(m.pbrMetallicRoughness||{}).metallicRoughnessTexture);
-  t(props.length===6&&!bare.length,'every prop material wears a surface set (normal + metallic-roughness maps, not flat roughness)',props.length+' materials; bare: '+bare.map(m=>m.name).join());
+  t(props.length===7&&!bare.length,'every prop material wears a surface set (normal + metallic-roughness maps, not flat roughness)',props.length+' materials; bare: '+bare.map(m=>m.name).join());
   const srcOf=ti=>{const T=j.textures[ti];return T.source!==undefined?T.source:((T.extensions||{}).KHR_texture_basisu||{}).source;};
   const nSrc=new Set(props.filter(m=>m.normalTexture).map(m=>srcOf(m.normalTexture.index)));
   t(nSrc.size===3,'the props share three surface sets (steel, paint, plastic)',nSrc.size+' normal maps');
   t(['floor','wall'].every(k=>M(k)&&M(k).normalTexture&&(M(k).pbrMetallicRoughness||{}).metallicRoughnessTexture),'the floor and the wall carry their own normal and metallic-roughness maps');
+  t(['floor','kick'].every(k=>M(k)?.emissiveTexture),'the deck spill and kick-ring sunlight have baked textures');
   t(!!(M('terrain')&&M('terrain').normalTexture),'the regolith has a normal map');
   const unbaked=BAKED.filter(k=>{const ps=prims(j,'room_moon_'+k);return !ps||!ps.every(p=>p.attributes.COLOR_0!==undefined);});
   t(!unbaked.length,'the light bake reaches the floor, wall, props and terrain (COLOR_0 on every primitive)',unbaked.join());
@@ -82,7 +83,10 @@ function assetSuite(cfgSrc,tweak){
   t(!!(M('flag')&&(M('flag').pbrMetallicRoughness||{}).baseColorTexture),'the flag wears the owner\'s logo render');
   const st=(M('steel')||{}).pbrMetallicRoughness||{},bc=st.baseColorFactor||[1,1,1];
   t(st.metallicFactor>=0.95&&st.roughnessFactor>=1&&st.roughnessFactor<=1.4&&Math.max(bc[0],bc[1],bc[2])<0.08,'the steel keeps the owner\'s near-mirror tuning (metal 0.99, dark, rough x1.2 on the set)',[st.metallicFactor,st.roughnessFactor,bc.map(x=>x.toFixed(3))].join(' '));
-  const sk=meshTris(j,bin,'room_moon_steel')||[];
+  const kick=M('kick')?.pbrMetallicRoughness;
+  t(kick?.metallicFactor===st.metallicFactor&&kick?.roughnessFactor===st.roughnessFactor,
+    'the kick ring keeps the frame steel finish');
+  const sk=meshTris(j,bin,'room_moon_kick')||[];
   const ring=sk.filter(x=>{const r=Math.hypot(x.c[0],x.c[2]);return r>171.5&&r<172.1&&x.c[1]>-46.2&&x.c[1]<-39.2;});
   const az=new Set(ring.map(x=>Math.round(Math.atan2(x.c[2],x.c[0])*8)));
   t(ring.length>=100&&az.size>=40,'the owner\'s steel kick ring runs round the wall base',ring.length+' triangles over '+az.size+' sectors');
@@ -112,6 +116,8 @@ function assetSuite(cfgSrc,tweak){
  const lights=[...blk.matchAll(/\{type:'(spot|point|dir)'[^}]*\}/g)].map(m=>({type:m[1],shadow:/shadow:true/.test(m[0])}));
  const n=ty=>lights.filter(l=>l.type===ty).length;
  t(lights.length>=3&&n('spot')<=3&&n('point')<=1&&n('dir')===0,'lights fit the pool (<=3 spots, <=1 point, no dir)',n('spot')+' spots '+n('point')+' points');
+  t(lights.every(l=>!l.shadow)&&/dir:\{[^}]*on:true,shadow:true/.test(blk),'the directional sun is the only shadow caster');
+  t(/reflect:true/.test(blk),'Moon Base uses the room reflection cache');
  return r;
 }
 
@@ -124,6 +130,10 @@ function scriptSuite(src){
  t(!!geo&&/libraries\.load\(GEO_SRC/.test(src),'the shapes come from the owner\'s hand-edited .blend (GEO_SRC)',geo);
  t(saves.length>0&&saves.every(s=>s!==geo),'the build never saves over the hand-edited .blend',saves.join());
  t(/^FLAG_SRC = /m.test(src)&&/'steel':\s*\(0x2b3036, 0\.99, 1\.2,/.test(src),'the flag render and the owner\'s steel tuning are in the script');
+ const baked=src.match(/^SUN_DIR\s*=\s*\(([^)]+)\)/m)?.[1].split(',').map(Number);
+ const live=roomBlock(CONFIG).match(/dir:\{[^}]*pos:\[([^\]]+)\]/)?.[1].split(',').map(Number);
+ const cosine=baked&&live&&baked.reduce((sum,v,i)=>sum+v*live[i],0)/(Math.hypot(...baked)*Math.hypot(...live));
+ t(cosine>Math.cos(Math.PI/360),'the baked sun aligns with the live sun (within 0.5 deg)');
  return r;
 }
 
@@ -135,7 +145,9 @@ function mutate(src,from,to){if(!src.includes(from))throw new Error('MUTATION AN
  const out=src.replace(from,to);if(out===src)throw new Error('no-op mutation: '+from);return out;}
 const MUT=[
  ['config points at a sky that is not there','cfg',"sky:{src:'assets/rooms/moon/sky/moon'}","sky:{src:'assets/rooms/moon/sky/nothing'}"],
- ['a dir light in the pool (the sun is rooms.moon.dir)','cfg',"{type:'spot', pos:[0,36,0], look:[0,0,0], color:0xeef3ff","{type:'dir', pos:[0,36,0], look:[0,0,0], color:0xeef3ff"],
+ ['a dir light in the pool (the sun is rooms.moon.dir)','cfg',"{type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf2f5f7","{type:'dir', pos:[0,55,8], look:[0,0,0], color:0xf2f5f7"],
+ ['a fill light casts shadows','cfg','penumbra:0.8},\n        {type:\'spot\', pos:[54,46,-22]', 'penumbra:0.8, shadow:true},\n        {type:\'spot\', pos:[54,46,-22]'],
+ ['the bake sun moves away from the live sun','py','SUN_DIR  = (-0.8, 0.72, 0.35)','SUN_DIR  = (-0.8, 0.42, 0.35)'],
  ['the build saves over the owner\'s .blend','py',"save_as_mainfile(filepath=os.path.join(BUILD, 'moon_room.blend'))","save_as_mainfile(filepath=os.path.join(BUILD, 'moon_base.blend'))"],
  ['the build regenerates the shapes itself','py',"with bpy.data.libraries.load(GEO_SRC, link=False)","with bpy.data.libraries.load(OTHER, link=False)"],
  ['the steel goes back to the script\'s first tuning','py',"'steel':     (0x2b3036, 0.99, 1.2,","'steel':     (0x2b3036, 0.75, 0.42,"],
@@ -146,9 +158,10 @@ const MUT=[
  ['every prop material gets a set of its own','glb',j=>{j.materials.filter(m=>m.normalTexture&&PROPS.test(m.name)).forEach(m=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:j.images[0].bufferView})-1;m.normalTexture={index:j.textures.push({source:ni})-1};});}],
  ['the wall loses its ORM','glb',j=>{delete j.materials.find(m=>m.name==='moon_wall').pbrMetallicRoughness.metallicRoughnessTexture;}],
  ['the floor misses the bake','glb',j=>{prims(j,'room_moon_floor').forEach(p=>delete p.attributes.COLOR_0);}],
+ ['the kick ring loses its sunlight bake','glb',j=>{delete j.materials.find(m=>m.name==='moon_kick').emissiveTexture;}],
  ['the flag loses the render','glb',j=>{delete j.materials.find(m=>m.name==='moon_flag').pbrMetallicRoughness.baseColorTexture;}],
  ['the steel goes back to metal 0.75','glb',j=>{j.materials.find(m=>m.name==='moon_steel').pbrMetallicRoughness.metallicFactor=0.75;}],
- ['the kick ring is lost','glb',(j,bin)=>{editVerts(j,bin,'room_moon_steel',v=>{const r=Math.hypot(v[0],v[2]);return r>171.5&&r<172.1&&v[1]<-38;},v=>[v[0],v[1]+30,v[2]]);}],
+ ['the kick ring is lost','glb',(j,bin)=>{editVerts(j,bin,'room_moon_kick',v=>{const r=Math.hypot(v[0],v[2]);return r>171.5&&r<172.1&&v[1]<-38;},v=>[v[0],v[1]+30,v[2]]);}],
  ['a runaway vertex','glb',(j,bin)=>{editVerts(j,bin,'room_moon_steel',(()=>{let once=true;return()=>{const o=once;once=false;return o;};})(),v=>[v[0],v[1],v[2]+800000]);}],
  ['the floor is wound face down','glb',(j,bin)=>{meshTris(j,bin,'room_moon_floor',true);}],
  ['the terrain is wound face down','glb',(j,bin)=>{meshTris(j,bin,'room_moon_terrain',true);}],

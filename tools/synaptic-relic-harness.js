@@ -1,5 +1,5 @@
-// Integration check for the registered Silver Circuit table and matching pitch.
-// Run from the project root: node tools/silver-circuit-harness.js
+// Integration check for the registered Synaptic Relic table and matching pitch.
+// Run from the project root: node tools/synaptic-relic-harness.js
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert'),sharp=require('sharp');
 global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
@@ -53,6 +53,15 @@ vm.createContext(c);vm.runInContext(['onm','skinKey','touchSkin','rodHoleShader'
  assert.deepEqual(warnings,[],'loader warnings');
  assert(c.skinGroups.circuit.synapticRelic&&c.pitchGroups.synaptic_relic);
  assert.equal(c.skinRodHoles.circuit.synapticRelic.length,8);
+ const goalFrames=[];
+ c.skinGroups.circuit.synapticRelic.traverse(o=>{
+  if(o.isMesh&&/^goal_frame_(?:relic_outer_)?[lr](?:\d+)?$/.test(o.name))goalFrames.push(o);
+ });
+ assert.equal(goalFrames.length,4,'two playing-side and two exterior goal frames');
+ for(const {name,material:m} of goalFrames){
+  assert(m.map&&m.normalMap&&m.roughnessMap&&m.metalnessMap&&m.emissiveMap,name+' has the inlay maps');
+  assert(m.emissiveIntensity>2,name+' uses the authored emissive strength');
+ }
  let mapped=false, pitch=false;
  c.skinGroups.circuit.synapticRelic.traverse(o=>{if(o.isMesh&&o.material&&o.material.map&&o.material.normalMap&&o.material.metalnessMap) mapped=true;});
  c.pitchGroups.synaptic_relic.traverse(o=>{if(o.isMesh&&o.material.map&&o.material.normalMap&&o.material.roughnessMap&&o.material.emissiveMap)pitch=true;});

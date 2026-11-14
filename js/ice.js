@@ -1,7 +1,7 @@
 'use strict';
-// ================= ICE: a block of ice round every man of a frozen team =================
-// frost itself only slows the rods (S.eff[team].frozen, rods.js); this is what the player sees: a faceted block fitted to the figurine, hung on the rod pivot so it slides and swings with the man
-// one shared geometry per team (a few seeded shapes), two transparent draws a man while frozen and nothing otherwise; the break throws faceted chunks (one instanced draw, flown here) plus vfx.js's glints and mist; tuning in CONFIG.fx.ice
+// ================= ICE: a frosted cast around each frozen figurine =================
+// The cast follows its rod pivot. Seeded geometry is shared within a team, with two transparent draws per visible cast.
+// Shattering uses one instanced mesh for ice chips, plus glints and mist from vfx.js. Tuning lives in CONFIG.fx.ice.
 
 const IC=CONFIG.fx.ice;
 // rp = the blocks follow a replay's footage, not the live match
@@ -63,6 +63,15 @@ function iceRings(F,P,t){
   x0=lerp(x0,Math.min(x0,wx0),k)-pad;x1=lerp(x1,Math.max(x1,wx1),k)+pad;zh=Math.min(lerp(zh,Math.max(zh,wz),k)+pad,P.maxHalfZ);
   rings.push({y,x0,x1,z0:-zh,z1:zh,c:lerp(P.chamfer[0],P.chamfer[1],u),j:lerp(P.jitter[0],P.jitter[1],u)});
  }
+
+ // Roll the bottom edge in over two short slopes. Share the clearance between the inset
+ // and the corner cuts so the rounded sole still surrounds the boot and foot box.
+ const base=rings[0],lower=rings[1],bevelY=lerp(base.y,lower.y,0.28);
+ const roll=(y,inset,chamfer)=>({...base,y,x0:base.x0+inset,x1:base.x1-inset,
+  z0:base.z0+inset,z1:base.z1-inset,c:chamfer});
+ rings.splice(0,1,
+  roll(base.y,P.pad[0]*0.29,P.pad[0]*1.28),
+  roll(bevelY,P.pad[0]*0.07,P.pad[0]*1.13));
  return rings;
 }
 
@@ -73,7 +82,7 @@ function iceRing(R,seed){
  const P=[[x1,z0+c],[x1,z1-c],[x1-c,z1],[x0+c,z1],[x0,z1-c],[x0,z0+c],[x0+c,z0],[x1-c,z0]];
  return P.map((p,i)=>[p[0]+(iceHash(seed+i*1.7)-0.5)*2*R.j,R.y+(iceHash(seed*0.37+i*3.1)-0.5)*R.j*0.6,p[1]+(iceHash(seed+i*2.9+11)-0.5)*2*R.j]);
 }
-// the block as flat triangles (9 numbers each), wound outward: walls loft ring to ring, a roof pulls in, a few crystals stand on it
+// Flat triangles wound outward. The top tapers in to form a broad beveled crown.
 function iceTris(rings,seed,P){
  const R=rings.map((r,j)=>iceRing(r,seed+j*13.7)),n=R.length,T=[];
  const tri=(a,b,c)=>T.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2]);
@@ -82,91 +91,117 @@ function iceTris(rings,seed,P){
  for(let j=0;j+1<n;j++)for(let v=0;v<8;v++)quad(R[j][v],R[j][(v+1)%8],R[j+1][(v+1)%8],R[j+1][v]);
  const c0=mid(R[0]);
  for(let v=0;v<8;v++)tri(c0,R[0][v],R[0][(v+1)%8]);
- const top=R[n-1],ct=mid(top),roof=top.map((p,i)=>[ct[0]+(p[0]-ct[0])*P.roofIn+(iceHash(seed+i*5.3)-0.5)*0.3,
-  ct[1]+P.roof+(iceHash(seed+i*8.1)-0.5)*0.35,ct[2]+(p[2]-ct[2])*P.roofIn+(iceHash(seed+i*6.7)-0.5)*0.3]);
+ const top=R[n-1],ct=mid(top),roof=top.map(p=>[ct[0]+(p[0]-ct[0])*P.roofIn,
+  ct[1]+P.roof+(p[1]-ct[1])*0.4,ct[2]+(p[2]-ct[2])*P.roofIn]);
  for(let v=0;v<8;v++)quad(top[v],top[(v+1)%8],roof[(v+1)%8],roof[v]);
  const cr=mid(roof);
  for(let v=0;v<8;v++)tri(cr,roof[(v+1)%8],roof[v]);
- for(let s=0;s<P.spikes;s++){
-  const a=roof[(s*2+Math.floor(iceHash(seed+s)*3))%8],k=0.2+0.45*iceHash(seed+s*3.3);
-  const ax=cr[0]+(a[0]-cr[0])*k,az=cr[2]+(a[2]-cr[2])*k,by=cr[1]-0.05,hw=0.28+0.28*iceHash(seed+s*7.7);
-  const h=lerp(P.spike[0],P.spike[1],iceHash(seed+s*9.1)),ap=[ax+(iceHash(seed+s*2.2)-0.5)*0.9,by+h,az+(iceHash(seed+s*4.4)-0.5)*0.9];
-  const b=[[ax-hw,by,az-hw],[ax+hw,by,az-hw],[ax+hw,by,az+hw],[ax-hw,by,az+hw]];
-  tri(b[0],b[1],b[2]);tri(b[0],b[2],b[3]);
-  for(let i=0;i<4;i++){
-   const p=b[i],q=b[(i+1)%4],e1=[q[0]-p[0],q[1]-p[1],q[2]-p[2]],e2=[ap[0]-p[0],ap[1]-p[1],ap[2]-p[2]];
-   const nx=e1[1]*e2[2]-e1[2]*e2[1],ny=e1[2]*e2[0]-e1[0]*e2[2],nz=e1[0]*e2[1]-e1[1]*e2[0];
-   const fx=(p[0]+q[0]+ap[0])/3-ax,fy=(p[1]+q[1]+ap[1])/3-by,fz=(p[2]+q[2]+ap[2])/3-az;
-   if(nx*fx+ny*fy+nz*fz>=0)tri(p,q,ap);else tri(q,p,ap);
-  }
- }
  return T;
 }
 function iceMake(T){
- const n=T.length/9,pos=new Float32Array(T),nor=new Float32Array(n*9),uv=new Float32Array(n*6),sc=0.17;
+ const n=T.length/9,pos=new Float32Array(T),nor=new Float32Array(n*9),height=new Float32Array(n*3);
+ let minY=Infinity,maxY=-Infinity;
+ for(let i=1;i<pos.length;i+=3){minY=Math.min(minY,pos[i]);maxY=Math.max(maxY,pos[i]);}
+ const span=maxY-minY||1;
  for(let i=0;i<n;i++){
   const o=i*9,ax=pos[o],ay=pos[o+1],az=pos[o+2];
   const e1x=pos[o+3]-ax,e1y=pos[o+4]-ay,e1z=pos[o+5]-az,e2x=pos[o+6]-ax,e2y=pos[o+7]-ay,e2z=pos[o+8]-az;
   let nx=e1y*e2z-e1z*e2y,ny=e1z*e2x-e1x*e2z,nz=e1x*e2y-e1y*e2x;
   const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;
-  const up=Math.abs(ny)>=Math.abs(nx)&&Math.abs(ny)>=Math.abs(nz),side=Math.abs(nx)>=Math.abs(nz);
   for(let k=0;k<3;k++){
    nor[o+k*3]=nx;nor[o+k*3+1]=ny;nor[o+k*3+2]=nz;
-   const px=pos[o+k*3],py=pos[o+k*3+1],pz=pos[o+k*3+2];
-   uv[i*6+k*2]=(up?px:side?pz:px)*sc;uv[i*6+k*2+1]=(up?pz:py)*sc;
+   height[i*3+k]=(pos[o+k*3+1]-minY)/span;
   }
  }
  const g=new THREE.BufferGeometry();
  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
  g.setAttribute('normal',new THREE.BufferAttribute(nor,3));
- g.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+ g.setAttribute('iceHeight',new THREE.BufferAttribute(height,1));
  g.computeBoundingBox();g.computeBoundingSphere();
  return g;
 }
 
 // --- look ---
-// one small tile: clear ice with frost bloom and a few cracks; read as an alpha map (green channel), so white is frosted and grey is clear
+// Start with a black mask so the ice can render while the fracture texture loads.
 function iceTexture(){
- const N=128,cv=document.createElement('canvas');cv.width=cv.height=N;
- const g=cv.getContext('2d');
- g.fillStyle='#8a8a8a';g.fillRect(0,0,N,N);
- let sd=7;const rn=()=>{sd=(sd*16807)%2147483647;return sd/2147483647;};
- for(let i=0;i<140;i++){
-  const v=rn()<0.5?255:50;
-  g.fillStyle='rgba('+v+','+v+','+v+','+(0.05+rn()*0.1)+')';
-  g.beginPath();g.arc(rn()*N,rn()*N,3+rn()*13,0,6.283);g.fill();
- }
- g.lineCap='round';
- for(let i=0;i<12;i++){
-  let x=rn()*N,y=rn()*N,a=rn()*6.283;
-  g.strokeStyle='rgba(255,255,255,'+(0.35+rn()*0.4)+')';g.lineWidth=0.6+rn()*0.9;g.beginPath();g.moveTo(x,y);
-  for(let k=0;k<6;k++){a+=(rn()-0.5)*1.1;x+=Math.cos(a)*(5+rn()*10);y+=Math.sin(a)*(5+rn()*10);g.lineTo(x,y);}
-  g.stroke();
- }
+ const cv=document.createElement('canvas');cv.width=cv.height=1;
+ const ctx=cv.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,1,1);
  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;
- return t;
+ const mask={value:t};
+ new THREE.TextureLoader().load('assets/fx/clear-ice-fractures.png',tex=>{
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  mask.value=tex;t.dispose();
+ });
+ return mask;
 }
-// a front and a back material per team (two teams can be frozen at once and fade on their own clocks); the edge glow is a patch on the standard shader
-function iceMats(){
- const U={uIceRim:{value:kitLin(IC.rim.col)},uIceK:{value:IC.rim.k}},m={u:U};
- const mk=back=>{
+
+// Project from three axes in the shell's local frame so the crack mask follows the rod and crosses the bevels.
+const ICE_MASK=`
+uniform sampler2D uIceMask;
+varying vec3 vIcePos, vIceNormal;
+varying float vIceHeight;
+float iceFracture(vec3 p, vec3 n){
+ vec3 w=pow(abs(n),vec3(4.0));
+ vec3 m=vec3(texture2D(uIceMask,p.zy+vec2(0.31,0.08)).r,
+  texture2D(uIceMask,p.xz+vec2(0.12,0.43)).r,
+  texture2D(uIceMask,p.xy+vec2(0.67,0.28)).r);
+ return dot(m,w)/(w.x+w.y+w.z);
+}`;
+
+// Local three-dimensional noise gives the frost a soft, uneven density across adjoining faces.
+const ICE_CLOUD=`
+float iceCell(vec3 p){
+ p=fract(p*vec3(0.1031,0.11369,0.13787));
+ p+=dot(p,p.yzx+19.19);
+ return fract((p.x+p.y)*p.z);
+}
+float iceNoise(vec3 p){
+ vec3 cell=floor(p), f=fract(p);
+ f=f*f*(3.0-2.0*f);
+ vec4 a=vec4(iceCell(cell),iceCell(cell+vec3(0,1,0)),iceCell(cell+vec3(0,0,1)),iceCell(cell+vec3(0,1,1)));
+ vec4 b=vec4(iceCell(cell+vec3(1,0,0)),iceCell(cell+vec3(1,1,0)),iceCell(cell+vec3(1,0,1)),iceCell(cell+vec3(1,1,1)));
+ vec4 x=mix(a,b,f.x);
+ return mix(mix(x.x,x.y,f.y),mix(x.z,x.w,f.y),f.z);
+}`;
+
+// The front carries the frost. The inner wall gives the shell and fractures depth.
+function iceUniforms(){return {uIceRim:{value:kitLin(IC.rim.col)},uIceK:{value:IC.rim.k}};}
+function iceMaterial(U,back,chip=false){
   const x=new THREE.MeshStandardMaterial({color:kitLin(back?IC.deep:IC.col),emissive:kitLin(IC.glow),emissiveIntensity:IC.glowK*(back?0.5:1),
-   roughness:back?0.35:IC.rough,metalness:0,transparent:true,opacity:back?IC.back:IC.opacity,alphaMap:ICE.tex,flatShading:true,depthWrite:false,
+   roughness:back?0.24:IC.rough,metalness:0,transparent:true,opacity:back?IC.back:IC.opacity,flatShading:true,depthWrite:false,
    envMapIntensity:IC.env,side:back?THREE.BackSide:THREE.FrontSide});
   x.onBeforeCompile=sh=>{
-   sh.uniforms.uIceRim=U.uIceRim;sh.uniforms.uIceK=U.uIceK;
+   Object.assign(sh.uniforms,U,{uIceMask:ICE.tex});
+   sh.vertexShader=sh.vertexShader
+    .replace('#include <common>','#include <common>\nattribute float iceHeight;\nvarying vec3 vIcePos, vIceNormal;\nvarying float vIceHeight;')
+    .replace('#include <begin_vertex>','#include <begin_vertex>\nvIcePos=position;vIceNormal=normal;vIceHeight=iceHeight;');
    sh.fragmentShader=sh.fragmentShader
-    .replace('#include <common>','#include <common>\nuniform vec3 uIceRim;uniform float uIceK;')
-    .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
-     'float icRim=pow(1.0-clamp(abs(dot(normal,normalize(vViewPosition))),0.0,1.0),'+IC.rim.power.toFixed(2)+');\n'+
-     'outgoingLight+=uIceRim*icRim*uIceK;\n'+
-     'gl_FragColor=vec4(outgoingLight,clamp(diffuseColor.a+icRim*0.4*uIceK,0.0,1.0));');
+    .replace('#include <common>','#include <common>\nuniform vec3 uIceRim;uniform float uIceK;\n'+ICE_MASK+(back||chip?'':ICE_CLOUD))
+    .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',`
+     vec3 icePoint=vIcePos*${chip?'0.83':'0.092'};
+     vec3 iceNormal=normalize(vIceNormal);
+     float iceCrack=smoothstep(0.012,0.30,iceFracture(icePoint,iceNormal));
+     float iceFresnel=pow(1.0-clamp(abs(dot(normal,normalize(vViewPosition))),0.0,1.0),${IC.rim.power.toFixed(2)});
+     float iceRim=uIceK*iceFresnel;
+     vec3 iceAxis=abs(iceNormal);
+     float iceBevel=smoothstep(0.20,0.69,min(iceAxis.x,iceAxis.z));
+     float iceTips=${chip?'0.16':`max(1.0-smoothstep(0.02,0.26,vIceHeight),smoothstep(0.70,0.98,vIceHeight)*0.91)`};
+     float iceGrain=iceFracture(icePoint*3.2,iceNormal);
+     float iceFrost=iceTips*(0.68+0.32*smoothstep(0.02,0.30,iceGrain));
+     float iceCloud=${back||chip?'0.0':`smoothstep(0.18,0.76,0.72*iceNoise(vIcePos*0.48+vec3(4.0,7.0,2.0))+0.28*iceNoise(vIcePos*1.61))`};
+     vec3 iceReflection=reflectedLight.directSpecular+reflectedLight.indirectSpecular;
+     float iceGlare=min(length(iceReflection)*0.32,0.23);
+     float iceDensity=${back?'0.20+0.44*iceFresnel+0.46*iceCrack+0.46*iceFrost':chip?'0.36+0.51*iceRim+0.38*iceCrack+iceGlare':'0.25+0.35*iceCloud+0.56*iceRim+0.19*iceBevel+0.49*iceCrack+0.38*iceFrost+iceGlare'};
+     float iceScatter=clamp(${back||chip?'0.0':'0.29+0.32*iceCloud'}+0.68*iceRim+0.31*iceBevel+0.85*iceCrack+0.72*iceFrost,0.0,1.0);
+     vec3 iceColor=mix(outgoingLight*0.56,uIceRim,iceScatter);
+     gl_FragColor=vec4(iceColor+iceReflection*0.5,diffuseColor.a*clamp(iceDensity,0.0,1.0));`);
   };
-  x.customProgramCacheKey=()=>back?'icb':'icf';
+  x.customProgramCacheKey=()=>back?'ice-back':chip?'ice-chip':'ice-front';
   return x;
- };
- m.f=mk(false);m.b=mk(true);
- return m;
+}
+function iceMats(){
+ const u=iceUniforms();
+ return {u,f:iceMaterial(u,false),b:iceMaterial(u,true)};
 }
 
 // --- chunks ---
@@ -182,7 +217,7 @@ function iceChunkGeo(){
  return iceMake(T);
 }
 function iceChunksBuild(){
- const C=IC.shards,mat=iceMats().f,mesh=new THREE.InstancedMesh(iceChunkGeo(),mat,C.max);
+ const C=IC.shards,mat=iceMaterial(iceUniforms(),false,true),mesh=new THREE.InstancedMesh(iceChunkGeo(),mat,C.max);
  mat.side=THREE.DoubleSide;mat.opacity=C.opacity;
  mesh.frustumCulled=false;mesh.visible=false;mesh.castShadow=mesh.receiveShadow=false;mesh.renderOrder=3;
  const list=[];for(let i=0;i<C.max;i++)list.push({on:false});
@@ -260,8 +295,8 @@ function iceFitTeam(t){
 // every man gets a hidden pair of meshes on its rod's pivot, so the first frost compiles with the rest of the scene and nothing is made mid-match
 function iceBuild(){
  if(ICE.built||!IC.on||typeof rods==='undefined'||!rods.length||typeof scene==='undefined'||!scene)return;
- ICE.tex=iceTexture();
- ICE.mat=[iceMats(),iceMats()];
+ if(!ICE.tex)ICE.tex=iceTexture();
+ if(!ICE.mat[0])ICE.mat=[iceMats(),iceMats()];
  if(typeof vfxLin==='function'){ICE.pal=IC.shatter.cols.map(vfxLin);ICE.hot=vfxLin(IC.hot);ICE.body=vfxLin(IC.body);}
  ICE.key=['',''];iceFitTeam(0);iceFitTeam(1);
  for(const r of rods){
@@ -276,7 +311,7 @@ function iceBuild(){
    r.ice.push({g,front,back,v,vis:false,born:0});
   }
  }
- iceChunksBuild();
+ if(!ICE.sh)iceChunksBuild();
  ICE.built=true;
 }
 
@@ -291,7 +326,7 @@ function iceCentre(it,t){
 function iceForm(r,it){
  if(!iceFxOn())return;
  const F=IC.form,c=iceCentre(it,r.team),x=c.x,y=c.y,z=c.z;
- vfxBlast(0,x,y-2,z,0,0,0,vfxRg(F.puff),F.size[0],F.size[1],ICE.hot,0.8,ICE.body);
+ vfxBlast(0,x,y-2,z,0,0,0,vfxRg(F.puff),F.size[0],F.size[1],ICE.hot,0.48,ICE.body);
  for(let i=0;i<F.glints;i++){
   const d=vfxDir(0,0.6,0,1),sp=rand(6,16);
   vfxSpk(x,y-2,z,d[0]*sp,d[1]*sp,d[2]*sp,rand(0.35,0.7),ICE.pal[i%ICE.pal.length],2.8,rand(0.12,0.22),1.6,1,0.03,3,rand(0,0.1));
@@ -315,8 +350,8 @@ function iceShatter(r,mi,it,solo){
   const d=vfxSphere(),sp=rand(8,30);
   vfxSpk(_icV.x,_icV.y,_icV.z,d[0]*sp,Math.abs(d[1])*sp*0.8+3,d[2]*sp,rand(0.5,1.1),ICE.pal[i%ICE.pal.length],3.2,rand(0.12,0.26),1.6,1,0.03,3,rand(0,0.06));
  }
- if(S_.flash)vfxBlast(2,cx,cy,cz,0,0,0,0.16,4,8,ICE.hot,1.5,ICE.body);
- if(S_.puff)vfxBlast(0,cx,cy-1,cz,0,0,0,rand(0.4,0.7),2.5,6,ICE.hot,0.8,ICE.body);
+ if(S_.flash)vfxBlast(2,cx,cy,cz,0,0,0,0.12,2.5,5,ICE.hot,0.72,ICE.body);
+ if(S_.puff)vfxBlast(0,cx,cy-1,cz,0,0,0,rand(0.28,0.52),1.8,4,ICE.hot,0.45,ICE.body);
 }
 // a twinkle somewhere on the frozen team
 function iceGlint(t){
@@ -391,8 +426,8 @@ function iceUpdate(rdt){
     if(alive&&!it.vis){it.vis=true;it.born=T.age;iceForm(r,it);}
     else if(!alive&&it.vis)iceShatter(r,mi,it,true);
     if(!it.vis)continue;
-    const u=clamp((T.age-it.born)/IC.grow,0,1),k=1+2.70158*Math.pow(u-1,3)+1.70158*Math.pow(u-1,2);
-    it.g.scale.set(lerp(0.72,1,k),lerp(0.2,1,k),lerp(0.72,1,k));
+    const k=iceSm((T.age-it.born)/IC.grow);
+    it.g.scale.set(lerp(0.84,1,k),lerp(0.22,1,k),lerp(0.84,1,k));
     it.g.visible=true;
    }
   }

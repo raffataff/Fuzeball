@@ -8,5 +8,16 @@ THREE.TextureLoader.prototype.load=function(_url,done){const t=new THREE.Texture
  const scene=await new Promise((ok,fail)=>new THREE.GLTFLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'',g=>ok(g.scene),fail));
  let grip,knob;scene.traverse(o=>{if(o.isMesh&&o.name.toLowerCase().includes('handle_solar'))grip=o;if(o.isMesh&&o.name.toLowerCase().includes('knob')&&/^team/i.test(o.material.name))knob=o;});
  assert(grip&&grip.material.map&&grip.material.normalMap&&grip.material.emissiveMap,'grip PBR maps');
+ const {position,uv,normal,tangent}=grip.geometry.attributes;
+ assert(tangent&&grip.material.vertexTangents,'the wrapped normal map has a tangent basis');
+ grip.geometry.computeBoundingBox();
+ const {min,max}=grip.geometry.boundingBox;
+ for(let i=0;i<position.count;i++){
+  const u=(max.z-position.getZ(i))/(max.z-min.z);
+  assert(Math.abs(uv.getX(i)-u)<1e-5,'decal U follows the shaft');
+  const x=position.getX(i),y=position.getY(i),radius=Math.hypot(x,y);
+  const nx=normal.getX(i),ny=normal.getY(i);
+  assert((x*nx+y*ny)/(radius*Math.hypot(nx,ny))>.999,'smooth normals follow the grip curvature');
+ }
  assert(knob&&/^team/i.test(knob.material.name),'team-coloured knob preserved');
  }console.log('Solar Forge rods: four GLBs parsed, all embedded maps decoded, PBR grip and team knobs present.');})().catch(e=>{console.error(e);process.exitCode=1;});

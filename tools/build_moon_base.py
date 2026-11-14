@@ -19,7 +19,8 @@ the floor disc (a polar grid) and the wall ring (rows, and a UV round it). Its o
     wall      one tiling map + normal + ORM round the ring: painted panels, a blue band, fasteners, chips, dust low down
     glass     a dust film, thickest low down where the regolith settles, a few gloved wipes
     props     surface sets (tools/roomlib.py: steel, paint, plastic), projected in each loose part's own frame (struts and rings along their length)
-    bake      ambient occlusion + the light strip and the door lamp ray-traced per corner into the baked colour; no lights are exported
+    bake      directional visibility through the authored dome frame on the deck and steel kick ring, amber airlock spill, and
+              the existing per-corner ambient occlusion and strip light
 
 The steel keeps the owner's tuning (metal 0.99, rough 0.30); the flag wears the owner's logo render (FLAG_SRC).
 NO LIGHTS ARE EXPORTED. The sun is CONFIG.rooms.moon.dir (casts the table's shadow); SUN_DIR in build_moon_sky.py must match dir.pos.
@@ -27,6 +28,7 @@ NO LIGHTS ARE EXPORTED. The sun is CONFIG.rooms.moon.dir (casts the table's shad
 import bpy, bmesh, os, sys, math
 import numpy as np
 from mathutils import Vector, Matrix, noise, kdtree
+from mathutils.bvhtree import BVHTree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import roomlib as R
 from roomlib import sstep, hx, tfbm, seg_aa, height_to_normal
@@ -57,6 +59,10 @@ WALL_REP = 12                        # wall texture repeats round the ring
 TILE_U   = 2 * math.pi * WALL_R / WALL_REP
 GLASS_REP = 8                        # glass dust film repeats round the dome
 GLASS_GLOW = 0.35                    # the dust film's own light (emissive x its colour); 0 = it shows only where the scene lights it
+SUN_DIR  = (-0.8, 0.72, 0.35)       # toward the sun, shared with build_moon_sky.py and rooms.moon.dir.pos
+AIRLOCK_COLOR = 0xffa345
+AIRLOCK_POWER = 6100                 # cm² times irradiance
+AIRLOCK_FULL, AIRLOCK_REACH = 55, 100 # lateral falloff in cm
 DOME_C   = Vector((0, 0, WALL_TOP + 1.6))
 NOFF     = Vector((11.3, -4.2, 7.9))
 def g2b(x, y, z): return Vector((x, -z, y))
@@ -391,10 +397,10 @@ im_ra = new_img('moon_regolith_albedo', RN, RN); np_img(im_ra, ra)
 im_rn = new_img('moon_regolith_normal', RN, RN, True); np_img(im_rn, rn)
 FN = max(256, int(2048 * TS))
 fa, fn_, fo = floor_texture(FN)
-im_fa = new_img('moon_floor_albedo', FN, FN); np_img(im_fa, fa)
+im_fa = new_img('moon_floor_albedo', FN, FN)
 im_fn = new_img('moon_floor_normal', FN, FN, True); np_img(im_fn, fn_)
 im_fo = new_img('moon_floor_orm', FN // 2, FN // 2, True); np_img(im_fo, fo[::2, ::2])
-del fa, fn_, fo
+del fn_, fo
 WW, WH_ = max(128, int(1024 * TS)), max(64, int(256 * TS))
 wa, wn, wo = wall_texture(WW, WH_)
 im_wa = new_img('moon_wall_albedo', WW, WH_); np_img(im_wa, wa)
@@ -436,9 +442,10 @@ FLAT = {   # name: (hex, metal, rough, emissive hex, strength, surface kind); wi
     'tank':      (0xb8621f, 1.0, 0.9, None, 1, 'paint'),
     'suitwhite': (0xd6d8d3, 0.0, 0.55, None, 1, 'plastic'),
     'strip':     (0xdfe8ff, 0.0, 0.4, 0xdfe8ff, 4.0, None),
-    'status':    (0xffb454, 0.0, 0.6, 0xffb454, 5.0, None),
+    'status':    (AIRLOCK_COLOR, 0.0, 0.6, AIRLOCK_COLOR, 5.0, None),
 }
 for k, (h, m, r, e, es, kd) in FLAT.items(): MATS[k] = flat_mat('moon_' + k, h, m, r, e, es, kd)
+MATS['kick'] = flat_mat('moon_kick', 0x2b3036, 0.99, 1.2, kind='steel')
 def flag_mat():
     """The owner's logo render, clamped at its edges; a plain blue flag if the render is gone."""
     m = bpy.data.materials.new('moon_flag'); m.use_nodes = True; nt = m.node_tree; b = nt.nodes['Principled BSDF']
@@ -541,11 +548,17 @@ for o in SRC.get('moon_steel', []):                   # even offset threw two fr
 for o in SRC.get('moon_strip', []): drop_faces(o, lambda f: True)
 ROLE = {'moon_steel': 'steel', 'moon_visor': 'visor', 'moon_panel': 'panel', 'moon_door': 'door', 'moon_tank': 'tank', 'moon_suitwhite': 'suitwhite',
         'moon_strip': 'strip', 'moon_status': 'status', 'moon_flag': 'flag', 'moon_glass': 'glass', 'moon_terrain': 'terrain', 'moon_boulder': 'terrain'}
+kick_rings = []
 for src_name, objs in SRC.items():
     if src_name not in ROLE: continue
     for o in objs:
-        o.data.materials.clear(); o.data.materials.append(MATS[ROLE[src_name]])
-        mn = 'moon_' + ROLE[src_name]
+        role = ROLE[src_name]
+        if role == 'steel' and all(WALL_Y0 - 0.1 < v.co.z < FY + 5 and 170 < math.hypot(v.co.x, v.co.y) < 173
+                                   for v in o.data.vertices):
+            kick_rings.append(o)
+            role = 'kick'
+        o.data.materials.clear(); o.data.materials.append(MATS[role])
+        mn = 'moon_' + role
         if mn in KIND: prop_attrs(o, R.SURF_TILE[KIND[mn]])
 
 # terrain: the regolith's own repeat, tone at ~25 and ~70 cm so it never lines up
@@ -634,19 +647,140 @@ wall_ring(WALL_R, WALL_R + 5, WALL_Y0, WALL_TOP)
 # =============================================================================================
 # THE LIGHT BAKE, one mesh per material, export
 # =============================================================================================
+def occluder_bvh(objects):
+    vertices, faces = [], []
+    for o in objects:
+        start = len(vertices)
+        vertices.extend(o.matrix_world @ v.co for v in o.data.vertices)
+        faces.extend(tuple(start + i for i in p.vertices) for p in o.data.polygons)
+    return BVHTree.FromPolygons(vertices, faces)
+
+
+def emission_map(mat, name, pixels):
+    h, w = pixels.shape[:2]
+    image = new_img(name, w, h)
+    np_img(image, R.lin2srgb(pixels))
+    nt = mat.node_tree
+    tex = nt.nodes.new('ShaderNodeTexImage')
+    tex.image = image
+    bsdf = nt.nodes['Principled BSDF']
+    nt.links.new(tex.outputs['Color'], bsdf.inputs['Emission Color'])
+    bsdf.inputs['Emission Strength'].default_value = 1
+    return tex
+
+
+def airlock_spill(bvh, origin, normal, lamp, fade):
+    ray = lamp - origin
+    dist = ray.length
+    ray /= dist
+    facing = max(0, normal.dot(ray))
+    if facing and bvh.ray_cast(origin, ray, dist)[0] is None:
+        return AIRLOCK_POWER * facing * fade / (dist * dist + 120)
+    return 0
+
+
+def bake_deck(bvh, sun, lamp, albedo):
+    # Bake at texture resolution. The existing polar grid is too coarse for strut-width shadows.
+    coords = ((np.arange(FN) + 0.5) / FN * 2 - 1) * FR
+    x, z = np.meshgrid(coords, coords)
+    deck = x*x + z*z <= FLOOR_R**2
+    clear = np.ones((FN, FN), np.float32)
+    for row, col_ in np.argwhere(deck):
+        origin = g2b(coords[col_], FY + 0.07, coords[row])
+        clear[row, col_] = bvh.ray_cast(origin, sun, 420)[0] is None
+    clear = R.gblur(clear, 0.5, False)
+
+    # Keep the lamp local to the apron, the tank side of the door and the first boot tracks.
+    normal = Vector((0, 0, 1))
+    fade = 1 - sstep(AIRLOCK_FULL, AIRLOCK_REACH, np.hypot(x - lamp.x, z + lamp.y))
+    spill = np.zeros_like(clear)
+    for row, col_ in np.argwhere(deck & (fade > 0)):
+        origin = g2b(coords[col_], FY + 0.07, coords[row])
+        spill[row, col_] = airlock_spill(bvh, origin, normal, lamp, fade[row, col_])
+    spill = R.gblur(spill, 1.2, False)
+
+    base = np.where(albedo <= 0.04045, albedo / 12.92, ((albedo + 0.055) / 1.055)**2.4)
+    shade = np.array((0.23, 0.30, 0.40))
+    sunlight = np.array((1.12, 1.07, 1.0))
+    tint = R.lin(AIRLOCK_COLOR)
+    np_img(im_fa, R.lin2srgb(base * (shade + (sunlight - shade) * clear[..., None] + 0.42 * spill[..., None] * tint)))
+    # A low-resolution diffuse spill lifts the metallic tread plate and survives the live table shadow.
+    # The full-resolution albedo above carries the strut edges and the apron and boot-print detail.
+    emission_map(MATS['floor'], 'moon_floor_airlock_spill', base[4::8, 4::8] * spill[4::8, 4::8, None] * tint * 1.4)
+    for tex in MATS['floor'].node_tree.nodes:
+        if tex.type == 'TEX_IMAGE':
+            tex.extension = 'EXTEND'
+
+
+def bake_kick_ring(bvh, sun, lamp, ring):
+    # Use the ring's own geometry for its height and radius, and its door gap as the UV seam.
+    me = ring.data
+    low = min(v.co.z for v in me.vertices)
+    high = max(v.co.z for v in me.vertices)
+    radius = min(math.hypot(v.co.x, v.co.y) for v in me.vertices)
+    seam = -AIRLOCK
+    uv = []
+    for loop in me.loops:
+        v = me.vertices[loop.vertex_index].co
+        uv.append((((math.atan2(v.y, v.x) - seam) % math.tau) / math.tau, (v.z - low) / (high - low)))
+    set_layers(me, uv)
+    mat = MATS['kick']
+    nt = mat.node_tree
+    # Preserve the original tiled steel surface set and give the bake its own full-ring mapping.
+    tiles = nt.nodes.new('ShaderNodeMapping')
+    tile = R.SURF_TILE['steel']
+    tiles.inputs['Scale'].default_value = (math.tau * radius / tile, (high - low) / tile, 1)
+    nt.links.new(nt.nodes.new('ShaderNodeTexCoord').outputs['UV'], tiles.inputs['Vector'])
+    for tex in nt.nodes:
+        if tex.type == 'TEX_IMAGE':
+            nt.links.new(tiles.outputs['Vector'], tex.inputs['Vector'])
+
+    w, h = max(512, int(2048 * TS)), max(16, int(32 * TS))
+    pixels = np.zeros((h, w, 3), np.float32)
+    sun_tint = np.array((0.052, 0.056, 0.060))
+    amber_tint = R.lin(AIRLOCK_COLOR) * 0.052
+    for i in range(w):
+        angle = seam + (i + 0.5) / w * math.tau
+        x, y = math.cos(angle), math.sin(angle)
+        normal = Vector((-x, -y, 0))
+        incidence = max(0, normal.dot(sun))
+        rx, ry = (radius - 0.07) * x, (radius - 0.07) * y
+        fade = 1 - sstep(AIRLOCK_FULL, AIRLOCK_REACH, math.hypot(rx - lamp.x, ry - lamp.y))
+        for j in range(h):
+            origin = Vector((rx, ry, high - (j + 0.5) / h * (high - low)))
+            if incidence and bvh.ray_cast(origin, sun, 420)[0] is None:
+                pixels[j, i] = sun_tint * incidence
+            if fade > 0:
+                pixels[j, i] += amber_tint * airlock_spill(bvh, origin, normal, lamp, fade)
+    emission_map(mat, 'moon_kick_light', pixels)
+
+
 LAMPS = []     # (game xyz, colour hex, strength): the room's own lamps for the bake (strength = brightness x cm^2 at the lamp)
 for i in range(72):                                    # the light strip round the wall
     t = (i + 0.5) / 72 * 2 * math.pi
     if abs((t - AIRLOCK + math.pi) % (2 * math.pi) - math.pi) < DOOR_HALF * 1.6: continue
     LAMPS.append((((WALL_R - 1.6) * math.cos(t), WALL_TOP - 2.7, (WALL_R - 1.6) * math.sin(t)), 0xdfe8ff, 55))
-LAMPS.append((at(WALL_R - 3.0, FY + 46.5, 0), 0xffb454, 260))     # the airlock's status lamp
-
 print('moon: light bake')
 BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.8, soft=14.0)     # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
 bpy.context.view_layer.update()
 mat_of = lambda o: o.data.materials[0].name
 opaque = [o for o in col.objects if mat_of(o) not in {'moon_strip', 'moon_status', 'moon_glass', 'moon_flag'}]
-R.bake_light(opaque, [o for o in opaque if mat_of(o) != 'moon_terrain'], [(g2b(*p), R.lamp_tint(h), s) for p, h, s in LAMPS], seed=SEED, tag='moon', **BAKE)
+interior = [o for o in opaque if mat_of(o) != 'moon_terrain']
+casters = occluder_bvh(o for o in interior if mat_of(o) not in {'moon_floor', 'moon_kick'})
+sun = g2b(*SUN_DIR).normalized()
+status = SRC['moon_status'][0].data.vertices
+# Sample just inside and below the authored status fixture so the housing doesn't block its own light.
+lamp = sum((v.co for v in status), Vector()) / len(status) - g2b(3.2 * ca, 1.1, 3.2 * sa)
+bake_deck(casters, sun, lamp, fa)
+if len(kick_rings) != 1:
+    raise RuntimeError(f'Expected one authored kick ring, found {len(kick_rings)}')
+bake_kick_ring(casters, sun, lamp, kick_rings[0])
+
+strips = [(g2b(*p), R.lamp_tint(h), s) for p, h, s in LAMPS]
+airlock = [o for o in interior if mat_of(o) in {'moon_tank', 'moon_door', 'moon_panel'}]
+R.bake_light(opaque, [o for o in interior if o not in airlock], strips, seed=SEED, tag='moon', **BAKE)
+R.bake_light(opaque, airlock, strips + [(lamp, R.lamp_tint(AIRLOCK_COLOR, white=0.12), AIRLOCK_POWER)],
+             seed=SEED, tag='moon airlock', **BAKE)
 R.bake_light(opaque, [o for o in opaque if mat_of(o) == 'moon_terrain'], [], seed=SEED, tag='moon terrain', rays=16, reach=40.0, ao=0.45, amb=1.0)
 print('moon: %d lamps' % len(LAMPS))
 

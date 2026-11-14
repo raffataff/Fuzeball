@@ -17,18 +17,18 @@ LAYOUT (azimuth runs from +x toward +z, so the far wall the home camera looks at
 
 WHAT IS IN IT (static, one mesh per material)
     hull       tiling wall texture (teal wainscot, cream upper, brass rail, rivets, chipped paint)
-    deck       tiling tread plate for the outer floor, vertex-colour AO
+    deck       tread plate, texture-space contact AO and a shadowed spill map in the same UVs
     dais       one 2048 map for the round dais: plates, hazard edge, gold ring and stencil text
     glass      the window panes (alpha blend; the loader draws room glass first and never shadows it)
     props      one material each, wearing a tiling surface set (steel, brass, paint, leather, wood, plastic: albedo / normal / ORM,
                box-projected); emissive for lamps and neon (NO lights are exported)
     jukebox    the modelled one from JUKE_SRC (tools/build, not shipped), else a built one
-    colour     every opaque mesh's baked colour: ambient occlusion and the room's own lamps (LAMPS), ray-traced per corner (bake_light)
+    colour     ray-traced ambient occlusion, lamps and bay light baked per corner; the floor has texture-resolution lighting
 
 Authored in GAME units (X long axis, Y up, Z width) and converted with g2b like the other room builders.
-The room is lit by CONFIG.rooms.saucer.lights (pooled); the emissive parts only show up in the reflection bake.
+CONFIG.rooms.saucer supplies the table's live key and the jukebox's local fill.
 """
-import bpy, bmesh, os, sys, math, time
+import bpy, bmesh, json, os, subprocess, sys, math, time
 import numpy as np
 from mathutils import Vector, Matrix, noise
 
@@ -57,10 +57,14 @@ TILE_V   = SPRING - FL            # the hull texture covers the wall's whole hei
 HULL_TILES = 14
 TILE_U   = 2 * math.pi * WALL_R / HULL_TILES
 DECK_TILE = 64.0
+DECK_EXT = WALL_R + 4.0
 LEGS     = [(sx * 58, sz * 32) for sx in (-1, 1) for sz in (-1, 1)]
 PANE_CENTRES = [-157.5 + 15 * k for k in range(10)]     # window panes, 12 deg wide on a 15 deg pitch
 SILL_LOW = -28.0                                         # the panoramic bay on the right of the far wall comes down to here
 PANES = [(c, SILL_LOW if -90 < c < -30 else -6.0) for c in PANE_CENTRES]
+BAY_LIGHT_DIR = (0.60, 0.37, -1.0)    # toward the lit side of the ringed planet, above the bay sill
+BAY_LIGHT_COLOR = 0xffbb79
+JUKEBOX_LIGHT = ((-162.0, -11.0, 0.0), 0xffa044, 2900)
 PORTHOLES = [37.5, 67.5, 97.5, 142.5]
 PH_Y, PH_R = 8.0, 22.0
 def r_in(y): return WALL_R - LEAN * (y - FL)
@@ -86,6 +90,10 @@ def set_active(*objs):
 def srgb(h):
     c = [((h >> s) & 255) / 255 for s in (16, 8, 0)]
     return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c) + (1.0,)
+def linear_rgb(rgb):
+    return np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+def display_rgb(rgb):
+    return np.where(rgb <= 0.0031308, 12.92 * rgb, 1.055 * rgb ** (1 / 2.4) - 0.055)
 def hx(h): return np.array([((h >> s) & 255) / 255 for s in (16, 8, 0)])      # sRGB 0..1, for the image arrays
 SURF = {}      # kind -> {'alb', 'mean', 'n', 'orm', 'albs': {material: own albedo}} (the surface sets, built in the shell section)
 FACT = {}      # material -> (roughness, metallic) factors written into the GLB after export: glTF scales the ORM texture by them
@@ -118,13 +126,16 @@ def flat_mat(name, hexc, metal=0.0, rough=0.6, emit=None, emit_str=1.0, kind=Non
     m.diffuse_color = col; m.use_backface_culling = True
     return m
 def glb_factors(path, fact):
-    """Write each listed material's roughness / metallic factor into the GLB's JSON (the exporter writes none when a texture drives the input)."""
+    """Restore material factors and expose the floor ORM's occlusion channel to glTF."""
     import json, struct
     b = open(path, 'rb').read(); jl = struct.unpack_from('<I', b, 12)[0]; j = json.loads(b[20:20 + jl])
     for mt in j.get('materials', []):
         f = fact.get(mt.get('name'))
         if f:
             pb = mt.setdefault('pbrMetallicRoughness', {}); pb['roughnessFactor'] = round(float(f[0]), 4); pb['metallicFactor'] = round(float(f[1]), 4)
+        if mt.get('name') in {'saucer_deck', 'saucer_dais'}:
+            # Red is AO; green and blue remain roughness and metalness. All share UV0.
+            mt['occlusionTexture'] = dict(mt['pbrMetallicRoughness']['metallicRoughnessTexture'])
     js = json.dumps(j, separators=(',', ':')).encode(); js += b' ' * (-len(js) % 4); rest = b[20 + jl:]
     open(path, 'wb').write(struct.pack('<III', 0x46546C67, 2, 20 + len(js) + len(rest)) + struct.pack('<II', len(js), 0x4E4F534A) + js + rest)
 def new_img(name, w, h, data=False, alpha=False):
@@ -394,11 +405,23 @@ def tread_textures(N):
         x = rng.uniform(0, N); y = rng.uniform(0, N); a = rng.uniform(0, math.pi); l = rng.uniform(10, 60) * TS * 2
         seg_aa(scr, (x, y), (x + l * math.cos(a), y + l * math.sin(a)), 1.0, rng.uniform(0.15, 0.5))
     alb = alb * (1 - 0.3 * scr[..., None]) + 0.3 * scr[..., None] * 0.8
-    rough = 0.62 - 0.28 * lug * wear + 0.12 * grime
+    rough = 0.58 - 0.29 * lug * wear + 0.16 * grime
     metal = 0.35 + 0.55 * lug * wear
     ao = 1 - 0.5 * (1 - lug) * 0.6
     orm = np.stack([np.clip(ao, 0, 1), np.clip(rough, 0, 1), np.clip(metal, 0, 1)], -1)
-    return np.clip(alb, 0, 1), height_to_normal(Hh, T / N, T / N, 2.2, True, True), orm
+    return np.clip(alb, 0, 1), height_to_normal(Hh, T / N, T / N, 1.8, True, True), orm
+
+def deck_atlas(tile, size):
+    """Repeat the tread over the whole deck so r128 can sample it and the spill with UV0."""
+    atlas = np.zeros((size, size, 3), dtype=np.float32)
+    for offset_y in (1 / 6, 0.5, 5 / 6):
+        for offset_x in (1 / 6, 0.5, 5 / 6):
+            x = ((np.arange(size) + offset_x) / size * 2 - 1) * DECK_EXT
+            y = ((np.arange(size) + offset_y) / size * 2 - 1) * DECK_EXT
+            u = np.floor(x / DECK_TILE % 1 * tile.shape[1]).astype(int)
+            v = np.floor(y / DECK_TILE % 1 * tile.shape[0]).astype(int)
+            atlas += tile[np.ix_(v, u)]
+    return atlas / 9
 
 def dais_textures(N):
     R = DAIS_R + 2; ext = R
@@ -480,7 +503,7 @@ def dais_textures(N):
         for bx in (-4.2, 4.2):
             for bz in (-4.2, 4.2): bolt(lx + bx, lz + bz, 0.8)
         Hh += 0.35 * plate_m
-    rough = 0.52 + 0.18 * (1 - polish) - 0.14 * polish + 0.2 * stain
+    rough = 0.52 + 0.18 * (1 - polish) - 0.20 * polish + 0.2 * stain
     rough = np.where(paint > 0.3, 0.62, rough)
     metal = np.where(paint > 0.3, 0.1, 0.8) - 0.25 * stain
     ao_t = 1 - np.clip(ao * 0.6, 0, 0.6)
@@ -929,20 +952,8 @@ def arc_path(r, th0, th1, y, n=24, lift=None):
 def tube_world(mat, pts_game, r, seg=6, smooth_pts=0, caps=True):
     put(mat, Matrix.Identity(4), p_tube([g2b(*p) for p in pts_game], r, seg, caps, smooth_pts))
 
-# ---- vertex AO sources the props register; the floor and wall read them at build time -----------
-AO_BLOBS = []        # (x, z, rx, rz, strength)  game xz
-AO_ARCS = []         # (th0, th1, r0, r1, soft, strength)
+# ---- authored light sources --------------------------------------------------------------------
 LAMPS = []           # (game xyz, colour hex, strength): the room's own lamps, for bake_light (strength = brightness x cm^2 at the lamp)
-def floor_ao(x, z):
-    r = math.hypot(x, z); th = math.degrees(math.atan2(z, x)); a = 1.0
-    a *= 1 - 0.55 * float(sstep(WALL_R - 22, WALL_R, r))
-    a *= 1 - 0.50 * float(1 - sstep(DAIS_R, DAIS_R + 9, r))
-    for bx, bz, rx, rz, s in AO_BLOBS:
-        d = math.hypot((x - bx) / rx, (z - bz) / rz); a *= 1 - s * float(1 - sstep(0.5, 1.0, d))
-    for t0, t1, r0, r1, soft, s in AO_ARCS:
-        dr = max(r0 - r, 0, r - r1); dt = max(t0 - th, 0, th - t1) * math.pi / 180 * r
-        d = math.hypot(dr, dt); a *= 1 - s * float(1 - sstep(0, soft, d))
-    return a
 
 # @@PROPS@@
 
@@ -976,13 +987,6 @@ def glow_arc(th0, th1, r, y0, y1, reg, step=3.0):
         t = th0 + (th1 - th0) * k / n
         for y, v in ((y0, 0), (y1, 1)): GLW['V'].append(Vector(g2b(*polar(r, t, y)))); GLW['UV'].append(glow_uv(reg, k / n, v))
     for k in range(n): GLW['F'].append((o + 2 * k, o + 2 * k + 2, o + 2 * k + 3, o + 2 * k + 1))
-def glow_floor(th0, th1, r0, r1, reg, y=None, step=3.0):
-    """A strip lying on the deck: u along the arc, v from r0 to r1."""
-    n = max(1, int(abs(th1 - th0) / step)); o = len(GLW['V']); y = FL + 0.3 if y is None else y
-    for k in range(n + 1):
-        t = th0 + (th1 - th0) * k / n
-        for r, v in ((r0, 0), (r1, 1)): GLW['V'].append(Vector(g2b(*polar(r, t, y)))); GLW['UV'].append(glow_uv(reg, k / n, v))
-    for k in range(n): GLW['F'].append((o + 2 * k, o + 2 * k + 1, o + 2 * k + 3, o + 2 * k + 2))
 
 sec('piers')
 # ---- window piers: chrome pilasters, a sconce on each; more sconces down the near wall -----------------------
@@ -1043,7 +1047,6 @@ put('gold', Mq, p_box(17, 0.5, 5.6, 0.2)); stroke_tubes('H-1', Mq @ loc(-5.6, -0
 put('dark', Mh @ loc(0, -2.0, 142), p_rbox(30, 4.0, 9, 0.9, 1))
 put('ledg', Mh @ loc(-7, -4.4, 142), p_box(6, 0.8, 4.2)); put('ledr', Mh @ loc(7, -4.4, 142), p_box(6, 0.8, 4.2))
 for dz, reg in ((-7.0, 'teal'), (7.0, 'red')): glow_quad((r_in(142 + FL) - 7.0, 142 + FL, dz), (0, 0, 1), (0, 1, 0), 22, 22, reg)
-AO_BLOBS.append((r_in(FL) - 10, 0, 18, 52, 0.4))
 
 SRNG = np.random.default_rng(SEED + 77)
 PNT = {'V': [], 'F': [], 'UV': []}
@@ -1108,8 +1111,6 @@ tube_arc('brass', BF - 8.0, B0 + 2, B1 - 2, FL + 12, 1.5, 8)
 for th in np.arange(B0 + 4, B1 - 3, 12.0):
     put('brass', at_polar(float(th), BF - 8.0, FL + 6), p_cyl(1.0, 12, 8))
     put('brass', at_polar(float(th), BF - 4.5, FL + 11), p_box(0.8, 7, 0.8))
-AO_ARCS.append((B0 - 3, B1 + 3, BF - 14, BF + 40, 8.0, 0.55))
-glow_floor(B0 + 1, B1 - 1, BF - 30, BF - 2, 'strip')
 
 # the neon sign: a framed board, tubes just off it, a halo that spills onto the panels
 sec('sign')
@@ -1165,31 +1166,7 @@ put('tealglow', Mr @ loc(0, -7.1, 14.7) @ rotx(-28), p_box(14, 0.3, 7.2, 0)); pu
 for k in range(12): put('dark', Mr @ loc(-6.2 + (k % 6) * 2.5, -7.0 + (k // 6) * -1.6, 6.6), p_box(1.6, 1.2, 0.7, 0.1))
 put('brass', Mr @ loc(10.5, -9.2, 3.5), p_box(3.5, 0.5, 2.5, 0.1))
 
-# stools: no two alike. Each swivels to its own angle; some are patched, one sits a little crooked
-sec('stools')
-def stool(th, r, H=60.0, seat='mustard', yaw=None, lean=0.0, tape=False, tip=False):
-    """A swivel stool: cast base, post with two collars, a footring on four struts, a piped cushion. H = height of the seat's crown."""
-    yaw = th + 180 + float(SRNG.uniform(-80, 80)) if yaw is None else yaw
-    M = at_polar(th, r, FL + 11.6, yaw) @ rotz(28) @ rotx(90) if tip else at_polar(th, r, FL, yaw) @ rotx(lean) @ roty(lean * 0.7)
-    zr = 0.36 * H
-    put('dark', M, p_lathe([[(11.6, 0.0), (12.0, 0.5), (12.0, 1.2), (10.4, 1.9), (7.0, 3.3), (4.2, 5.6), (3.2, 8.0)]], 16))
-    for k in range(3):
-        a = math.radians(120 * k + 15); put('steel', M @ loc(10.0 * math.cos(a), 10.0 * math.sin(a), 2.1), p_cyl(0.8, 0.8, 5, cz=0.2, caps=False)); put('steel', M @ loc(10.0 * math.cos(a), 10.0 * math.sin(a), 2.5), p_cyl(0.8, 0.1, 5, cz=0.0))
-    put('brass', M, p_cyl(2.05, H - 12.0, 10, cz=6.0 + (H - 12.0) / 2))
-    put('brass', M, p_cyl(3.1, 1.6, 10, cz=8.6)); put('brass', M, p_cyl(3.1, 2.2, 10, cz=zr))
-    put('brass', M, p_torus(10.4, 0.85, 16, 5, cz=zr))
-    for k in range(4):
-        a = math.radians(90 * k + 45); put('brass', M, p_tube([Vector((2.6 * math.cos(a), 2.6 * math.sin(a), zr)), Vector((10.2 * math.cos(a), 10.2 * math.sin(a), zr))], 0.55, 6, False))
-    put('dark', M, p_lathe([[(0, H - 3.9), (9.0, H - 3.9), (10.1, H - 3.4), (10.1, H - 2.8)]], 20))
-    put('steel', M, p_cyl(5.4, 1.0, 10, cz=H - 4.6, caps=False))
-    put(seat, M, p_lathe([[(9.9, H - 3.4), (10.3, H - 2.8), (10.6, H - 2.0), (10.6, H - 1.5), (10.1, H - 1.0), (9.0, H - 0.4), (6.0, H + 0.1), (0.0, H + 0.3)]], 22))
-    if tape: put('dark', M @ rotz(float(SRNG.uniform(0, 180))) @ loc(1.2, 0, H + 0.12), p_box(15.5, 3.4, 0.5, 0.1))
-    x, y, z = polar(r, th, 0)
-    AO_BLOBS.append((x, z, 12.5 if not tip else 24, 12.5 if not tip else 24, 0.5))
-for args in ((-166, 128.0, {}), (-113, 129.0, {'seat': 'seatteal'}), (-100, 127.0, {'tape': True, 'lean': 1.4}), (-14, 150.0, {'seat': 'leather'}), (-176, 150.0, {})):
-    stool(args[0], args[1], **args[2])
-stool(-121, 118.0, seat='leather', yaw=-121 + 180 + 78, tip=True)
-
+# Stools and their floor contact shadows are placed by CONFIG.rooms.saucer.props.
 sec('jukebox')
 # ---- jukebox (-x end): the modelled one from JUKE_SRC (appended at export) when it is there, else an arched cabinet built here ----
 def built_jukebox():
@@ -1224,10 +1201,8 @@ def built_jukebox():
     for sx_ in (-1, 1): put('rubber', Mn_ @ loc(sx_ * 5.4, -0.1, 3.6), p_box(2.2, 0.35, 1.2, 0.05))
     stroke_tubes('OUT OF', Mn_ @ loc(-4.7, -0.3, 0.7), 1.7, 0.5, 0.1, 'dark', 4); stroke_tubes('ORDER', Mn_ @ loc(-4.0, -0.3, -2.0), 1.7, 0.5, 0.1, 'dark', 4)
 if not os.path.exists(JUKE_SRC): built_jukebox()
-glow_wall(180, r_in(FL + 50) - 0.7, FL + 52, 110, 135, 'teal')
-LAMPS.append((polar(172.0, 180, FL + 45.0), 0xffc890, 420))
-glow_floor(168, 192, 150, 176, 'strip')
-AO_BLOBS.append((-188, 0, 22, 34, 0.5))
+glow_wall(180, r_in(FL + 50) - 0.7, FL + 52, 112, 130, 'warm')
+LAMPS.append(JUKEBOX_LIGHT)
 
 sec('cabinet')
 # ---- trophy cabinet -------------------------------------------------------------------------------
@@ -1237,7 +1212,7 @@ for sx_ in (-1, 1): put('wood', Mc @ loc(sx_ * 20.4, 0, 46), p_box(2.4, 15, 92, 
 put('wood', Mc @ loc(0, 0, 94), p_box(44, 15, 3.4, 0.6)); put('wood', Mc @ loc(0, 0, 7), p_box(42, 15, 14, 0.5))
 for hz in (34, 62): put('brass', Mc @ loc(0, -0.5, hz), p_box(38, 12, 1.0, 0.2))
 put('lamp', Mc @ loc(0, -5.5, 90), p_box(34, 1.4, 1.2))
-LAMPS.append((polar(189.0, 157.5, FL + 88.0), 0xffb868, 140))
+LAMPS.append((polar(189.0, 157.5, FL + 88.0), 0xffb868, 400))
 def trophy(M, s):
     outer = [(0, 0), (5.5, 0), (5.5, 1.4), (3.0, 2.4), (1.2, 3.6), (1.2, 7.5), (2.8, 8.6), (4.6, 10.5), (5.7, 14.5), (5.6, 18.0), (5.0, 18.2), (5.0, 17.4), (4.6, 14.4), (0, 10.8)]
     put('gold', M, p_lathe([[(r * s, z * s) for r, z in outer]], 14))
@@ -1246,7 +1221,6 @@ def trophy(M, s):
 trophy(Mc @ loc(-10, -1.0, 35), 1.0); trophy(Mc @ loc(9, -1.0, 35), 0.8)
 trophy(Mc @ loc(0, -1.0, 63), 1.3)
 put('gold', Mc @ loc(-12, -1.0, 63), p_cyl(3.4, 1.0, 16)); put('gold', Mc @ loc(12, -1.0, 63), p_cyl(3.4, 1.0, 16))
-AO_BLOBS.append((196 * math.cos(math.radians(157.5)), 196 * math.sin(math.radians(157.5)), 24, 14, 0.45))
 
 sec('lockers')
 # ---- lockers ---------------------------------------------------------------------------------------
@@ -1258,7 +1232,6 @@ for i, th in enumerate((108.5, 116.5, 124.5, 132.5)):
     put('steel', Ml @ loc(8.6, -9.4, 40), p_box(1.4, 1.6, 9, 0.3))
     put('brass', Ml @ loc(0, -8.8, 28), p_box(10, 0.5, 4, 0.2))
     put('steel', Ml @ loc(-8.4, -9.2, 36), p_cyl(1.3, 1.4, 10))
-AO_ARCS.append((105, 136, 180, 210, 5.0, 0.5))
 
 sec('bench')
 # ---- the banquette on the near wall: a plinth, a piped seat and a buttoned back ---------------------------------
@@ -1269,7 +1242,6 @@ for k in range(2): arc_sweep('leather', BQ0 + k * BQS + 0.3, BQ0 + (k + 1) * BQS
 for k in range(3): arc_sweep('leather', BQ0 + k * BQB + 0.3, BQ0 + (k + 1) * BQB - 0.3, [(195.0, FL + 36.5), (200.6, FL + 36.5), (200.6, FL + 63.5), (199.8, FL + 65.2), (198.0, FL + 66.0), (196.4, FL + 65.2), (195.4, FL + 62.5), (194.8, FL + 56), (194.8, FL + 44), (195.0, FL + 36.5)], 2.0, caps=True)
 for th in (BQ0 + BQB / 2, BQ0 + BQB * 1.5, BQ0 + BQB * 2.5):
     for yv in (FL + 46.0, FL + 57.0): put('steel', at_polar(float(th), 194.7, yv, float(th) + 180), p_sphere(0.85, 6, 4, 0.7))
-AO_ARCS.append((BQ0 - 2, BQ1 + 2, 160, 205, 7.0, 0.5))
 
 sec('rack')
 # ---- a hook rail by the hatch with somebody's helmet and a scarf on it -----------------------------------------
@@ -1303,7 +1275,6 @@ Me = at_polar(21, r_in(FL + 30) - 5.0, FL)
 put('red', Me @ loc(0, 0, 21), p_cyl(4.4, 38, 16)); put('red', Me @ loc(0, 0, 42), p_sphere(4.4, 14, 8))
 put('dark', Me @ loc(0, 0, 45.5), p_cyl(1.3, 3, 8)); put('dark', Me @ loc(0, -2.6, 48), p_box(1.2, 5.6, 1.2))
 put('steel', Me @ loc(0, 3.6, 28), p_box(10, 1.0, 3.0, 0.3)); put('steel', Me @ loc(0, 3.6, 12), p_box(10, 1.0, 3.0, 0.3))
-AO_BLOBS.append((Me.translation.x, -Me.translation.y, 6, 6, 0.4))
 
 sec('scoreboard')
 # ---- the scoreboard: a slate and tally marks -----------------------------------------------------------
@@ -1339,25 +1310,20 @@ def ctable(th, r, top=74.0):
     for dx, dy, liq in ((5.5, -4.0, 'drinkA'), (-7.0, 3.5, 'drinkT')):
         put('vinyl', M @ loc(dx, dy, top + 0.15), p_cyl(4.1, 0.3, 16)); tumbler(M @ loc(dx, dy, top + 0.3) @ rotz(float(SRNG.uniform(0, 360))), liq)
     for dx in (-1.2, 1.2): put('steel', M @ loc(dx, 9.5, top + 1.9), p_cyl(0.85, 3.8, 8)); put('dark', M @ loc(dx, 9.5, top + 3.9), p_cyl(0.9, 0.5, 8))
-    x, y, z = polar(r, th, 0); AO_BLOBS.append((x, z, 20, 20, 0.5))
 ctable(-72, 150.0)
-for th, sm in ((-85, 'seatteal'), (-59, 'mustard')): stool(th, 132.0, H=48.0, seat=sm)
 ctable(-36, 162.0)
-for th, sm in ((-49, 'mustard'), (-23, 'leather')): stool(th, 146.0, H=48.0, seat=sm)
 # a bin by the hatch, crates by the bay, a mat, a wet-floor sign
 Mn = at_polar(13, 183.0, FL)
 put('dark', Mn @ loc(0, 0, 13), p_cyl(8.2, 26, 18)); put('steel', Mn @ loc(0, 0, 26.6), p_cyl(8.8, 2.4, 18)); put('steel', Mn @ loc(0, 0, 29), p_torus(3.4, 0.7, 14, 5))
-AO_BLOBS.append((183 * math.cos(math.radians(13)), 183 * math.sin(math.radians(13)), 13, 13, 0.5))
 Mk = at_polar(-24, 188.0, FL, -24)
 for (a, b, h, w, d, hh) in ((0, 0, 0, 24, 24, 22), (4, 0, 22, 20, 22, 20), (-18, 4, 0, 18, 18, 16)):
     put('wood', Mk @ loc(a, b, h + hh / 2), p_box(w, d, hh, 0.7))
     for z_ in (0.22, 0.78): put('dark', Mk @ loc(a, b, h + hh * z_), p_box(w + 0.6, d + 0.6, 1.8, 0.2))
-AO_BLOBS.append((188 * math.cos(math.radians(-24)), 188 * math.sin(math.radians(-24)), 24, 18, 0.5))
-Mw_ = at_polar(-93, 124.0, FL, -93 + 20)
+sign_th, sign_r = -92, 112.0
+Mw_ = at_polar(sign_th, sign_r, FL, sign_th + 20)
 for sx_ in (-1, 1):
     put('caution', Mw_ @ loc(0, sx_ * 4.6, 11.5) @ rotx(sx_ * 11), p_rbox(12, 1.1, 24, 0.45, 1))
     put('dark', Mw_ @ loc(0, sx_ * 4.6, 17.5) @ rotx(sx_ * 11), p_box(12.2, 1.3, 3.4, 0.1))
-AO_BLOBS.append((120 * math.cos(math.radians(-93)), 120 * math.sin(math.radians(-93)), 12, 12, 0.4))
 # Framed certificates on clear hull panels.
 paint_wall(-17, None, 89, 22, 29, 'venue_cert')
 paint_wall(64, None, 80, 22, 29, 'play_cert')
@@ -1397,7 +1363,6 @@ for k in range(8):
 tube_world('brass', [polar(0, 0, APEX - 8), polar(0, 0, APEX - 30)], 1.0, 6)
 put('lamp', at_polar(0, 0, APEX - 38), p_sphere(8.5, 14, 9)); glow_quad(polar(0, 0, APEX - 38), (1, 0, 0), (0, 0, 1), 52, 52, 'warm')
 LAMPS.append((polar(0, 0, APEX - 38), 0xffb868, 1600))
-for c in (-82.5, -67.5, -52.5, -37.5): LAMPS.append((polar(r_in(20) - 8.0, c, 20.0), 0xffb070, 380))     # the giant's light through the bay
 for k in range(24):
     th = 15 * k + 7.5; rr, yy = dome(0.16)
     put('lamp', at_polar(th, rr - 1.2, yy - 0.8, th + 90), p_box(9, 1.2, 1.2, 0.3))
@@ -1414,13 +1379,16 @@ im_ha = new_img('saucer_hull_albedo', HW, HH); np_img(im_ha, ha)
 im_hn = new_img('saucer_hull_normal', HW, HH, True); np_img(im_hn, hn)
 im_ho = new_img('saucer_hull_orm', HW // 2, HH // 2, True); np_img(im_ho, ho[::2, ::2])
 ta, tnrm, to = tread_textures(TN_)
+ta = deck_atlas(ta, TN_)
+tnrm = deck_atlas(tnrm, TN_)
+to = deck_atlas(to, TN_ // 2)
 im_ta = new_img('saucer_deck_albedo', TN_, TN_); np_img(im_ta, ta)
 im_tn = new_img('saucer_deck_normal', TN_, TN_, True); np_img(im_tn, tnrm)
-im_to = new_img('saucer_deck_orm', TN_ // 2, TN_ // 2, True); np_img(im_to, to[::2, ::2])
+im_to = new_img('saucer_deck_orm', TN_ // 2, TN_ // 2, True)
 da, dn, do = dais_textures(DN_)
 im_da = new_img('saucer_dais_albedo', DN_, DN_); np_img(im_da, da)
 im_dn = new_img('saucer_dais_normal', DN_, DN_, True); np_img(im_dn, dn)
-im_do = new_img('saucer_dais_orm', DN_ // 2, DN_ // 2, True); np_img(im_do, do[::2, ::2])
+im_do = new_img('saucer_dais_orm', DN_ // 2, DN_ // 2, True)
 gcol, galpha = glass_texture(max(64, int(512 * TS) // 4 * 4), max(32, int(256 * TS) // 4 * 4))
 im_ga = new_img('saucer_glass', gcol.shape[1], gcol.shape[0], alpha=True); np_img(im_ga, gcol, galpha)
 glw = glow_texture(); im_gl = new_img('saucer_glow', GLOW_W, GLOW_H, alpha=True); np_img(im_gl, glw[..., :3], glw[..., 3])
@@ -1446,7 +1414,7 @@ wa_, wn_, wo_ = wood_set(SN * 2); surf_imgs('wood', wn_, wo_, albs={'saucer_wood
 
 MATS = {
     'hull':  tex_mat('saucer_hull', im_ha, im_hn, im_ho, vcol=True),
-    'deck':  tex_mat('saucer_deck', im_ta, im_tn, im_to, vcol=True),
+    'deck':  tex_mat('saucer_deck', im_ta, im_tn, im_to),
     'dais':  tex_mat('saucer_dais', im_da, im_dn, im_do),
     'glass': tex_mat('saucer_glass', im_ga, None, None, alpha_img=True),
     'glow':  glow_mat('saucer_glow', im_gl),
@@ -1492,11 +1460,11 @@ def make_mesh(name, V, F, smooth, mat, uv=None, colors=None):
     o = bpy.data.objects.new(name, me); o.data.materials.append(mat); col.objects.link(o); OBJS.append(o)
     return o
 
-# ---- outer floor: a polar grid, tread texture in world units, vertex AO ---------------------------
+# ---- outer floor: a polar grid with world-aligned tread and lighting maps --------------------------
 print('saucer: floor, dais')
 NSEG, NRING = 128, 20
 rs = DAIS_R - 0.2 + (WALL_R + 3 - DAIS_R + 0.2) * (np.arange(NRING + 1) / NRING)
-V, F, UV, COL = [], [], [], []
+V, F, UV = [], [], []
 for r in rs:
     for j in range(NSEG):
         t = 2 * math.pi * j / NSEG; V.append(g2b(r * math.cos(t), FL, r * math.sin(t)))
@@ -1507,15 +1475,15 @@ for i in range(NRING):
 for f in F:
     for vi in f:
         v = V[vi]; x, z = v.x, -v.y
-        UV.append((x / DECK_TILE, z / DECK_TILE)); c = floor_ao(x, z); COL.append((c, c * 0.99, c * 0.97, 1.0))
-make_mesh('floor', V, F, [False] * len(F), MATS['deck'], UV, COL)
+        UV.append(((x + DECK_EXT) / (2 * DECK_EXT), (z + DECK_EXT) / (2 * DECK_EXT)))
+deck = make_mesh('floor', V, F, [False] * len(F), MATS['deck'], UV)
 
 # ---- the dais: a disc (UV = the 2048 map) and a skirt ---------------------------------------------
 EXT = DAIS_R + 2
 V = [g2b(0, FY, 0)] + [g2b(DAIS_R * math.cos(2 * math.pi * k / 128), FY, DAIS_R * math.sin(2 * math.pi * k / 128)) for k in range(128)]
 F = [(0, 1 + (k + 1) % 128, 1 + k) for k in range(128)]
 UV = [((v.x + EXT) / (2 * EXT), (EXT + v.y) / (2 * EXT)) for f in F for v in (V[i] for i in f)]   # blender y = -z, so v = (ext - z)/(2 ext)
-make_mesh('dais', V, F, [False] * len(F), MATS['dais'], UV)
+dais = make_mesh('dais', V, F, [False] * len(F), MATS['dais'], UV)
 arc_prism('dark', 0, 360, DAIS_R - 0.4, DAIS_R + 0.01, FL, FY, 3.0, ends=False)
 arc_prism('steel', 0, 360, DAIS_R - 0.6, DAIS_R + 1.5, FY - 1.8, FY - 0.05, 3.0, ends=False)
 
@@ -1679,23 +1647,203 @@ for name, A in ACC.items():
     if not A.F: continue
     uv, cols = (None, None) if name in PROC_SKIP else prop_attrs(A, SURF_TILE.get(FLAT[name][5], 26.0) if name in FLAT else 26.0)
     make_mesh('room_saucer_' + name, A.V, A.F, A.S, MATS[name], uv, cols)
+
+def add_emission_map(mat, im):
+    nt = mat.node_tree
+    tex = nt.nodes.new('ShaderNodeTexImage'); tex.image = im; tex.extension = 'EXTEND'
+    shader = nt.nodes['Principled BSDF']
+    nt.links.new(tex.outputs['Color'], shader.inputs['Emission Color'])
+    shader.inputs['Emission Strength'].default_value = 1.0
+    IMGS.append(im)
+
+def light_jukebox(mat):
+    # The owner's UV atlas has the arch and tubes in the lower left, and the song buttons above/right.
+    nt = mat.node_tree
+    shader = nt.nodes.get('Principled BSDF')
+    links = shader.inputs['Base Color'].links if shader else ()
+    source = getattr(links[0].from_node, 'image', None) if links else None
+    if not source or not source.name.startswith('spaceport_jukebox_3d_model_basecolor'):
+        return
+    width, height = source.size
+    buf = np.empty(width * height * 4, dtype=np.float32); source.pixels.foreach_get(buf)
+    size = 512
+    uv = (np.arange(size) + 0.5) / size
+    rgb = buf.reshape(height, width, 4)[np.ix_((uv * height).astype(int), (uv * width).astype(int))][..., :3]
+    u, v = np.meshgrid(uv, uv)
+    tubes = (u > 0.159) & (u < 0.509) & (v < 0.503)
+    buttons = (u > 0.516) & (u < 0.695) & (v > 0.579) & (v < 0.637)
+    red, _, blue = rgb.transpose(2, 0, 1)
+    gold = sstep(0.65, 0.93, red) * sstep(0.14, 0.42, red - blue)
+    glow = gold * (0.78 * tubes + 0.29 * buttons)
+    im = new_img('saucer_jukebox_lamps', size, size)
+    np_img(im, display_rgb(glow[::-1, :, None] * np.array(srgb(0xffb45f)[:3])))
+    add_emission_map(mat, im)
+
 if os.path.exists(JUKE_SRC):
     with bpy.data.libraries.load(JUKE_SRC, link=False) as (src_, dst_): dst_.objects = [n for n in src_.objects if n == 'jukebox']
     for o in dst_.objects:
         col.objects.link(o); OBJS.append(o)
         for m in o.data.materials: m.use_backface_culling = True
+        light_jukebox(o.data.materials[0])
 else: print('saucer: no', JUKE_SRC, '- built the old jukebox')
 
 # ---- the light bake: ambient occlusion and the room's own lamps, ray-traced per corner into the baked colour (glTF COLOR_0) ----------
-BAKE = dict(rays=24, reach=26.0, ao=0.7, amb=0.56, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
+BAKE = dict(rays=32, reach=26.0, ao=0.7, amb=0.56, soft=14.0)    # AO rays and reach (cm), how dark full occlusion gets, light far from every lamp, lamp core (cm)
+
+
+def append_static_props(vertices, faces):
+    """Use the live prop transforms in the ray tree, without adding meshes to the room GLB."""
+    resolver = os.path.join(ROOT, 'tools', 'saucer-bake-props.js')
+    layouts = json.loads(subprocess.check_output(['node', resolver]))
+    count = 0
+    for layout in layouts:
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, layout['src']))
+        imported = [o for o in bpy.data.objects if o not in before]
+        bpy.context.view_layer.update()
+        points, polygons = [], []
+        for obj in imported:
+            if obj.type != 'MESH':
+                continue
+            k = len(points)
+            points.extend(obj.matrix_world @ v.co for v in obj.data.vertices)
+            polygons.extend(tuple(k + i for i in p.vertices) for p in obj.data.polygons)
+        if not points:
+            raise RuntimeError('No mesh in ' + layout['src'])
+        lo, hi = min(p.z for p in points), max(p.z for p in points)
+        spec = layout['def']
+        fit = spec.get('fit', 0)
+        scale = spec.get('scale', 1) * (fit / (hi - lo) if fit > 0 and hi - lo > 1e-6 else 1)
+        ground = -lo * scale if spec.get('ground', True) else 0
+        for place in layout['places']:
+            s = place['s']
+            transform = (Matrix.Translation(g2b(*place['p']) + Vector((0, 0, ground * s)))
+                         @ Matrix.Rotation(place['ry'] + spec.get('yaw', 0), 4, 'Z')
+                         @ Matrix.Scale(scale * s, 4))
+            k = len(vertices)
+            vertices.extend(transform @ p for p in points)
+            faces.extend(tuple(k + i for i in p) for p in polygons)
+            count += 1
+        for obj in imported:
+            bpy.data.objects.remove(obj, do_unlink=True)
+    print('saucer: %d static prop placements in the shadow bake' % count)
+
+def bay_distance(x, y, z):
+    """Distance along the key ray to the hull, with a broad mask for the four low-sill panes."""
+    dx, dy, dz = BAY_LIGHT_DIR
+    a = dx * dx + dz * dz
+    b = x * dx + z * dz
+    radius = WALL_R + WALL_T
+    t = (-b + np.sqrt(np.maximum(0, b * b + a * (radius * radius - x * x - z * z)))) / a
+    angle = np.arctan2(z + dz * t, x + dx * t)
+    height = y + dy * t
+    return t, ((angle > math.radians(-90)) & (angle < math.radians(-30)) &
+               (height > SILL_LOW - 10) & (height < HEAD + 14))
+
+
+def bay_visibility(bvh, origin, rays):
+    # Trace through the actual hull, mullions and furniture. An extended source softens the edges.
+    return sum(bvh.ray_cast(origin, ray, 560)[0] is None for ray in rays) / len(rays)
+
+
+def bake_floor_light(bvh, rays):
+    """Bake short-range AO into ORM and static source visibility into the floor spill."""
+    bay_tint = np.array(srgb(BAY_LIGHT_COLOR)[:3])
+    juke_pos, juke_hex, juke_power = JUKEBOX_LIGHT
+    juke_tint = np.array(srgb(juke_hex)[:3])
+    bar_tint = np.array(srgb(0x63e8cf)[:3])
+    # Fixed cosine-weighted directions on a golden-angle disk keep the bake stable.
+    count, reach = 16, 22.0
+    ao_rays = []
+    for i in range(count):
+        r2, phi = (i + 0.5) / count, i * math.pi * (3 - math.sqrt(5))
+        ao_rays.append(Vector((math.sqrt(r2) * math.cos(phi), math.sqrt(r2) * math.sin(phi), math.sqrt(1 - r2))))
+    juke_points = [g2b(juke_pos[0], juke_pos[1] + dy, juke_pos[2] + dz)
+                   for dy, dz in ((0, 0), (4, 0), (-4, 0), (0, 5), (0, -5))]
+
+    for obj, extent, height, orm, orm_img, albedo in (
+        (deck, DECK_EXT, FL, to, im_to, ta),
+        (dais, EXT, FY, do[::2, ::2].copy(), im_do, da),
+    ):
+        size = min(len(orm), 512)
+        xz = ((np.arange(size) + 0.5) / size * 2 - 1) * extent
+        X, Z = np.meshgrid(xz, -xz if obj is deck else xz)
+        radius = np.hypot(X, Z)
+        distance, bay = bay_distance(X, height, Z)
+        on_floor = ((radius >= DAIS_R - 1) & (radius <= WALL_R + 3.5) if obj is deck
+                    else radius <= DAIS_R + 1)
+        contact = np.zeros((size, size), dtype=np.float32)
+        light = np.zeros((size, size, 3), dtype=np.float32)
+        for row, col_ in np.argwhere(on_floor):
+            origin = g2b(X[row, col_], height + 0.07, Z[row, col_])
+            contact[row, col_] = sum(1 - d / reach for ray in ao_rays
+                                     if (d := bvh.ray_cast(origin, ray, reach)[3]) is not None) / count
+
+        for row, col_ in np.argwhere(on_floor & bay):
+            origin = g2b(X[row, col_], height + 0.07, Z[row, col_])
+            strength = bay_visibility(bvh, origin, rays) * 2.05 / (1 + (distance[row, col_] / 270) ** 2)
+            light[row, col_] = bay_tint * strength
+
+        if obj is deck:
+            # Soft amber spill from the face of the jukebox.
+            for row, col_ in np.argwhere(on_floor & (np.hypot(X - juke_pos[0], Z - juke_pos[2]) < 105)):
+                origin = g2b(X[row, col_], height + 0.07, Z[row, col_])
+                energy = 0.0
+                for lamp in juke_points:
+                    ray = lamp - origin
+                    dist = ray.length
+                    if bvh.ray_cast(origin, ray / dist, dist - 4)[0] is None:
+                        energy += ray.z / (dist * (dist * dist + 196))
+                fade = 1 - sstep(64, 105, math.hypot(X[row, col_] - juke_pos[0], Z[row, col_] - juke_pos[2]))
+                light[row, col_] += juke_tint * (juke_power * energy / len(juke_points)) * fade
+
+            # The continuous teal strip replaces the unshadowed glow card.
+            theta = np.degrees(np.arctan2(Z, X))
+            bar_mask = on_floor & (theta > B0 - 8) & (theta < B1 + 8) & (radius < BF)
+            for row, col_ in np.argwhere(bar_mask):
+                angle = theta[row, col_]
+                origin = g2b(X[row, col_], height + 0.07, Z[row, col_])
+                visible = 0
+                for da_ in (-3, 0, 3):
+                    lamp = g2b(*polar(BF - 3.5, np.clip(angle + da_, B0 + 3, B1 - 3), BT - 5.2))
+                    ray = lamp - origin
+                    if bvh.ray_cast(origin, ray.normalized(), ray.length - 1)[0] is None:
+                        visible += 1
+                fade = sstep(B0 - 8, B0 + 6, angle) * (1 - sstep(B1 - 6, B1 + 8, angle))
+                fade *= sstep(BF - 39, BF - 3, radius[row, col_])
+                light[row, col_] += bar_tint * (1.25 * fade * visible / 3)
+
+        contact = np.clip(gblur(contact, 0.75), 0, 1)
+        # Preserve the dais' authored table-foot marks and the floor's material channels.
+        indices = ((np.arange(len(orm)) + 0.5) * size / len(orm)).astype(int)
+        orm[..., 0] *= 1 - 0.82 * contact[np.ix_(indices, indices)]
+        np_img(orm_img, orm)
+        samples = ((np.arange(size) + 0.5) * len(albedo) / size).astype(int)
+        base = albedo[np.ix_(samples, samples)]
+        mat = obj.data.materials[0]
+        im = new_img(mat.name + '_spill', size, size)
+        light = np.stack([gblur(channel, 0.65) for channel in light.transpose(2, 0, 1)], -1)
+        np_img(im, display_rgb(linear_rgb(base) * np.maximum(0, light) * (1 - 0.45 * contact[..., None])))
+        add_emission_map(mat, im)
+        print('saucer: %s baked contact AO and spill at %dx%d' % (mat.name, size, size))
+
+
 def bake_light():
     from mathutils.bvhtree import BVHTree
     t0 = time.time(); skip = {'saucer_glass', 'saucer_glow', 'saucer_paint'} | {'saucer_' + n for n in PROC_SKIP}
     occ = [o for o in OBJS if o.data.materials[0].name not in skip]
+    bpy.context.view_layer.update()
     V, P = [], []
     for o in occ:
         k = len(V); V.extend(o.matrix_world @ v.co for v in o.data.vertices); P.extend(tuple(k + i for i in p.vertices) for p in o.data.polygons)
+    append_static_props(V, P)
     bvh = BVHTree.FromPolygons(V, P, epsilon=0.0)
+    dx, dy, dz = BAY_LIGHT_DIR
+    bay_rays = [g2b(dx, dy, dz).normalized()] + [
+        g2b(dx + 0.028 * math.cos(i * math.tau / 8), dy + 0.019 * math.sin(i * math.tau / 8), dz).normalized()
+        for i in range(8)]
+    bay_key = bay_rays[0]
+    bay_tint = np.array(srgb(BAY_LIGHT_COLOR)[:3])
     g = np.random.default_rng(SEED + 171); n_ = BAKE['rays']
     u1 = (np.arange(n_) + g.random(n_)) / n_; u2 = g.random(n_)                                   # cosine-weighted hemisphere, stratified
     hemi = np.stack([np.sqrt(u1) * np.cos(2 * math.pi * u2), np.sqrt(u1) * np.sin(2 * math.pi * u2), np.sqrt(1 - u1)], -1)
@@ -1703,7 +1851,7 @@ def bake_light():
     R, A0, AMB, SOFT = BAKE['reach'], BAKE['ao'], BAKE['amb'], BAKE['soft'] ** 2
     cache = {}; done = 0
     for o in occ:
-        if o.data.materials[0].name == 'saucer_dais': continue          # its map carries its own contact shadow, and the table light is live
+        if o in (deck, dais): continue                               # both floors receive texture-resolution lighting
         me = o.data
         if not me.color_attributes.get('Col'):
             ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'CORNER'); ca.data.foreach_set('color', np.ones(len(me.loops) * 4, np.float32))
@@ -1728,9 +1876,15 @@ def bake_light():
                     if cos <= 0.0 or ls / (dl * dl + SOFT) < 0.004: continue
                     hit = bvh.ray_cast(org, d / dl, dl - 4.0)
                     if hit[0] is None: lit = lit + lc * (ls * cos / (dl * dl + SOFT))
+                cos = n.dot(bay_key)
+                if cos > 0:
+                    dist, in_bay = bay_distance(p.x, p.z, -p.y)
+                    if in_bay:
+                        lit += bay_tint * (0.9 * cos * bay_visibility(bvh, org, bay_rays) / (1 + (dist / 270) ** 2))
                 f = cache[key] = ao * lit / max(1.0, float(lit.max()))          # scaled, not clipped, so a pool keeps its lamp's tint
             cols[li, :3] *= f
         ca.data.foreach_set('color', cols.ravel()); done += len(me.loops)
+    bake_floor_light(bvh, bay_rays)
     print('saucer: light bake %d corners, %d unique, %.1fs' % (done, len(cache), time.time() - t0))
 bake_light()
 print('saucer: %d meshes' % len(OBJS))

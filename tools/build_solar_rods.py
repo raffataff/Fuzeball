@@ -10,7 +10,7 @@ def load(name,space):
  im=bpy.data.images.load(os.path.join(MAPS,name+'.png'),check_existing=True)
  im.colorspace_settings.name=space
  return im
-images=[load('grip_basecolor','sRGB'),load('grip_normal','Non-Color'),load('grip_emissive','sRGB')]
+images=[load('grip_wrap','sRGB'),load('grip_normal','Non-Color'),load('grip_emissive','sRGB')]
 def textured():
  mat=bpy.data.materials.new('Solar Forge | volcanic grip'); mat.use_nodes=True; n=mat.node_tree.nodes; l=mat.node_tree.links; bs=n.get('Principled BSDF')
  def tex(im): node=n.new('ShaderNodeTexImage'); node.image=im; return node
@@ -25,21 +25,22 @@ def solid(name,color,metal,rough,emit=None):
  return m
 
 def grip_mesh(name,y0,y1,material):
- # Lathed grip along the original rod's Blender Y axis. Its continuous UV is
- # (circumference, length); a tapered profile gives a comfortable handhold.
+ # U follows the grip length. Three turns of the panoramic decal around V
+ # keep the art's 3:1 aspect ratio close to its authored scale on the cylinder.
  profile=[(0,1.13),(.035,1.29),(.10,1.37),(.22,1.45),(.5,1.49),(.78,1.45),(.90,1.37),(.965,1.29),(1,1.13)]
- sides=12; verts=[]; faces=[]
+ sides=60; verts=[]; faces=[]
  for v,rad in profile:
   for j in range(sides):
-   a=2*math.pi*j/sides; verts.append((rad*math.cos(a),y0+(y1-y0)*v,rad*math.sin(a)))
+   a=2*math.pi*j/sides-math.pi/2; verts.append((rad*math.cos(a),y0+(y1-y0)*v,rad*math.sin(a)))
  for k in range(len(profile)-1):
   for j in range(sides): faces.append((k*sides+j,(k+1)*sides+j,(k+1)*sides+(j+1)%sides,k*sides+(j+1)%sides))
  mesh=bpy.data.meshes.new(name); mesh.from_pydata(verts,[],faces); mesh.update(); ob=bpy.data.objects.new(name,mesh); bpy.context.collection.objects.link(ob); mesh.materials.append(material)
  uv=mesh.uv_layers.new(name='SolarForgeGripUV')
  for poly in mesh.polygons:
-  k=poly.index//sides; j=poly.index%sides; vals=[(j/sides,profile[k][0]),(j/sides,profile[k+1][0]),((j+1)/sides,profile[k+1][0]),((j+1)/sides,profile[k][0])]
+  k,j=divmod(poly.index,sides); u0,u1=profile[k][0],profile[k+1][0]; v0,v1=3*j/sides,3*(j+1)/sides
+  vals=[(u0,v0),(u1,v0),(u1,v1),(u0,v1)]
   for li,coord in zip(poly.loop_indices,vals): uv.data[li].uv=coord
-  poly.use_smooth=False
+  poly.use_smooth=True
  return ob
 
 def band(name,y,major,minor,mat):
@@ -81,6 +82,7 @@ for count in (1,2,3,5):
   ang=2*math.pi*i/8
   bpy.ops.mesh.primitive_uv_sphere_add(segments=12,ring_count=8,radius=.045,location=(.91*math.cos(ang),tip-.11,.91*math.sin(ang)))
   stud=bpy.context.object; stud.name=f'rod{count}_handle_cap_stud_{i}'; stud.data.materials.append(light)
+  for face in stud.data.polygons: face.use_smooth=True
  # Opposite-end collar: an inset dark cuff, paired gold rims and a luminous
  # seam frame the stock team-glow bumper without replacing its material.
  collar=next(o for o in bpy.context.scene.objects if o.type=='MESH' and 'collar' in o.name.lower())
@@ -104,6 +106,6 @@ for count in (1,2,3,5):
   band(f'rod{count}_handle_bezel_{i}',y0+(y1-y0)*t,1.32,.055,brass)
  for i,t in enumerate((.075,.925)):
   band(f'rod{count}_handle_inlay_{i}',y0+(y1-y0)*t,1.335,.025,light)
- out=os.path.join(OUT,f'fuzeball_rod_{count}man.glb'); bpy.ops.export_scene.gltf(filepath=out,export_format='GLB',export_yup=True,export_apply=True)
+ out=os.path.join(OUT,f'fuzeball_rod_{count}man.glb'); bpy.ops.export_scene.gltf(filepath=out,export_format='GLB',export_yup=True,export_apply=True,export_tangents=True)
  print('Wrote',out)
 

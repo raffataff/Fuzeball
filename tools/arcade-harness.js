@@ -69,15 +69,25 @@ function assetSuite(cfgSrc,tweak){
   t(nSrc.size>=3&&nSrc.size<=6,'the prop materials share a few surface sets (not one set per material)',nSrc.size+' normal maps');
   const shell=['floor','wall'].map(k=>(j.materials||[]).find(m=>m.name==='arcade_'+k));
   t(shell.every(m=>m&&m.normalTexture&&(m.pbrMetallicRoughness||{}).metallicRoughnessTexture),'the floor and the wall carry their own normal and metallic-roughness maps');
-  const cabN=j.nodes.find(n=>n.name==='room_arcade_cabinets');
-  t(cabN&&cabN.mesh!==undefined&&j.meshes[cabN.mesh].primitives.every(p=>p.attributes.COLOR_0!==undefined),'the light bake reaches the kept cabinets (COLOR_0 on every primitive)');
+  t(shell[0]&&shell[0].emissiveTexture,'the floor carries the baked window and cabinet spill');
+  const bakedMesh=name=>j.meshes[j.nodes.find(n=>n.name===name)?.mesh];
+  const receivesBake=mesh=>mesh?.primitives.every(p=>p.attributes.COLOR_0!==undefined&&
+   !j.materials[p.material]?.extensions?.KHR_materials_unlit);
+  t(receivesBake(bakedMesh('room_arcade_cabinets')),'the light bake reaches every cabinet primitive');
+  const stools=bakedMesh('room_arcade_stools');
+  t(receivesBake(stools),'the stools are in the room and use baked colors with lit materials');
+  const stoolBounds=stools?.primitives.map(p=>j.accessors[p.attributes.POSITION])||[];
+  t(stoolBounds.some(a=>Math.abs(a.min[1]+44)<0.2&&Math.abs(a.max[1]+8)<0.2&&a.min[0]<-170&&a.max[0]>220),
+   'the baked stools reach the floor at their configured height across the room');
+  t(j.nodes.filter(n=>/^room_arcade_(?!floor$|glass$|glow$)/.test(n.name)&&n.mesh!==undefined)
+   .every(n=>receivesBake(j.meshes[n.mesh])),'every other opaque room mesh receives baked lighting');
   let texels=0;for(const im of j.images||[]){const v=j.bufferViews[im.bufferView];if(v&&im.mimeType==='image/ktx2'){const o=v.byteOffset||0;texels+=bin.readUInt32LE(o+20)*bin.readUInt32LE(o+24);}}
   t((j.images||[]).length<=44&&texels<=36e6,'texture budget (the textures are the real cost of a room): <=44 images, <=36M texels at the top level',(j.images||[]).length+' images, '+(texels/1e6).toFixed(1)+'M texels');
   t(j.meshes.length<=32,'mesh (draw call) budget',j.meshes.length);
   let tris=0;for(const m of j.meshes)for(const p of m.primitives)tris+=(p.indices!==undefined?j.accessors[p.indices].count:j.accessors[p.attributes.POSITION].count)/3;
   t(tris>10000&&tris<=40000,'triangle budget (10k..40k; the Saucer is 70k, the pub 5k)',tris);
   const names=new Set(j.nodes.map(n=>n.name));
-  for(const need of ['room_arcade_floor','room_arcade_wall','room_arcade_glass','room_arcade_glow','room_arcade_cabinets','room_arcade_logo','room_arcade_poster'])t(names.has(need),'has '+need);
+  for(const need of ['room_arcade_floor','room_arcade_wall','room_arcade_glass','room_arcade_glow','room_arcade_cabinets','room_arcade_logo'])t(names.has(need),'has '+need);
   const fl=meshTris(j,bin,'room_arcade_floor');
   t(fl&&fl.length>0&&fl.every(x=>x.n[1]>0.99),'the floor faces up',fl&&fl.filter(x=>x.n[1]<=0.99).length+' of '+fl.length+' do not');
   const wl=meshTris(j,bin,'room_arcade_wall');
@@ -88,12 +98,12 @@ function assetSuite(cfgSrc,tweak){
   const p=skySrc+'_'+f+'.ktx2';
   t(fs.existsSync(path.join(ROOT,p))&&fs.statSync(path.join(ROOT,p)).size>100000,'sky face ships: '+f,p);
  }
- // the pooled lights: the pub and the Void set the per-type pool (3 spots, 1 point), the shadow budget is roomLightPool.shadow {point:1, spot:2}
+ // Keep the existing plain spot capacity and a single live shadow view in the Arcade.
  const lights=[...blk.matchAll(/\{type:'(spot|point|dir)'[^}]*\}/g)].map(m=>({type:m[1],shadow:/shadow:true/.test(m[0])}));
  const n=ty=>lights.filter(l=>l.type===ty).length,sh=ty=>lights.filter(l=>l.type===ty&&l.shadow).length;
  t(lights.length>=3,'authored lights present',lights.length);
- t(n('spot')<=3&&n('point')<=1&&n('dir')===0,'lights fit the pool (<=3 spots, <=1 point, no dir)',n('spot')+' spots '+n('point')+' points '+n('dir')+' dir');
- t(sh('spot')<=2&&sh('point')<=1,'shadow casters fit the shadow budget (2 spots, 1 point)',sh('spot')+' spots '+sh('point')+' points');
+ t(n('spot')-sh('spot')<=3&&n('point')===0&&n('dir')===0,'no more than three plain spots and no pooled point or directional lights',n('spot')+' spots '+n('point')+' points '+n('dir')+' dir');
+ t(sh('spot')===1,'one overhead spot casts shadows',sh('spot')+' shadow spots');
  const bg=+(blk.match(/bg:(0x[0-9a-f]+)/i)||[])[1];
  t(isFinite(bg)&&((bg>>16&255)+(bg>>8&255)+(bg&255))<150,'bg (= the fog colour) stays dark: a grey one hazes the whole room',bg&&bg.toString(16));
  return r;
@@ -129,20 +139,27 @@ const pass=a.pass+b.pass,fail=a.fail+b.fail,fails=[...a.fails,...b.fails];
 function mutate(src,from,to){if(!src.includes(from))throw new Error('MUTATION ANCHOR LOST: '+from);
  const out=src.replace(from,to);if(out===src)throw new Error('no-op mutation: '+from);return out;}
 const MUT=[
- ['the planet climbs above the horizon','sky',"PLANET_DIR = K.unit((0.25, -0.90, -0.35))","PLANET_DIR = K.unit((0.25, -0.20, -0.95))"],
- ['the planet sinks out of sight','sky',"PLANET_DEG = 64.0","PLANET_DEG = 30.0"],
+ ['the planet climbs above the horizon','sky',"PLANET_DIR = K.unit((0.14, -0.755, -0.64))","PLANET_DIR = K.unit((0.25, -0.20, -0.95))"],
+ ['the planet sinks out of sight','sky',"PLANET_DEG = 48.0","PLANET_DEG = 30.0"],
  ['the bays rise above the camera line','room',"SILL, HEAD = -22.0, 58.0","SILL, HEAD = 12.0, 58.0"],
  ['config points at a sky that is not there','cfg',"sky:{src:'assets/rooms/arcade/sky/starport'}","sky:{src:'assets/rooms/arcade/sky/nothing'}"],
  ['the room is the Neon Arcade again','cfg',"name:'Starport Arcade'","name:'Neon Arcade'"],
- ['a second point light','cfg',"{type:'spot', pos:[0,10,-197]","{type:'point', pos:[0,10,-197]"],
- ['the fog is grey again','cfg',"bg:0x16110f","bg:0x5c5d60"],
+ ['an Arcade light becomes a point light','cfg',"{type:'spot', pos:[-54,8,-173]","{type:'point', pos:[-54,8,-173]"],
+ ['the overhead spot loses shadows','cfg',"angle:0.77, penumbra:0.53, shadow:true","angle:0.77, penumbra:0.53"],
+ ['the fog is grey again','cfg',"bg:0x100d12","bg:0x5c5d60"],
  ['an opaque material goes double-sided','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').doubleSided=true;}],
  ['a third transparent material','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND'&&/^arcade_gun$/.test(m.name)).alphaMode='BLEND';}],
  ['the draw-call budget blows','glb',j=>{for(let i=0;i<10;i++)j.meshes.push(j.meshes[0]);}],
  ['a prop material goes back to flat roughness','glb',j=>{const m=j.materials.find(m=>m.name==='arcade_steel');delete m.normalTexture;delete m.pbrMetallicRoughness.metallicRoughnessTexture;}],
  ['every prop material gets a set of its own','glb',j=>{j.materials.filter(m=>m.normalTexture&&/^arcade_(gun|steel|brass|rubber|cream|blue|cork|red|yellow|wood|crate|door|ceil|plant)$/.test(m.name)).forEach(m=>{const ni=j.images.push({mimeType:'image/ktx2',bufferView:j.images[0].bufferView})-1;m.normalTexture={index:j.textures.push({source:ni})-1};});}],
  ['the wall loses its ORM','glb',j=>{delete j.materials.find(m=>m.name==='arcade_wall').pbrMetallicRoughness.metallicRoughnessTexture;}],
+ ['the floor loses its baked spill','glb',j=>{delete j.materials.find(m=>m.name==='arcade_floor').emissiveTexture;}],
  ['the cabinets miss the bake','glb',j=>{const n=j.nodes.find(n=>n.name==='room_arcade_cabinets');delete j.meshes[n.mesh].primitives[0].attributes.COLOR_0;}],
+ ['the stools go missing','glb',j=>{const n=j.nodes.find(n=>n.name==='room_arcade_stools');if(n)n.name='missing_stools';}],
+ ['the stools lose their light response','glb',j=>{
+  const n=j.nodes.find(n=>n.name==='room_arcade_stools');
+  if(n)j.materials[j.meshes[n.mesh].primitives[0].material].extensions={KHR_materials_unlit:{}};
+ }],
  ['the floor is wound face down','glb',(j,bin)=>{meshTris(j,bin,'room_arcade_floor',true);}],
  ['the walls are wound inside-out','glb',(j,bin)=>{meshTris(j,bin,'room_arcade_wall',true);}],
  ['the glow sheet goes missing','glb',j=>{j.nodes.forEach(n=>{if(n.name==='room_arcade_glow')n.name='x';});}]

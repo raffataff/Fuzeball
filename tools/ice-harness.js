@@ -32,7 +32,7 @@ BG.prototype.computeBoundingSphere=function(){};BG.prototype.dispose=function(){
 var Mesh=function(g,m){G.call(this);this.isMesh=true;this.geometry=g;this.material=m;this.renderOrder=0;this.castShadow=true;this.receiveShadow=true;};
 Mesh.prototype=Object.create(G.prototype);
 var THREE={Vector3:V3,Color:Col,Group:G,Mesh:Mesh,InstancedMesh:function(g,m,n){Mesh.call(this,g,m);this.instanceMatrix={array:new Float32Array(n*16),needsUpdate:false};this.count=n;},DoubleSide:2,BufferGeometry:BG,BufferAttribute:function(a,n){this.array=a;this.itemSize=n;this.count=a.length/n;},
- MeshStandardMaterial:function(o){Object.assign(this,o);},CanvasTexture:function(){},FrontSide:0,BackSide:1,RepeatWrapping:2};
+ MeshStandardMaterial:function(o){Object.assign(this,o);},CanvasTexture:function(){},TextureLoader:function(){this.load=function(){};},FrontSide:0,BackSide:1,RepeatWrapping:2};
 function kitLin(h){return new Col().set(h);}
 var rods=[],SCENELOG=[],scene={add:function(o){SCENEADDS++;SCENELOG.push(o);}},SCENEADDS=0;
 var S={phase:'play',time:0,eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}]};
@@ -152,10 +152,13 @@ function suite(X){
  const man=fakeMan(1.5),F=X.iceBands(man,P.bands),rings=X.iceRings(F,P);
  ok(near(F.top,10.5)&&F.b.length===P.bands,'the figure is sliced into bands up to its height');
  ok(F.b.every(q=>q.x0<=q.x1&&q.z0<=q.z1),'no band is empty after the fill');
- ok(rings.length===P.bands+2,'a ring per band edge plus the wall above the head');
+ ok(rings.length===P.bands+3,'a ring per band edge plus the sole bevel and the wall above the head');
  ok(rings.every((r,j)=>j===0||r.y>rings[j-1].y),'the rings climb');
  const pitchY=-(X.ROD_H+X.PLAYER_H);
  ok(near(rings[0].y,pitchY+P.gap)&&rings[0].y>pitchY,'the base floats just off the pitch, never under it');
+ const [sole,bevel,boot]=rings;
+ ok(sole.x0>bevel.x0&&bevel.x0>boot.x0&&sole.x1<bevel.x1&&bevel.x1<boot.x1&&
+  sole.z1<bevel.z1&&bevel.z1<boot.z1&&sole.c>bevel.c&&bevel.c>boot.c,'the sole rolls inward with wider corner cuts');
  ok(near(rings[rings.length-1].y,F.top+P.top),'the wall goes up past the head');
  for(const sd of [1,32,8]){
   let miss=0;
@@ -169,8 +172,9 @@ function suite(X){
  // snug where the ball reaches: each ring is the wider of the two bands it joins (and the foot box) plus exactly the low padding
  const dyb=F.top/P.bands;let snugN=0,snugBad=0;
  rings.forEach((r,j)=>{
-  if(r.y>=P.zone||j>P.bands)return;
-  let zh=0;for(const k of [Math.max(0,j-1),Math.min(P.bands-1,j)]){
+  if(j<2||r.y>=P.zone||j>P.bands+1)return;
+  const band=j-1;
+  let zh=0;for(const k of [band-1,Math.min(P.bands-1,band)]){
    zh=Math.max(zh,Math.abs(F.b[k].z0),Math.abs(F.b[k].z1));
    if((k+1)*dyb>Fb.y0&&k*dyb<Fb.y1)zh=Math.max(zh,Fb.z);
   }
@@ -200,8 +204,10 @@ function suite(X){
  ok(degen===0,'no zero-area triangles ('+degen+')');
  ok(T0.length===T1.length&&T0.some((v,i)=>Math.abs(v-T1[i])>1e-6),'two seeds: the same size, a different shape');
  const g=X.iceMake(T0);
- ok(g.attributes.position.count===T0.length/3&&g.attributes.normal.count===g.attributes.position.count&&g.attributes.uv.count===g.attributes.position.count,'position, normal and uv line up');
- ok(g.boundingBox&&g.boundingBox.max.y>F.top+P.top,'the box reaches the crystals on the roof');
+ ok(g.attributes.position.count===T0.length/3&&g.attributes.normal.count===g.attributes.position.count&&g.attributes.iceHeight.count===g.attributes.position.count,'position, normal and frost height line up');
+ const heights=g.attributes.iceHeight.array;
+ ok(Math.min(...heights)===0&&Math.max(...heights)===1,'the frost height spans the cast from base to crown');
+ ok(g.boundingBox&&near(g.boundingBox.max.y,F.top+P.top+P.roof,0.03),'the box reaches the beveled crown');
  let nbad=0;for(let i=0;i<g.attributes.normal.array.length;i+=3)if(!near(Math.hypot(g.attributes.normal.array[i],g.attributes.normal.array[i+1],g.attributes.normal.array[i+2]),1,1e-4))nbad++;
  ok(nbad===0,'every normal is a unit vector');
 
@@ -218,7 +224,7 @@ function suite(X){
   if(zmax+P.pad[0]>P.maxHalfZ)tooWide.push(m.id+' '+zmax.toFixed(2));
   let miss=0;for(let i=0;i<pts.length;i+=3)if(!inLoft(X,rr,1,pts[i],Math.max(pts[i+1],rr[0].y+1e-4),pts[i+2]))miss++;
   if(miss)out.push(m.id+' '+miss);
-  if(FF.top+P.top+P.roof+P.spike[1]>16)tall.push(m.id);
+  if(FF.top+P.top+P.roof>16)tall.push(m.id);
   let fm=0;for(const x of [Fb.x0,Fb.x1])for(const y of [Fb.y0+0.05,Fb.y1-0.05])for(const z of [-Fb.z,Fb.z])if(!inLoft(X,rr,1,x,Math.max(y,rr[0].y+0.01),z))fm++;
   if(fm)footOut.push(m.id);
  }
@@ -231,7 +237,7 @@ function suite(X){
  /* 4. the module on a stub table */
  const mk=()=>{
   X.rods=table(X);X.playerModel[0]=figure(X,fakeMan(1.5));X.playerModel[1]=figure(X,fakeMan(1.5));
-  X.ICE.built=false;X.ICE.key=['',''];X.ICE.geo=[[],[]];X.SCENEADDS=0;X.log.adds.length=0;
+  X.ICE.built=false;X.ICE.key=['',''];X.ICE.geo=[[],[]];X.ICE.sh=null;X.SCENEADDS=0;X.log.adds.length=0;
   X.iceUpdate(0.016);reset(X);
  };
  mk();
@@ -425,6 +431,7 @@ function suite(X){
  ok(X.ICE.built===false,'new rods are noticed');
  X.iceUpdate(0.016);
  ok(X.ICE.built&&X.rods.every(r=>r.ice&&r.ice.length===r.men.length),'and dressed on the next frame');
+ ok(X.SCENEADDS===1,'the chip mesh is shared across rod rebuilds');
  X.rods=keep;
 }
 
@@ -458,7 +465,7 @@ const MUT=[
  ['dt=rp?RP.jDt:rdt','dt=rdt','the footage\'s blocks run on the wall clock'],
  ['return (!ru||ru<=S.time)&&r.men[mi].visible;','return true;','a removed man keeps his block'],
  ["live=S.phase!=='menu',","live=true,",'the menu keeps the frost'],
- ['it.g.scale.set(lerp(0.72,1,k),lerp(0.2,1,k),lerp(0.72,1,k));','it.g.scale.set(1,1,1);','blocks pop in'],
+ ['it.g.scale.set(lerp(0.84,1,k),lerp(0.22,1,k),lerp(0.84,1,k));','it.g.scale.set(1,1,1);','blocks pop in'],
  ['m.f.opacity=IC.opacity*(1-0.4*w*f);','m.f.opacity=IC.opacity;','no flicker in the last seconds'],
  ["Au.play('ice_form');",'','no form sound'],
  ["if(fx)Au.play('ice_break');",'','no break sound'],

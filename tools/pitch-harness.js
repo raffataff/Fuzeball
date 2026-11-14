@@ -25,7 +25,7 @@ function build(over){
  const body=[
   lineAt(MODELS,'const pitchGroups={};'),lineAt(MODELS,'const pitchLoading={};'),
   lineAt(MODELS,'const pitchFailed={};'),lineAt(MODELS,'const pitchOrder=[];'),
-  fnAt(MODELS,'pitchHasGlb'),fnAt(MODELS,'touchPitch'),fnAt(MODELS,'ensurePitch'),
+  fnAt(MODELS,'pitchHasGlb'),fnAt(MODELS,'touchPitch'),fnAt(MODELS,'ensurePitch'),fnAt(MODELS,'applyEmissiveStrength'),
   fnAt(MODELS,'disposePitch'),fnAt(MODELS,'prunePitches')
  ].join('\n');
  const st={loads:[],disposed:[],fail:new Set((over&&over.fail)||[])};

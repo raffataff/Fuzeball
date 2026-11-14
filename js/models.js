@@ -797,6 +797,7 @@ function ensurePitch(id,cb){
         m.needsUpdate=true;
       }
     });
+    applyEmissiveStrength(g);               // match table materials on the r128 loader
     g.visible=false;                        // drawField parents + reveals it
     if(typeof grassAttach==='function')grassAttach(id,g);   // shell grass (js/grass.js), grass pitches only
     pitchGroups[id]=g;

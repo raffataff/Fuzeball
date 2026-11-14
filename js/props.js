@@ -140,6 +140,32 @@ function propPlacements(spec,baseSeed){
 }
 
 // --- build / free ---
+let propContactPlane,propContactMat;
+// A soft floor contact follows the same seeded placements as the prop, including with live shadows off.
+function propContactShadows(places,radius){
+ if(!propContactPlane){
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=64;
+  const ctx=canvas.getContext('2d'),fade=ctx.createRadialGradient(32,32,0,32,32,32);
+  fade.addColorStop(0,'rgba(0,0,0,0.62)');
+  fade.addColorStop(0.48,'rgba(0,0,0,0.52)');
+  fade.addColorStop(0.72,'rgba(0,0,0,0.28)');
+  fade.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=fade;ctx.fillRect(0,0,64,64);
+  propContactPlane=new THREE.PlaneGeometry(2,2).rotateX(-Math.PI/2);
+  propContactMat=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthWrite:false});
+ }
+ const mesh=new THREE.InstancedMesh(propContactPlane,propContactMat,places.length);
+ mesh.frustumCulled=false;
+ const matrix=new THREE.Matrix4();
+ places.forEach((pl,i)=>{
+  const r=radius*pl.s;
+  matrix.makeScale(r,1,r).setPosition(pl.p[0],pl.p[1]+0.04,pl.p[2]);
+  mesh.setMatrixAt(i,matrix);
+ });
+ mesh.instanceMatrix.needsUpdate=true;
+ return mesh;
+}
+
 // one InstancedMesh per part per spec; counts are capped (a typo in `n` should cost a console line, not a gigabyte)
 function propBuildSpec(group,spec,seed,specIndex){
  const t=propTemplates[spec.prop];if(!t)return 0;
@@ -170,6 +196,7 @@ function propBuildSpec(group,spec,seed,specIndex){
   im.userData.specIndex=specIndex;   // js/roomedit.js maps a picked instance back to its spec
   group.add(im);made++;
  });
+ if(spec.contactRadius>0){group.add(propContactShadows(places,spec.contactRadius));made++;}
  return made;
 }
 // build (or rebuild) every prop a room declares; async only where a template still downloads, so room switches don't pop props in late

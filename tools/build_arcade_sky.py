@@ -6,7 +6,7 @@ build_arcade_sky.py  --  Fuzeball STARPORT ARCADE sky -> six cube faces (PNG mas
 
 The arcade is a deck on an orbital starport. What the windows show (back wall = -z, right wall = +x):
 
-    planet    a rust-and-teal world far below, lit by ONE sun, city lights on its night side
+    planet    an ocean world with ochre continents, cloud fronts and a thin blue atmosphere
     pier      a lattice docking pier running across each window, floodlit
     ships     moored freighters, a container hauler, a liner with lit windows, a tug
     stars     numpy stars at the final size
@@ -40,10 +40,13 @@ OUT  = os.path.join(ROOT, 'tools', 'build', 'sky', 'arcade')
 os.makedirs(OUT, exist_ok=True)
 
 # ---- the look (game space: X long axis, Y up, Z width; the near-side camera sits at +Z) --------
-PLANET_DIR = K.unit((0.25, -0.90, -0.35))   # toward the planet's centre: far wall, a little right, well below
-PLANET_DEG = 64.0                           # angular RADIUS of the disc; the limb tops out about 5 deg under the back horizon
+PLANET_DIR = K.unit((0.14, -0.755, -0.64))  # centre below the far bay, just to the right
+PLANET_DEG = 48.0                           # angular radius, with the apex just below the horizon
 SUN_DIR    = K.unit((-0.55, 0.62, -0.30))   # toward the sun: behind the far wall and to the left, 20 deg up: the planet's cap is lit, its night side runs off to the right
-LAND       = 0.54                           # continent noise above this is land
+SEA_LEVEL  = 0.51
+AIR_COLOR  = 0x8fcaff
+AIR_GLOW   = 0.32                           # linear radiance at the sunlit limb
+AIR_HEIGHT = 0.24                           # angular falloff in degrees outside the limb
 GAIN       = 0.85                           # planet brightness on screen (display-referred)
 STARS      = 5200                           # at 2048
 BLOOM      = 0.55
@@ -550,7 +553,7 @@ for mname, (V, F) in GEO.items():
 
 # ---- the planet: a unit sphere scaled up, procedural in object space --------------------------
 R_P = DIST * math.sin(math.radians(PLANET_DEG))
-bpy.ops.mesh.primitive_uv_sphere_add(segments=160, ring_count=80, radius=1.0, location=bl(PLANET_DIR) * DIST)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=256, ring_count=128, radius=1.0, location=bl(PLANET_DIR) * DIST)
 planet = bpy.context.active_object; planet.name = 'planet'; planet.scale = (R_P, R_P, R_P)
 planet.rotation_euler = (math.radians(64), math.radians(8), math.radians(40))   # the pole leans away from the camera: no ice cap in the window
 bpy.ops.object.shade_smooth()
@@ -599,76 +602,61 @@ def shade(fac, col, k):
     return [o for o in m.outputs if o.type == 'RGBA'][0]
 def fmul(a, b):
     m = nn('ShaderNodeMath', operation='MULTIPLY'); L.new(a, m.inputs[0]); L.new(b, m.inputs[1]); return m.outputs[0]
-def sep(vec_out, i): s = nn('ShaderNodeSeparateXYZ'); L.new(vec_out, s.inputs[0]); return s.outputs[i]
 
-cont = noise3(2.0, 7, 0.55, (2.1, 7.7, 3.3), distort=0.6)                        # continents, warped so the coasts wander
-cdet = noise3(12.0, 5, 0.6, (7.0, 1.0, 4.0))                                       # coast detail
-dens = noise3(0.9, 3, 0.5, (9.1, 1.3, 4.4))                                        # which land is settled
-contd = fadd(cont, fmap(cdet, 0.0, 1.0, -0.05, 0.05))
-land = fmap(contd, LAND, LAND + 0.02)
-tone = noise3(3.2, 6, 0.55, (4.4, 8.8, 1.2), distort=0.4)
-tone2 = noise3(7.5, 5, 0.5, (2.0, 3.0, 9.0), distort=0.3)
-ridge = noise3(5.0, 7, 0.55, (1.0, 6.0, 9.0), ntype='RIDGED_MULTIFRACTAL')         # mountain chains
-land_c = ramp(tone, [(0.0, 0x5e3526), (0.30, 0x8f5a38), (0.58, 0xc19a6c), (0.82, 0xdcc79f), (1.0, 0x7d6b4f)])
-veg = fmul(fmap(tone2, 0.50, 0.68), fmap(tone, 0.25, 0.55))                        # scrub and farmland in the lows
-land_c = mixc(fmul(veg, fmap(contd, LAND + 0.02, LAND + 0.09, 0.9, 0.35)), land_c, ramp(tone2, [(0.0, 0x4a5530), (1.0, 0x6f7a46)]))
-land_c = mixc(fmul(fmap(ridge, 0.5, 0.85), fmap(contd, LAND + 0.04, LAND + 0.14)), land_c, ramp(ridge, [(0.0, 0x3a2820), (1.0, 0xc2b296)]))
-coast = fmap(contd, LAND - 0.14, LAND)
-sea_c = ramp(coast, [(0.0, 0x03121a), (0.5, 0x0b3f4c), (0.85, 0x1d7a80), (1.0, 0x58b8a8)])
-col = mixc(land, sea_c, land_c)
-za = nn('ShaderNodeMath', operation='ABSOLUTE'); L.new(sep(tc.outputs['Object'], 2), za.inputs[0])
-zn2 = nn('ShaderNodeMath', operation='MULTIPLY_ADD'); L.new(noise3(6.0, 3, 0.5, (1.0, 2.0, 3.0)), zn2.inputs[0]); zn2.inputs[1].default_value = 0.12; L.new(za.outputs[0], zn2.inputs[2])
-ice = fmap(zn2.outputs[0], 0.84, 0.92)
-col = mixc(ice, col, ramp(tone, [(0.0, 0xdfe6ea), (1.0, 0xf6f6f2)]))
-# clouds: warped, thin cirrus over them, their shadows laid on the ground
-cl = noise3(2.4, 8, 0.62, (7.0, 3.0, 5.0), (1.0, 1.0, 1.9), distort=0.9)
-clm = fmul(fmap(cl, 0.50, 0.70), fmap(noise3(1.1, 2, 0.5, (3.0, 9.0, 2.0)), 0.2, 0.6, 0.5, 1.0))
-cir = fmap(noise3(7.5, 6, 0.55, (2.0, 4.0, 6.0), distort=0.6), 0.55, 0.78, 0.0, 0.5)
-cloud = fadd(clm, cir)
-cl_sh = noise3(2.4, 8, 0.62, (7.025, 2.975, 5.04), (1.0, 1.0, 1.9), distort=0.9)
-col = shade(fmul(fmap(cl_sh, 0.50, 0.70), fmap(cl, 0.0, 0.5, 1.0, 0.0)), col, 0.45)
-col = mixc(cloud, col, ramp(cl, [(0.0, 0xe3e5e8), (1.0, 0xffffff)]))
+# Broad continental shelves with narrow, broken coastlines and dry highlands.
+continents = noise3(1.75, 6, 0.52, (2.1, 7.7, 3.3), (1.0, 1.25, 0.82), distort=0.48)
+coast_detail = noise3(18.0, 5, 0.57, (7.0, 1.0, 4.0))
+elevation = fadd(continents, fmap(coast_detail, 0.0, 1.0, -0.06, 0.06))
+land = fmap(elevation, SEA_LEVEL - 0.004, SEA_LEVEL + 0.008)
+land_color = ramp(elevation, [(SEA_LEVEL, 0x575444), (0.57, 0x97603d), (0.66, 0xb48a5f), (0.80, 0xc6ad8b)])
+ridge = noise3(9.5, 6, 0.59, (1.0, 6.0, 9.0), (0.85, 2.0, 1.2), distort=0.4, ntype='RIDGED_MULTIFRACTAL')
+mountains = fmul(fmap(elevation, 0.55, 0.67), fmap(ridge, 0.27, 0.68))
+land_color = mixc(mountains, land_color, ramp(ridge, [(0.20, 0x563c39), (0.77, 0xd2b697)]))
+sea_color = ramp(elevation, [(0.28, 0x102234), (0.43, 0x15334b), (0.495, 0x225466), (SEA_LEVEL, 0x4c8c88)])
+col = mixc(land, sea_color, land_color)
+
+# Stretched, warped cloud fronts and a finer layer of cirrus over the clear areas.
+cloud_stretch = (0.75, 0.95, 2.8)
+fronts = noise3(3.3, 7, 0.58, (7.0, 3.0, 5.0), cloud_stretch, distort=1.1)
+cover = fmap(noise3(1.7, 3, 0.5, (3.0, 9.0, 2.0)), 0.27, 0.65, 0.32, 1.0)
+front_opacity = fmul(fmap(fronts, 0.49, 0.64), cover)
+cirrus = noise3(13.0, 5, 0.57, (2.0, 4.0, 6.0), (0.65, 1.0, 4.4), distort=0.65)
+cloud = fadd(front_opacity, fmap(cirrus, 0.51, 0.72, 0.0, 0.23))
+shadow_fronts = noise3(3.3, 7, 0.58, (7.022, 3.018, 4.98), cloud_stretch, distort=1.1)
+shadow = fmul(fmap(shadow_fronts, 0.49, 0.64), cover)
+col = shade(shadow, col, 0.68)
+cloud_color = ramp(fronts, [(0.44, 0xa4b3bf), (0.57, 0xdce5ea), (0.66, 0xf5f5f2)])
+col = mixc(cloud, col, cloud_color)
 bsdf = nn('ShaderNodeBsdfPrincipled'); L.new(col, bsdf.inputs['Base Color'])
-L.new(fmap(land, 0.0, 1.0, 0.26, 0.92), bsdf.inputs['Roughness'])                 # a wet ocean, a dry land
-bump = nn('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.8; bump.inputs['Distance'].default_value = 40.0
-L.new(fadd(fmul(land, fmap(ridge, 0.3, 1.0)), fmap(cdet, 0.0, 1.0, 0.0, 0.25)), bump.inputs['Height'])
-L.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
-try: bsdf.inputs['Specular IOR Level'].default_value = 0.3
-except KeyError: pass
-# city lights: only on settled land, only on the night side (normal . sun < 0), under no cloud
+bsdf.inputs['Roughness'].default_value = 0.78
+bsdf.inputs['Specular IOR Level'].default_value = 0.06
+
+# Night-side towns cluster on low land and disappear under cloud.
 geo = nn('ShaderNodeNewGeometry')
 sd = nn('ShaderNodeVectorMath', operation='DOT_PRODUCT'); L.new(geo.outputs['Normal'], sd.inputs[0]); sd.inputs[1].default_value = tuple(bl(SUN_DIR))
-night = fmap(sd.outputs['Value'], 0.10, -0.12)
-town = fmul(fmap(noise3(26.0, 5, 0.6, (3.0, 3.0, 9.0)), 0.56, 0.68), fmap(dens, 0.45, 0.62))
-lights = fmul(fmul(town, land), fmul(night, fmap(cloud, 0.0, 0.7, 1.0, 0.1)))
-L.new(ramp(tone, [(0.0, 0xffa24a), (1.0, 0xffd89a)]), bsdf.inputs['Emission Color'])
-bsdf.inputs['Emission Strength'].default_value = 0.0
-L.new(fmul(lights, fmap(tone, 0, 1, 6.0, 6.0)), bsdf.inputs['Emission Strength'])
-out = nn('ShaderNodeOutputMaterial'); L.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
+night = fmap(sd.outputs['Value'], -0.20, 0.025, 1.0, 0.0)
+settled = fmap(noise3(5.0, 3, 0.52, (9.1, 1.3, 4.4)), 0.47, 0.64)
+towns = fmap(noise3(94.0, 3, 0.56, (3.0, 3.0, 9.0)), 0.61, 0.74, 0.0, 1.3)
+lowland = fmul(land, fmap(elevation, 0.53, 0.65, 1.0, 0.12))
+lights = fmul(fmul(towns, settled), fmul(lowland, fmul(night, fmap(cloud, 0.0, 0.8, 1.0, 0.08))))
+bsdf.inputs['Emission Color'].default_value = K.hexlin(0xffc280)
+L.new(lights, bsdf.inputs['Emission Strength'])
 
-# the atmosphere: a shell, a thin bright rim that fades toward the night side
-bpy.ops.mesh.primitive_uv_sphere_add(segments=160, ring_count=80, radius=1.0, location=bl(PLANET_DIR) * DIST)
-atm = bpy.context.active_object; atm.name = 'atmosphere'; atm.scale = (R_P * 1.014,) * 3
-bpy.ops.object.shade_smooth(); atm.visible_shadow = False
-am = bpy.data.materials.new('atmosphere'); am.use_nodes = True; atm.data.materials.append(am)
-nt = am.node_tree; N = nt.nodes; L = nt.links
-for n in list(N): N.remove(n)
-lw = nn('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.78
-inv = nn('ShaderNodeMath', operation='SUBTRACT'); inv.inputs[0].default_value = 1.0; L.new(lw.outputs['Facing'], inv.inputs[1])
-rim2 = nn('ShaderNodeMath', operation='POWER', use_clamp=True); L.new(inv.outputs[0], rim2.inputs[0]); rim2.inputs[1].default_value = 7.0
-geo = nn('ShaderNodeNewGeometry')
-sd = nn('ShaderNodeVectorMath', operation='DOT_PRODUCT'); L.new(geo.outputs['Normal'], sd.inputs[0]); sd.inputs[1].default_value = tuple(bl(SUN_DIR))
-lit = nn('ShaderNodeMapRange', clamp=True); L.new(sd.outputs['Value'], lit.inputs['Value'])
-lit.inputs['From Min'].default_value = -0.35; lit.inputs['From Max'].default_value = 0.5; lit.inputs['To Min'].default_value = 0.08; lit.inputs['To Max'].default_value = 1.0
-amt = nn('ShaderNodeMath', operation='MULTIPLY', use_clamp=True); L.new(rim2.outputs[0], amt.inputs[0]); L.new(lit.outputs['Result'], amt.inputs[1])
-e = nn('ShaderNodeEmission'); e.inputs['Color'].default_value = K.hexlin(0x8cc6ef); e.inputs['Strength'].default_value = 1.5
-tr = nn('ShaderNodeBsdfTransparent'); mx = nn('ShaderNodeMixShader')
-L.new(amt.outputs[0], mx.inputs['Fac']); L.new(tr.outputs['BSDF'], mx.inputs[1]); L.new(e.outputs['Emission'], mx.inputs[2])
-out = nn('ShaderNodeOutputMaterial'); L.new(mx.outputs['Shader'], out.inputs['Surface'])
+# View-angle haze on the surface, occluded by the dock in the same render pass.
+view = nn('ShaderNodeVectorMath', operation='DOT_PRODUCT')
+L.new(geo.outputs['Normal'], view.inputs[0]); L.new(geo.outputs['Incoming'], view.inputs[1])
+slant = fmap(view.outputs['Value'], 0.0, 0.55, 1.0, 0.0)
+fade = nn('ShaderNodeMath', operation='POWER'); L.new(slant, fade.inputs[0]); fade.inputs[1].default_value = 3.0
+lit_air = fmap(sd.outputs['Value'], -0.20, 0.72, 0.02 * AIR_GLOW, AIR_GLOW)
+air = nn('ShaderNodeEmission'); air.inputs['Color'].default_value = K.hexlin(AIR_COLOR)
+L.new(lit_air, air.inputs['Strength'])
+surface = nn('ShaderNodeMixShader')
+L.new(fade.outputs[0], surface.inputs[0]); L.new(bsdf.outputs['BSDF'], surface.inputs[1]); L.new(air.outputs['Emission'], surface.inputs[2])
+out = nn('ShaderNodeOutputMaterial'); L.new(surface.outputs['Shader'], out.inputs['Surface'])
 
-for _o in (planet, atm):
-    for _c in list(_o.users_collection): _c.objects.unlink(_o)
-    planet_col.objects.link(_o)
+for collection in list(planet.users_collection):
+    collection.objects.unlink(planet)
+planet_col.objects.link(planet)
 # two suns, one direction: the ships' sun is blocked by everything (so a stack shades itself), the planet's sun by a decoy
 # alone (so no ship shadow crawls across a world 3000 units below); the planet still bounces light back onto the ships
 def make_sun(name, receivers, blockers, toward=None, energy=2.5, colour=0xfff1dc, size=0.5):
@@ -720,6 +708,14 @@ def sun_glow(dirs):
     g = 0.55 * np.exp(-a / 1.1) + 0.08 * np.exp(-a / 6.0) + 0.012 * np.exp(-a / 22.0)
     g += 8.0 * (a < 0.42)
     return g[..., None] * np.array(K.hexlin(0xffeccf)[:3])
+def atmosphere_glow(dirs):
+    radius = math.radians(PLANET_DEG)
+    # Lighting at the tangent point, continuous across all cubemap faces.
+    sun_dot = (math.cos(radius) * (dirs @ SUN_DIR) - PLANET_DIR @ SUN_DIR) / math.sin(radius)
+    lit = 0.02 + 0.98 * np.clip((sun_dot + 0.20) / 0.92, 0, 1)
+    altitude = np.maximum(ang(dirs, PLANET_DIR) - PLANET_DEG, 0)
+    glow = np.exp(-altitude / AIR_HEIGHT) * lit * AIR_GLOW
+    return glow[..., None] * np.array(K.hexlin(AIR_COLOR)[:3])
 def gblur(a, s):
     """Gaussian blur by FFT, zero-padded: a light on a face seam loses the half of its halo that belongs to the next face."""
     pad = int(s * 3.5) + 1
@@ -741,6 +737,7 @@ for f in K.FACES:
     rgba = render_scene(f)
     a = np.clip(rgba[..., 3], 0, 1)
     K.splat_stars(lin, f, stars, RES, mask=a)
+    lin += atmosphere_glow(dirs) * GAIN
     lin = lin * (1 - a)[..., None] + rgba[..., :3] * GAIN
     s = RES / 2048.0
     bright = np.maximum(lin - 0.45, 0)

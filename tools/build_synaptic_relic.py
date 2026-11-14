@@ -1,6 +1,9 @@
-import bpy, os, tempfile, numpy as np
+import bpy, os, sys, tempfile, numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from goal_frame_textures import blur, smoothstep, tile_gradient
+
 ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT=os.path.join(ROOT,'assets','tables','circuit','synaptic_relic'); os.makedirs(OUT,exist_ok=True)
 tempfile.tempdir=os.path.join(ROOT,'tools','build','synaptic-temp'); os.makedirs(tempfile.tempdir,exist_ok=True)
@@ -9,10 +12,16 @@ def save_image(name, rgb, colorspace):
  img=bpy.data.images.new(name,width=w,height=h,alpha=True); img.colorspace_settings.name=colorspace
  img.pixels.foreach_set(rgba.ravel()); img.filepath_raw=os.path.join(OUT,name+'.png'); img.file_format='PNG'; img.save(); return img
 
+def read_art(srcfile):
+ src=bpy.data.images.load(os.path.join(OUT,srcfile),check_existing=False)
+ w,h=src.size; px=np.empty(w*h*4,dtype=np.float32); src.pixels.foreach_get(px)
+ bpy.data.images.remove(src)
+ return px.reshape(h,w,4)[:,:,:3].copy()
+
 def make_maps(name,kind):
  srcfile={'foot':'foot_art_v3.png','rail':'rail_art_v3.png','inside':'inside_art_v3.png','goal':'goal_art_v3.png'}.get(kind,'panel_art_v2.png')
- src=bpy.data.images.load(os.path.join(OUT,srcfile),check_existing=False)
- w,h=src.size; px=np.empty(w*h*4,dtype=np.float32); src.pixels.foreach_get(px); base=px.reshape(h,w,4)[:,:,:3].copy()
+ base=read_art(srcfile)
+ h,w=base.shape[:2]
  rng=np.random.default_rng(833+len(name)); noise=rng.random((h,w),dtype=np.float32)
  # Gold and crystal receive distinct physical responses. Stone is dielectric;
  # metallic response belongs only to the warm engraved inlay.
@@ -39,12 +48,85 @@ def make_maps(name,kind):
  emiss=np.stack((hot*.95,hot*.35,hot*.035),axis=-1)
  return (save_image(name+'_basecolor',base,'sRGB'),save_image(name+'_roughness',np.repeat(rough[:,:,None],3,axis=2),'Non-Color'),save_image(name+'_metallic',np.repeat(metal[:,:,None],3,axis=2),'Non-Color'),save_image(name+'_normal',normal,'Non-Color'),save_image(name+'_emissive',emiss,'sRGB'))
 
+
+def make_frame_maps():
+    width, height = 2048, 256
+    u = (np.arange(width, dtype=np.float32)+.5)/width
+    v = (np.arange(height, dtype=np.float32)+.5)/height
+    # Use the existing crystal ribbons for the substrate and sample the
+    # central panel medallion for the gold engravings.
+    rail = read_art('rail_art_v3.png')
+    rail_x = ((u*3 % 1)*(rail.shape[1]-1)).astype(np.int32)
+    rail_y = ((.50-.43*np.cos(2*np.pi*v))*(rail.shape[0]-1)).astype(np.int32)
+    crystal = rail[rail_y[:, None], rail_x]
+    red, green, blue = read_art('panel_art_v2.png')[132:352, 917:1137].transpose(2, 0, 1)
+    sigil = smoothstep(.025, .36, red-1.15*blue)*smoothstep(.06, .30, green)
+    sigil = np.maximum(sigil, smoothstep(.55, .92, green)*smoothstep(.13, .41, red-blue))
+
+    # Engrave both visible sides of the wrap.
+    # Coordinates are in table units to keep the sigils round on the posts.
+    x = u[None, :]*40
+    y = ((v[:, None]-.045+.25) % .5-.25)*3.55
+    orbit = .18*np.sin(x*np.pi/5.0)
+    taper = smoothstep(.12, 1, x)*smoothstep(.12, 1, 40-x)
+    outer_line = 1-smoothstep(.016, .036, np.abs(np.abs(y-orbit)-.17))
+    inner_line = 1-smoothstep(.012, .029, np.abs(y+.58*orbit))
+    engraved = taper*np.maximum(.53*outer_line, .74*inner_line)
+    nodes = np.zeros((height, width), dtype=np.float32)
+    medallion = np.zeros_like(nodes)
+    for position, radius in ((3.2, .42), (12.6, .37), (20, .64), (27.4, .37), (36.8, .42)):
+        dx = (x-position)/radius
+        dy = y/radius
+        ix = np.clip((dx*.5+.5)*sigil.shape[1], 0, sigil.shape[1]-1).astype(np.int32)
+        iy = np.clip((dy*.5+.5)*sigil.shape[0], 0, sigil.shape[0]-1).astype(np.int32)
+        distance = np.hypot(dx, dy)
+        window = 1-smoothstep(.82, 1, distance)
+        nodes = np.maximum(nodes, sigil[iy, ix]*window)
+        medallion = np.maximum(medallion, window)
+    gold = np.maximum(engraved*(1-medallion), nodes)
+    gold = blur(np.maximum.reduce([gold, .85*np.roll(gold, 1, axis=0),
+                                         .85*np.roll(gold, -1, axis=0)]), 1, 'wrap')
+    groove = smoothstep(.035, .53, blur(gold, 2, 'wrap'))
+
+    lum = crystal @ np.array([.21, .72, .07], dtype=np.float32)
+    broad = blur(lum, 3, 'wrap')
+    grain = blur(lum, 1, 'wrap')-broad
+    base = (crystal*.85+np.array([.029, .008, .048]))
+    base *= (1-.60*medallion[..., None])*(1-.65*groove[..., None])
+    base = base*(1-gold[..., None]) + gold[..., None]*np.array([.95, .46, .085])
+    rough = np.clip(.49-.22*broad-.23*gold+.14*groove+grain*.20, .22, .62)
+    metal = .03+.89*gold
+    relief = .61*broad + 1.18*grain + .28*(lum-broad-grain) - .125*groove
+    dy, dx = tile_gradient(relief)
+    normal = np.stack((-5.8*dx, -7.2*dy, np.ones_like(dx)), axis=-1)
+    normal = normal/np.linalg.norm(normal, axis=-1, keepdims=True)*.5+.5
+    emission = np.stack((.82*gold**1.42, .37*gold**1.64, .052*gold**2), axis=-1)
+    return (
+        save_image('goal_frame_basecolor', base, 'sRGB'),
+        save_image('goal_frame_roughness', np.repeat(rough[..., None], 3, axis=2), 'Non-Color'),
+        save_image('goal_frame_metallic', np.repeat(metal[..., None], 3, axis=2), 'Non-Color'),
+        save_image('goal_frame_normal', normal, 'Non-Color'),
+        save_image('goal_frame_emissive', emission, 'sRGB'),
+    )
+
+
+def map_frame_decal(ob, path, center, direction):
+    # The exterior polyline's U steps are per corner. Space the artwork by
+    # actual distance and turn its front toward the outside of each table end.
+    distances = np.cumsum([0, *((b-a).length for a, b in zip(path, path[1:]))])
+    distances /= distances[-1]
+    for loop in ob.data.uv_layers.active.data:
+        u, v = loop.uv
+        u = np.interp(u, (0, 1/3, 2/3, 1), distances)
+        loop.uv = (u, (v-center)*direction)
+
+
 panel_maps=make_maps('panel','panel'); foot_maps=make_maps('foot','foot'); rail_maps=make_maps('rail','rail'); inside_maps=make_maps('inside','inside'); goal_maps=make_maps('goal_inside','goal')
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT,'assets','tables','circuit','fuzeball_table_circuit.glb'))
 for ob in list(bpy.context.scene.objects):
     if ob.name.startswith('standard_goal_floor_'): bpy.data.objects.remove(ob,do_unlink=True)
-def textured_material(name, maps):
+def textured_material(name, maps, normal_strength=.8, emission_strength=1.0):
     albedo,rough_img,metal_img,normal_img,emissive_img=maps
     mat=bpy.data.materials.new(name); mat.use_nodes=True
     nodes=mat.node_tree.nodes; links=mat.node_tree.links
@@ -54,10 +136,10 @@ def textured_material(name, maps):
     links.new(tex(albedo,'Base color').outputs['Color'],bs.inputs['Base Color'])
     links.new(tex(rough_img,'Roughness').outputs['Color'],bs.inputs['Roughness'])
     links.new(tex(metal_img,'Metallic').outputs['Color'],bs.inputs['Metallic'])
-    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=0.8
+    nm=nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=normal_strength
     links.new(tex(normal_img,'Normal').outputs['Color'],nm.inputs['Color']); links.new(nm.outputs['Normal'],bs.inputs['Normal'])
     links.new(tex(emissive_img,'Emissive traces').outputs['Color'],bs.inputs['Emission Color'])
-    bs.inputs['Emission Strength'].default_value=1.0
+    bs.inputs['Emission Strength'].default_value=emission_strength
     return mat
 
 def solid(name,color,metal,rough,emission=None):
@@ -71,6 +153,8 @@ def solid(name,color,metal,rough,emission=None):
 side_panel=textured_material('Synaptic Relic | composed side panel',panel_maps)
 foot_panel=textured_material('Synaptic Relic | stand end panel',foot_maps)
 frame=solid('Synaptic Relic | cyan goal frame',(0.48,0.20,0.025),0.65,0.23,(1.0,0.35,0.035))
+relic_frame=textured_material('Synaptic Relic | orbital inlay goal frame',make_frame_maps(),
+                              normal_strength=1.0,emission_strength=2.35)
 metalmat=solid('Synaptic Relic | rod collars',(0.12,0.075,0.045),0.85,0.26)
 railmat=textured_material('Synaptic Relic | brushed graphite rail',rail_maps)
 pedestal=side_panel
@@ -125,7 +209,7 @@ for ob in list(bpy.context.scene.objects):
             if poly.normal.z > 0.8 and all((ob.matrix_world @ ob.data.vertices[ob.data.loops[li].vertex_index].co).z > 15.45 for li in poly.loop_indices):
                 poly.material_index=rail_index
     elif ob.name.startswith('goal_frame_'):
-        for i in range(len(ob.data.materials)): ob.data.materials[i]=frame
+        for i in range(len(ob.data.materials)): ob.data.materials[i]=relic_frame
     elif ob.name.startswith('rod_hole'):
         for i in range(len(ob.data.materials)): ob.data.materials[i]=metalmat
 
@@ -151,9 +235,12 @@ for end in (-1,1):
 for side in (-1,1):
     curve=bpy.data.curves.new('relic outer goal','CURVE'); curve.dimensions='3D'; curve.bevel_depth=0.20; curve.bevel_resolution=3
     spline=curve.splines.new('POLY'); spline.points.add(3)
-    for p,co in zip(spline.points,[(side*68.58,-10.9,0.2),(side*68.58,-10.9,8.75),(side*68.58,10.9,8.75),(side*68.58,10.9,0.2)]): p.co=(*co,1)
-    ob=bpy.data.objects.new('goal_frame_relic_outer_'+('l' if side<0 else 'r'),curve); bpy.context.collection.objects.link(ob); ob.data.materials.append(frame)
+    coords = [Vector((side*68.58, y, z)) for y, z in
+              [(-10.9, .2), (-10.9, 8.75), (10.9, 8.75), (10.9, .2)]]
+    for p, co in zip(spline.points, coords): p.co=(*co,1)
+    ob=bpy.data.objects.new('goal_frame_relic_outer_'+('l' if side<0 else 'r'),curve); bpy.context.collection.objects.link(ob); ob.data.materials.append(relic_frame)
     bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True); bpy.context.view_layer.objects.active=ob; bpy.ops.object.convert(target='MESH')
+    map_frame_decal(ob, coords, center=.90 if side<0 else .40, direction=-side)
 
 # Trace the real cabinet edge rather than painting a repeating line onto the pedestal.
 base_ob=bpy.data.objects['table_base.001']

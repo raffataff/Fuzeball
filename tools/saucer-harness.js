@@ -1,5 +1,5 @@
 // harness for the FLYING SAUCER room: the shipped GLB and sky, the config entry, and the two things the room's look rests on. Run: node tools/saucer-harness.js
-// must hold: the encoded GLB is KTX2-only, light-free, has exactly three blended materials (the window glass and the glow and paint decal sheets), opaque ones single-sided (backface culling) and every textured prop wearing a surface set (normal + metallic-roughness maps), the bar's front panels face the room (arc_prism winding), and it is inside the triangle and mesh budget; all six sky faces ship; the giant in build_saucer_sky.py sits inside the low-sill window bay of build_saucer_room.py (azimuth and a little under the horizon); the room's authored lights fit the pool (spots, points, shadow budget); bakeGlbEnv hides textured-alpha glass (opacity 1) from the reflection bake, where it used to bake as a white blob
+// Checks the shipped sky, PBR room asset, floor lighting bake, cached reflections and one live shadow pass.
 // asset and source files are read from the repo; bakeGlbEnv is string-sliced from js/world.js and rebuilt against stubs
 'use strict';
 const fs=require('fs'),path=require('path');
@@ -63,7 +63,7 @@ function assetSuite(cfgSrc,tweak){
   if(tweak)tweak(j,bin);
   const ext=j.extensionsUsed||[];
   t(ext.includes('KHR_texture_basisu'),'textures are KTX2 (KHR_texture_basisu)',ext.join());
-  t(!ext.includes('KHR_lights_punctual'),'no baked lights: the room is lit by the pooled lights in config');
+  t(!ext.includes('KHR_lights_punctual'),'no punctual lights embedded in the GLB');
   t((j.images||[]).every(i=>i.mimeType==='image/ktx2'),'every image is image/ktx2',(j.images||[]).map(i=>i.mimeType).join());
   const blend=(j.materials||[]).filter(m=>m.alphaMode==='BLEND');
   t(blend.length===3&&['glass','glow','paint'].every(k=>blend.some(m=>m.name==='saucer_'+k)),'exactly three transparent materials: the window glass and the glow and paint decal sheets',blend.map(m=>m.name).join());
@@ -72,6 +72,20 @@ function assetSuite(cfgSrc,tweak){
   const bare=props.filter(m=>!m.normalTexture||!m.pbrMetallicRoughness.metallicRoughnessTexture);
   t(props.length>=14&&!bare.length,'every textured prop material wears a surface set (normal + metallic-roughness maps, not flat roughness)',props.length+' materials; bare: '+bare.map(m=>m.name).join());
   const srcOf=ti=>{const T=j.textures[ti];return T.source!==undefined?T.source:((T.extensions||{}).KHR_texture_basisu||{}).source;};
+  for(const name of ['deck','dais']){
+   const m=j.materials.find(m=>m.name==='saucer_'+name),spill=m&&m.emissiveTexture;
+   t(!!spill&&j.images[srcOf(spill.index)].name==='saucer_'+name+'_spill'&&!(spill.texCoord||0),
+    name+' ships its baked window spill on UV0, supported by r128');
+   const ao=m&&m.occlusionTexture,orm=m&&m.pbrMetallicRoughness.metallicRoughnessTexture;
+   t(!!ao&&!!orm&&ao.index===orm.index&&!(ao.texCoord||0),
+    name+' packs baked contact AO into the PBR map on UV0');
+  }
+  const deck=j.materials.find(m=>m.name==='saucer_deck');
+  t(!!deck&&[deck.pbrMetallicRoughness.baseColorTexture,deck.pbrMetallicRoughness.metallicRoughnessTexture,deck.normalTexture]
+   .every(tex=>tex&&!(tex.texCoord||0)),'deck PBR maps share UV0 with the spill');
+  const jukebox=j.materials.find(m=>m.name==='jukebox');
+  t(!!(jukebox&&jukebox.emissiveTexture)&&j.images[srcOf(jukebox.emissiveTexture.index)].name==='saucer_jukebox_lamps',
+   'the modelled jukebox has its own lamp texture');
   const nSrc=new Set(props.filter(m=>m.normalTexture).map(m=>srcOf(m.normalTexture.index)));
   t(nSrc.size>=3&&nSrc.size<=8,'the prop materials share a few surface sets (not one set per material)',nSrc.size+' normal maps');
   let texels=0;for(const im of j.images||[]){const v=j.bufferViews[im.bufferView];if(v&&im.mimeType==='image/ktx2'){const o=v.byteOffset||0;texels+=bin.readUInt32LE(o+20)*bin.readUInt32LE(o+24);}}
@@ -92,13 +106,13 @@ function assetSuite(cfgSrc,tweak){
   const p=skySrc+'_'+f+'.ktx2';
   t(fs.existsSync(path.join(ROOT,p))&&fs.statSync(path.join(ROOT,p)).size>100000,'sky face ships: '+f,p);
  }
- // the pooled lights: the pool holds at least 3 spots and 1 point, the shadow budget is roomLightPool.shadow {point:1, spot:2}
+ // The table key borrows a shadow slot. The three fills use the plain pool.
  const lights=[...blk.matchAll(/\{type:'(spot|point|dir)'[^}]*\}/g)].map(m=>({type:m[1],shadow:/shadow:true/.test(m[0])}));
  const n=ty=>lights.filter(l=>l.type===ty).length,sh=ty=>lights.filter(l=>l.type===ty&&l.shadow).length;
- t(lights.length>=3,'authored lights present',lights.length);
- t(n('spot')<=3&&n('point')<=1&&n('dir')===0,'lights fit the pool (<=3 spots, <=1 point, no dir)',n('spot')+' spots '+n('point')+' points '+n('dir')+' dir');
- t(sh('spot')<=2&&sh('point')<=1,'shadow casters fit the shadow budget (2 spots, 1 point)',sh('spot')+' spots '+sh('point')+' points');
- t(/dir:\{[^}]*on:false/.test(blk),'the sun stays off (no scene light is added or removed per room)');
+ t(n('spot')===4&&lights.length===4,'table key and three fills fit the arcade spot budget',lights.length);
+ t(sh('spot')===1&&/look:\[0,0,0\][^}]*shadow:true/.test(blk),'the table spot owns the single live shadow pass',sh('spot'));
+ t(/dir:\{[^}]*on:false/.test(blk),'the directional light stays off');
+ t(/reflect:false/.test(blk)&&/env:\{shell:0x[0-9a-f]+,panels:\[/.test(blk),'use the room\'s cached reflection cards');
  return r;
 }
 
@@ -163,8 +177,12 @@ const MUT=[
  ['the bay moves away from the giant','room',"SILL_LOW if -90 < c < -30 else","SILL_LOW if 10 < c < 70 else"],
  ['the bay sill rises above the camera line','room',"SILL_LOW = -28.0","SILL_LOW = 10.0"],
  ['config points at a sky that is not there','cfg',"sky:{src:'assets/rooms/saucer/sky/saucer'}","sky:{src:'assets/rooms/saucer/sky/nothing'}"],
- ['a third shadow-casting spot','cfg',"{type:'point', pos:[0,36,0], look:[0,0,0], color:0xeaf6ff, int:2.1, dist:90, decay:0.6, angle:0.68, penumbra:0.12, shadow:true}","{type:'spot', pos:[0,36,0], look:[0,0,0], color:0xeaf6ff, int:2.1, dist:90, decay:0.6, angle:0.68, penumbra:0.12, shadow:true}"],
- ['the sun is switched on','cfg',"dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:false},\n      env:{shell:0x0a1a20","dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:true},\n      env:{shell:0x0a1a20"],
+ ['the jukebox casts shadows too','cfg','angle:0.8, penumbra:0.68}','angle:0.8, penumbra:0.68, shadow:true}'],
+ ['the sun is switched on','cfg',"dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:false}","dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:true}"],
+ ['the deck loses its baked spill','glb',j=>{delete j.materials.find(m=>m.name==='saucer_deck').emissiveTexture;}],
+ ['the deck loses its baked contact AO','glb',j=>{delete j.materials.find(m=>m.name==='saucer_deck').occlusionTexture;}],
+ ['the deck spill moves to an unsupported UV set','glb',j=>{j.materials.find(m=>m.name==='saucer_deck').emissiveTexture.texCoord=1;}],
+ ['the jukebox lamps go dark','glb',j=>{delete j.materials.find(m=>m.name==='jukebox').emissiveTexture;}],
  ['an opaque material goes double-sided again','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').doubleSided=true;}],
  ['a fourth transparent material','glb',j=>{j.materials.find(m=>m.alphaMode!=='BLEND').alphaMode='BLEND';}],
  ['the draw-call budget blows','glb',j=>{for(let i=0;i<8;i++)j.meshes.push(j.meshes[0]);}],

@@ -175,9 +175,11 @@ matchStats:{
   alien:{ folder:'assets/rods/alien/' },
   synapticRelic:{ folder:'assets/rods/synaptic_relic/' },
   solarForge:{ folder:'assets/rods/solar_forge/' },
+  circuitStandard:{ folder:'assets/rods/circuit_standard/' },
   silverCircuit:{ folder:'assets/rods/silver_circuit/' },
   obsidianVolt:{ folder:'assets/rods/obsidian_volt/' },
   arenaComet:{ folder:'assets/rods/arena_comet/' },
+  heliosRunners:{ folder:'assets/rods/helios_runners/' },
 
  },
 
@@ -214,7 +216,7 @@ matchStats:{
    defSkin:'standard',
    skins:{ standard:          {name:'Standard',          glb:'fuzeball_table_arena_standard.glb'},
            federationFinals:  {name:'Federation Finals', glb:'fuzeball_table_arena_federation.glb',   pitch:'federation_finals'},
-           heliosRunners:     {name:'Helios Runners',    glb:'fuzeball_table_arena_helios.glb',       pitch:'helios_runners'} },
+           heliosRunners:     {name:'Helios Runners',    glb:'fuzeball_table_arena_helios.glb',       rods:'heliosRunners', pitch:'helios_runners'} },
    rods:'arenaComet',
    bowl:{
    length:120,        // bowl length along x — keep at the table length (see TUNING.md)
@@ -245,13 +247,12 @@ matchStats:{
    defTheme:'neon',                          // metadata only
    defSkin:'silverCircuit',                          // metadata only
    skins:{
-    standard:     {name:'Circuit',        glb:'fuzeball_table_circuit.glb'},
+    standard:     {name:'Circuit',        glb:'fuzeball_table_circuit_worn.glb', glbFallback:'fuzeball_table_circuit.glb', pitch:'circuit_standard', rods:'circuitStandard'},
     obsidianVolt: {name:'Obsidian Volt',  glb:'fuzeball_table_circuit_obsidian.glb',      pitch:'obsidian_volt',     rods:'obsidianVolt'},
     silverCircuit:{name:'Silver Circuit', glb:'fuzeball_table_circuit_silver.glb',        pitch:'silver_circuit',    rods:'silverCircuit' },
     synapticRelic:{name:'Synaptic Relic', glb:'fuzeball_table_circuit_synaptic_relic.glb', pitch:'synaptic_relic',   rods:'synapticRelic'},
     solarForge:   {name:'Solar Forge',    glb:'fuzeball_table_circuit_solar_forge.glb',   pitch:'solar_forge',       rods:'solarForge'}
    },
-   rods:'arenaComet',                           // circuit rods not built yet
    deadzones:[
     {xMin:46, zMin:14.}   // corner pockets
    ]
@@ -282,7 +283,7 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:450,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
+   ballR:1.9, rodH:7.50, playerH:-6.90, arm:6.90, grav:850,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
    prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back, and the foot box's rear face is this far behind the leg
    head:{ len:2.0, r:1.1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
@@ -291,8 +292,8 @@ physics:{
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0.005,                // random velocity nudge after a foot hit (stops perfect oscillations)
    subMin:3, subMax:16, subTravel:0.2,  // adaptive substep bounds and target travel per step (PHYS_Q overrides by cfg.physQuality)
-   floorRest:0.12,                        // vertical restitution off the floor
-   floorRestCut:3,                        // below this upward speed the bounce dies to 0
+   floorRest:0.32,                        // vertical restitution off the floor
+   floorRestCut:1.5,                        // below this upward speed the bounce dies to 0
    floorHitSnd:25,                        // |v.y| above this plays a floor tap
 
    wallHitSnd:16,                         // |v| into a side/end wall above this plays a tap
@@ -301,7 +302,7 @@ physics:{
    ballHitSnd:12,                         // ball-vs-ball closing speed above this plays a knock
    contactHold:0.05,                      // s a surface must be clear before it can fire another impact
    contactEps:0.15,                       // gap below which the roll probe counts a ball as touching
-   floorFric:0.25, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
+   floorFric:0.35, airFric:0.06,           // per-substep friction coefficients, applied as exp(-k*h)
    wallRest:0.52,                         // side + end wall restitution
    postRad:0.6, postRest:0.62,            // goal post/crossbar collision radius + restitution
    ballRest:0.9,                          // ball-vs-ball restitution
@@ -328,7 +329,7 @@ kick:{
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0, restPower:0.6,      // passive touch / struck shot
    powFrom:0.001, powTo:0.02,       // swing-time window in which restPower is used instead of rest
-   grip:0.4,                     // fraction of the foot's velocity lerped into the ball on contact
+   grip:0.8,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.6,
    sideRest:0.35,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
@@ -1039,7 +1040,7 @@ ai:{
          loose:{
             on:true,
             maxV:10.5,      // lying there (u/s)
-            share:0.5,     // share of the chances taken; the decision is made once every `every`
+            share:0.33,     // share of the chances taken; the decision is made once every `every`
             every:1.5      // s
          }
       },
@@ -1106,12 +1107,12 @@ ai:{
          soft:{
             on:true,
             share:{ATT:0.15,MID:0.1,DEF:0.15},   // share of touches played soft, drawn once a trip (a let-through sets up its own: a MID's are a third soft already)
-            from:2,          // not before this many touches
+            from:3,          // not before this many touches
             v:[14,22],       // the speed it is sent back at (u/s), drawn per touch; the slide that gives it is the foot box's (ttTouchU)
             room:true,       // a face with no slide left to go into the ball stands and bounces it (false = the rally is handed over, tt:room)...
             minOut:8         // ...if that still sends it back this fast (u/s)
          },
-         maxTouch:30,      // handed to the side catch after this many touches...
+         maxTouch:20,      // handed to the side catch after this many touches...
          maxT:10.0,        // ...or this long (s; the dead-ball clock (deadball.stallT) restarts every time the ball roams more than deadball.moveEps)
          // strike: the ball leaves with the slide the man has at contact (tools/tt-soak.js ttStrikeScene: lateral 0.9 x the slide, forward ~130 u/s)
          strike:{
@@ -1378,7 +1379,7 @@ ai:{
 
    // --- goal targeting (accuracy = DIFFS.aim) ---
    aimGain:20,                                // converts desired lateral into a z aim-offset
-   aimMax:1.2,                                // clamp on that offset (u)
+   aimMax:0.7,                                // clamp on that offset (u)
    aimGoalZ:0.85,                              // aim within ±this fraction of goalHalf
    aimSpread:1.3,                             // low-accuracy spray width across the mouth
    // gap aiming: accurate rods steer at the widest open lane and hold a covered shot briefly
@@ -1442,7 +1443,7 @@ ai:{
       refine:0.25,
       every:0.04          // re-solve cadence (s)
    },
-   alignSlow:1.2, alignFast:1.25,             // z-alignment tolerance for a swing (slow / fast ball)
+   alignSlow:1.5, alignFast:1.25,             // z-alignment tolerance for a swing (slow / fast ball)
 
    // Strike gate: replay the swing curve and refuse an aimed shot the boot can't reach.
    strikeGate:{
@@ -1579,7 +1580,7 @@ ai:{
    // WOMEN
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
       src:'assets/fuzeball_womanMaria.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_maria_mugshot_v2.png',   
+      mug:'assets/renders/render_maria_mugshot_arena_cutout.png',   
       renderTop:70,
       teamParts:['kit_maria'],hairParts:['kit_maria_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
@@ -1671,6 +1672,13 @@ ai:{
        teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
        explosionSrc:'assets/animations/zargon_explosion.glb'
        },
+   {id:'alienZorloth',name:'Zorloth',blurb:'Mysterious and powerful',
+      src:'assets/fuzeball_alienZorloth.glb',scale:0.875, rodY:8.63,
+      mug:'assets/renders/render_zorloth_mugshot_arena_cutout.png',   
+      renderTop:51,
+      teamParts:['kit_Zorloth'],hairParts:['kit_zorloth_hair'],
+      explosionSrc:'assets/animations/zorloth_explosion.glb'
+      },   
     {id:'alienDrako',name:'Drako',blurb:'Fierce and mysterious',
        src:'assets/fuzeball_alienDrako.glb',scale:0.875, rodY:8.63,
        mug:'assets/renders/render_drako_mugshot_v2.png',
@@ -1678,9 +1686,16 @@ ai:{
        teamParts:['kit_drako'],hairParts:[],
        explosionSrc:'assets/animations/drako_explosion.glb'
        },
+    {id:'alienAda',name:'Ada',blurb:'Sharp and fearless',
+       src:'assets/fuzeball_alienAda.glb',scale:0.875, rodY:8.63,
+       mug:'assets/renders/render_ada_mugshot.png',
+       renderTop:79,
+       teamParts:['kit_ada'],hairParts:[],
+       explosionSrc:'assets/animations/ada_explosion.glb'
+       },
     {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
       src: 'assets/fuzeball_animalAzlar.glb', scale:0.875, rodY:8.63,
-      mug: 'assets/renders/render_azlar_mugshot_v2.png',
+      mug: 'assets/renders/render_azlar_mugshot.png',
       renderTop:7,
       teamParts: ['kit_Azlar', 'kit_azlar_claws'], hairParts: ['kit_azlar_hair'],
       explosionSrc: 'assets/animations/azlar_explosion.glb'
@@ -2200,13 +2215,11 @@ deadball:{
    samples:{on:true, folder:'assets/audio/', manifest:'manifest.json'},
 
    // ---- music ----
-   // a track is an Ogg under samples.folder + its TuneTrack .loop.json (the intro plays once, then loop_start..loop_end); no sidecar = the whole file loops
+   // a track is an audio file under samples.folder + its TuneTrack .loop.json (the intro plays once, then loop_start..loop_end); no sidecar = the whole file loops
    // music/ is not a sound id folder: the manifest builder leaves it alone
    music:{
     on:true,
-    menu:'music/menu_anthem_v2.ogg',   // the main menu track; mastered at -14 LUFS, ~3 dB over v1 (music/menu_anthem.ogg) and the match tracks
-    // in a match (play, count, goal); training, trials, the tutorial and photo mode get none
-    // the first plays unless the player picked another: the music key (M) or a pad's touchpad steps through them, kept in cfg.musicMatch
+    menu:'music/menu_anthem_v2_master.wav',
     match:[
      {f:'music/match_drive.ogg',   name:'Drive'},
      //{f:'music/match_strings.ogg', name:'Strings'},
@@ -2288,11 +2301,11 @@ deadball:{
     ball_roll_slow:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...rolling slowly: a low rumble
     ball_roll_fast:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...rolling fast: brighter and denser
     ball_roll_rush:   {bus:'fx', vol:0.1, lab:true, send:1, syn:false, by:'pitch'},   // ...a shot along the floor
-    ball_scrape:      {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // rolling along a wall, slowly
-    ball_scrape_fast: {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...fast
-    rod_slide_slow:   {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // a rod sliding gently in its bearings
-    rod_slide_mid:    {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...an AI rod's working pace
-    rod_slide_fast:   {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // ...jerked hard
+    ball_scrape:      {bus:'fx', vol:0.7, lab:true, send:1, syn:false, by:'table'},   // rolling along a wall, slowly
+    ball_scrape_fast: {bus:'fx', vol:0.7, lab:true, send:1, syn:false, by:'table'},   // ...fast
+    rod_slide_slow:   {bus:'fx', vol:1.3, lab:true, send:1, syn:false, by:'table'},   // a rod sliding gently in its bearings
+    rod_slide_mid:    {bus:'fx', vol:1.3, lab:true, send:1, syn:false, by:'table'},   // ...an AI rod's working pace
+    rod_slide_fast:   {bus:'fx', vol:1.3, lab:true, send:1, syn:false, by:'table'},   // ...jerked hard
     rod_spin:         {bus:'fx', vol:1, lab:true, send:1, syn:false, by:'table'},   // a rod turning fast: the men cutting the air
     // match
     whistle:     {bus:'fx', vol:0.8, pitch:0.02, send:0.8},
@@ -2301,15 +2314,15 @@ deadball:{
     count_go:    {bus:'fx', vol:0.8},
     clock_tick:  {bus:'fx', vol:0.6},
     power_pickup:{bus:'fx', vol:0.8, pitch:0.03, send:0.5},
-    ice_form:    {bus:'fx', vol:0.7, pitch:0.04, send:0.6, syn:false},   // frost lands: the blocks form round the men
-    ice_break:   {bus:'fx', vol:0.8, pitch:0.05, send:0.9, syn:false},   // frost runs out: they shatter
+    ice_form:    {bus:'fx', vol:1, pitch:0.04, send:0.6, syn:false},   // frost lands: the blocks form round the men
+    ice_break:   {bus:'fx', vol:1, pitch:0.05, send:0.9, syn:false},   // frost runs out: they shatter
     power_hit:   {bus:'fx', vol:0.9, pitch:0.04, volJ:0.08, send:0.8, gate:'power', pRef:120, pFloor:0.5, pCurve:1, syn:false},   // a boosted strike leaves the boot
     boost_on:    {bus:'fx', vol:0.7, pitch:0.03, send:0.6, syn:false},   // a boost lands: the wave runs the rods
     boost_off:   {bus:'fx', vol:0.6, pitch:0.04, send:0.6, syn:false},   // it runs out: the boots pop
     cannon_warn: {bus:'fx', vol:0.7, send:0.5},
     cannon_boom: {bus:'fx', vol:1.0, pitch:0.04, send:1.2},
     // stingers: the Federation's brass and gold
-    sting_goal:  {bus:'fx', vol:0.8, gate:'sting'},
+    sting_goal:  {bus:'fx', vol:0.4, gate:'sting'},
     sting_win:   {bus:'fx', vol:0.8, gate:'sting'},
     sting_trophy:{bus:'fx', vol:0.8, gate:'sting'},
     sting_medal: {bus:'fx', vol:0.8, gate:'sting'},
@@ -2343,7 +2356,7 @@ deadball:{
   ballTypes:{
    classic:{
       name:'CLASSIC',col:0xf2ede2,em:0x000000,
-      mass:2.,maxV:400,w:100,trail:'#ffffff',
+      mass:2.,maxV:300,w:100,trail:'#ffffff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
                beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-45},
@@ -2373,7 +2386,7 @@ deadball:{
    },
    cannon: {
       name:'CANNONBALL',col:0x000000,em:0x000000,
-      mass:10,maxV:210,w:50,trail:'#000000',
+      mass:10,maxV:150,w:50,trail:'#000000',
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
                beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2388,7 +2401,7 @@ deadball:{
    },
    split:  {
       name:'SPLIT BALL',col:0xa46bff,em:0x4a18b8,
-      mass:2,maxV:400,w:6,splits:true,trail:'#c39bff',
+      mass:2,maxV:300,w:10,splits:true,trail:'#c39bff',
       audio:{
          kick:{noiseDur:.06,noiseFreq:380,noiseFreqScale:12,noiseVol:.1,noiseVolScale:.003,noiseVolMax:.4,
             beepFreq:95,beepDur:.09,beepType:'sine',beepVol:.08,beepVolScale:.003,beepVolMax:.25,beepSlide:-15},
@@ -2405,7 +2418,7 @@ deadball:{
    knuckle: {
       // Flutter ball: side-spin re-rolled on a short timer so the flight weaves.
       name:'KNUCKLEBALL',col:0x5be0ff,em:0x0a3a66,
-      mass:2,maxV:400,w:6,trail:'#8fffda',light:0x33cfff,
+      mass:2,maxV:300,w:0,trail:'#8fffda',light:0x33cfff,
       knuckle:{every:[0.3,0.8], kick:1.5, max:2.2}, // re-roll spin every [lo,hi]s by ±kick, clamped to ±max
       audio:{
        kick:{noiseDur:.05,noiseFreq:1200,noiseFreqScale:6,noiseVol:.05,noiseVolScale:.0025,noiseVolMax:.3,
@@ -2420,7 +2433,7 @@ deadball:{
    },
    golden: {
       name:'GOLDEN BALL · ×2',col:0xffc933,em:0x7a5200,
-      mass:2,maxV:400,w:5,value:2,trail:'#ffd75e',metal:.85,
+      mass:2,maxV:300,w:5,value:2,trail:'#ffd75e',metal:.85,
       audio:{
          kick:{noiseDur:.15,noiseFreq:640,noiseFreqScale:4,noiseVol:.003,noiseVolScale:.004,noiseVolMax:.2,
             beepFreq:70,beepDur:.2,beepType:'sine',beepVol:.08,beepVolScale:.005,beepVolMax:.25,beepSlide:-30},
@@ -2494,8 +2507,8 @@ deadball:{
  //   sky: six cube faces <src>_px ... _nz (models.js ensureSky); r128 can't rotate or dim a background, so both are baked in
  //   open (Void): tools/build_void_asteroid.py then ktx2-encode.mjs, nebula tools/build_nebula_sky.py then sky-encode.mjs; no GLB lights, warm shadowless dir key
  //   moon: tools/build_moon_base.py (shapes from the owner's hand-edited tools/build/moon/moon_base.blend; surface sets + light bake from tools/roomlib.py) then ktx2-encode (raw GLB in tools/build/moon/), sky tools/build_moon_sky.py; dir.pos must point along the sky's SUN_DIR (sky-harness); `shots.home` sits low so Earth clears the rim
- //   arcade (Starport Arcade): tools/build_arcade_room.py (surface sets + light bake from tools/roomlib.py) then ktx2-encode (raw GLB in tools/build/arcade/, the cabinets come from the old GLB decoded by ktx2-decode); reflect stays false (the room's own env darkens the table's rods and bumpers), sky tools/build_arcade_sky.py then sky-encode; the bays are the far (-z) and right (+x) walls and look DOWN onto the planet, so every camera sees the band -25..+5 deg; fog takes the bg colour, so keep both dark and warm; the 4th spot is the window light and is free (the pool already holds 3 spots); props are baked, except the stools
- //   saucer: tools/build_saucer_room.py then ktx2-encode (raw GLB in tools/build/saucer/), sky tools/build_saucer_sky.py then sky-encode; the giant sits at azimuth -73 just under the horizon and shows through the low-sill bay panes (-90..-30), saucer-harness checks they agree; props are baked in the GLB (not props.js), glows and floor paint are the two blended decal sheets
+ //   arcade (Starport Arcade): tools/build_arcade_room.py then ktx2-encode. The room GLB includes the stools from bakedProps. Rebuild after moving them. The overhead spot casts table shadows. Sky: tools/build_arcade_sky.py then sky-encode.
+ //   saucer: tools/build_saucer_room.py then ktx2-encode (raw GLB in tools/build/saucer/), sky tools/build_saucer_sky.py then sky-encode. Rebuild after moving stools: they cast baked contact and spill shadows. The table has one live shadow spot; cached reflection cards follow the bay, bar and jukebox.
   rooms:{
    open:{
       name:'Void', folder:'assets/rooms/void/', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
@@ -2512,41 +2525,61 @@ deadball:{
       led:{idle:'rainbow'}
    },
    saucer:{
-      name:'SaucerBar', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:true,
+      name:'SaucerBar', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:false,
       light:{gain:0,reach:0},
       bg:0x04070b, fog:[800,1600],
       sky:{src:'assets/rooms/saucer/sky/saucer'},
-      hemi:{sky:0x8fc9d6,ground:0x2a1c10,int:0.34,on:true},
-      dir:{color:0xffffff,int:1.27,pos:[45,100,35],on:false},
-      env:{shell:0x0a1a20,panels:[[0xffd9a0,0,150,0,150,150],[0x7fd0d8,-250,40,-100,260,120],[0xffa24a,250,40,100,260,120]]},
+      hemi:{sky:0x91adb7,ground:0x362519,int:0.36,on:false},
+      dir:{color:0xf2c982,int:1.13,pos:[45,100,35],on:true,shadow:true},
+      env:{shell:0x0b1217,panels:[[0xffcfa4,30,25,-230,46,92],[0xffbf88,89,25,-214,46,92],[0xffd4ac,141,25,-184,46,92],[0xeaa77b,184,25,-141,46,92],[0x3d9e93,-139,35,-37,55,8],[0x3d9e93,-104,35,-101,55,8],[0x3d9e93,-50,35,-135,55,8],[0xcc6c27,-165,-7,0,35,54],[0xe1d5c1,0,128,0,108,108]]},
       lights:[
-        {type:'spot', pos:[-55,26,0], look:[-40,0,0], color:0xffd9a8, int:2.1, dist:140, decay:2, angle:0.97, penumbra:0.32, shadow:true},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xeaf6ff, int:2.1, dist:90, decay:0.6, angle:0.68, penumbra:0.12, shadow:true},
-        {type:'spot', pos:[55,26,0], look:[40,0,0], color:0xffd9a8, int:2.1, dist:140, decay:2, angle:0.97, penumbra:0.32, shadow:true}
+        {type:'spot', pos:[38,97,-62], look:[0,0,0], color:0xffe5c8, int:3.25, dist:244, decay:1.45, angle:0.73, penumbra:0.49, shadow:true},
+        {type:'spot', pos:[-40,124,-23.73], look:[-2.07,1,-1.83], color:0xeee5ba, int:3.95, dist:155, decay:1.4, angle:0.48, penumbra:0.32, shadow:true},
+        {type:'spot', pos:[-130,18,12], look:[-187,-14,4], color:0xffa24f, int:3.6, dist:135, decay:1.35, angle:0.8, penumbra:0.68},
+        {type:'spot', pos:[116,33,-172], look:[72,-27,-128], color:0xffbd82, int:2.75, dist:117, decay:1.5, angle:0.98, penumbra:0.78}
       ],
-      props:[],
+      props:[
+        {prop:'fuzeballSaucerStool', at:[
+          [-124.2,-52,-30.97,1.33,1],
+          [-149.63,-52,-10.46,1.5,1],
+          [-83.2,-52,-89.23,0.75,1],
+          [-52.47,-52,-117.85,0.42,1],
+          [-22.05,-52,-125.07,0.17,1],
+          [147.72,-52,-26.05,-1.4,1],
+          [11.5,-52,-131.5,-0.09,0.8],
+          [67.99,-52,-113.15,-0.54,0.8],
+          [95.78,-52,-110.19,-0.72,0.8],
+          [134.39,-52,-57.05,-1.17,0.8]], castShadow:false}
+      ],
       led:{idle:'rainbow'}
    },
    arcade:{
       name:'Starport Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:false,
       light:{gain:0,reach:0.2},
-      bg:0x16110f, fog:[240,650],
+      bg:0x100d12, fog:[260,690],
       sky:{src:'assets/rooms/arcade/sky/starport'},
-      hemi:{sky:0x8a7766,ground:0x1b130e,int:0.48,on:true},
-      dir:{color:0xffd4a0,int:1.15,pos:[45,100,35],on:true,shadow:false},
-      env:{shell:0x120e0c,panels:[[0xffb06a,-250,30,-110,260,120],[0x7fa6c8,250,30,110,260,120],[0xffd9a8,0,150,-250,340,90],[0xfff2dc,0,155,0,150,150]]},
+      hemi:{sky:0xa79788,ground:0x40241a,int:0.29,on:true},
+      dir:{color:0xa04122,int:1.49,pos:[45,55,-62],on:true,shadow:true},
+      env:{shell:0x100c12,panels:[[0xffae54,-250,16,-40,184,56],[0x33cfde,-46,28,-236,128,54],[0xe7528c,114,22,-227,105,40],[0xffdbab,-26,130,89,156,44],[0x738692,237,37,85,104,60]]},
       lights:[
-        {type:'spot', pos:[-57.14,26,0], look:[-40,0,0], color:0xffc27d, int:2.4, dist:90, decay:2, angle:0.76, penumbra:0.32, shadow:true},
-        {type:'point', pos:[0,36,0], look:[0,0,0], color:0xf4e6c8, int:2.8, dist:90, decay:1, angle:0.74, penumbra:0.24, shadow:true},
-        {type:'spot', pos:[55.1,26,0], look:[40,0,0], color:0x8fb2d6, int:2.4, dist:90, decay:2, angle:0.76, penumbra:0.32, shadow:true},
-        {type:'spot', pos:[0,10,-197], look:[0,-44,40], color:0x80d5ee, int:1.8, dist:320, decay:1.2, angle:0.95, penumbra:0.8}
+        {type:'spot', pos:[-24,92,58], look:[0,-1,-3], color:0xffd49a, int:5.55, dist:229, decay:1.5, angle:0.77, penumbra:0.53, shadow:true},
+        {type:'spot', pos:[-145,20,-47], look:[-205,-28,-50], color:0xff791f, int:6.05, dist:161, decay:1.5, angle:0.98, penumbra:0.65},
+        {type:'spot', pos:[-54,8,-173], look:[-41,-43,-166], color:0x16c6d6, int:5.9, dist:115, decay:1.35, angle:1.04, penumbra:0.62},
+        {type:'spot', pos:[105,8,-175], look:[118,-43,-159], color:0xfa397d, int:4.1, dist:112, decay:1.35, angle:1.02, penumbra:0.65}
       ],
-      props:[
+      bakedProps:[
         {prop:'fuzeballArcadeStool', at:[
           [-176,-44,-107,0,1],
           [-170,-44,-52,0,1],
-          [-174,-44,6,0,1]], jitter:{x:4,z:6}, seed:6}
+          [-174,-44,6,0,1],
+          [-176,-44,-159,0.32,1],
+          [-122,-44,-165,0.14,1],
+          [-49,-44,-161,-0.35,1],
+          [113,-44,-162,0.42,1],
+          [222,-44,-69,1.51,1],
+          [224,-44,44,1.98,1]], jitter:{x:4,z:6}, seed:6}
       ],
+      props:[],
       led:{idle:'rainbow'}
    },
    moon:{
@@ -2554,13 +2587,13 @@ deadball:{
       bg:0x000000, fog:[900,1000],
       sky:{src:'assets/rooms/moon/sky/moon'},
       shots:{home:[-12,32,116,-24,20,-30]},
-      hemi:{sky:0x1c2533,ground:0x4d4a45,int:0.45,on:true},
+      hemi:{sky:0xdce2e8,ground:0x939aa1,int:0.42,on:true},
       dir:{color:0xfff3e2,int:2.3,pos:[-91.9,82.7,40.2],on:true,shadow:true},
       env:{shell:0x030304,panels:[[0xfff3e2,-250,140,110,120,120],[0x5a5752,0,-200,0,500,500],[0x6fa8ff,60,60,-250,60,60]]},
       lights:[
-        {type:'spot', pos:[-55,26,31], look:[-40,0,0], color:0xeef3ff, int:1.9, dist:150, decay:2, angle:0.6, penumbra:0.32},
-        {type:'spot', pos:[0,36,0], look:[0,0,0], color:0xeef3ff, int:2.1, dist:65, decay:1, angle:0.68, penumbra:0.24},
-        {type:'spot', pos:[55,26,31], look:[40,0,0], color:0xeef3ff, int:1.9, dist:150, decay:2, angle:0.6, penumbra:0.32}
+        {type:'spot', pos:[-54,46,-22], look:[-53,0,0], color:0xf2f5f7, int:1.55, dist:112, decay:1.5, angle:0.85, penumbra:0.78},
+        {type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf2f5f7, int:1.25, dist:112, decay:1.5, angle:0.9, penumbra:0.8},
+        {type:'spot', pos:[54,46,-22], look:[53,0,0], color:0xf2f5f7, int:1.55, dist:112, decay:1.5, angle:0.85, penumbra:0.78}
       ],
       props:[],
       led:{idle:'rainbow'}
@@ -2604,23 +2637,23 @@ deadball:{
               shafts:[{c:[78,40,-48],u:[3.5,0,0],v:[0,0,3.5],d:[-44,-40,48],spread:6,round:true,str:1.4,color:0xffe2b0,pow:1.4},
                       {c:[-78,40,-48],u:[3.5,0,0],v:[0,0,3.5],d:[44,-40,48],spread:6,round:true,str:1.4,color:0xffe2b0,pow:1.4}],
               motes:{box:[-150,-44,-110,150,70,110],color:0xfff0dc,n:0.6} },
-    saucer: { haze:[0.012,0.022,-52,0.45], start:80, range:230, color:0x1d3236, glow:{dir:[-0.29,-0.1,-0.95],pow:4,str:0.5,color:0x9a6a3c},
-              lamps:[[-103,-22,-100,0.6,0xffb84a,22],[-50,30,-187,0.4,0xffc890,14],[-187,30,-50,0.4,0xffc890,14]],
-              shafts:[{c:[26.4,19,-199],u:[20.8,0,2.7],v:[0,44,0],d:[-60,30,180],str:0.9,color:0xffb070,pow:1.8},
-                      {c:[77.5,19,-185],u:[19.4,0,8],v:[0,44,0],d:[-60,30,180],str:0.9,color:0xffb070,pow:1.8},
-                      {c:[122,19,-159],u:[16.7,0,12.8],v:[0,44,0],d:[-60,30,180],str:0.9,color:0xffb070,pow:1.8},
-                      {c:[159,19,-122],u:[12.8,0,16.7],v:[0,44,0],d:[-60,30,180],str:0.9,color:0xffb070,pow:1.8}],
-              motes:{box:[-200,-52,-200,200,100,200],color:0xffe2b8} },
+    saucer: { haze:[0.005,0.018,-52,0.23], start:95, range:310, color:0x19262a, glow:{dir:[0.49,0.3,-0.82],pow:5,str:0.24,color:0x9a6a3c},
+              lamps:[[-103,-22,-100,0.28,0xffb84a,22],[-170,-11,0,0.45,0xff9d45,32]],
+              shafts:[{c:[26.4,19,-199],u:[20.8,0,2.7],v:[0,41,0],d:[-96,-59,160],str:0.18,color:0xffc28e,pow:2},
+                       {c:[77.5,19,-185],u:[19.4,0,8],v:[0,41,0],d:[-148,-59,108],str:0.29,color:0xffc28e,pow:2},
+                      {c:[122,19,-159],u:[16.7,0,12.8],v:[0,41,0],d:[-96,-59,160],str:0.22,color:0xffc28e,pow:2},
+                      {c:[159,19,-122],u:[12.8,0,16.7],v:[0,41,0],d:[-96,-59,160],str:0.15,color:0xffc28e,pow:2}],
+              motes:{box:[-200,-52,-200,200,100,200],color:0xffe2b8,n:0.65} },
     pub:    { haze:[0,0.02,-40,0], range:500, color:0x120c07, lamps:[], shafts:[], motes:null },
-    arcade: { haze:[0.005,0.024,-44,0.3], start:110, range:700, color:0x3a2c24, glow:{dir:[0,-0.25,-0.97],pow:4,str:0.45,color:0x6f8fbf},
-              lamps:[[0,0,-185,0.25,0x6f9ce0,50],[240,0,0,0.2,0x6f9ce0,50],[-225,0,-60,0.15,0xff9a5a,35]],
-              shafts:[{c:[0,18,-196],u:[172,0,0],v:[0,40,0],d:[0,-58,112],n:7,fill:0.86,str:0.45,color:0x7fa4f0,pow:1.6},
-                      {c:[250,18,0],u:[0,0,132],v:[0,40,0],d:[-112,-58,0],n:7,fill:0.86,str:0.3,color:0x7fa4f0,pow:1.6}],
-              motes:{box:[-250,-44,-200,250,90,200],color:0xffe6c8} },
-    moon:   { haze:[0.005,0.03,-30,0.35], start:60, range:170, color:0x1c2230, glow:{dir:[-0.8,0.72,0.35],pow:6,str:0.35,color:0xfff3e2},
-              lamps:[],
-              shafts:[{c:[-110,110,40],u:[0,0,60],v:[30,25,0],d:[160,-145,-70],n:4,fill:0.45,str:0.5,color:0xfff3e2,pow:1.3}],
-              motes:{box:[-160,-30,-160,160,80,160],color:0xe8f0ff,n:0.6} }
+    arcade: { haze:[0.003,0.024,-44,0.19], start:120, range:700, color:0x201721, glow:{dir:[0,-0.25,-0.97],pow:5,str:0.19,color:0x48a3b9},
+              lamps:[[-54,8,-178,0.15,0x25bdd0,35],[105,8,-180,0.12,0xeb467e,34],[-202,1,-50,0.15,0xff9a5a,32]],
+              shafts:[{c:[-33,18,-196],u:[70,0,0],v:[0,36,0],d:[-36,-65,70],n:3,fill:0.76,str:0.30,color:0x63c8df,pow:2},
+                      {c:[116,18,-196],u:[48,0,0],v:[0,36,0],d:[0,-58,64],n:2,fill:0.76,str:0.13,color:0xcc7199,pow:2},
+                      {c:[250,18,0],u:[0,0,132],v:[0,40,0],d:[-90,-58,0],n:7,fill:0.86,str:0.13,color:0x7fa4f0,pow:2}],
+              motes:{box:[-250,-44,-200,250,90,200],color:0xffe6c8,n:0.62} },
+    moon:   { haze:[0.0012,0.045,-42,0.065], start:65, range:170, color:0x1c2230,
+              lamps:[], shafts:[],
+              motes:{box:[-160,-42,-160,160,25,160],color:0xe8f0ff,n:0.18} }
    }
   },
   // Legacy theme-key → room-id map, for old saves.
@@ -2645,7 +2678,8 @@ deadball:{
    alien_tech:       {folder:'assets/pitches/', glb:'pitch_alien_tech.glb',       tex:'pitches/alien_tech.jpeg',      name:'Alien Tech'},
    obsidian_volt:    {folder:'assets/pitches/', glb:'pitch_obsidian_volt.glb',    tex:'pitches/obsidian_volt.jpeg',   name:'Obsidian Volt'},
    synaptic_relic:   {folder:'assets/pitches/', glb:'pitch_synaptic_relic.glb', tex:'pitches/synaptic_relic.jpeg', name:'Synaptic Relic'},
-   solar_forge:      {folder:'assets/pitches/', glb:'pitch_solar_forge.glb', tex:'pitches/solar_forge.jpeg', name:'Solar Forge'},
+   solar_forge:      {folder:'assets/pitches/', glb:'pitch_solar_forge.glb', tex:'pitches/solar_forge.jpeg', name:'Solar Forge', ior:1.29},
+   circuit_standard: {folder:'assets/pitches/', glb:'pitch_circuit_standard.glb', tex:'pitches/circuit_standard.jpeg', name:'Circuit', ior:1.33},
    silver_circuit:   {folder:'assets/pitches/', glb:'pitch_silver_circuit.glb',   tex:'pitches/silver_circuit.jpeg',  name:'Silver Circuit', ior:1.2222222},
    },
 
@@ -2765,33 +2799,32 @@ deadball:{
       Sizes are table units: a figurine is ~10 tall, the ball 3.8 across. The block is fitted to the figurine's own outline, so it follows any model. */
    ice:{
     on:true,                 // false = frost slows the rods and shows nothing on the men
-    col:0xaee9ff,            // the ice
-    deep:0x4f9fd6,           // what shows through the back of the block
-    glow:0x59c8ff,           // the block's own light (emissive)
-    glowK:0.35,              // how much of it
-    opacity:0.5, back:0.36,  // front faces / back faces
-    rough:0.12, env:1.4,     // surface roughness, strength of the room's reflection
-    rim:{ col:0xd8f6ff, power:2.2, k:0.9 },   // the bright edge: colour, how tight it hugs the silhouette, how strong
-    grow:0.38,               // seconds a block takes to form
-    warn:2.0, flicker:24,    // the last seconds it flickers and glows hotter (flicker in rad/s)
+    col:0xb2d8ed,            // tint through the cloudy faces
+    deep:0x5898b9,           // tint on the inner walls
+    glow:0x9dd5ef,           // a little light so the ice reads in dark rooms
+    glowK:0.14,
+    opacity:0.80, back:0.31, // peak opacity before the frost, fracture and edge masks
+    rough:0.23, env:1.6,     // surface roughness and room reflections
+    rim:{ col:0xd8f3ff, power:2.3, k:0.92 },
+    grow:0.28,               // seconds a block takes to form
+    warn:2.0, flicker:16,    // the last seconds it pulses (flicker in rad/s)
 
     fit:{
      bands:12,               // slices of the figurine measured to fit the block
      zone:5.0, ramp:3.0,     // height the ball can reach (the block hugs the figure there), then how far it takes to open out
-     pad:[0.3,0.85],         // clearance round the figure: at the feet / up in the body
-     block:0.5,              // above the zone: how far it fills out toward the widest part of the figure (0 = a skin, 1 = a box)
-     chamfer:[0.25,0.7], jitter:[0.07,0.2],   // cut corners and hand-made wobble: at the feet / up in the body
+     pad:[0.32,0.52],        // clearance round the figure: at the feet / up in the body
+     block:0.10,             // above the zone: how far it fills out toward the widest part of the figure
+     chamfer:[0.22,0.46], jitter:[0.025,0.06],   // bevels and slight asymmetry
      maxHalfZ:5.0,           // never wider across the rod than this (a MID's men are 11.9 apart)
      gap:0.25,               // how far the base floats off the pitch
-     top:0.9, roof:0.6, roofIn:0.55,   // wall above the head, the roof's rise, how far the roof pulls in
-     spikes:4, spike:[0.9,2.2],        // crystals on the roof: how many, how tall
+     top:0.18, roof:0.65, roofIn:0.64,   // wall above the head, the crown's rise, how far it pulls in
      variants:3,             // seeded shapes per team, so the men do not look stamped
      foot:true               // never cut inside the physical foot box
     },
 
-    glint:{ every:0.22, size:0.55, power:2.6 },   // a twinkle somewhere on the frozen team every N seconds
-    form:{ puff:[0.35,0.6], size:[2,5], glints:5 },   // when a block forms: a little mist, and glints thrown off the base
-    shatter:{ pieces:8, speed:[6,18], up:[3,10], size:[0.55,1.1], glints:10, puff:true, flash:true,
+    glint:{ every:0.32, size:0.24, power:1.8 },   // a twinkle somewhere on the frozen team every N seconds
+    form:{ puff:[0.28,0.45], size:[1.5,3.8], glints:3 },   // condensation and a few chips as the shell sets
+    shatter:{ pieces:8, speed:[6,18], up:[3,10], size:[0.45,0.95], glints:6, puff:true, flash:true,
      cols:[0xcdf1ff, 0x9fdcff, 0xe6f8ff, 0x7ec8f5] },   // per man: chunks thrown out of the block, glints (cols), a flash and a puff of mist
     shards:{ max:160, grav:140, drag:0.7, bounce:0.35, spin:[3,12], life:[1.3,2.1], fade:0.35, opacity:0.78 },   // the chunks: pool size, fall, how much each bounce keeps, tumble rad/s, how long they lie, the shrink at the end
     hot:0xe0f8ff, body:0x7fc4ee,   // the mist's bright core and its body

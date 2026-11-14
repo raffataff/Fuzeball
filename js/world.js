@@ -4,7 +4,7 @@ let renderer,scene,camera,dirLight,hemiLight;
 // room state: activeRoom, baked env cache ('syn:id' / 'glb:id'), curLeds (CONFIG.leds + room override), shared PMREM baker
 let activeRoom=null,roomEnvCache={},pmremGen=null,curLeds=CONFIG.leds;
 const teamMat=[null,null],teamGlow=[null,null];
-let fieldMesh,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],groundMesh,primTable=null;
+let fieldMesh,pitchShadowCaster,fieldTexCache={},wallMat,ledMat,goalFrames=[],goalLights=[],netMats=[],groundMesh,primTable=null;
 const fxLightPool=[];   // resident spare PointLights; effect glows borrow from here so the scene's light count never changes
 // the procedural led material from buildTable; disposeTableSkin falls back to it. Never disposed
 let primLedMat=null;
@@ -244,6 +244,7 @@ function applyDisplay(){
  renderDirty();   // the drawing buffer was just resized — the held idle frame is the wrong size
  let recompile=false,redraw=false;
  const sh=cfg.shadows!==false;
+ if(pitchShadowCaster)pitchShadowCaster.visible=sh;
  if(sh!==_dispShadows){
   renderer.shadowMap.enabled=sh;
   if(dirLight)dirLight.castShadow=sh;
@@ -416,6 +417,12 @@ function buildTable(){
  const fieldMat=new THREE.MeshStandardMaterial({roughness:.85});
  fieldMesh=new THREE.Mesh(new THREE.PlaneGeometry(F.L,F.W),fieldMat);
  fieldMesh.rotation.x=-Math.PI/2;fieldMesh.receiveShadow=true;primTable.add(fieldMesh);
+ // Put a solid deck just below the visible pitch, including on skins with a stand or an open underside.
+ const deckDepth=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false,shadowSide:THREE.FrontSide});
+ pitchShadowCaster=new THREE.Mesh(new THREE.BoxGeometry(F.L,0.3,F.W),deckDepth);
+ pitchShadowCaster.position.y=-0.35;
+ pitchShadowCaster.castShadow=true;
+ primTable.add(pitchShadowCaster);
   // load only the active pitch's texture, the rest on demand via drawField > loadPitchTex
   // skipped when the pitch has a GLB (the JPEG would be a wasted download)
   if(!(CONFIG.pitches[cfg.pitch]&&CONFIG.pitches[cfg.pitch].glb))
@@ -451,7 +458,7 @@ function buildTable(){
   g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
   const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
- tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh);  // procedural fallback (hidden when a skin GLB is shown)
+ tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh&&c!==pitchShadowCaster);  // procedural fallback (hidden when a skin GLB is shown)
 }
 
 // --- procedural goal net ---
@@ -884,11 +891,13 @@ function drawField(onReady){
   if(!pdef){if(onReady)onReady();return;}
   const host=()=>(fieldMesh&&fieldMesh.parent)||primTable;
   const show=()=>{
+   const table=host();
+   if(pitchShadowCaster.parent!==table)table.add(pitchShadowCaster);
    const g=(typeof pitchGroups!=='undefined')?pitchGroups[id]:null;
    const on=!!(g&&g.children.length);
    if(typeof pitchGroups!=='undefined')
     for(const pid in pitchGroups){const gg=pitchGroups[pid];if(!gg)continue;
-     if(pid===id&&on){if(gg.parent!==host())host().add(gg);gg.visible=true;pitchShown=gg;}
+     if(pid===id&&on){if(gg.parent!==table)table.add(gg);gg.visible=true;pitchShown=gg;}
      else if(gg.parent){gg.parent.remove(gg);if(pitchShown===gg)pitchShown=null;}}
    if(fieldMesh)fieldMesh.visible=!on;             // the shared plane stands in until the GLB is here
    shadowDirty();

@@ -497,7 +497,7 @@ mutate('spot target not added to the scene',
     // Compare on the keys the emitter is responsible for. A key it does not emit would be
     // LOST by a paste, so that list is itself the assertion.
     const owned=['name','folder','glb','backdrop','reflect','light','lightsOff','bg','fog','sky','shots',
-                 'hemi','dir','env','lights','props','led'];
+                 'hemi','dir','env','lights','bakedProps','props','led'];
     const missed=Object.keys(CONF[id]).filter(k=>owned.indexOf(k)<0);
     ok(missed.length===0,'REAL['+id+']: every key it has is one the export knows about',missed.join(','));
     owned.forEach(k=>{

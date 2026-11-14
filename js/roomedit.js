@@ -771,9 +771,9 @@ function reFmtKV(o,keys){
  return out;
 }
 // one `at` placement per line past a couple of them, so a diff is reviewable
-function reditPropsBlock(specs,ind){
- if(!specs.length)return ind+'props:[],';
- const L=[ind+'props:['];
+function reditPropsBlock(specs,ind,key='props'){
+ if(!specs.length)return ind+key+':[],';
+ const L=[ind+key+':['];
  specs.forEach((sp,i)=>{
   const parts=['prop:'+reFmt('prop',sp.prop)];
   if(sp.at&&sp.at.length){
@@ -781,7 +781,7 @@ function reditPropsBlock(specs,ind){
    parts.push(sp.at.length<=2?'at:['+rows.join(',')+']'
     :'at:[\n'+ind+'    '+rows.join(',\n'+ind+'    ')+']');
   }
-  ['scatter','jitter','scaleVar','tint','seed','fit','yaw','scale','ground'].forEach(k=>{
+  ['scatter','jitter','scaleVar','tint','seed','fit','yaw','scale','ground','contactRadius','castShadow'].forEach(k=>{
    if(sp[k]!==undefined)parts.push(k+':'+reFmt(k,sp[k]));});
   L.push(ind+'  {'+parts.join(', ')+'}'+(i===specs.length-1?'':','));
  });
@@ -815,6 +815,7 @@ function reditBlock(){
  if(rm.dir)L.push(ind+'dir:'+reFmt('dir',rm.dir)+',');
  if(rm.env)L.push(ind+'env:'+reFmt('env',rm.env)+',');
  L.push(reditLightsBlock(rm.lights||[],ind));
+ if(rm.bakedProps)L.push(reditPropsBlock(rm.bakedProps,ind,'bakedProps'));
  L.push(reditPropsBlock(rm.props||[],ind));
  if(rm.led)L.push(ind+'led:'+reFmt('led',rm.led));
  else L[L.length-1]=L[L.length-1].replace(/,$/,'');   // last entry carries no trailing comma
