@@ -1,6 +1,15 @@
 'use strict';
 /* ================= FUZEBALL — global helpers ================= */
+if(typeof THREE!=='undefined'&&THREE.ColorManagement)THREE.ColorManagement.enabled=true;   // hex = sRGB, converted to linear by THREE.Color (before any material exists)
 const $=i=>document.getElementById(i);
+// a hex as raw channels, for shaders that write colour past the colour pipeline (haze)
+function colRaw(h,c){return(c||new THREE.Color()).setHex(h,THREE.LinearSRGBColorSpace);}
+// a shader patch: replace `a` with `b` in `src`, warning by name when the anchor is gone (a silent miss just drops the effect)
+function shRep(src,a,b,name){
+ if(!(a instanceof RegExp?a.test(src):src.indexOf(a)>=0)){console.warn('shader patch '+name+': anchor not found: '+String(a).slice(0,60));return src;}
+ if(a instanceof RegExp)a.lastIndex=0;
+ return src.replace(a,typeof b==='function'?b:()=>b);
+}
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
 const lerpAng=(a,b,t)=>{let d=b-a;if(d>Math.PI)d-=2*Math.PI;else if(d<-Math.PI)d+=2*Math.PI;return a+d*t;};   // the short way round (a rod's angle wraps in a snake)
 // ---- inline icon set ----

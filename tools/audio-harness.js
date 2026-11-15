@@ -4,7 +4,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..'),rd=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
-const THREESRC=rd('vendor/three.min.js'),CORE=rd('js/core.js'),CFG=rd('js/config.js'),AUDIO=rd('js/audio.js');
+const THREESRC=rd('vendor/three.bundle.js'),CORE=rd('js/core.js'),CFG=rd('js/config.js'),AUDIO=rd('js/audio.js');
 const MF=require('./build_audio_manifest.js');
 
 /* ---- mock WebAudio ------------------------------------------------------------------------ */

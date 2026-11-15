@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('fs'),assert=require('assert'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(_url,done){const t=new THREE.Texture();queueMicrotask(()=>done(t));return t;};
 (async()=>{for(const n of [1,2,3,5]){
  const file=`assets/rods/solar_forge/fuzeball_rod_${n}man.glb`,b=fs.readFileSync(file),len=b.readUInt32LE(12),j=JSON.parse(b.subarray(20,20+len).toString().trim()),bin=20+len+8;
@@ -9,7 +9,7 @@ THREE.TextureLoader.prototype.load=function(_url,done){const t=new THREE.Texture
  let grip,knob;scene.traverse(o=>{if(o.isMesh&&o.name.toLowerCase().includes('handle_solar'))grip=o;if(o.isMesh&&o.name.toLowerCase().includes('knob')&&/^team/i.test(o.material.name))knob=o;});
  assert(grip&&grip.material.map&&grip.material.normalMap&&grip.material.emissiveMap,'grip PBR maps');
  const {position,uv,normal,tangent}=grip.geometry.attributes;
- assert(tangent&&grip.material.vertexTangents,'the wrapped normal map has a tangent basis');
+ assert(tangent,'the wrapped normal map has a tangent basis');
  grip.geometry.computeBoundingBox();
  const {min,max}=grip.geometry.boundingBox;
  for(let i=0;i<position.count;i++){

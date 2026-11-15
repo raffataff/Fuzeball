@@ -32,11 +32,12 @@ function region(src,from,to){
 
 /* ---- minimal THREE, plus GLSL close enough to r128's to test the injection against ---- */
 const THREE_STUB=`
-var THREE={Color:function(h){this.r=this.g=this.b=0;if(h!=null)this.set(h);},Box3:function(){}};
+var THREE={Color:function(h){this.r=this.g=this.b=0;if(h!=null)this.set(h);},Box3:function(){},LinearSRGBColorSpace:'srgb-linear'};
 THREE.Color.prototype.set=function(h){
  if(typeof h==='string')h=parseInt(h.replace('#',''),16);
- if(typeof h==='number'){this.r=((h>>16)&255)/255;this.g=((h>>8)&255)/255;this.b=(h&255)/255;}
+ if(typeof h==='number')this.setHex(h);
  else if(h&&h.isC){this.r=h.r;this.g=h.g;this.b=h.b;} return this;};
+THREE.Color.prototype.setHex=function(h,cs){this.r=((h>>16)&255)/255;this.g=((h>>8)&255)/255;this.b=(h&255)/255;return cs==='srgb-linear'?this:this.convertSRGBToLinear();};   // colour management on: a hex reads as sRGB
 THREE.Color.prototype.isC=true;
 THREE.Color.prototype.setRGB=function(r,g,b){this.r=r;this.g=g;this.b=b;return this;};
 THREE.Color.prototype.clone=function(){return new THREE.Color().copy(this);};
@@ -341,7 +342,7 @@ const MUT=[
       const e=c.__get('rodHoleMeshes')[0],dr=1-(e.fill-c.__x.RH.fillMin)/(1-c.__x.RH.fillMin);
       return e.v<=dr+0.05;}],
  ['the idle green is read as a raw linear colour, so it renders washed-out mint',
-  s=>s.replace('const RH_IDLE=kitLin(RH.idle),','const RH_IDLE=new THREE.Color(RH.idle),'),
+  s=>s.replace('function kitLin(hex){return new THREE.Color(hex);}','function kitLin(hex){return new THREE.Color().setHex(hex,THREE.LinearSRGBColorSpace);}'),
   c=>Math.abs(c.__x.RH_IDLE.g-((c.__x.RH.idle>>8)&255)/255)<1e-6],
  ['the colour ramp stops at amber',
   s=>s.replace(':_rhA.copy(RH_WARM).lerp(RH_HOT,RH.mid<1?(sp-RH.mid)/(1-RH.mid):1);',':_rhA.copy(RH_WARM);'),

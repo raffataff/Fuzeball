@@ -1,4 +1,4 @@
-# fetch-vendor.ps1 — download Fuzeball's runtime dependencies into ./vendor so the game boots
+# fetch-vendor.ps1 — download Fuzeball's fonts into ./vendor so the game boots
 # with NO network access at all (Electron / Steam wrapper, or a double-clicked file://).
 #
 #   powershell -ExecutionPolicy Bypass -File tools\fetch-vendor.ps1
@@ -7,13 +7,9 @@
 # Google Fonts, so vendor/ is not an optimisation any more — it is REQUIRED. Run this after a
 # fresh clone, and again any time css/styles.css changes which font families it asks for.
 #
-# Fetches, at the exact versions index.html pins:
-#   three.min.js      r128
-#   GLTFLoader.js     three 0.128
-#   WorkerPool.js     three 0.137.5   (KTX2Loader constructs THREE.WorkerPool — must load first)
-#   KTX2Loader.js     three 0.137.5   (r128 has no KTX2Loader at all — see vendor/basis/README.md)
-#   basis/            three 0.137.5   ONLY IF MISSING — see the guard below, this one is pinned
-#   fonts/ + fonts.css                self-hosted woff2 for the families css/styles.css uses
+# Fetches the self-hosted woff2 for the families css/styles.css uses (fonts/ + fonts.css).
+# three.js, its loaders and the Basis transcoder are NOT fetched here: node tools/build-three.mjs builds them
+# from the version pinned in tools/package.json.
 #
 # THE FONT LIST IS NOT DECORATIVE. $FontFamilies below must match what css/styles.css actually
 # asks for. It drifted once already: the game moved Orbitron -> Russo One, this script was
@@ -26,8 +22,7 @@ $ErrorActionPreference = 'Stop'
 $root   = Split-Path -Parent $PSScriptRoot
 $vendor = Join-Path $root 'vendor'
 $fonts  = Join-Path $vendor 'fonts'
-$basis  = Join-Path $vendor 'basis'
-New-Item -ItemType Directory -Force -Path $vendor, $fonts, $basis | Out-Null
+New-Item -ItemType Directory -Force -Path $vendor, $fonts | Out-Null
 
 # Google Fonts CSS query — the families css/styles.css names, with the weights it uses.
 # Russo One ships ONE weight (400) so it takes no :wght list; Exo 2 is variable (500-700 requested).
@@ -41,32 +36,6 @@ function Get-File($url, $out) {
 }
 
 Write-Host "Fuzeball vendor fetch -> $vendor"
-
-# --- JS libraries: the exact versions index.html pins ---------------------------------------
-Get-File 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'                (Join-Path $vendor 'three.min.js')
-Get-File 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js'     (Join-Path $vendor 'GLTFLoader.js')
-Get-File 'https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/utils/WorkerPool.js'       (Join-Path $vendor 'WorkerPool.js')
-Get-File 'https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/loaders/KTX2Loader.js'     (Join-Path $vendor 'KTX2Loader.js')
-
-# --- Basis transcoder: FETCH ONLY IF MISSING -------------------------------------------------
-# vendor/basis/ is a deliberately hand-pinned r137 copy that was verified end-to-end against the
-# r128 core (see vendor/basis/README.md: "Do not 'upgrade' these to match three's r128 pin. That
-# is the bug, not the inconsistency."). Re-downloading it on every run would let a jsdelivr-side
-# change silently replace a verified binary, so this only fills an EMPTY folder and then checks
-# the wasm is the build the README documents.
-$wasmPath  = Join-Path $basis 'basis_transcoder.wasm'
-$wasmBytes = 499935   # r137's build: has KTX2 container + Zstandard. r128's (440,267) does not.
-if (-not (Test-Path $wasmPath)) {
-  Write-Host "  basis/ is empty - fetching the r137 transcoder"
-  Get-File 'https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/libs/basis/basis_transcoder.js'   (Join-Path $basis 'basis_transcoder.js')
-  Get-File 'https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/libs/basis/basis_transcoder.wasm' $wasmPath
-} else {
-  Write-Host "  keep  vendor/basis/ (hand-pinned r137 - see its README)"
-}
-$actual = (Get-Item $wasmPath).Length
-if ($actual -ne $wasmBytes) {
-  Write-Warning "basis_transcoder.wasm is $actual bytes, expected $wasmBytes (the r137 build). If this is r128's 440,267-byte copy, KTX2 textures will not transcode. See vendor/basis/README.md."
-}
 
 # --- Fonts: ask Google for the CSS as a modern browser (so it serves woff2), download each
 #     file, and rewrite the CSS to point at the local copies. The GENERATED file is what
@@ -100,5 +69,5 @@ if ($missing.Count) {
 if (Test-Path (Join-Path $vendor 'fonts.css.bak')) { Remove-Item (Join-Path $vendor 'fonts.css.bak') -Force }
 
 Write-Host ""
-Write-Host "done: 4 JS libs + $i font files vendored. Families: $($FontFamilies -join ', ')."
+Write-Host "done: $i font files vendored. Families: $($FontFamilies -join ', ')."
 Write-Host "verify with:  node tools\offline-harness.js"

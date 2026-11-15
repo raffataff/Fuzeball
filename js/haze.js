@@ -69,15 +69,15 @@ function hazeApply(){
  const on=A.on!==false&&lvl!=='off',hi=on&&lvl==='high',c=new THREE.Color();
  HZ.A.set(on&&R.haze?R.haze:[0,0.02,0,0]);
  HZ.B[0]=R.range||1e5;HZ.B[3]=R.start||0;
- HZ.C.set(c.setHex(R.color||0).toArray());
+ HZ.C.set(colRaw(R.color||0,c).toArray());
  const g=R.glow||{},dv=new THREE.Vector3().fromArray(g.dir||[0,0,-1]).normalize();
  HZ.B[1]=g.pow||4;HZ.D.set([dv.x,dv.y,dv.z,on?g.str||0:0]);
- HZ.E.set(c.setHex(g.color||0).toArray());
+ HZ.E.set(colRaw(g.color||0,c).toArray());
  const lamps=(on&&(hi||A.lampsLow)&&R.lamps)||[];
  for(let i=0;i<3;i++){
   const l=lamps[i];
   HZ.P.set(l?[l[0],l[1],l[2],l[3]]:[0,0,0,0],i*4);
-  HZ.Q.set(l?c.setHex(l[4]).toArray().concat([l[5]||40]):[0,0,0,1],i*4);
+  HZ.Q.set(l?colRaw(l[4],c).toArray().concat([l[5]||40]):[0,0,0,1],i*4);
  }
  const sh=on&&R.shafts||[];
  HZ.id=id;hazeShafts(sh);
@@ -123,7 +123,7 @@ function hazeShafts(list){
  HZ.sh.visible=!!list.length;
  const q=[];
  for(const s of list){
-  const n=s.n||1,f=s.fill||1,col=new THREE.Color(s.color||0xffffff);
+  const n=s.n||1,f=s.fill||1,col=colRaw(s.color||0xffffff);
   for(let k=0;k<n;k++){
    const o=(2*k+1)/n-1,cc=[0,1,2].map(j=>s.c[j]+s.u[j]*o),uu=s.u.map(x=>x*f/n);
    q.push({c:cc,u:uu,s:s,col:col});
@@ -200,7 +200,7 @@ function hazeMotes(m){
  if(!HZ.pts)return;
  HZ.pts.visible=!!m;if(!m)return;
  const u=HZ.mat.uniforms,b=m.box,N=CONFIG.atmos.motes.n;
- u.uLo.value.set(b[0],b[1],b[2]);u.uHi.value.set(b[3],b[4],b[5]);u.uCol.value.setHex(m.color||0xffffff);
+ u.uLo.value.set(b[0],b[1],b[2]);u.uHi.value.set(b[3],b[4],b[5]);colRaw(m.color||0xffffff,u.uCol.value);
  HZ.pts.geometry.setDrawRange(0,Math.round(N*clamp(m.n===undefined?1:m.n,0,1)));
 }
 function hazeUpdate(rdt){

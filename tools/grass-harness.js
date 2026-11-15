@@ -5,7 +5,7 @@ const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
 const rd=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
 const GRASS=rd('js/grass.js'),MODELS=rd('js/models.js'),OPTIONS=rd('js/options.js'),CONFIGSRC=rd('js/config.js');
-const THREESRC=rd('vendor/three.min.js');
+const THREESRC=rd('vendor/three.bundle.js');
 
 let pass=0,fail=0;const fails=[];
 const ok=(c,m,x)=>{if(c)pass++;else{fail++;fails.push(m+(x===undefined?'':'  ['+x+']'));}};

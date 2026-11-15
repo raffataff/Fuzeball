@@ -106,8 +106,8 @@ function lightProvenance(l){
 function lightDeliv(l,wp,y){
  if(l.isHemisphereLight||l.isAmbientLight)return '-';
  if(l.isDirectionalLight)return +l.intensity.toFixed(3);   // no falloff
- const d=Math.abs(wp.y-y);
- const f=(l.distance>0)?Math.pow(Math.max(0,1-d/l.distance),l.decay===undefined?2:l.decay):1;
+ const d=Math.abs(wp.y-y);   // three's physical falloff: d^-decay, windowed to distance
+ const f=1/Math.max(Math.pow(d,l.decay===undefined?2:l.decay),0.01)*(l.distance>0?Math.pow(Math.max(0,1-Math.pow(d/l.distance,4)),2):1);
  return +(l.intensity*f).toFixed(3);
 }
 
@@ -590,7 +590,7 @@ function dbgZoneMesh(){
  const Z=dbgZone,m=dbgZoneMap(),tc=document.createElement('canvas');
  tc.width=m[0].length;tc.height=m.length;
  const tex=new THREE.CanvasTexture(tc);
- tex.magFilter=tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.encoding=THREE.sRGBEncoding;
+ tex.magFilter=tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=THREE.SRGBColorSpace;
  const g=new THREE.PlaneGeometry(F.L,F.W);dbgGeo.push(g);
  const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.35,depthWrite:false,toneMapped:false}));
  mesh.rotation.x=-Math.PI/2;mesh.position.y=0.07;mesh.renderOrder=2;mesh.visible=dbgZoneShown;

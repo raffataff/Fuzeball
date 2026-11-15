@@ -710,37 +710,20 @@ if(DEV){
  // index.html cannot cache-bust itself — hard-reload (Ctrl+F5) if markup looks stale.
 
  var boot=[
-  {srcs:['vendor/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js']},
-{srcs:['vendor/GLTFLoader.js','https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js']},
-   // KTX2/Basis loader is pinned to r137: r128 has no KTX2Loader (cannot open a KTX2 container) and r137's loader only touches symbols r128 has.
-   // WorkerPool first — KTX2Loader references THREE.WorkerPool at construction.
-   {srcs:['vendor/WorkerPool.js','https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/utils/WorkerPool.js']},
-  {srcs:['vendor/KTX2Loader.js','https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/loaders/KTX2Loader.js']},
+  'vendor/three.bundle.js',   // three r164 + GLTFLoader + KTX2Loader (tools/build-three.mjs); everything is local, there is no CDN fallback
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/figedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
- /* CDN_FALLBACK (OFF BY DEFAULT for security in packaged builds) — local vendor first; the second
-   entry is documentation of the pinned version downloaded by tools\fetch-vendor.ps1. */
- var CDN_FALLBACK=false;
-
- function loadOne(item,done){
-  var all=(typeof item==='string')?[item]:item.srcs,i=0;
-  var guard=all.length>1;
-  var srcs=CDN_FALLBACK?all:all.slice(0,1);
-  (function attempt(){
-   if(i>=srcs.length){
-    console.error('Fuzeball: failed to load',srcs,
-     CDN_FALLBACK?'':'— CDN fallback is OFF. Is vendor/ populated? run: powershell -ExecutionPolicy Bypass -File tools\\fetch-vendor.ps1');
-    done();return;}
-   var s=document.createElement('script'),fired=false;s.src=stamped(srcs[i++]);s.async=false;
-   function ok(){if(fired)return;fired=true;done();}
-   function fail(){if(fired)return;fired=true;attempt();}   // local missing → next src, or the error above
-   s.onload=ok;s.onerror=fail;
-   if(guard)setTimeout(function(){if(!fired)fail();},7000); // some file:// loads fire neither event
-   document.body.appendChild(s);
-  })();
+ function loadOne(src,done){
+  var s=document.createElement('script'),fired=false;s.src=stamped(src);s.async=false;
+  function end(ok){if(fired)return;fired=true;
+   if(!ok)console.error('Fuzeball: failed to load',src,src.indexOf('vendor/')===0?'— is vendor/ populated? run: node tools/build-three.mjs':'');
+   done();}
+  s.onload=function(){end(true);};s.onerror=function(){end(false);};
+  if(src.indexOf('vendor/')===0)setTimeout(function(){end(false);},7000); // some file:// loads fire neither event
+  document.body.appendChild(s);
  }
  (function next(k){if(k>=boot.length)return;loadOne(boot[k],function(){next(k+1);});})(0);
 

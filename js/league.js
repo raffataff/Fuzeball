@@ -940,17 +940,17 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
   if(this.ready)return;
   this.dpr=Math.min(devicePixelRatio,2);
   this.scene=new THREE.Scene();
-  this.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.95));
-  const k=new THREE.DirectionalLight(0xffffff,1.2);k.position.set(5,11,7);this.scene.add(k);
-  this.rim=new THREE.PointLight(0xffffff,1.3,50);this.rim.position.set(-4,4,-5);this.scene.add(this.rim);
+  this.scene.add(new THREE.HemisphereLight(0xe8eeff,0x4f4756,2.98));
+  const k=new THREE.DirectionalLight(0xffffff,3.77);k.position.set(5,11,7);this.scene.add(k);
+  this.rim=new THREE.PointLight(0xffffff,3.47,50,0);this.rim.position.set(-4,4,-5);this.scene.add(this.rim);
   this.cam=new THREE.PerspectiveCamera(36,this.W/this.H,.1,200);
   this.cam.position.set(0,2.0,8.5);this.cam.lookAt(0,1.65,0);
   this.root=new THREE.Group();this.scene.add(this.root);
   const ring=new THREE.Mesh(new THREE.RingGeometry(3.1,3.45,64),
-   new THREE.MeshBasicMaterial({color:0x5a8cff,transparent:true,opacity:.45,side:THREE.DoubleSide}));
+   new THREE.MeshBasicMaterial({color:0xa0c4ff,transparent:true,opacity:.45,side:THREE.DoubleSide}));
   ring.rotation.x=-Math.PI/2;ring.position.y=.05;this.scene.add(ring);this.ringM=ring;
   const plat=new THREE.Mesh(new THREE.CylinderGeometry(2.8,3.1,.3,48),
-   new THREE.MeshStandardMaterial({color:0x0c1020,emissive:0x1a2540,emissiveIntensity:.5,roughness:.35,metalness:.7}));
+   new THREE.MeshStandardMaterial({color:0x3d4763,emissive:0x5a6a89,emissiveIntensity:.5,roughness:.35,metalness:.7}));
   plat.position.y=-.2;this.scene.add(plat);this.plat=plat;
   this.ready=true;
  },

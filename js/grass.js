@@ -45,6 +45,12 @@ function grassGeo(roots,o,n){
  g.instanceCount=Math.min(roots.length,n);
  return g;
 }
+// every map's uv varying from the blade's root uv (aR.xy) instead of the vertex's
+function grassUv(){
+ const c=THREE.ShaderChunk.uv_vertex,o=c.replace(/vec3\( (\w+_UV|uv), 1 \)/g,'vec3( aR.xy, 1 )');
+ if(o===c)console.warn('shader patch grass uv: no uv term in uv_vertex');
+ return o;
+}
 // the pitch's own material taught to build blades: colour, roughness and emissive sampled at the root's uv and darkened toward the root; normal mostly up, tilted toward the face; both faces use it
 function grassMat(src,o){
  const m=src.clone();m.side=THREE.DoubleSide;m.normalMap=null;m.bumpMap=null;
@@ -53,25 +59,24 @@ function grassMat(src,o){
  m.userData.gu=u;
  m.onBeforeCompile=sh=>{
   Object.assign(sh.uniforms,u);
-  sh.vertexShader=sh.vertexShader
-   .replace('#include <common>','#include <common>\nattribute vec4 aI;\nattribute vec3 aR;\nuniform float uT,uH,uW,uLean,uSway,uPress,uBR;\nuniform vec4 uB[4];\nvarying float vL;')
-   .replace('#include <uv_vertex>','vUv=(uvTransform*vec3(aR.xy,1.)).xy;')
-   .replace('#include <beginnormal_vertex>',
+  let v=sh.vertexShader,f=sh.fragmentShader;
+  v=shRep(v,'#include <common>','#include <common>\nattribute vec4 aI;\nattribute vec3 aR;\nuniform float uT,uH,uW,uLean,uSway,uPress,uBR;\nuniform vec4 uB[4];\nvarying float vL;','grass common');
+  v=shRep(v,'#include <uv_vertex>',grassUv(),'grass uv_vertex');
+  v=shRep(v,'#include <beginnormal_vertex>',
     'vec2 gd=vec2(cos(aI.z),sin(aI.z)),gn=vec2(-gd.y,gd.x);\n'+
     'float gh=aI.w*uH;vec3 gw=(modelMatrix*vec4(aI.x,aR.z,aI.y,1.)).xyz;\n'+
     'vec2 gb=gn*uLean*(fract(aI.z*7.31)-.5)*2.+vec2(sin(uT*1.3+gw.x*.21+gw.z*.13),cos(uT*1.1+gw.z*.19-gw.x*.07))*uSway;\n'+
     'float gk=0.;\n'+
     'for(int i=0;i<4;i++){vec2 d=gw.xz-uB[i].xy;float r=length(d),k=uB[i].z*(1.-smoothstep(uBR*.4,uBR,r));gb+=d/max(r,1e-3)*k*uPress;gk=max(gk,k);}\n'+
-    'vec3 objectNormal=normalize(vec3(gn.x,2.,gn.y));')
-   .replace('#include <begin_vertex>',
+    'vec3 objectNormal=normalize(vec3(gn.x,2.,gn.y));','grass beginnormal_vertex');
+  sh.vertexShader=shRep(v,'#include <begin_vertex>',
     'float gy=position.y,gx=position.x*uW*(1.-.35*gy);\n'+
     'vec3 transformed=vec3(aI.x+gd.x*gx,aR.z+gy*gh*(1.-gk*uPress*.7),aI.y+gd.y*gx);\n'+
-    'transformed.xz+=gb*gh*gy*gy;vL=gy;');
-  sh.fragmentShader=sh.fragmentShader
-   .replace('#include <common>','#include <common>\nuniform float uAo,uTip;\nvarying float vL;')
-   .replace('#include <normal_fragment_begin>','float faceDirection=gl_FrontFacing?1.:-1.;vec3 normal=normalize(vNormal);vec3 geometryNormal=normal;')
-   .replace('#include <map_fragment>','#include <map_fragment>\ndiffuseColor.rgb*=mix(uAo,uTip,vL);')
-   .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance*=mix(uAo,uTip,vL);');
+    'transformed.xz+=gb*gh*gy*gy;vL=gy;','grass begin_vertex');
+  f=shRep(f,'#include <common>','#include <common>\nuniform float uAo,uTip;\nvarying float vL;','grass common');
+  f=shRep(f,'#include <normal_fragment_begin>','float faceDirection=gl_FrontFacing?1.:-1.;vec3 normal=normalize(vNormal);vec3 nonPerturbedNormal=normal;','grass normal_fragment_begin');
+  f=shRep(f,'#include <map_fragment>','#include <map_fragment>\ndiffuseColor.rgb*=mix(uAo,uTip,vL);','grass map_fragment');
+  sh.fragmentShader=shRep(f,'#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance*=mix(uAo,uTip,vL);','grass emissivemap_fragment');
  };
  m.customProgramCacheKey=()=>'grass3';
  return m;

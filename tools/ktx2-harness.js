@@ -1,5 +1,5 @@
 // static harness for the KTX2 wiring (js/world.js, js/debug.js, index.html, vendor/). Run: node tools/ktx2-harness.js
-// not behavioural (the WebGL transcode can't be faked in node; it was proved in a headless browser): it guards what rots, a new `new THREE.GLTFLoader()` without the ktx2Loader, the r137 vendor pin being 'tidied' to r128, the transcoder path drifting, and memTex() reporting compressed textures as RGBA
+// not behavioural (the WebGL transcode can't be faked in node; it was proved in a headless browser): it guards what rots, a new `new THREE.GLTFLoader()` without the ktx2Loader, the transcoder drifting from the bundled three, the transcoder path drifting, and memTex() reporting compressed textures as RGBA
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -11,27 +11,22 @@ let pass=0,fail=0;const fails=[];
 const ok=(c,m,x)=>{if(c)pass++;else{fail++;fails.push(m+(x===undefined?'':'  ['+x+']'));}};
 
 /* ---- 1. the vendored files exist and are the RIGHT ONES ------------------ */
-ok(ex('vendor/KTX2Loader.js'),'vendor: KTX2Loader.js present');
-ok(ex('vendor/WorkerPool.js'),'vendor: WorkerPool.js present — KTX2Loader references THREE.WorkerPool');
+ok(ex('vendor/three.bundle.js'),'vendor: three.bundle.js present (node tools/build-three.mjs)');
+ok(/KTX2Loader/.test(rd('vendor/three.bundle.js'))&&/GLTFLoader/.test(rd('vendor/three.bundle.js')),'vendor: the bundle carries GLTFLoader and KTX2Loader');
 ok(ex('vendor/basis/basis_transcoder.js'),'vendor: basis_transcoder.js present');
 ok(ex('vendor/basis/basis_transcoder.wasm'),'vendor: basis_transcoder.wasm present');
-// the r137 pin: r128's transcoder wasm (440,267 bytes) predates KTX2 + Zstandard support, r137's is 499,935; copying r128's files over would fail at runtime with an unhelpful transcode error; pin the size
-ok(sz('vendor/basis/basis_transcoder.wasm')>480000,
-   'vendor: the transcoder is the r137 build, not r128\'s pre-KTX2 one — do NOT "fix" this to match three\'s pin',
-   sz('vendor/basis/basis_transcoder.wasm')+' bytes, expected ~499935');
-ok(/KTX2Loader/.test(rd('vendor/KTX2Loader.js')),'vendor: KTX2Loader.js defines KTX2Loader');
-ok(/WorkerPool/.test(rd('vendor/WorkerPool.js')),'vendor: WorkerPool.js defines WorkerPool');
+// the transcoder must be the one shipped with the bundled three (build-three.mjs copies it); r128's pre-KTX2 wasm was 440,267 bytes
+{const w=path.join(ROOT,'tools/node_modules/three/examples/jsm/libs/basis/basis_transcoder.wasm');
+ ok(sz('vendor/basis/basis_transcoder.wasm')>480000,'vendor: the transcoder has KTX2 + Zstandard (not r128\'s)',sz('vendor/basis/basis_transcoder.wasm')+' bytes');
+ if(fs.existsSync(w))ok(fs.readFileSync(w).equals(fs.readFileSync(path.join(ROOT,'vendor/basis/basis_transcoder.wasm'))),'vendor: basis_transcoder.wasm matches tools/node_modules/three (rerun build-three.mjs)');}
 
-/* ---- 2. index.html loads them, in the right order ------------------------ */
+/* ---- 2. index.html loads the bundle, and nothing remote ----------------- */
 {
  const h=rd('index.html');
- const iW=h.indexOf('vendor/WorkerPool.js'), iK=h.indexOf('vendor/KTX2Loader.js'), iG=h.indexOf('vendor/GLTFLoader.js'), iT=h.indexOf('vendor/three.min.js');
- ok(iW>0,'index: WorkerPool.js is in the boot chain');
- ok(iK>0,'index: KTX2Loader.js is in the boot chain');
- ok(iT<iW&&iT<iK,'index: three.min.js loads before both');
- ok(iW<iK,'index: WorkerPool BEFORE KTX2Loader — KTX2Loader reads THREE.WorkerPool at construction');
- ok(/0\.137/.test(h.slice(Math.max(0,iW-400),iK+400)),
-    'index: the CDN fallbacks point at r137, matching what vendor/ carries');
+ ok(h.indexOf('vendor/three.bundle.js')>0,'index: three.bundle.js is in the boot chain');
+ ok(h.indexOf('vendor/three.bundle.js')<h.indexOf("'js/core.js'"),'index: the bundle loads before js/');
+ ok(!/three\.min\.js|WorkerPool\.js|KTX2Loader\.js|GLTFLoader\.js/.test(h),'index: no separate three / loader scripts left');
+ ok(!/https?:\/\/(cdn|cdnjs|unpkg)/.test(h),'index: no CDN URL (no remote code in the Electron wrapper)');
 }
 
 /* ---- 3. NO loader escapes newGLTF() ------------------------------------- */

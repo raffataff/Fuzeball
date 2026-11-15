@@ -238,15 +238,15 @@ function pvInit(){
  PV.dpr=Math.min(devicePixelRatio,2);
  PV.scene=new THREE.Scene();
  PV.camera=new THREE.PerspectiveCamera(42,1,.1,200);
- PV.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.9));
- const key=new THREE.DirectionalLight(0xffffff,1.15);key.position.set(6,12,8);PV.scene.add(key);
- const fill=new THREE.DirectionalLight(0x88a0ff,.4);fill.position.set(-8,4,4);PV.scene.add(fill);
- PV.rim=new THREE.PointLight(0xffffff,1.4,60);PV.rim.position.set(-5,5,-6);PV.scene.add(PV.rim);
+ PV.scene.add(new THREE.HemisphereLight(0xe8eeff,0x4f4756,2.83));
+ const key=new THREE.DirectionalLight(0xffffff,3.61);key.position.set(6,12,8);PV.scene.add(key);
+ const fill=new THREE.DirectionalLight(0xc1d0ff,1.26);fill.position.set(-8,4,4);PV.scene.add(fill);
+ PV.rim=new THREE.PointLight(0xffffff,3.72,60,0);PV.rim.position.set(-5,5,-6);PV.scene.add(PV.rim);
  const plat=new THREE.Mesh(new THREE.CylinderGeometry(3.1,3.4,.35,48),
-  new THREE.MeshStandardMaterial({color:0x0c1020,emissive:0x1a2540,emissiveIntensity:.5,roughness:.35,metalness:.7}));
+  new THREE.MeshStandardMaterial({color:0x3d4763,emissive:0x5a6a89,emissiveIntensity:.5,roughness:.35,metalness:.7}));
  plat.position.y=-.18;PV.scene.add(plat);PV.platform=plat;
  const ring=new THREE.Mesh(new THREE.RingGeometry(3.15,3.55,64),
-  new THREE.MeshBasicMaterial({color:0x5a8cff,transparent:true,opacity:.55,side:THREE.DoubleSide}));
+  new THREE.MeshBasicMaterial({color:0xa0c4ff,transparent:true,opacity:.55,side:THREE.DoubleSide}));
  ring.rotation.x=-Math.PI/2;ring.position.y=.03;PV.scene.add(ring);PV.ringMesh=ring;
  PV.root=new THREE.Group();PV.scene.add(PV.root);
  cv.addEventListener('pointerdown',e=>{PV.dragging=true;PV.px=e.clientX;PV.py=e.clientY;try{cv.setPointerCapture(e.pointerId);}catch(x){}});
@@ -286,7 +286,7 @@ function pvLoadModel(){
   const sw=CONFIG.playerModel.hairSwatches;
   g.traverse(ch=>{if(!ch.isMesh)return;const nm=ch.material.name.toLowerCase();
    const cm=ch.material.clone();ch.material=cm;if(teamParts.has(nm))PV.mats.push(cm);
-   else if(hairParts.has(nm)){PV.hairMats.push(cm);cm.color.set(sw[Math.floor(Math.random()*sw.length)]).convertSRGBToLinear();}});
+   else if(hairParts.has(nm)){PV.hairMats.push(cm);cm.color.set(sw[Math.floor(Math.random()*sw.length)]);}});
   PV.model=g;PV.loadedId=am.id;PV.root.add(g);pvApply();
  };
  if(PV.cache[am.id]){touchModelCache(PV.cacheOrder,am.id);show(PV.cache[am.id]);return;}
@@ -341,9 +341,9 @@ function thumbInit(){
  if(THB.ready)return;
  THB.scene=new THREE.Scene();
  THB.cam=new THREE.PerspectiveCamera(36,THB.W/THB.H,.1,200);
- THB.scene.add(new THREE.HemisphereLight(0xcdd9ff,0x141018,.95));
- const k=new THREE.DirectionalLight(0xffffff,1.2);k.position.set(5,11,7);THB.scene.add(k);
- THB.rim=new THREE.PointLight(0xffffff,1.3,50);THB.rim.position.set(-4,4,-5);THB.scene.add(THB.rim);
+ THB.scene.add(new THREE.HemisphereLight(0xe8eeff,0x4f4756,2.98));
+ const k=new THREE.DirectionalLight(0xffffff,3.77);k.position.set(5,11,7);THB.scene.add(k);
+ THB.rim=new THREE.PointLight(0xffffff,3.47,50,0);THB.rim.position.set(-4,4,-5);THB.scene.add(THB.rim);
  THB.root=new THREE.Group();THB.scene.add(THB.root);
  THB.ready=true;
 }

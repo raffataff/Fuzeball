@@ -94,7 +94,7 @@ function spawnBallFracture(pos){
   const mixer=new THREE.AnimationMixer(inst);
   // one clip PER shard (see spawnFracture) — play them all or only shard 0 moves.
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopOnce);a.clampWhenFinished=true;a.play();}
-  const light=fxLightGet(0xff7a1a,64);if(light){light.intensity=4;light.position.copy(pos);light.position.y+=2;} // pooled — no light added, so no whole-scene recompile at the bang
+  const light=fxLightGet(0xffb85a,64);if(light){light.intensity=9.6;light.position.copy(pos);light.position.y+=2;} // pooled — no light added, so no whole-scene recompile at the bang
   S.frac.push({obj:inst,mixer,mats,light,until:S.time+CONFIG.cannonball.fractureLife});
 }
 
@@ -105,7 +105,7 @@ function fractureUpdate(dt){
    const f=S.frac[i];
    f.mixer.update(dt);
    const left=f.until-S.time;
-   if(f.light)f.light.intensity=Math.max(0,f.light.intensity-dt*6); // punchy flash that dies fast
+   if(f.light)f.light.intensity=Math.max(0,f.light.intensity-dt*14.5); // punchy flash that dies fast
    if(left<=CONFIG.cannonball.fractureFadeOut){
     const k=clamp(left/CONFIG.cannonball.fractureFadeOut,0,1);
     for(const m of f.mats)m.opacity=k;

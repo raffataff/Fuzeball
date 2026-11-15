@@ -1,7 +1,7 @@
 'use strict';
 // Run from the project root: node tools/federation-arena-harness.js
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(_url,ok){const t=new THREE.Texture();queueMicrotask(()=>ok(t));return t;};
 function extract(src,name){const start=src.indexOf('function '+name+'(');assert(start>=0,name);let d=0;for(let i=src.indexOf('{',start);i<src.length;i++){if(src[i]==='{')d++;if(src[i]==='}'&&!--d)return src.slice(start,i+1);}throw Error(name);}
 function glb(file){let b=fs.readFileSync(file),len=b.readUInt32LE(12),j=JSON.parse(b.toString('utf8',20,20+len));return {b,j,bin:20+len+8};}

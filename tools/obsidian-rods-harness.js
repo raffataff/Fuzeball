@@ -1,7 +1,7 @@
 // Validate the exported rod sizes and their compatibility with the game loader.
 'use strict';
 const fs=require('fs'),assert=require('assert'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(_url,done){const t=new THREE.Texture();queueMicrotask(()=>done(t));return t;};
 async function load(file){
  const b=fs.readFileSync(file),len=b.readUInt32LE(12),j=JSON.parse(b.subarray(20,20+len).toString().trim()),bin=28+len;

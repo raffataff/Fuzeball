@@ -160,11 +160,11 @@ function zonePick(s,b){
 
 // ---- seat colour ----
 // the kit colour identifies the team, not the player, so each seat past the first on a team is offset in HSL (CONFIG.seats.tint); seatTintHex(team,i) lets the lobby colour cards from plain specs
-const _seatCol=new THREE.Color();
+const _seatCol=new THREE.Color(),_seatHsl={h:0,s:0,l:0};
 function seatTintHex(team,i){
- const T=CONFIG.seats.tint,t=T[Math.min(i,T.length-1)];
+ const T=CONFIG.seats.tint,t=T[Math.min(i,T.length-1)],sp=THREE.SRGBColorSpace,q=_seatHsl;
  _seatCol.set(team===0?cfg.redColor:cfg.blueColor);
- if(t&&(t.h||t.s||t.l))_seatCol.offsetHSL(t.h,t.s,t.l);
+ if(t&&(t.h||t.s||t.l)){_seatCol.getHSL(q,sp);_seatCol.setHSL(q.h+t.h,q.s+t.s,q.l+t.l,sp);}   // offset in sRGB, as the hex reads
  return'#'+_seatCol.getHexString();      // hex out, so nothing holds the shared Color instance
 }
 function seatIdxInTeam(s){

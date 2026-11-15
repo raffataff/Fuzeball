@@ -2,7 +2,7 @@
 // Run from the project root: node tools/synaptic-relic-harness.js
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 // The r128 loader needs a browser to upload images. Decode the embedded images
 // independently below, while retaining real geometry/material parsing here.
 THREE.TextureLoader.prototype.load=function(_url,onLoad){const t=new THREE.Texture();queueMicrotask(()=>onLoad(t));return t;};

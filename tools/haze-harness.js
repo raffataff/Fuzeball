@@ -1,5 +1,5 @@
 // harness for the rooms' air (js/haze.js, CONFIG.atmos, applyFog in js/world.js, the cfg.fog -> cfg.atmos migration, the Atmosphere option). Run: node tools/haze-harness.js
-// the real three.min.js is loaded (the chunk patch and uniform cloning are three's own); haze.js, applyFog and the migration run against stubs for the game
+// the real three bundle is loaded (the chunk patch and uniform cloning are three's own); haze.js, applyFog and the migration run against stubs for the game
 // must hold: every fogged ShaderLib program reads the SAME typed arrays after three clones its uniforms; the fog chunk still does the room's linear fog after the haze;
 // off = no fog, no haze, no lamps, no shafts, no motes; low = haze + glow + shafts, no lamps, no motes; high = everything; CONFIG.atmos.on false = no haze at any level;
 // the room is read off activeRoom (a parked league venue), not cfg.room; a window splits into its panes; every room has an entry; an old Fog-off save stays off
@@ -7,8 +7,8 @@
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
 const rd=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
-const SRC={haze:rd('js/haze.js'),config:rd('js/config.js'),world:rd('js/world.js'),options:rd('js/options.js'),index:rd('index.html')};
-const THREE_SRC=fs.readFileSync(path.join(ROOT,'vendor/three.min.js'),'utf8');
+const SRC={core:rd('js/core.js'),haze:rd('js/haze.js'),config:rd('js/config.js'),world:rd('js/world.js'),options:rd('js/options.js'),index:rd('index.html')};
+const THREE_SRC=fs.readFileSync(path.join(ROOT,'vendor/three.bundle.js'),'utf8');
 
 function fnAt(src,name){
  const start=src.indexOf('function '+name+'(');
@@ -45,6 +45,7 @@ function world(S){
  ctx.cfg={atmos:'high',room:'arcade'};
  ctx.clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
  ctx.renderDirty=()=>{};
+ vm.runInContext(lineAt(S.core,'function colRaw('),ctx);
  vm.runInContext(S.haze+'\nglobalThis.__h={HZ,hazeApply,hazeBuild,hazeLevel,hazeRoomId,HZ_SN};',ctx);
  const fog=fnAt(S.world,'applyFog'),dl=lineAt(S.world,'let _dispFog=');
  vm.runInContext('var scene=new THREE.Scene(),activeRoom=CONFIG.rooms.arcade,renderer={getContext:()=>({drawingBufferHeight:1080})},camera={fov:50};\n'+dl+'\n'+fog+'\nglobalThis.__f={applyFog};',ctx);
@@ -87,6 +88,8 @@ function run(S,quiet){
  ok(W.scene.fog&&W.scene.fog.near===W.CONFIG.rooms.arcade.fog[0]&&W.scene.fog.far===W.CONFIG.rooms.arcade.fog[1],'low: the room fog is on');
  ok(Math.abs(HZ.A[0]-R.haze[0])<1e-6&&Math.abs(HZ.A[3]-R.haze[3])<1e-6&&Math.abs(HZ.B[3]-R.start)<1e-6,'low: the room haze');
  ok(Math.abs(HZ.D[3]-R.glow.str)<1e-6,'low: the glow');
+ const raw=h=>[(h>>16&255)/255,(h>>8&255)/255,(h&255)/255],near3=(a,o,h)=>raw(h).every((v,i)=>Math.abs(a[o+i]-v)<1e-6);
+ ok(near3(HZ.C,0,R.color)&&near3(HZ.E,0,R.glow.color),'the haze and glow colours are the display hex, not linearised (they mix after tone mapping)');
  ok([0,1,2].every(i=>HZ.P[i*4+3]===0),'low: no lamps');
  ok(HZ.sh.visible&&!HZ.pts.visible,'low: shafts, no motes');
  go('high');
@@ -144,6 +147,7 @@ console.log((base?'FAIL':'ok')+'  '+pass+' assertions, '+base+' failed');
 function mutate(file,a,b){const s=Object.assign({},SRC);if(!s[file].includes(a))throw new Error('MUTATION ANCHOR LOST: '+a);s[file]=s[file].replace(a,b);if(s[file]===SRC[file])throw new Error('no-op: '+a);return s;}
 const M=[
  ['shared by value',()=>mutate('haze','u[n]={value:U[n]}','u[n]={value:U[n].slice()}')],
+ ['haze colour linearised',()=>mutate('haze','HZ.C.set(colRaw(R.color||0,c).toArray());','HZ.C.set(c.setHex(R.color||0).toArray());')],
  ['lamps on low',()=>mutate('haze','(hi||A.lampsLow)','(on||A.lampsLow)')],
  ['motes on low',()=>mutate('haze','hazeMotes(hi?R.motes:null)','hazeMotes(on?R.motes:null)')],
  ['haze while off',()=>mutate('haze','HZ.A.set(on&&R.haze?R.haze','HZ.A.set(R.haze?R.haze')],

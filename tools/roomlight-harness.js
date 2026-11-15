@@ -1,5 +1,5 @@
 // behavioural harness for the GLB light + emissive transfer (js/models.js). Run: node tools/roomlight-harness.js
-// no three.js or browser: the two functions are string-sliced from models.js and rebuilt with new Function, then run against the real numbers read from the room GLBs' JSON chunks (every fixture is measured, not invented)
+// no three.js or browser: the two functions are string-sliced from models.js and rebuilt with new Function, then run against the real numbers read from the room GLBs' JSON chunks
 'use strict';
 const fs=require('fs'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
@@ -35,11 +35,11 @@ function build(CONFIG){
 }
 const CFG=(over)=>({render:{roomLight:Object.assign({gain:1,reach:3,decay:2,minDist:20,max:0},over||{})}});
 
-/* legacy (physicallyCorrectLights=false) falloff, verbatim from r128's
-   punctualLightIntensityToIrradianceFactor — this is what the GPU actually does. */
+// three's physical falloff (getDistanceAttenuation without LEGACY_LIGHTS): d^-decay, windowed to distance
 function falloff(d,distance,decay){
- if(distance>0&&decay>0)return Math.pow(Math.max(0,Math.min(1,-d/distance+1)),decay);
- return 1;
+ let f=1/Math.max(Math.pow(d,decay),0.01);
+ if(distance>0)f*=Math.pow(Math.max(0,Math.min(1,1-Math.pow(d/distance,4))),2);
+ return f;
 }
 const dist=p=>Math.hypot(p[0],p[1],p[2]);
 const deliver=l=>l.intensity*falloff(dist(l._p),l.distance,l.decay);
@@ -55,73 +55,38 @@ const PUB=()=>[
 let pass=0,fail=0;const fails=[];
 function ok(c,msg,extra){if(c)pass++;else{fail++;fails.push(msg+(extra?'  ['+extra+']':''));}}
 const near=(a,b,t)=>Math.abs(a-b)<=(t===undefined?1e-6:t);
+const SAUCER_RATIO=(46198.70110599992/Math.pow(dist(SAUCER()[1]._p),2))/(8152.711959882338/Math.pow(dist(SAUCER()[0]._p),2));
 
-/* === 1. THE BUG: the old per-light clamp flattened the authored ratio ====== */
-{
- const L=SAUCER(),ls=0.0005;
- L.forEach(l=>{l.intensity=Math.min(l.intensity*ls,4);
-  if(l.isPointLight||l.isSpotLight){if(!l.distance)l.distance=l.isSpotLight?260:180;l.decay=2;}});
- const fill=L[0],spot=L[1];
- ok(near(fill.intensity,4,1e-9),'OLD: fill clamps to 4',fill.intensity);
- ok(near(spot.intensity,4,1e-9),'OLD: key clamps to 4 as well',spot.intensity);
- ok(near(spot.intensity/fill.intensity,1,1e-9),'OLD: authored 5.67:1 ratio arrives as 1:1');
- const dS=deliver(spot),dF=deliver(fill);
- ok(dS<0.2,'OLD: key delivers <0.2 at the table (~4% of a value already clamped)',dS.toFixed(4));
- ok(dF>dS*2,'OLD: the FILL outshines the KEY - design inverted',dF.toFixed(3)+' vs '+dS.toFixed(3));
-}
-
-/* === 2. pub: fire + sconces delivered exactly zero ======================== */
-{
- const L=PUB(),ls=0.0003;
- L.forEach(l=>{l.intensity=Math.min(l.intensity*ls,4);
-  if(l.isPointLight||l.isSpotLight){if(!l.distance)l.distance=l.isSpotLight?260:180;l.decay=2;}});
- ok(L.every(l=>l.intensity<4),'OLD: no pub light reaches the clamp (clamp bug is saucer-only)');
- ok(deliver(L[0])===0,'OLD: pub fireplace delivers exactly 0 (d0 403 > cutoff 180)');
- ok(deliver(L[2])===0,'OLD: pub sconce delivers exactly 0 (d0 269 > cutoff 180)');
- ok(deliver(L[1])>0,'OLD: only the pendant lit anything');
-}
-
-/* === 3. NEW: the inverse-square relationship survives to the table ======== */
+/* === 1. candela in, inverse-square out ==================================== */
 {
  const A=build(CFG());
- const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:3.2}});
- const fill=L[0],spot=L[1];
- const dS=deliver(spot),dF=deliver(fill);
- const want=(46198.70110599992/Math.pow(dist(spot._p),2))/(8152.711959882338/Math.pow(dist(fill._p),2));
- ok(near(want,1.7752,1e-3),'NEW: authored irradiance ratio at the table is ~1.78:1',want.toFixed(4));
- ok(near(dS/dF,want,1e-6),'NEW: delivered ratio == authored inverse-square ratio',(dS/dF).toFixed(4));
- ok(dS>dF,'NEW: the KEY now outshines the fill (was inverted)');
- ok(dS>1.0,'NEW: key delivers real light at the table',dS.toFixed(3));
- ok(!near(dS/dF,1,0.05),'NEW: ratio is NOT flattened to 1:1');
+ const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:3.2,reach:0}});
+ ok(near(SAUCER_RATIO,1.7752,1e-3),'authored irradiance ratio at the table is ~1.78:1',SAUCER_RATIO.toFixed(4));
+ ok(near(deliver(L[1])/deliver(L[0]),SAUCER_RATIO,1e-6),'delivered ratio == authored inverse-square ratio',(deliver(L[1])/deliver(L[0])).toFixed(4));
+ ok(near(L[1].intensity,46198.70110599992*3.2,1e-6),'intensity is candela x gain');
+ ok(L.every(l=>l.decay===2),'decay is the config\'s (2: inverse-square)');
 }
 
-/* === 4. scale invariance + a linear, readable knob ======================== */
+/* === 2. the cutoff: scale invariant, linear knob ========================== */
 {
  const one=h=>{const A=build(CFG());const l=mkLight({name:'x',type:'point',intensity:1000,pos:[0,h,0]});
   A.applyRoomLights(mkRoom([l]),{});return l;};
  const lo=one(90),hi=one(210);
- ok(near(falloff(90,lo.distance,lo.decay),falloff(210,hi.distance,hi.decay),1e-9),
-    'NEW: a 90-unit and a 210-unit fixture land on the SAME falloff at the table');
- const k=Math.pow(1-1/3,2);
- ok(near(falloff(90,lo.distance,lo.decay),k,1e-9),'NEW: that constant is (1-1/reach)^decay',k.toFixed(4));
+ ok(near(lo.distance,270)&&near(hi.distance,630),'cutoff = d0 x reach');
+ const w=l=>falloff(dist(l._p),l.distance,l.decay)*Math.pow(dist(l._p),2);
+ ok(near(w(lo),w(hi),1e-9),'a 90-unit and a 210-unit fixture lose the SAME share to the window at the table');
+ ok(near(w(lo),Math.pow(1-Math.pow(1/3,4),2),1e-9),'that share is (1-reach^-4)^2');
  const atGain=g=>{const A=build(CFG());const l=mkLight({name:'x',type:'point',intensity:1000,pos:[0,120,0]});
   A.applyRoomLights(mkRoom([l]),{light:{gain:g}});return deliver(l);};
- ok(near(atGain(4)/atGain(1),4,1e-9),'NEW: delivered light is LINEAR in gain (the knob works)');
- // the old knob was NOT linear once the clamp bit - that is why it felt dead
- const oldAt=ls=>{const l=mkLight({name:'x',type:'spot',intensity:46198.70110599992,pos:[0,207.6,0]});
-  l.intensity=Math.min(l.intensity*ls,4);l.distance=260;l.decay=2;return deliver(l);};
- ok(near(oldAt(0.0005),oldAt(0.005),1e-12),'OLD: a 10x lightScale change did NOTHING (clamp ate it)');
+ ok(near(atGain(4)/atGain(1),4,1e-9),'delivered light is LINEAR in gain');
 }
 
-/* === 5. ratio-preserving ceiling (vs the per-light clamp it replaces) ===== */
+/* === 3. ratio-preserving ceiling ========================================== */
 {
  const A=build(CFG());
  const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:400,max:4}});
  ok(near(Math.max(L[0].intensity,L[1].intensity),4,1e-9),'CEILING: brightest light pulled to max');
- const want=(46198.70110599992/Math.pow(dist(L[1]._p),2))/(8152.711959882338/Math.pow(dist(L[0]._p),2));
- ok(near(L[1].intensity/L[0].intensity,want,1e-6),
-    'CEILING: ratio SURVIVES normalisation (a per-light clamp flattens it to 1:1)');
- ok(!near(L[1].intensity/L[0].intensity,1,0.05),'CEILING: and is not 1:1');
+ ok(near(L[1].intensity/L[0].intensity,46198.70110599992/8152.711959882338,1e-6),'CEILING: ratio SURVIVES normalisation');
 }
 {
  const A=build(CFG());
@@ -129,20 +94,19 @@ const near=(a,b,t)=>Math.abs(a-b)<=(t===undefined?1e-6:t);
  ok(Math.max(L[0].intensity,L[1].intensity)>4,'CEILING: max:0 disables it entirely');
 }
 
-/* === 6. guards =========================================================== */
+/* === 4. guards ============================================================ */
 {
  const A=build(CFG());
  const l=mkLight({name:'origin',type:'point',intensity:1000,pos:[0,0,0]});
  A.applyRoomLights(mkRoom([l]),{});
- ok(isFinite(l.intensity)&&l.intensity>0,'GUARD: a fixture AT the origin cannot divide by ~0',l.intensity);
- ok(near(l.intensity,1000/400,1e-9),'GUARD: minDist floors d0 at 20');
+ ok(isFinite(l.intensity)&&l.intensity>0,'GUARD: a fixture AT the origin keeps a finite intensity',l.intensity);
+ ok(near(l.distance,60,1e-9),'GUARD: minDist floors the cutoff (20 x reach)',l.distance);
 }
 {
  const A=build(CFG());
  const l=mkLight({name:'flat',type:'point',intensity:1000,pos:[0,120,0]});
  A.applyRoomLights(mkRoom([l]),{light:{reach:0}});
  ok(l.distance===0,'GUARD: reach:0 -> no cutoff');
- ok(near(falloff(120,l.distance,l.decay),1,1e-9),'GUARD: reach:0 means flat (falloff 1.0)');
 }
 {
  const A=build(CFG());
@@ -153,14 +117,22 @@ const near=(a,b,t)=>Math.abs(a-b)<=(t===undefined?1e-6:t);
  const A=build(CFG());
  const d=mkLight({name:'sun',type:'dir',intensity:2,pos:[0,300,0]});
  A.applyRoomLights(mkRoom([d]),{light:{gain:3}});
- ok(near(d.intensity,6,1e-9),'GUARD: directional in a room glb takes gain, not the 1/d^2 term',d.intensity);
+ ok(near(d.intensity,6,1e-9),'GUARD: directional in a room glb takes gain',d.intensity);
+ ok(d.distance===0&&d.decay===1,'GUARD: a directional gets no cutoff or decay');
 }
 {
  const A=build(CFG());
  ok(A.applyRoomLights(mkRoom([]),{}).length===0,'GUARD: a room with no lights returns empty, no throw');
 }
+{
+ const A=build(CFG());
+ const L=PUB();A.applyRoomLights(mkRoom(L),{light:{gain:2},lightsOff:['ROOM_LIGHT_FIRE']});
+ ok(L[0].intensity===0&&near(L[0].userData.roomOffInt,1739.2452181082324*2,1e-6),'OFF: a named fixture is 0, its value kept');
+ A.applyRoomLights(mkRoom(L),{light:{gain:2}});
+ ok(near(L[1].intensity,1087.0282613176453*2,1e-6),'IDEMPOTENT: a second transfer starts from the stashed candela');
+}
 
-/* === 7. emissive strength ================================================ */
+/* === 5. emissive strength ================================================= */
 {
  const A=build(CFG());
  const m=(s,ei)=>({emissive:{r:1},emissiveIntensity:ei,needsUpdate:false,
@@ -175,14 +147,6 @@ const near=(a,b,t)=>Math.abs(a-b)<=(t===undefined?1e-6:t);
  ok(near(c.emissiveIntensity,1),'EMIS: no extension -> untouched');
  ok(near(d.emissiveIntensity,1.0),'EMIS: multiplies an authored emissiveIntensity (0.5*2)',d.emissiveIntensity);
  ok(near(shared.emissiveIntensity,3),'EMIS: a SHARED material is applied ONCE, not per-mesh',shared.emissiveIntensity);
-}
-{
- const A=build(CFG());
- const glow={emissive:{},emissiveIntensity:1,userData:{gltfExtensions:{KHR_materials_emissive_strength:{emissiveStrength:4}}}};
- const bulb={emissive:{},emissiveIntensity:1,userData:{gltfExtensions:{KHR_materials_emissive_strength:{emissiveStrength:6}}}};
- A.applyEmissiveStrength({traverse(f){[{material:glow},{material:bulb}].forEach(f);}});
- ok(near(glow.emissiveIntensity,4),'EMIS: saucer Alien_Glow arrives at its authored 4');
- ok(near(bulb.emissiveIntensity,6),'EMIS: pub pendant bulb arrives at its authored 6');
 }
 {
  const A=build({render:{emissiveStrength:false,roomLight:{}}});
@@ -201,90 +165,76 @@ const near=(a,b,t)=>Math.abs(a-b)<=(t===undefined?1e-6:t);
  A2.applyEmissiveStrength({traverse(f){f({});}});ok(true,'EMIS: object with no material does not throw');
 }
 
-/* === 8. the pub, end to end ============================================== */
+/* === 6. the pub, end to end =============================================== */
 {
  const A=build(CFG());
- const L=PUB();A.applyRoomLights(mkRoom(L),{light:{gain:16}});
+ const L=PUB();A.applyRoomLights(mkRoom(L),{light:{gain:5.45,reach:3.2}});
  const fire=deliver(L[0]),pend=deliver(L[1]),sc=deliver(L[2]);
- ok(fire>0&&sc>0,'PUB: fireplace and sconces now deliver light (were exactly 0)',
-    'fire '+fire.toFixed(3)+' sconce '+sc.toFixed(3));
- ok(pend>fire&&pend>sc,'PUB: the pendant over the table is still the key','pend '+pend.toFixed(3));
+ ok(fire>0&&sc>0,'PUB: fireplace and sconces deliver light','fire '+fire.toFixed(3)+' sconce '+sc.toFixed(3));
+ ok(pend>fire&&pend>sc,'PUB: the pendant over the table is the key','pend '+pend.toFixed(3));
  ok(pend/sc>4,'PUB: pendant dominates the sconces as authored',(pend/sc).toFixed(2));
 }
 
-/* === 9. delivered-value report (eyeball these against a real match) ======= */
+/* === 7. delivered-value report ============================================ */
 function report(name,lights,light){
  const A=build(CFG());A.applyRoomLights(mkRoom(lights),{light});
  console.log('\n'+name+'  (gain '+light.gain+')');
  lights.forEach(l=>console.log('   '+String(l.name).padEnd(22)+
   ' d0='+String(Math.round(dist(l._p))).padStart(4)+
-  '  intensity='+l.intensity.toFixed(3).padStart(8)+
+  '  intensity='+l.intensity.toFixed(1).padStart(10)+
   '  cutoff='+String(Math.round(l.distance)).padStart(5)+
   '  -> at table '+deliver(l).toFixed(3)));
 }
+console.log('\n=== delivered at the table (three.js physical units) ===');
+report('saucer',SAUCER(),{gain:1.15});
+report('pub',PUB(),{gain:5.45,reach:3.2});
 
-console.log('\n=== delivered at the table (three.js intensity units) ===');
-report('saucer',SAUCER(),{gain:3.2});
-report('pub',PUB(),{gain:16});
-
-
-// === 10. TEETH: each mutation below must BREAK something ===
-// reverts one decision and names the assertion that must then fail
+// === 8. TEETH: each mutation below must BREAK something ===
 function buildFrom(srcL,srcE,CONFIG){
  return new Function('CONFIG','THREE','console',
   srcL+'\n'+srcE+'\nreturn {applyRoomLights,applyEmissiveStrength};')(CONFIG,THREE,{log(){}});
 }
 function mutate(label,srcL,srcE,probe){
+ if(srcL===SRC_LIGHTS&&srcE===SRC_EMIS)throw new Error('mutation is a no-op (anchor drifted): '+label);
  let broke=false,note='';
  try{broke=probe(buildFrom(srcL,srcE,CFG()));}
  catch(e){broke=true;note=' (threw: '+e.message.slice(0,40)+')';}
  ok(broke,'TEETH: '+label+' must fail an assertion'+note);
- return broke;
 }
-const CLAMP_LINE='   l.intensity=l.intensity/(d0*d0)*C.gain;';
-
-// M1 - per-light clamp instead of ratio-preserving group normalisation
-mutate('per-light clamp (the original bug)',
- SRC_LIGHTS.replace(CLAMP_LINE,CLAMP_LINE+'l.intensity=Math.min(l.intensity,4);'),SRC_EMIS,
+const INT_LINE='  l.intensity=cd*C.gain;';
+mutate('per-light clamp',
+ SRC_LIGHTS.replace(INT_LINE,INT_LINE+'l.intensity=Math.min(l.intensity,4);'),SRC_EMIS,
  A=>{const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:400}});
-     return Math.abs(L[1].intensity/L[0].intensity-1)<0.05;});      // ratio collapses to 1:1
-
-// M2 - drop the inverse-square term (raw candela * gain)
-mutate('dropping the 1/d0^2 term',
- SRC_LIGHTS.replace(CLAMP_LINE,'   l.intensity=l.intensity*C.gain;'),SRC_EMIS,
- A=>{const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:1}});
-     const r=deliver(L[1])/deliver(L[0]);
-     return Math.abs(r-1.7752)>0.01;});                             // becomes the 5.67 wattage ratio
-
-// M3 - fixed cutoff instead of one derived from the fixture's own distance
+     return Math.abs(L[1].intensity/L[0].intensity-1)<0.05;});
+mutate('the r128 1/d0^2 term back in',
+ SRC_LIGHTS.replace(INT_LINE,'  l.intensity=cd/(d0*d0)*C.gain;'),SRC_EMIS,
+ A=>{const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:1,reach:0}});
+     return Math.abs(deliver(L[1])/deliver(L[0])-SAUCER_RATIO)>0.01;});
 mutate('a FIXED cutoff instead of d0*reach',
- SRC_LIGHTS.replace('   l.distance=C.reach>0?d0*C.reach:0;','   l.distance=l.isSpotLight?260:180;'),SRC_EMIS,
+ SRC_LIGHTS.replace('l.distance=C.reach>0?d0*C.reach:0;','l.distance=l.isSpotLight?260:180;'),SRC_EMIS,
  A=>{const mk=h=>{const l=mkLight({name:'x',type:'point',intensity:1000,pos:[0,h,0]});
-      A.applyRoomLights(mkRoom([l]),{});return falloff(h,l.distance,l.decay);};
-     return Math.abs(mk(90)-mk(210))>1e-6;});                       // scale invariance gone
-
-// M4 - no minDist floor
+      A.applyRoomLights(mkRoom([l]),{});return falloff(h,l.distance,l.decay)*h*h;};
+     return Math.abs(mk(90)-mk(210))>1e-6;});
 mutate('dropping the minDist floor',
- SRC_LIGHTS.replace('  const d0=Math.max(p.length(),C.minDist);','  const d0=p.length();'),SRC_EMIS,
+ SRC_LIGHTS.replace('const d0=Math.max(p.length(),C.minDist);','const d0=p.length();'),SRC_EMIS,
  A=>{const l=mkLight({name:'o',type:'point',intensity:1000,pos:[0,0,0]});
-     A.applyRoomLights(mkRoom([l]),{});
-     return !isFinite(l.intensity);});                              // divide by zero
-
-// M5 - drop the seen-Set, so a shared material is scaled once per mesh
+     A.applyRoomLights(mkRoom([l]),{});return l.distance!==60;});
 mutate('dropping the shared-material guard',
  SRC_LIGHTS,SRC_EMIS.replace('if(!m||seen.has(m))return;seen.add(m);','if(!m)return;'),
  A=>{const sh={emissive:{},emissiveIntensity:1,userData:{gltfExtensions:{KHR_materials_emissive_strength:{emissiveStrength:3}}}};
      A.applyEmissiveStrength({traverse(f){[{material:sh},{material:sh}].forEach(f);}});
-     return Math.abs(sh.emissiveIntensity-3)>1e-9;});               // 9, not 3
-
-// M6 - normalise each light to max independently (subtly wrong, same symptom as M1)
+     return Math.abs(sh.emissiveIntensity-3)>1e-9;});
 mutate('normalising each light to max independently',
  SRC_LIGHTS.replace('if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity*=k);',
                     'if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity=Math.min(l.intensity,C.max));'),
  SRC_EMIS,
  A=>{const L=SAUCER();A.applyRoomLights(mkRoom(L),{light:{gain:400,max:4}});
      return Math.abs(L[1].intensity/L[0].intensity-1)<0.05;});
+mutate('no candela stash (re-transfer compounds the gain)',
+ SRC_LIGHTS.replace('if(l.userData.rlCandela===undefined){','if(true){'),SRC_EMIS,
+ A=>{const L=PUB();A.applyRoomLights(mkRoom(L),{light:{gain:2}});A.applyRoomLights(mkRoom(L),{light:{gain:2}});
+     return !near(L[1].intensity,1087.0282613176453*2,1e-6);});
 
 console.log('\nroomlight harness: '+pass+' passed, '+fail+' failed');
 if(fail){console.log('\nFAILURES:');fails.forEach(f=>console.log('  x '+f));process.exit(1);}
-console.log('all assertions passed (incl. 6 mutation checks)');
+console.log('all assertions passed (incl. 7 mutation checks)');

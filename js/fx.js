@@ -181,25 +181,25 @@ function goalFx(team,b,scorer){
   vfxGoal(team,pos);
   flash(team===0?cfg.redColor:cfg.blueColor,CONFIG.fx.vfx.flash,0.45);Au.goal();
  }else{
-  const gold=new THREE.Color(0xffcf4d),white=new THREE.Color(0xffffff);
+  const gold=new THREE.Color(0xffe995),white=new THREE.Color(0xffffff);
   burst(pos,col,white,220,78);      // main explosion
   burstRing(pos,col,white,120,60);   // horizontal ring blast
   burstUp(pos,col,gold,90,70);       // upward fountain with gold
   burst(pos,gold,white,60,50);       // gold sparkle
   flash();S.shake=1.5;Au.goal();
   const gi=team===0?1:0;
-  goalLights[gi].color.copy(col);goalLights[gi].intensity=4;
+  goalLights[gi].color.copy(col);goalLights[gi].intensity=9.6;
  }
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
  rodHoleGoal(scorer,team);   // …and the scorer's own rod-hole ring, on the same clock
 }
 // ---- explosion smoke ----
 // pool built in world.js buildFxPools (numbers in CONFIG.fx.smoke); nothing allocates, a spent puff is hidden
-// colours are given as what you see: one convertSRGBToLinear plus toneMapped:false makes the round trip exact
+// colours are given as what you see: THREE.Color's sRGB read plus toneMapped:false makes the round trip exact
 const SMK=(CONFIG.fx&&CONFIG.fx.smoke)||{on:false,ring:{}};
-const _smkHot=new THREE.Color(SMK.hot||0xff8a3c).convertSRGBToLinear(),
-      _smkCool=new THREE.Color(SMK.cool||0x4a4d55).convertSRGBToLinear(),
-      _smkDust=new THREE.Color((SMK.ring&&SMK.ring.col)||0x6b6259).convertSRGBToLinear();
+const _smkHot=new THREE.Color(SMK.hot||0xff8a3c),
+      _smkCool=new THREE.Color(SMK.cool||0x4a4d55),
+      _smkDust=new THREE.Color((SMK.ring&&SMK.ring.col)||0x6b6259);
 let smkRingT=0,smkRingMax=0,smkRingA=0;   // the ground dust ring's own countdown, ticked in smokeUpdate
 // throw a cloud at `pos` plus the dust ring beneath; puffs come from the pool oldest-first, a second bang just gets fewer
 function smokeBurst(pos){
@@ -266,7 +266,7 @@ function smokeUpdate(rdt){
  dustRing.material.opacity=smkRingA*Math.pow(1-t,1.5);
 }
 // cannonball detonation FX at `pos`: particle blast, smoke, dust ring, flash, shake and boom, then the shard debris (fracture.js); particles fire even if the GLB never loaded; call before removeBall
-const CX_FIRE=new THREE.Color(0xff6a1a),CX_SPARK=new THREE.Color(0xffd24d),CX_WHITE=new THREE.Color(0xffffff);
+const CX_FIRE=new THREE.Color(0xffad5a),CX_SPARK=new THREE.Color(0xffea95),CX_WHITE=new THREE.Color(0xffffff);
 function cannonExplodeFx(pos){
  const p=pos.clone();p.y=Math.max(p.y,1.5);                 // keep the puff off the floor for the ground-level rings
  if(vfxLive()){vfxCannon(p);flash('#ff8a2a',0.5,0.45);}
@@ -332,7 +332,7 @@ function fxUpdate(rdt){
  if(typeof fireUpdate==='function')fireUpdate(rdt);     // the fireball's flame (js/fire.js)
  if(typeof hazeUpdate==='function')hazeUpdate(rdt);   // the dust motes (js/haze.js)
  vfxWinTick(rdt);  // the full-time board waits on the finale
- if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*3));
+ if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*7.2));
  ledUpdate(rdt);
  rodHolesUpdate(rdt);   // rod-hole stamina rings — decoration only, writes material colour and nothing else
  if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);

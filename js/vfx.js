@@ -10,7 +10,7 @@ const _vfC=new THREE.Color(),_vfSz=new THREE.Vector2(),_vfD=[0,0,0],_vfP=new THR
 const VF_W=[1,1,1];
 
 // linear rgb of a hex / css colour (the renderer encodes sRGB on output, so the shaders work in linear)
-function vfxLin(h){_vfC.set(h);_vfC.convertSRGBToLinear();return [_vfC.r,_vfC.g,_vfC.b];}
+function vfxLin(h){_vfC.set(h);return [_vfC.r,_vfC.g,_vfC.b];}
 function vfxTeam(t){return vfxLin(t===0?cfg.redColor:cfg.blueColor);}
 function vfxMix(a,b,k){return [a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k];}
 function vfxRg(a){return a[0]+(a[1]-a[0])*Math.random();}
@@ -75,7 +75,7 @@ void main(){
  vec3 rgb=c*(core*1.7+halo)*tailF*fade*tw*uFade;
  gl_FragColor=vec4(rgb,1.0);
  #include <tonemapping_fragment>
- #include <encodings_fragment>
+ #include <colorspace_fragment>
 }`;
 const VFX_CONF_VS=`
 uniform float uT;uniform float uConfG;uniform float uFloor;uniform vec2 uTab;uniform float uFade;
@@ -124,7 +124,7 @@ void main(){
  vec3 rgb=base*(0.3+0.9*dif)+vec3(1.0,0.93,0.78)*spc*0.9;
  gl_FragColor=vec4(rgb,1.0);
  #include <tonemapping_fragment>
- #include <encodings_fragment>
+ #include <colorspace_fragment>
 }`;
 const VFX_BLAST_VS=`
 uniform float uT;
@@ -193,7 +193,7 @@ void main(){
  }
  gl_FragColor=vec4(col*al*uFade,al*occ*uFade);
  #include <tonemapping_fragment>
- #include <encodings_fragment>
+ #include <colorspace_fragment>
 }`;
 
 // --- build ---
@@ -331,20 +331,19 @@ function vfxNetPatch(m){
  m.userData.rip=U;
  m.onBeforeCompile=sh=>{
   for(const k in U)sh.uniforms[k]=U[k];
-  sh.vertexShader=sh.vertexShader
-   .replace('#include <common>','#include <common>\nvarying vec3 vRipW;')
-   .replace('#include <begin_vertex>','#include <begin_vertex>\nvRipW=(modelMatrix*vec4(position,1.0)).xyz;');
-  sh.fragmentShader=sh.fragmentShader
-   .replace('#include <common>','#include <common>\nuniform vec4 uRip;uniform float uRipA;uniform vec3 uRipC;uniform float uRipV;varying vec3 vRipW;')
-   .replace('#include <map_fragment>',`
+  let v=sh.vertexShader;
+  v=shRep(v,'#include <common>','#include <common>\nvarying vec3 vRipW;','net common');
+  sh.vertexShader=shRep(v,'#include <begin_vertex>','#include <begin_vertex>\nvRipW=(modelMatrix*vec4(position,1.0)).xyz;','net begin_vertex');
+  let f=sh.fragmentShader;
+  f=shRep(f,'#include <common>','#include <common>\nuniform vec4 uRip;uniform float uRipA;uniform vec3 uRipC;uniform float uRipV;varying vec3 vRipW;','net common');
+  f=shRep(f,'#include <map_fragment>',`
  float rpD=distance(vRipW,uRip.xyz);
  float rpF=uRip.w*uRipV;
  float rpW=sin(rpD*0.62-uRip.w*17.0)*exp(-rpD*0.07)*exp(-uRip.w*2.4)*uRipA*step(rpD,rpF+2.0);
  float rpC=smoothstep(5.0,0.0,abs(rpD-rpF))*exp(-uRip.w*3.2)*uRipA*step(0.001,uRip.w);
- vec4 texelColor=texture2D(map,vUv+vec2(rpW*0.07,rpW*0.045));
- texelColor=mapTexelToLinear(texelColor);
- diffuseColor*=texelColor;`)
-   .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=uRipC*rpC*1.6;');
+ vec4 texelColor=texture2D(map,vMapUv+vec2(rpW*0.07,rpW*0.045));
+ diffuseColor*=texelColor;`,'net map_fragment');
+  sh.fragmentShader=shRep(f,'#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=uRipC*rpC*1.6;','net emissivemap_fragment');
  };
  m.customProgramCacheKey=()=>'vfxnet';
 }
@@ -499,7 +498,7 @@ function vfxGoal(team,p){
  }
  const L=G.light,gl=goalLights[gi];
  if(gl){gl.color.set(team===0?cfg.redColor:cfg.blueColor);vfxLight(gl,false,0,0,0,0,0,L.goal,0.15,L.decay,0);}
- vfxLight(null,true,ox+dir*4,oy+3,oz,0xffc98a,60,L.flash,0.04,6,0);
+ vfxLight(null,true,ox+dir*4,oy+3,oz,0xffe6c2,60,L.flash,0.04,6,0);
  vfxNetHit(gi,ox+sg*1.5,oy,oz,tc);
  vfxPunch(dir,0,G.punch);
 }
@@ -527,7 +526,7 @@ function vfxCannon(pos){
    vfxSpk(x+rand(-5,5),y+rand(-1,3),z+rand(-5,5),d[0]*sp,Math.abs(d[1])*sp+rand(4,12),d[2]*sp,vfxRg(S3.life),Math.random()<0.5?ember:body,S3.power*rand(.6,1.1),vfxRg(S3.size),1.0,-0.14,0,6,rand(0,0.3));
   }
  }
- vfxLight(null,true,x,y+4,z,0xff8a2a,70,C.light,0.04,5,0);
+ vfxLight(null,true,x,y+4,z,0xffc271,70,C.light,0.04,5,0);
  vfxPunch(Math.sign(camera.position.x-x)||1,Math.sign(camera.position.z-z)||0,C.punch);
 }
 // a hard hit on a wall or post throws a few sparks off the contact (n = the wall's inward normal, imp = speed into it)
@@ -557,7 +556,7 @@ function vfxPickup(pos,hex){
    vfxSpk(x,y,z,d[0]*sp,Math.abs(d[1])*sp+4,d[2]*sp,vfxRg(P.glitter.life),Math.random()<0.5?gold:hot,P.glitter.power*rand(.6,1.1),vfxRg(P.glitter.size),1.0,0.5,0,3,rand(0,0.15));
   }
  }
- vfxLight(null,true,x,y+3,z,hex,40,5,0.03,7,0);
+ vfxLight(null,true,x,y+3,z,hex,40,12,0.03,7,0);
 }
 
 // the final whistle: cannons, gold fountains along the rails, a volley of shells over the table, rings off the centre spot; returns how long the board waits
@@ -617,7 +616,7 @@ function vfxFinale(team){
     const d=vfxSphere(),sp=rand(4,26)*fs;
     vfxSpk(ax,ay,az,d[0]*sp,d[1]*sp,d[2]*sp,rand(1.6,3.0),Math.random()<0.5?gold:c1,3.6,rand(0.14,0.24),0.9,0.6,0,3,tb+rand(0,0.3));
    }
-   vfxLight(null,true,ax,ay,az,0xffd9a0,55,SH.light,0.04,7,tb);
+   vfxLight(null,true,ax,ay,az,0xffeed0,55,SH.light,0.04,7,tb);
   }
   // a light rain over the whole table
   const R=Fi.rain;

@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(url,done){const t=new THREE.Texture();queueMicrotask(()=>done(t));return t;};
 function load(file){const b=fs.readFileSync(file);return new Promise((ok,fail)=>new THREE.GLTFLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'',g=>ok(g.scene),fail));}
 function find(g,part){let o;g.traverse(x=>{if(x.isMesh&&x.name.toLowerCase().includes(part))o=x;});return o;}

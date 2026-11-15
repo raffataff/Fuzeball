@@ -29,7 +29,7 @@ function makeBall(key){
    // match stats (js/matchstats.js): its own last-contact / last-swing records, separate from tc/shot; msReset clears them
    msc:null,mss:null};
   // glow lights (fire/knuckle) borrow from the resident fx light pool (world.js): a new light would change the count and recompile; b.light is null if the pool is exhausted
-  if(t.light){b.light=fxLightGet(t.light,34);if(b.light)b.light.intensity=1.1;}
+  if(t.light){b.light=fxLightGet(t.light,34);if(b.light)b.light.intensity=2.65;}
   applyBallEnv(b);   // local cube-map reflection envMap (no-op when cfg.reflections is off), set at birth so the shader recompile isn't mid-rally
   if(key==='cannon'){
    // per-instance outline shell (own geo/mat) that pulses red as the fuse burns down, plus a point light
@@ -61,7 +61,7 @@ function cannonballWarn(b){
   b.warnShell.scale.setScalar(1+0.06*flash);               // subtle swell timed to each beep
    if(b.warnLight){
     b.warnLight.position.copy(b.m.position);
-    b.warnLight.intensity=(0.3+CB.warnLightMax*k)*flash+0.2*k;
+    b.warnLight.intensity=(0.72+CB.warnLightMax*k)*flash+0.48*k;
    }
 }
 // ================= ball heat =================

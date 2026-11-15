@@ -52,7 +52,7 @@ const PRV={r:null,bw:0,bh:0,w:0,h:0,dpr:0,scratch:null,
   if(PRV.r)return PRV.r;
   PRV.r=new THREE.WebGLRenderer({antialias:true,alpha:true});
   PRV.r.setPixelRatio(1);                    // we hand it device pixels directly
-  PRV.r.outputEncoding=THREE.sRGBEncoding;
+  PRV.r.outputColorSpace=THREE.SRGBColorSpace;
   applyToneMapping(PRV.r,false);   // same grade as the game, or previews lie about the finish
   PRV.r.setScissorTest(true);                // so clear() only touches the active sub-viewport
   return PRV.r;
@@ -113,13 +113,13 @@ function initThree(){
  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
  renderer.setSize(innerWidth,innerHeight);
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=shadowMapType();
- renderer.outputEncoding=THREE.sRGBEncoding;
+ renderer.outputColorSpace=THREE.SRGBColorSpace;
  applyToneMapping(renderer,false);   // set before any material exists, so nothing needs recompiling
  scene=new THREE.Scene();
  camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,700);
  camera.position.set(0,92,86);camera.lookAt(0,0,2);
- hemiLight=new THREE.HemisphereLight(0xcdd9ff,0x1c1610,.85);scene.add(hemiLight); // colours/intensity set per-room by applyRoom
- dirLight=new THREE.DirectionalLight(0xffffff,1.05);
+ hemiLight=new THREE.HemisphereLight(0xcdd9ff,0x1c1610,2.67);scene.add(hemiLight); // colours/intensity set per-room by applyRoom
+ dirLight=new THREE.DirectionalLight(0xffffff,3.3);
  dirLight.position.set(45,100,35);dirLight.castShadow=true;
  // bias/normalBias fight shadow acne; the box is rotated to the table, see the extents comment in config.js before tightening it
  // map size, filter and bias come from the active quality tier
@@ -329,7 +329,7 @@ function bakeSyntheticEnv(spec){
  if(!renderer)return null;
  const es=new THREE.Scene();
  es.add(new THREE.Mesh(new THREE.BoxGeometry(560,320,560),                       // dark room shell
-  new THREE.MeshBasicMaterial({color:(spec&&spec.shell)||0x0b1022,side:THREE.BackSide})));
+  new THREE.MeshBasicMaterial({color:(spec&&spec.shell)||0x3b4766,side:THREE.BackSide})));
  if(spec&&spec.panels)for(const p of spec.panels){                               // [hex,x,y,z,w,h] coloured glow panels
   const m=new THREE.Mesh(new THREE.PlaneGeometry(p[4],p[5]),new THREE.MeshBasicMaterial({color:p[0],side:THREE.DoubleSide}));
   m.position.set(p[1],p[2],p[3]);m.lookAt(0,0,0);es.add(m);
@@ -343,7 +343,7 @@ function bakeGlbEnv(group){
  if(!renderer||!group)return null;
  const parent=group.parent,vis=group.visible;
  const es=new THREE.Scene();
- es.add(new THREE.HemisphereLight(0xffffff,0x404040,1.0));
+ es.add(new THREE.HemisphereLight(0xffffff,0x898989,Math.PI));
  group.visible=true;es.add(group);                                              // move out of the main scene (Object3D has one parent)
  // hide transparent meshes for the bake, they bake as white blobs
  const hidden=[];
@@ -383,8 +383,8 @@ let ballCubeRT=null,ballCube=null,ballReflN=0;
 function buildBallReflect(){
  if(!renderer||ballCubeRT)return;
  const R=CONFIG.ballReflect;
- ballCubeRT=new THREE.WebGLCubeRenderTarget(R.res,{format:THREE.RGBAFormat,generateMipmaps:true,minFilter:THREE.LinearMipmapLinearFilter});
- ballCubeRT.texture.encoding=THREE.sRGBEncoding;                                // renderer outputs sRGB → decode env the same way (matches PMREM path)
+ ballCubeRT=new THREE.WebGLCubeRenderTarget(R.res,{format:THREE.RGBAFormat,type:THREE.HalfFloatType,colorSpace:THREE.LinearSRGBColorSpace,generateMipmaps:true,minFilter:THREE.LinearMipmapLinearFilter});
+ ballCubeRT.isXRRenderTarget=true;   // r153+ skips tone mapping into a render target; the XR flag keeps it, so the ball sees the room tone-mapped as on screen
  ballCube=new THREE.CubeCamera(R.near,R.far,ballCubeRT);
 }
 function ballReflectOn(){return !!(renderer&&ballCubeRT&&cfg.reflections&&CONFIG.ballReflect.on);}
@@ -427,7 +427,7 @@ function buildTable(){
   // skipped when the pitch has a GLB (the JPEG would be a wasted download)
   if(!(CONFIG.pitches[cfg.pitch]&&CONFIG.pitches[cfg.pitch].glb))
    loadPitchTex(cfg.pitch,tex=>{if(tex&&fieldMesh){fieldMesh.material.map=tex;fieldMesh.material.needsUpdate=true;}});
- wallMat=new THREE.MeshStandardMaterial({color:0x7a4b22,roughness:.6,metalness:.1});
+ wallMat=new THREE.MeshStandardMaterial({color:0xb89466,roughness:.6,metalness:.1});
  const body=new THREE.Mesh(new THREE.BoxGeometry(F.L+10,10,F.W+10),wallMat);
  body.position.y=-5.2;body.receiveShadow=true;primTable.add(body);
  const legG=new THREE.BoxGeometry(4,34,4);
@@ -438,13 +438,13 @@ function buildTable(){
  const ewG=new THREE.BoxGeometry(3,F.wallH+2,segW);
  [-1,1].forEach(sx=>{[-1,1].forEach(sz=>{const w=new THREE.Mesh(ewG,wallMat);
   w.position.set(sx*(F.L/2+1.5),(F.wallH+2)/2-1,sz*(F.goalHalf+segW/2));w.castShadow=true;primTable.add(w);});});
- ledMat=primLedMat=new THREE.MeshStandardMaterial({color:0x38e0ff,emissive:0x38e0ff,emissiveIntensity:1.1,roughness:.4});
+ ledMat=primLedMat=new THREE.MeshStandardMaterial({color:0x81f1ff,emissive:0x81f1ff,emissiveIntensity:1.1,roughness:.4});
  // --- goal cages: round posts, crossbar, back frame, diamond-mesh net, on the goal line x=±L/2 ---
  const netTex=makeNetTex();
  [-1,1].forEach((sx,i)=>{
   const g=new THREE.Group();g.position.set(sx*(F.L/2),0,0);   // group sits ON the goal line; net extends outward
   const GH=F.goalH,GHW=F.goalHalf,GD=F.goalDepth,PR=.6;
-  const frameM=new THREE.MeshStandardMaterial({color:0xf2f5ff,emissive:0xcdd8ff,emissiveIntensity:.25,roughness:.35,metalness:.65});
+  const frameM=new THREE.MeshStandardMaterial({color:0xf9fbff,emissive:0xe8edff,emissiveIntensity:.25,roughness:.35,metalness:.65});
   // front posts and crossbar get their own sub-group so a table GLB's 'goal_frame' can replace them (applyTable hides g.userData.front)
   const gf=new THREE.Group();g.add(gf);g.userData.front=gf;
   const postG=new THREE.CylinderGeometry(PR,PR,GH,16);         // front uprights, on the goal line
@@ -456,7 +456,7 @@ function buildTable(){
   vfxNetPatch(netM);   // the goal ripple + glow ride this material's shader (js/vfx.js)
   netMats.push(netM);
   g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
-  const gl=new THREE.PointLight(0xffffff,0,70);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
+  const gl=new THREE.PointLight(0xffffff,0,70*CONFIG.fx.lightReach,0);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
  tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh&&c!==pitchShadowCaster);  // procedural fallback (hidden when a skin GLB is shown)
 }
@@ -510,7 +510,7 @@ function buildGoalNet(g,bx,ghw,gh,mat){
 
 // stand-in backdrop for a room with no GLB (missing, or still downloading): a ground plane only
 function buildGround(){
- groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(900,900),new THREE.MeshStandardMaterial({color:0x0b0e16,roughness:1}));
+ groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(900,900),new THREE.MeshStandardMaterial({color:0x3b4253,roughness:1}));
  groundMesh.rotation.x=-Math.PI/2;groundMesh.position.y=-44;scene.add(groundMesh); // hidden when a room backdrop is shown (applyRoom)
 }
 
@@ -596,7 +596,7 @@ function makePlayer(team){
    else if(playerHairParts[team].has(name)){
     child.material=child.material.clone();
     const sw=CONFIG.playerModel.hairSwatches;
-    child.material.color.set(sw[Math.floor(Math.random()*sw.length)]).convertSRGBToLinear();
+    child.material.color.set(sw[Math.floor(Math.random()*sw.length)]);
    }
    child.castShadow=partCasts(child);   // sized by markShadowCasters, gated by the quality tier
   });
@@ -650,8 +650,8 @@ function dressRod(r,tid){
  // primitive fallback; bar reaches collar+cap each end, handle hides the near tip
  const collar=rodCollar(r.maxOff);
  const hl=CONFIG.rods.handleLen,cl=CONFIG.rods.collarLen,cap=CONFIG.rods.capOut;
- const rodM=new THREE.MeshStandardMaterial({color:0xc8cfdb,roughness:.25,metalness:.9});
- const bumpMat=new THREE.MeshStandardMaterial({color:0x14181f,roughness:.7,metalness:.2});
+ const rodM=new THREE.MeshStandardMaterial({color:0xe5e9ee,roughness:.25,metalness:.9});
+ const bumpMat=new THREE.MeshStandardMaterial({color:0x4f5662,roughness:.7,metalness:.2});
  const rodMesh=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,2*(collar+cl+cap),10),rodM);
  rodMesh.rotation.x=Math.PI/2;rodMesh.castShadow=true;r.pivot.add(rodMesh);r.rodBar=rodMesh;
  const hg=new THREE.Group();
@@ -763,15 +763,16 @@ function buildFxPools(){
 }
 
 // ===== fx light pool =====
-// r128 bakes the light count into every shader, so effects borrow from a fixed set of PointLights (intensity 0) instead of adding one; sized by CONFIG.fx.lightPool
+// the light count is baked into every shader, so effects borrow from a fixed set of PointLights (intensity 0) instead of adding one; sized by CONFIG.fx.lightPool
+// a glow has no distance falloff (decay 0), only the window to `dist` x fx.lightReach: inverse-square puts a hot spot under a light riding the ball
 function buildFxLightPool(){
  const n=(CONFIG.fx&&CONFIG.fx.lightPool)||0;
- for(let i=0;i<n;i++){const l=new THREE.PointLight(0xffffff,0,40);l.visible=true;l._fxFree=true;scene.add(l);fxLightPool.push(l);}
+ for(let i=0;i<n;i++){const l=new THREE.PointLight(0xffffff,0,40,0);l.visible=true;l._fxFree=true;scene.add(l);fxLightPool.push(l);}
 }
 // borrow a resident fx light (colour and falloff set, intensity 0 for the caller); null when exhausted
 function fxLightGet(color,dist){
  for(const l of fxLightPool){if(!l._fxFree)continue;
-  l._fxFree=false;l.color.set(color);l.distance=dist||40;l.intensity=0;return l;}
+  l._fxFree=false;l.color.set(color);l.distance=(dist||40)*CONFIG.fx.lightReach;l.intensity=0;return l;}
  return null;
 }
 // return a borrowed light (intensity 0, marked free); never scene.remove it, that changes the light count
@@ -779,7 +780,7 @@ function fxLightPut(l){if(!l)return;l.intensity=0;l._fxFree=true;}
 
 // --- authored room lights (rooms.<id>.lights) ---
 // the second pool, for the same reason; sized per type from every room's lights plus roomLightPool.pad spares only when the room editor is on
-// authored lights are plain three.js units, unlike a GLB's baked KHR_lights_punctual (candela transfer in models.js)
+// authored lights are three.js physical units (candela, falloff d^-decay windowed to dist), like a GLB's KHR_lights_punctual (transfer in models.js)
 const roomLightPool={point:[],spot:[],dir:[]};
 function rlpNeed(){
  const P=(CONFIG.render&&CONFIG.render.roomLightPool)||{};
@@ -880,7 +881,7 @@ function loadPitchTex(pid,cb){
   const pdef=CONFIG.pitches[pid];
   if(!pdef){if(cb)cb(null);return;}
   new THREE.TextureLoader().load('assets/'+pdef.tex,tex=>{
-   tex.encoding=THREE.sRGBEncoding;tex.anisotropy=4;fieldTexCache[pid]=tex;if(cb)cb(tex);
+   tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=4;fieldTexCache[pid]=tex;if(cb)cb(tex);
   },undefined,()=>{console.warn('pitch texture missing (assets/'+pdef.tex+')');if(cb)cb(null);});
 }
 // show the selected pitch (fetch its GLB if needed, evict the rest); same shape as applyRoom: show, load, show again
@@ -961,7 +962,7 @@ function applyRoom(onReady){
  applyRoomKeyLights(rm);
  // LED mood: room override over CONFIG.leds; a 'hold' idle seeds the strip colour, 'rainbow' is per-frame
  curLeds=Object.assign({},CONFIG.leds,rm.led||{});
- if(curLeds.idle!=='rainbow'&&ledMat){const c=(rm.led&&rm.led.color)||0x38e0ff;ledMat.color.set(c);if(ledMat.emissive)ledMat.emissive.set(c);}
+ if(curLeds.idle!=='rainbow'&&ledMat){const c=(rm.led&&rm.led.color)||0x81f1ff;ledMat.color.set(c);if(ledMat.emissive)ledMat.emissive.set(c);}
  // is a backdrop GLB worth waiting for? roomHasGlb is false for no glb and for a 404'd file
  const wantGlb=(typeof roomHasGlb==='function')?roomHasGlb(id):!!rm.glb;
  // show the active backdrop, hide the rest; the shared ground stands in when it isn't on screen; async paths check live() so a stale room can't re-show props
@@ -1003,7 +1004,7 @@ function applyRoom(onReady){
  }
 }
 // kit colour for a material: r128 reads a hex as linear but the renderer outputs sRGB, so a raw swatch looks lighter and greyer; HUD and CSS take the hex as-is
-function kitLin(hex){return new THREE.Color(hex).convertSRGBToLinear();}
+function kitLin(hex){return new THREE.Color(hex);}
 function applyColors(){
  const K=[kitLin(cfg.redColor),kitLin(cfg.blueColor)];
  for(let t=0;t<2;t++){

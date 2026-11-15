@@ -172,12 +172,11 @@ function iceMaterial(U,back,chip=false){
    envMapIntensity:IC.env,side:back?THREE.BackSide:THREE.FrontSide});
   x.onBeforeCompile=sh=>{
    Object.assign(sh.uniforms,U,{uIceMask:ICE.tex});
-   sh.vertexShader=sh.vertexShader
-    .replace('#include <common>','#include <common>\nattribute float iceHeight;\nvarying vec3 vIcePos, vIceNormal;\nvarying float vIceHeight;')
-    .replace('#include <begin_vertex>','#include <begin_vertex>\nvIcePos=position;vIceNormal=normal;vIceHeight=iceHeight;');
-   sh.fragmentShader=sh.fragmentShader
-    .replace('#include <common>','#include <common>\nuniform vec3 uIceRim;uniform float uIceK;\n'+ICE_MASK+(back||chip?'':ICE_CLOUD))
-    .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',`
+   let v=sh.vertexShader,f=sh.fragmentShader;
+   v=shRep(v,'#include <common>','#include <common>\nattribute float iceHeight;\nvarying vec3 vIcePos, vIceNormal;\nvarying float vIceHeight;','ice common');
+   sh.vertexShader=shRep(v,'#include <begin_vertex>','#include <begin_vertex>\nvIcePos=position;vIceNormal=normal;vIceHeight=iceHeight;','ice begin_vertex');
+   f=shRep(f,'#include <common>','#include <common>\nuniform vec3 uIceRim;uniform float uIceK;\n'+ICE_MASK+(back||chip?'':ICE_CLOUD),'ice common');
+   sh.fragmentShader=shRep(f,'#include <opaque_fragment>',`
      vec3 icePoint=vIcePos*${chip?'0.83':'0.092'};
      vec3 iceNormal=normalize(vIceNormal);
      float iceCrack=smoothstep(0.012,0.30,iceFracture(icePoint,iceNormal));
@@ -194,7 +193,7 @@ function iceMaterial(U,back,chip=false){
      float iceDensity=${back?'0.20+0.44*iceFresnel+0.46*iceCrack+0.46*iceFrost':chip?'0.36+0.51*iceRim+0.38*iceCrack+iceGlare':'0.25+0.35*iceCloud+0.56*iceRim+0.19*iceBevel+0.49*iceCrack+0.38*iceFrost+iceGlare'};
      float iceScatter=clamp(${back||chip?'0.0':'0.29+0.32*iceCloud'}+0.68*iceRim+0.31*iceBevel+0.85*iceCrack+0.72*iceFrost,0.0,1.0);
      vec3 iceColor=mix(outgoingLight*0.56,uIceRim,iceScatter);
-     gl_FragColor=vec4(iceColor+iceReflection*0.5,diffuseColor.a*clamp(iceDensity,0.0,1.0));`);
+     gl_FragColor=vec4(iceColor+iceReflection*0.5,diffuseColor.a*clamp(iceDensity,0.0,1.0));`,'ice opaque_fragment');
   };
   x.customProgramCacheKey=()=>back?'ice-back':chip?'ice-chip':'ice-front';
   return x;

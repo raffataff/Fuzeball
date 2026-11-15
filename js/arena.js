@@ -186,9 +186,9 @@ function buildArenaTable(){
  arenaTable=new THREE.Group();scene.add(arenaTable);tableGroups.arena=arenaTable;
  // the arena owns its materials (not wallMat) so tools/build_arena_table.py's GLB can replace the look
  arenaMats={
-  crease:new THREE.MeshStandardMaterial({color:0x1c2236,roughness:.55,metalness:.35,side:THREE.DoubleSide}),
-  wall:new THREE.MeshStandardMaterial({color:0x2b3350,roughness:.4,metalness:.5,side:THREE.DoubleSide}),
-  body:new THREE.MeshStandardMaterial({color:0x141a2c,roughness:.5,metalness:.4})
+  crease:new THREE.MeshStandardMaterial({color:0x5d667f,roughness:.55,metalness:.35,side:THREE.DoubleSide}),
+  wall:new THREE.MeshStandardMaterial({color:0x727c98,roughness:.4,metalness:.5,side:THREE.DoubleSide}),
+  body:new THREE.MeshStandardMaterial({color:0x4f5a73,roughness:.5,metalness:.4})
  };
  const bowl=new THREE.Mesh(arenaGridGeo(ARENA.seg.loop,ARENA.seg.profile),[arenaMats.crease,arenaMats.wall]);
  bowl.receiveShadow=true;bowl.castShadow=true;arenaTable.add(bowl);

@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('fs'),assert=require('assert'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(_url,done){const t=new THREE.Texture();queueMicrotask(()=>done(t));return t;};
 (async()=>{for(const n of [1,2,3,5]){
  const file=`assets/rods/synaptic_relic/fuzeball_rod_${n}man.glb`,b=fs.readFileSync(file),len=b.readUInt32LE(12),j=JSON.parse(b.subarray(20,20+len).toString().trim()),bin=20+len+8;

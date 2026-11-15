@@ -2,7 +2,7 @@
 // Run from the project root: node tools/solar-forge-harness.js
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert'),sharp=require('sharp');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 // The r128 loader needs a browser to upload images. Decode the embedded images
 // independently below, while retaining real geometry/material parsing here.
 THREE.TextureLoader.prototype.load=function(_url,onLoad){const t=new THREE.Texture();queueMicrotask(()=>onLoad(t));return t;};
@@ -101,10 +101,10 @@ vm.createContext(c);vm.runInContext(['onm','skinKey','touchSkin','rodHoleShader'
   hit(12.81,11);
   hit(15.48,11);
  }
- let pitch;
- c.pitchGroups.solar_forge.traverse(o=>{if(o.isMesh)pitch=o.material;});
+ let pitch,pitchM;
+ c.pitchGroups.solar_forge.traverse(o=>{if(o.isMesh){pitch=o.material;pitchM=o;}});
  assert(pitch?.map&&pitch.normalMap&&pitch.roughnessMap&&pitch.emissiveMap&&pitch.aoMap,'pitch PBR maps loaded');
- assert(pitch.vertexTangents,'pitch normal map uses the authored tangent basis');
+ assert(pitchM.geometry.attributes.tangent,'pitch normal map uses the authored tangent basis');
  assert(pitch.isMeshPhysicalMaterial&&Math.abs(pitch.ior-P.ior)<1e-6,'pitch uses the lower-reflectance rock finish');
  assert.equal(pj.materials[0].extensions.KHR_materials_ior.ior,P.ior);
  assert.equal(pitch.emissiveIntensity,1.75,'pitch emission uses the authored strength');

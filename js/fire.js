@@ -136,11 +136,11 @@ void main(){
  gl_FragDepthEXT=((vPz.x*zv+vPz.y)/(-zv))*0.5+0.5;
  gl_FragColor=vec4(acc,1.0-tr);
  #include <tonemapping_fragment>
- #include <encodings_fragment>
+ #include <colorspace_fragment>
 }`;
 
 // --- build ---
-function fiLin(h){_fiC.set(h).convertSRGBToLinear();return new THREE.Vector3(_fiC.r,_fiC.g,_fiC.b);}
+function fiLin(h){_fiC.set(h);return new THREE.Vector3(_fiC.r,_fiC.g,_fiC.b);}
 function fireNoiseTex(){
  const N=256,R=new Uint8Array(N*N),d=new Uint8Array(N*N*4);
  let s=0x2f6b1d;for(let i=0;i<R.length;i++){s=(Math.imul(s,1103515245)+12345)>>>0;R[i]=s>>>24;}
@@ -176,12 +176,13 @@ function fireCoreMat(){
  m.userData.fireCore=true;   // ballHeatSet leaves it alone: the heat reaches it as uHeat
  m.onBeforeCompile=sh=>{
   Object.assign(sh.uniforms,FIRE.cu);
-  sh.vertexShader='varying vec3 vFiP;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vFiP=position;');
-  sh.fragmentShader='varying vec3 vFiP;\nuniform float uT;uniform float uHeat;uniform vec3 uCrust;uniform vec4 uCo;uniform vec4 uCr;uniform float uCb;\n'+FIRE_GLSL+FIRE_CORE_PARS+sh.fragmentShader
-   .replace('#include <map_fragment>',FIRE_CORE_MAP)
-   .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\n roughnessFactor=mix(roughnessFactor,0.3,fiS);')
-   .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\n'+FIRE_CORE_BUMP)
-   .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+FIRE_CORE_EM);
+  sh.vertexShader='varying vec3 vFiP;\n'+shRep(sh.vertexShader,'#include <begin_vertex>','#include <begin_vertex>\n vFiP=position;','fire core begin_vertex');
+  let f=sh.fragmentShader;
+  f=shRep(f,'#include <map_fragment>',FIRE_CORE_MAP,'fire core map_fragment');
+  f=shRep(f,'#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\n roughnessFactor=mix(roughnessFactor,0.3,fiS);','fire core roughnessmap_fragment');
+  f=shRep(f,'#include <normal_fragment_maps>','#include <normal_fragment_maps>\n'+FIRE_CORE_BUMP,'fire core normal_fragment_maps');
+  f=shRep(f,'#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+FIRE_CORE_EM,'fire core emissivemap_fragment');
+  sh.fragmentShader='varying vec3 vFiP;\nuniform float uT;uniform float uHeat;uniform vec3 uCrust;uniform vec4 uCo;uniform vec4 uCr;uniform float uCb;\n'+FIRE_GLSL+FIRE_CORE_PARS+f;
  };
  m.customProgramCacheKey=()=>'fireCore';
  FIRE.core=m;return m;

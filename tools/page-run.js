@@ -4,7 +4,7 @@
 // serves the repo, opens it in headless Chrome or Edge (CHROME=path to pick one), skips the intro, stops the game's own rAF loop (the soaks step the sim by hand), evals the script and then the expression, prints its JSON
 // the expression may return a promise; nothing else runs in the page, so a soak is deterministic per seed
 //      --size=1920x1080 sets the page's viewport (default 1280x800); the page may POST a file to /__save/<path>, written under tools/build/
-//      a page console line starting [run] is echoed to stderr (progress for long renders)
+//      a page console line starting [run] is echoed to stderr (progress for long renders); --log also echoes every warning, error and uncaught exception
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),os=require('os'),{spawn}=require('child_process');
 const ROOT=path.resolve(__dirname,'..'),SAVE=path.join(ROOT,'tools','build');
@@ -46,7 +46,9 @@ const srv=http.createServer((q,r)=>{
  const ws=new WebSocket(t.webSocketDebuggerUrl),pend={};let id=0;
  await new Promise((res,rej)=>{ws.onopen=res;ws.onerror=rej;});
  ws.onmessage=m=>{const d=JSON.parse(m.data);if(d.id&&pend[d.id]){d.error?pend[d.id].rej(new Error(d.error.message)):pend[d.id].res(d.result);delete pend[d.id];}
-  else if(d.method==='Runtime.consoleAPICalled'){const a=d.params.args[0];if(a&&typeof a.value==='string'&&a.value.startsWith('[run]'))console.error(a.value.slice(6));}};
+  else if(d.method==='Runtime.consoleAPICalled'){const a=d.params.args[0];if(a&&typeof a.value==='string'&&a.value.startsWith('[run]'))console.error(a.value.slice(6));
+   else if(flags.log&&(d.params.type==='warning'||d.params.type==='error'))console.error('['+d.params.type+'] '+d.params.args.map(x=>x.value!==undefined?x.value:(x.description||x.type)).join(' ').slice(0,400));}
+  else if(flags.log&&d.method==='Runtime.exceptionThrown'){const x=d.params.exceptionDetails;console.error('[exception] '+((x.exception&&x.exception.description)||x.text).slice(0,600));}};
  const send=(m,p)=>new Promise((res,rej)=>{const i=++id;pend[i]={res,rej};ws.send(JSON.stringify({id:i,method:m,params:p||{}}));});
  const ev=async js=>{const r=await send('Runtime.evaluate',{expression:'(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));'+js+'})()',awaitPromise:true,returnByValue:true});
   if(r.exceptionDetails)throw new Error((r.exceptionDetails.exception&&r.exceptionDetails.exception.description)||r.exceptionDetails.text);return r.result.value;};

@@ -122,6 +122,17 @@ function reSlider(lab,val,min,max,step,cb){
  i.addEventListener('input',()=>{const n=parseFloat(i.value);v.textContent=n.toFixed(2);cb(n);});
  r.appendChild(i);r.appendChild(v);return r;
 }
+// a slider on a log scale (light intensities span 0.01 to 1e5 candela); the far left is 0
+function reSliderLog(lab,val,min,max,cb){
+ const r=reEl('div','reRow');r.appendChild(reEl('label',null,lab));
+ const lo=Math.log(min),hi=Math.log(max),N=1000;
+ const toV=t=>t<=0?0:Math.exp(lo+(hi-lo)*t/N),toT=v=>v<=0?0:clamp(Math.round((Math.log(v)-lo)/(hi-lo)*N),1,N);
+ const fmt=v=>v>=100?v.toFixed(0):(+v.toPrecision(3)).toString();
+ const i=document.createElement('input');i.type='range';i.min=0;i.max=N;i.step=1;i.value=toT(+val);
+ const v=reEl('span','reVal',fmt(+val));
+ i.addEventListener('input',()=>{const n=+(+toV(+i.value)).toPrecision(3);v.textContent=fmt(n);cb(n);});
+ r.appendChild(i);r.appendChild(v);return r;
+}
 function reHex(n){return '0x'+('000000'+((n|0)>>>0).toString(16)).slice(-6);}
 function reCssHex(n){return '#'+('000000'+((n|0)>>>0).toString(16)).slice(-6);}
 function reColor(lab,val,cb){
@@ -303,8 +314,8 @@ function reditDetach(l){
 }
 function reditAddLight(type){
  const p=reditAimPoint(),list=reditLights();
- const L={type:type,pos:[+p.x.toFixed(2),80,+p.z.toFixed(2)],color:0xffffff,int:2};
- if(type!=='dir'){L.dist=260;L.decay=2;}
+ const L={type:type,pos:[+p.x.toFixed(2),80,+p.z.toFixed(2)],color:0xffffff,int:type==='dir'?2:19000};
+ if(type!=='dir'){L.dist=0;L.decay=2;}
  if(type==='spot'){L.angle=0.6;L.penumbra=0.4;}
  if(type!=='point')L.look=[+p.x.toFixed(2),0,+p.z.toFixed(2)];
  list.push(L);RE.sel={kind:'light',i:list.length-1,part:'pos'};
@@ -328,8 +339,8 @@ function reditTabWorld(w){
   v=>{rm.light.reach=v;relight();}));
  const box=reEl('div','reList');box.id='reLightRead';w.appendChild(box);
  w.appendChild(reEl('h4',null,'ambient + key'));
- if(!rm.hemi)rm.hemi={sky:0xffffff,ground:0x101010,int:0.8};
- if(!rm.dir)rm.dir={color:0xffffff,int:0.8,pos:[45,100,35]};
+ if(!rm.hemi)rm.hemi={sky:0xffffff,ground:0x101010,int:2.5};
+ if(!rm.dir)rm.dir={color:0xffffff,int:2.5,pos:[45,100,35]};
  // a real off: these three leave the scene's light count (see applyRoomKeyLights)
  const keys=()=>{if(typeof applyRoomKeyLights==='function')applyRoomKeyLights(rm);reditBackup();};
  w.appendChild(reChk('hemi on',rm.hemi.on!==false,v=>{rm.hemi.on=v;keys();},
@@ -341,13 +352,13 @@ function reditTabWorld(w){
  w.appendChild(reChk('image-based light',rm.ibl!==false,v=>{rm.ibl=v;
   if(typeof setRoomEnv==='function')setRoomEnv(id,rm);keys();},
   'Off = no scene.environment: no reflections and metals go dark'));
- w.appendChild(reSlider('hemi',rm.hemi.int,0,2,0.01,
+ w.appendChild(reSlider('hemi',rm.hemi.int,0,6,0.01,
   v=>{rm.hemi.int=v;if(typeof hemiLight!=='undefined'&&hemiLight)hemiLight.intensity=v;reditBackup();}));
  w.appendChild(reColor('sky',rm.hemi.sky,v=>{rm.hemi.sky=v;
   if(typeof hemiLight!=='undefined'&&hemiLight)hemiLight.color.set(v);reditBackup();}));
  w.appendChild(reColor('ground',rm.hemi.ground,v=>{rm.hemi.ground=v;
   if(typeof hemiLight!=='undefined'&&hemiLight)hemiLight.groundColor.set(v);reditBackup();}));
- w.appendChild(reSlider('dir',rm.dir.int,0,2,0.01,
+ w.appendChild(reSlider('dir',rm.dir.int,0,10,0.01,
   v=>{rm.dir.int=v;if(typeof dirLight!=='undefined'&&dirLight)dirLight.intensity=v;reditBackup();}));
  w.appendChild(reColor('dir col',rm.dir.color,v=>{rm.dir.color=v;
   if(typeof dirLight!=='undefined'&&dirLight)dirLight.color.set(v);reditBackup();}));
@@ -417,7 +428,7 @@ function reditSelLight(w){
  w.appendChild(reNum('y',p[1],1,v=>{p[1]=v;set();}));
  w.appendChild(reNum('z',p[2],1,v=>{p[2]=v;set();}));
  w.appendChild(reColor('colour',L.color===undefined?0xffffff:L.color,v=>{L.color=v;set();}));
- w.appendChild(reSlider('int',L.int===undefined?1:L.int,0,12,0.05,v=>{L.int=v;set();}));
+ w.appendChild(reSliderLog('int',L.int===undefined?1:L.int,0.01,1e5,v=>{L.int=v;set();}));
  if(t!=='dir'){
   w.appendChild(reSlider('dist',L.dist===undefined?0:L.dist,0,900,5,v=>{L.dist=v;set();}));
   w.appendChild(reSlider('decay',L.decay===undefined?2:L.decay,0,3,0.1,v=>{L.decay=v;set();}));

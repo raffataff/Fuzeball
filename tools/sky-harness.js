@@ -25,12 +25,13 @@ function lineAt(src,needle){
 
 /* ---- THREE stubs --------------------------------------------------------- */
 function mkTHREE(st){
- class CubeTexture{constructor(img){this.image=img;this.isCubeTexture=true;st.cubes++;}
+ class CubeTexture{constructor(img){this.image=img;this.isCubeTexture=true;this.userData={};st.cubes++;}
   dispose(){st.freed.push(this.__id);}}
+ class CompressedCubeTexture extends CubeTexture{constructor(img,f,t){super(img);this.isCompressedTexture=true;}}
  class Color{constructor(c){this.c=c;this.isColor=true;}}
  class CubeTextureLoader{load(urls,ok,_p,err){st.jpgLoads+=urls.length;const t=new CubeTexture(urls);
   st.pend.push(()=>ok(t));}}
- return{CubeTexture,Color,CubeTextureLoader,sRGBEncoding:3001,LinearFilter:1006};
+ return{CubeTexture,CompressedCubeTexture,Color,CubeTextureLoader,SRGBColorSpace:'srgb',LinearFilter:1006};
 }
 
 /* ---- models.js skies, rebuilt from source -------------------------------- */
@@ -50,7 +51,7 @@ function buildSky(src,over){
  // A KTX2 face as r137's loader hands it over: a CompressedTexture with its own format/encoding.
  const k2={load(u,ok,_p,err){st.loads.push(u);
   st.pend.push(()=>{if(st.missing.has(u))err(new Error('404 '+u));
-   else ok({isCompressedTexture:true,format:36492,type:1009,encoding:3001,minFilter:1008,mipmaps:[1,2,3],url:u});});}};
+   else ok({isCompressedTexture:true,format:36492,type:1009,colorSpace:'srgb',minFilter:1008,image:{width:64,height:64},mipmaps:[1,2,3],url:u});});}};
  const f=new Function('CONFIG','THREE','scene','ktx2Loader','console',
   body+'\nreturn{ensureSky,disposeSky,pruneSkies,roomHasSky,cache:skyCache,order:skyOrder,failed:skyFailed};');
  const api=f(CONFIG,THREE,scene,()=>k2,{log(){},warn(){}});
@@ -77,9 +78,10 @@ function skySuite(src){
   t(calls===0&&w.st.cubes===0,'nothing built or reported until the SIXTH face',calls+'/'+w.st.cubes);
   w.flush();
   t(calls===1&&tex&&tex.isCubeTexture,'one callback with a CubeTexture',calls);
-  t(tex&&tex.format===36492&&tex.encoding===3001,'cube carries the faces\' compressed format and sRGB encoding',tex&&tex.format);
+  t(tex&&tex.userData.toneMapped===true,'the sky is tone-mapped like the scene (bundle patch)');
+  t(tex&&tex.isCompressedTexture&&tex.image[5].width===64&&tex.image[5].mipmaps.length===3&&tex.format===36492&&tex.colorSpace==='srgb','cube carries the faces\' compressed format and sRGB colour space',tex&&tex.format);
   t(tex&&tex.generateMipmaps===false,'no runtime mip generation on a compressed cube',tex&&tex.generateMipmaps);
-  t(tex&&tex.image.length===6&&tex.image.every(f=>f.isCompressedTexture),'images are the six CompressedTextures');
+  t(tex&&tex.image.length===6&&tex.image.every(f=>f.width===64&&f.mipmaps&&f.format===36492),'images are six face records (size, mipmaps, format)');
   let again=null;w.api.ensureSky('a',x=>{again=x;});
   t(again===tex&&w.st.loads.length===6,'resident: served from cache, no refetch',w.st.loads.length);
  }
@@ -106,7 +108,7 @@ function skySuite(src){
   w.api.ensureSky('none',x=>{got=x;});
   t(got===null&&w.st.loads.length===0,'a room without a sky answers null at once');
   const j=w.load('jpg');
-  t(j&&w.st.jpgLoads===6&&j.encoding===3001,'ext:jpg uses CubeTextureLoader, sRGB');
+  t(j&&w.st.jpgLoads===6&&j.colorSpace==='srgb','ext:jpg uses CubeTextureLoader, sRGB');
  }
  /* 5. LRU: keeps cacheSkies-1 others, never frees the one on screen */
  {
@@ -237,7 +239,10 @@ function mutate(src,from,to){if(!src.includes(from))throw new Error('MUTATION AN
  const out=src.replace(from,to);if(out===src)throw new Error('no-op mutation: '+from);return out;}
 const MUT=[
  ['builds the cube before all six faces','models',"if(++n<6||skyFailed[id])return;","if(++n<1||skyFailed[id])return;"],
+ ['sky left untone-mapped','models',"t.userData.toneMapped=true;",""],
  ['cube without the faces\' format','models',"t.format=faces[0].format;",""],
+ ['cube of compressed faces built plain','models',"const t=faces[0].isCompressedTexture","const t=false"],
+ ['compressed cube handed the face textures','models',"faces.map(f=>({width:f.image.width,height:f.image.height,mipmaps:f.mipmaps,format:f.format,type:f.type}))","faces"],
  ['concurrent callers each load','models',"if(skyLoading[id]){if(cb)skyLoading[id].push(cb);touchSky(id);return;}",""],
  ['no failure latch','models',"if(skyFailed[id])return;skyFailed[id]=true;","if(skyFailed[id])return;"],
  ['frees the sky on screen','models',"if(typeof scene!=='undefined'&&scene&&scene.background===t)return;",""],

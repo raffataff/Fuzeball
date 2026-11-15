@@ -1,7 +1,7 @@
 'use strict';
 // Verify all registered arena skins through the real bowl morph code.
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-global.THREE=require('../vendor/three.min.js');global.self=global;require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 THREE.TextureLoader.prototype.load=function(_u,ok){const t=new THREE.Texture();queueMicrotask(()=>ok(t));return t;};
 const src=fs.readFileSync('js/arena.js','utf8');
 function extract(n){let a=src.indexOf('function '+n+'('),s=src.indexOf('{',a),d=1,i=s+1;assert(a>=0);while(d){if(src[i]==='{')d++;if(src[i]==='}')d--;i++;}return src.slice(a,i);}

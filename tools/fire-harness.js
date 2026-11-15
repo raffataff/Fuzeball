@@ -1,13 +1,13 @@
 // fire harness. node tools/fire-harness.js
-// js/fire.js on live CONFIG with the real three.min.js: the flame trails a moving ball and rises off a still one (never down into the pitch), swings round smoothly, grows with speed up to its cap;
+// js/fire.js on live CONFIG with the real three bundle: the flame trails a moving ball and rises off a still one (never down into the pitch), swings round smoothly, grows with speed up to its cap;
 // a hard speed change flares it (never a fresh ball's first frames); only burning types are drawn and lose the sprite trail; the clock runs on sim seconds, holds in a pause and in a photo freeze;
-// a pause keeps the last frame, an empty frame hides it; the noise texture is the periodic one the shaders assume; the core splices into r128's own physical shader and the heat system leaves it alone;
+// a pause keeps the last frame, an empty frame hides it; the noise texture is the periodic one the shaders assume; the core splices into three's own physical shader and the heat system leaves it alone;
 // embers follow speed and the particles switch; the light rides above the ball; then mutations that must each break it
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.resolve(__dirname,'..');
 const rd=p=>fs.readFileSync(path.join(ROOT,p),'utf8').replace(/\r\n/g,'\n');
-const THREE_SRC=fs.readFileSync(path.join(ROOT,'vendor/three.min.js'),'utf8');
+const THREE_SRC=fs.readFileSync(path.join(ROOT,'vendor/three.bundle.js'),'utf8');
 function fnAt(src,name){
  const s=src.indexOf('function '+name+'(');if(s<0)throw new Error('ANCHOR LOST: function '+name);
  for(let d=0,j=src.indexOf('{',s);j<src.length;j++){const c=src[j];if(c==='{')d++;else if(c==='}'&&--d===0)return src.slice(s,j+1);}
@@ -221,7 +221,7 @@ const MUT=[
  ['d=(S.photo&&S.photo.freeze&&S.photo.freezeFx)?0:Math.max(0,dt||0);','d=Math.max(0,dt||0);','a photo freeze runs the clock'],
  ['if(v){\n  const dv=_fiW.subVectors(v,s.v).length();\n  s.v.copy(v);','if(true){\n  const dv=_fiW.subVectors(v||_fiW.set(0,0,0),s.v).length();\n  s.v.copy(v||_fiW);','a ghost with no footage step stops'],
  ['ballMatMap[k]=m;','','makeBallModel still finds the old material'],
- ['.replace(\'#include <emissivemap_fragment>\',\'#include <emissivemap_fragment>\\n\'+FIRE_CORE_EM)','','the core never glows'],
+ ['f=shRep(f,\'#include <emissivemap_fragment>\',\'#include <emissivemap_fragment>\\n\'+FIRE_CORE_EM,\'fire core emissivemap_fragment\');','','the core never glows'],
  ['extensions:{fragDepth:true}','extensions:{}','the flame cannot write depth'],
  ['c[i4]=F.power*s.ign*(1+G.pow*s.fl);','c[i4]=F.power*(1+G.pow*s.fl);','a new ball is already alight'],
 ];

@@ -2,8 +2,7 @@
 // Run from the project root: node tools/biggoal-harness.js
 'use strict';
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-global.THREE=require('../vendor/three.min.js');global.self=global;
-require('../vendor/GLTFLoader.js');
+global.self=global.window=global;require('../vendor/three.bundle.js');
 // Geometry and material wiring are under test; decoding images needs a DOM.
 THREE.TextureLoader.prototype.load=function(_url,onLoad){
  const t=new THREE.Texture();queueMicrotask(()=>onLoad(t));return t;

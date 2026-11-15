@@ -195,7 +195,7 @@ function rodHoleShader(m,y0,y1){
   if(v===sh.vertexShader){console.warn('rod hole shader: begin_vertex anchor missing - ring left plain');return;}
   sh.vertexShader='varying float vRhY;\n'+v;
   let anchor=null;
-  for(const a of ['#include <tonemapping_fragment>','#include <encodings_fragment>','#include <dithering_fragment>'])
+  for(const a of ['#include <tonemapping_fragment>','#include <colorspace_fragment>','#include <dithering_fragment>'])
    if(sh.fragmentShader.indexOf(a)>=0){anchor=a;break;}
   if(!anchor){console.warn('rod hole shader: no fragment anchor - ring left plain');return;}
   sh.fragmentShader='varying float vRhY;\nuniform float rhFill,rhY0,rhY1,rhSoft;\nuniform vec3 rhGlow;\n'+
@@ -236,11 +236,10 @@ function registerRodHoles(root,id,skinId){
 // a room GLB is authored in game coords (floor ~y=-44, walls ±190), keyed by CONFIG.rooms id; applyRoom (world.js) toggles which is shown
 // load one room's backdrop GLB into roomGroups[id]; lazy and idempotent, cb runs on success, failure and no-ops
 // ===== GLB light + emissive transfer =====
-// emissive: r128 ignores KHR_materials_emissive_strength, so read it from userData.gltfExtensions into emissiveIntensity (needs tone mapping)
-// punctual lights: glTF carries candela under inverse-square, r128 falls off linearly to `distance`
-//    base = candela / d0^2 keeps near and far fixtures' relative contribution; distance = d0 * reach makes the falloff at the table constant, so `gain` is predictable
+// emissive: KHR_materials_emissive_strength left in userData.gltfExtensions goes into emissiveIntensity (three's loader applies it itself since r139, leaving none)
+// punctual lights: glTF carries candela under inverse-square, as three does: intensity = candela x the room's `gain`
+//    distance = d0 * reach is a soft cutoff (0 = none); d0 = the fixture's distance from the table, floored at minDist
 //    the ceiling (max) scales the whole room, not each light; max:0 = off
-// physicallyCorrectLights stays off (it would rewrite the hand-tuned goal and fx lights)
 function applyEmissiveStrength(root){
  if(!root||CONFIG.render&&CONFIG.render.emissiveStrength===false)return;
  const seen=new Set();
@@ -266,35 +265,26 @@ function applyRoomLights(room,R){
  const lights=[];const p=new THREE.Vector3();
  room.traverse(c=>{if(c.isLight)lights.push(c);});
  if(!lights.length)return lights;
- // fixtures the room switches off by name (e.g. detached into an authored light); intensity 0 rather than visible=false, which would change the light count
+ // fixtures the room switches off by name: intensity 0, not visible=false (that changes the light count)
  const off=new Set(((R&&R.lightsOff)||[]).map(s=>String(s).toLowerCase()));
  lights.forEach(l=>{
-  // authored candela is stashed on the first pass only, so the transfer is idempotent (the editor's sliders call it repeatedly)
-  if(l.userData.rlCandela===undefined){
-   l.userData.rlCandela=l.intensity;
-   l.userData.rlDist=l.distance;
-  }
+  // authored candela stashed once, so the transfer is idempotent (the editor's sliders call it repeatedly)
+  if(l.userData.rlCandela===undefined){l.userData.rlCandela=l.intensity;l.userData.rlDist=l.distance;}
   const cd=l.userData.rlCandela;
-  l.castShadow=false;                                  // no room light casts shadows yet — see CLAUDE.md
+  l.castShadow=false;                                  // no room light casts shadows yet
   l.userData.roomOff=off.has(String(l.name||'').toLowerCase());
   l.getWorldPosition(p);
-  // d0: how far this fixture is from the play area. The table sits at the origin.
-  const d0=Math.max(p.length(),C.minDist);
-  if(l.isPointLight||l.isSpotLight){
-   l.intensity=cd/(d0*d0)*C.gain;                      // inverse-square relationship, then the room's knob
-   l.decay=C.decay;
-   l.distance=C.reach>0?d0*C.reach:0;                  // 0 = no cutoff (flat)
-  }else{
-   l.intensity=cd*C.gain;                              // directional/ambient inside a room glb: no falloff to derive
-  }
+  const d0=Math.max(p.length(),C.minDist);             // the table sits at the origin
+  l.intensity=cd*C.gain;
+  if(l.isPointLight||l.isSpotLight){l.decay=C.decay;l.distance=C.reach>0?d0*C.reach:0;}
  });
- // ratio-preserving ceiling: scales the whole room by one factor so the key:fill ratio survives
+ // ratio-preserving ceiling: one factor for the whole room so the key:fill ratio survives
  if(C.max>0){
   let mx=0;lights.forEach(l=>{if(l.intensity>mx)mx=l.intensity;});
   if(mx>C.max){const k=C.max/mx;lights.forEach(l=>l.intensity*=k);
    console.log('room lights normalised x'+k.toFixed(3)+' (peak '+mx.toFixed(2)+' > max '+C.max+')');}
  }
- // applied last so a silenced fixture can't drag the ceiling down onto the lit ones
+ // last, so a silenced fixture can't drag the ceiling down onto the lit ones
  lights.forEach(l=>{if(l.userData.roomOff){l.userData.roomOffInt=l.intensity;l.intensity=0;}});
  return lights;
 }
@@ -366,9 +356,10 @@ function ensureSky(id,cb){
   console.warn('sky missing for '+id+' ('+S.src+'_*.'+ext+'), using the flat bg colour',e||'');
   flush(null);
  };
- const done=t=>{if(skyFailed[id]){if(t)t.dispose();return;}skyCache[id]=t;console.log('sky "'+id+'" loaded');flush(t);};
+ // toneMapped: three skips tone mapping on an sRGB background since r152; the r128 sky had it (honoured by the patch in tools/build-three.mjs)
+ const done=t=>{if(skyFailed[id]){if(t)t.dispose();return;}skyCache[id]=t;t.userData.toneMapped=true;console.log('sky "'+id+'" loaded');flush(t);};
  if(ext!=='ktx2'){
-  new THREE.CubeTextureLoader().load(urls,t=>{t.encoding=THREE.sRGBEncoding;done(t);},undefined,fail);
+  new THREE.CubeTextureLoader().load(urls,t=>{t.colorSpace=THREE.SRGBColorSpace;done(t);},undefined,fail);
   return;
  }
  const k=(typeof ktx2Loader==='function')?ktx2Loader():null;
@@ -376,8 +367,10 @@ function ensureSky(id,cb){
  const faces=[];let n=0;
  urls.forEach((u,i)=>k.load(u,f=>{
   faces[i]=f;if(++n<6||skyFailed[id])return;
-  const t=new THREE.CubeTexture(faces);
-  t.format=faces[0].format;t.type=faces[0].type;t.encoding=faces[0].encoding;
+  const t=faces[0].isCompressedTexture   // the upload reads width/height/mipmaps off each face record, as KTX2Loader builds its own cubes
+   ?new THREE.CompressedCubeTexture(faces.map(f=>({width:f.image.width,height:f.image.height,mipmaps:f.mipmaps,format:f.format,type:f.type})),faces[0].format,faces[0].type)
+   :new THREE.CubeTexture(faces);
+  t.format=faces[0].format;t.type=faces[0].type;t.colorSpace=faces[0].colorSpace;
   t.generateMipmaps=false;t.minFilter=faces[0].minFilter;t.magFilter=THREE.LinearFilter;
   t.needsUpdate=true;done(t);
  },undefined,fail));
@@ -485,9 +478,9 @@ function rodGrainMean(t){
 function rodGrainCompile(sh,m){
  const G=CONFIG.rods.grain,u=m.userData.grain;
  sh.uniforms.uGrain={value:new THREE.Vector3(u.mean,G.contrast,G.wood)};
- sh.fragmentShader='uniform vec3 uGrain;\n'+sh.fragmentShader.replace('#include <map_fragment>',
-  '#ifdef USE_MAP\n vec4 texelColor=mapTexelToLinear(texture2D(map,vUv));\n vec3 gw=texelColor.rgb/uGrain.x;\n'+
-  ' vec3 gc=mix(vec3(1.0),vec3(dot(gw,vec3(.2126,.7152,.0722))),uGrain.y);\n diffuseColor.rgb*=mix(gc,gw,uGrain.z);diffuseColor.a*=texelColor.a;\n#endif');
+ sh.fragmentShader='uniform vec3 uGrain;\n'+shRep(sh.fragmentShader,'#include <map_fragment>',
+  '#ifdef USE_MAP\n vec4 texelColor=texture2D(map,vMapUv);\n vec3 gw=texelColor.rgb/uGrain.x;\n'+
+  ' vec3 gc=mix(vec3(1.0),vec3(dot(gw,vec3(.2126,.7152,.0722))),uGrain.y);\n diffuseColor.rgb*=mix(gc,gw,uGrain.z);diffuseColor.a*=texelColor.a;\n#endif','rod grain map_fragment');
 }
 function rodGrainSet(m){
  if(!CONFIG.rods.grain||!CONFIG.rods.grain.on)return;
@@ -591,14 +584,14 @@ function loadBallModel(onReady){
       if(!c.isMesh)return;
       c.castShadow=true;c.receiveShadow=true;
       const m=c.material;
-      if(m){                                       // ensure texture encoding (GLTFLoader sets this, but be explicit)
-       if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
-       if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;
-       if(m.normalMap){m.normalMap.encoding=THREE.LinearEncoding;m.normalMap.needsUpdate=true;}
-       if(m.roughnessMap){m.roughnessMap.encoding=THREE.LinearEncoding;m.roughnessMap.needsUpdate=true;}
-       if(m.metalnessMap){m.metalnessMap.encoding=THREE.LinearEncoding;m.metalnessMap.needsUpdate=true;}
-       if(m.aoMap){m.aoMap.encoding=THREE.LinearEncoding;m.aoMap.needsUpdate=true;}
-       if(m.bumpMap){m.bumpMap.encoding=THREE.LinearEncoding;m.bumpMap.needsUpdate=true;}
+      if(m){                                       // ensure texture colour space (GLTFLoader sets this, but be explicit)
+       if(m.map){m.map.colorSpace=THREE.SRGBColorSpace;m.map.needsUpdate=true;}
+       if(m.emissiveMap)m.emissiveMap.colorSpace=THREE.SRGBColorSpace;
+       if(m.normalMap){m.normalMap.colorSpace=THREE.NoColorSpace;m.normalMap.needsUpdate=true;}
+       if(m.roughnessMap){m.roughnessMap.colorSpace=THREE.NoColorSpace;m.roughnessMap.needsUpdate=true;}
+       if(m.metalnessMap){m.metalnessMap.colorSpace=THREE.NoColorSpace;m.metalnessMap.needsUpdate=true;}
+       if(m.aoMap){m.aoMap.colorSpace=THREE.NoColorSpace;m.aoMap.needsUpdate=true;}
+       if(m.bumpMap){m.bumpMap.colorSpace=THREE.NoColorSpace;m.bumpMap.needsUpdate=true;}
        m.needsUpdate=true;
       }
       const n=ballKey(c);                          // 'classic.001'/'classic001' -> 'classic'
@@ -787,13 +780,13 @@ function ensurePitch(id,cb){
        c.material=phys;m=phys;
       }
       if(m){
-        if(m.map){m.map.encoding=THREE.sRGBEncoding;m.map.needsUpdate=true;}
-        if(m.emissiveMap)m.emissiveMap.encoding=THREE.sRGBEncoding;
-        if(m.normalMap){m.normalMap.encoding=THREE.LinearEncoding;m.normalMap.needsUpdate=true;}
-        if(m.roughnessMap){m.roughnessMap.encoding=THREE.LinearEncoding;m.roughnessMap.needsUpdate=true;}
-        if(m.metalnessMap){m.metalnessMap.encoding=THREE.LinearEncoding;m.metalnessMap.needsUpdate=true;}
-        if(m.aoMap){m.aoMap.encoding=THREE.LinearEncoding;m.aoMap.needsUpdate=true;}
-        if(m.bumpMap){m.bumpMap.encoding=THREE.LinearEncoding;m.bumpMap.needsUpdate=true;}
+        if(m.map){m.map.colorSpace=THREE.SRGBColorSpace;m.map.needsUpdate=true;}
+        if(m.emissiveMap)m.emissiveMap.colorSpace=THREE.SRGBColorSpace;
+        if(m.normalMap){m.normalMap.colorSpace=THREE.NoColorSpace;m.normalMap.needsUpdate=true;}
+        if(m.roughnessMap){m.roughnessMap.colorSpace=THREE.NoColorSpace;m.roughnessMap.needsUpdate=true;}
+        if(m.metalnessMap){m.metalnessMap.colorSpace=THREE.NoColorSpace;m.metalnessMap.needsUpdate=true;}
+        if(m.aoMap){m.aoMap.colorSpace=THREE.NoColorSpace;m.aoMap.needsUpdate=true;}
+        if(m.bumpMap){m.bumpMap.colorSpace=THREE.NoColorSpace;m.bumpMap.needsUpdate=true;}
         m.needsUpdate=true;
       }
     });

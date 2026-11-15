@@ -145,7 +145,7 @@ function mutate(src,from,to){if(!src.includes(from))throw new Error('MUTATION AN
  const out=src.replace(from,to);if(out===src)throw new Error('no-op mutation: '+from);return out;}
 const MUT=[
  ['config points at a sky that is not there','cfg',"sky:{src:'assets/rooms/moon/sky/moon'}","sky:{src:'assets/rooms/moon/sky/nothing'}"],
- ['a dir light in the pool (the sun is rooms.moon.dir)','cfg',"{type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf2f5f7","{type:'dir', pos:[0,55,8], look:[0,0,0], color:0xf2f5f7"],
+ ['a dir light in the pool (the sun is rooms.moon.dir)','cfg',"{type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf9fbfb","{type:'dir', pos:[0,55,8], look:[0,0,0], color:0xf9fbfb"],
  ['a fill light casts shadows','cfg','penumbra:0.8},\n        {type:\'spot\', pos:[54,46,-22]', 'penumbra:0.8, shadow:true},\n        {type:\'spot\', pos:[54,46,-22]'],
  ['the bake sun moves away from the live sun','py','SUN_DIR  = (-0.8, 0.72, 0.35)','SUN_DIR  = (-0.8, 0.42, 0.35)'],
  ['the build saves over the owner\'s .blend','py',"save_as_mainfile(filepath=os.path.join(BUILD, 'moon_room.blend'))","save_as_mainfile(filepath=os.path.join(BUILD, 'moon_base.blend'))"],
