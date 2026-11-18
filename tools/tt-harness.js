@@ -36,7 +36,7 @@ function boot(mut){
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
   ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,FOOT_BOX:FOOT_BOX,rods:rods,CAS:CAS,CAW:CAW,KICKS:KICKS,pinOutlet:pinOutlet,pinPlayStart:pinPlayStart,pinPlay:pinPlay,sideAngle:sideAngle,hitAngle:hitAngle,hitStep:hitStep,'+
-  'ttVal:ttVal,ttRoom:ttRoom,ttSlides:ttSlides,ttPick:ttPick,ttWant:ttWant,ttLoose:ttLoose,hitLoose:hitLoose,ttStart:ttStart,ttGo:ttGo,ttCatch:ttCatch,ttObs:ttObs,ttOutlet:ttOutlet,ttPlan:ttPlan,ttOpts:ttOpts,ttBest:ttBest,ttStrike:ttStrike,ttStep:ttStep,ttRoll:ttRoll,ttTouchU:ttTouchU,ttTrip:ttTrip,KICK:KICK,footBoxD:footBoxD,FOOT_BOX_REACH:FOOT_BOX_REACH,catchPick:catchPick,ttEase:ttEase,ttRevert:ttRevert,catchStep:catchStep,catchEnd:catchEnd,'+
+  'ttVal:ttVal,ttRoom:ttRoom,ttSlides:ttSlides,ttPick:ttPick,ttWant:ttWant,ttLoose:ttLoose,hitLoose:hitLoose,ttStart:ttStart,ttGo:ttGo,ttCatch:ttCatch,ttObs:ttObs,ttOutlet:ttOutlet,ttPlan:ttPlan,ttOpts:ttOpts,ttBest:ttBest,ttStrike:ttStrike,ttStep:ttStep,ttRoll:ttRoll,ttTouchU:ttTouchU,ttTrip:ttTrip,KICK:KICK,footBoxD:footBoxD,FOOT_BOX_REACH:FOOT_BOX_REACH,catchPick:catchPick,ttEase:ttEase,catchStep:catchStep,catchEnd:catchEnd,'+
   'gateRoom:function(){return GATEROOM;},setOut:function(f){OUT=f;},setRng:function(v){RNGV=v;RNI=0;},setStrike:function(v){STRIKE=v;},setDiff:function(v){DIFF=v;},setGrip:function(v){GRIP=v;},released:function(){return RELEASED;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -68,8 +68,8 @@ function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
  const CA=X.AIC.catch,T=CA.tictac,ST=T.strike,FB=X.FOOT_BOX,c0=FB.z+X.BALL_R,A=X.AIC.slideAccel;
  CA.recv.ready.on=false;CA.push.play.on=false;X.setOut(null);   // the pull (catch-harness) would take the wide holds these tests work
- const SQ=T.square,TH=T.thru,HT=Math.max(T.minHold,CA.settleT)+0.01;   // the rally's older rules first (a fixed foot, no let-through, no warm-up, no revert, no lunge room, no soft touch, tic-tac last); the newer ones have their own blocks below
- T.first=false;SQ.on=false;TH.on=false;ST.warm=0;ST.back=-1e9;T.lungeRoom=0;T.soft.on=false;
+ const SQ=T.square,TH=T.thru,setup=T.setup,HT=Math.max(T.minHold,CA.settleT)+0.01;
+ T.first=false;SQ.on=false;TH.on=false;ST.warm=0;T.setup=null;T.lungeRoom=0;T.soft.on=false;
  // ---- the pair ----
  {const r=world(X);
   ok('two ATT men 18.5 apart have room between their faces for the ball (the pair 0-1 and 1-2)',X.ttRoom(r,0)===true&&X.ttRoom(r,1)===true);
@@ -315,7 +315,7 @@ function suite(X){
     const m=mk(z0,25),c1=X.CAS.ttCommit;X.ttStep(m.r,m.b,D);
     ok('a strike is committed when a lane is open on its next arrival: the leg goes back (strike phase), the man, slide and lane are noted, counted as straight or a cut',m.r.ttPh==='strike'&&m.r.ttMan===1&&m.r.ttW===best.w&&Math.abs(m.r.ttTz-best.tz)<1e-9&&X.CAS.ttCommit===c1+1&&(best.w?X.CAS.ttCut===1:X.CAS.ttStraight===1),m.r.ttPh+' w='+m.r.ttW);
     {let zb=null;for(let z=-18;z<-1&&zb==null;z+=0.05){const mm=mk(z,25),oo=X.ttOpts(mm.r,mm.b,false);if(oo.some(o=>o.w===0)&&oo.some(o=>o.w!==0))zb=z;}
-     if(zb!=null){const z0=zb;X.setOut((r,bx,bz,obs,gx,sl)=>Math.abs(sl)<1e-9?2.0:2.0+ST.stick*0.6);const k=mk(zb,25);X.ttStep(k.r,k.b,D);ok('...the slide it chose is the one it keeps (a cut better than the straight shot by less than T.stick is still the one committed)',k.r.ttPh==='strike'&&k.r.ttW!==0,'w='+k.r.ttW);X.setOut(lanes);}else ok('(a straight and a cut on offer together at the window)',false);}
+     if(zb!=null){X.setOut((r,bx,bz,obs,gx,sl)=>Math.abs(sl)<1e-9?2.0:2.3);const k=mk(zb,25);X.ttStep(k.r,k.b,D);ok('...the better cut is the one committed',k.r.ttPh==='strike'&&k.r.ttW!==0,'w='+k.r.ttW);X.setOut(lanes);}else ok('(a straight and a cut on offer together at the window)',false);}
     X.setOut(()=>-5);const n=mk(z0,25);X.ttStep(n.r,n.b,D);ok('...not when every lane is shut (the rally goes on)',n.r.ttPh==='bounce');
     X.setOut(lanes);const p=T.strike.prep;ST.prep=7;const q=mk(z0,25);X.ttStep(q.r,q.b,D);ok('...not under T.prep',q.r.ttPh==='bounce');ST.prep=p;
     ST.on=false;const s=mk(z0,25);X.ttStep(s.r,s.b,D);ok('...not with the strikes off',s.r.ttPh==='bounce');ST.on=true;
@@ -336,13 +336,11 @@ function suite(X){
   {const m=mk(0.1,{back:false,rel:-1.2});openAt(m);X.ttStep(m.r,m.b,D);
    ok('a committed strike, the man with time to spare: he waits where he is (the rod brakes), the leg is sent back to the side-catch pose for the ball\'s depth',m.r.ttPh==='strike'&&m.r.ttGo===false&&m.r.target===m.r.offset&&Math.abs(m.r.pinA-m.sa)<1e-12&&m.r.pinPose===true&&X.KICKS.length===0&&Math.abs(m.sa-X.sideAngle(-0.65,false)*dir)>0.02,m.r.ttPh+' go='+m.r.ttGo);
    ok('...his lane and aim are kept up to date for the swing',m.r.ttClr>=ST.go&&Math.abs(m.r.ttTz-(m.r.baseZ[1]-ST.gap))<1e-6,'clr='+m.r.ttClr+' tz='+m.r.ttTz);}
-  // which way: the best lane, changed only for clearly better
-  {const m=mk(0.1,{w:0});const w0=X.ttOpts(m.r,m.b,true),cand=w0.filter(o=>o.w!==0)[0];
-   X.setOut(lanesAt(cand.tz));X.ttStep(m.r,m.b,D);
-   ok('the slide is decided at the last moment from the rows then: a better lane than the one it was committed to takes it (by more than T.stick)',m.r.ttW===cand.w,'w='+m.r.ttW+' wanted '+cand.w);
-   const q=mk(0.1,{w:0});X.setOut((r,bx,bz,obs,gx,sl)=>Math.abs(sl)<1e-9?2.0:2.0+ST.stick*0.5);
-   X.ttStep(q.r,q.b,D);ok('...a lane only a little better does not (it would change its mind every frame)',q.r.ttW===0);
-   const z=mk(0.1,{w:32});X.setOut(()=>3);const zo=X.ttOpts(z.r,z.b,true);X.ttStep(z.r,z.b,D);ok('...the best of what is on offer takes the place of a slide that is no longer there',zo.length>0&&(zo.some(o=>o.w===z.r.ttW)));}
+  {const m=mk(0.1,{w:0}),cut=X.ttOpts(m.r,m.b,true).find(o=>o.w!==0);
+   X.setOut(lanesAt(cut.tz));X.ttStep(m.r,m.b,D);
+   ok('the committed slide stays fixed even when another lane scores better',m.r.ttW===0&&m.r.ttPh==='strike');
+   const z=mk(0.1,{w:32});X.setOut(()=>3);X.ttStep(z.r,z.b,D);
+   ok('a committed slide that no longer fits goes to a side catch',z.r.ttW===32&&z.r.catPh==='side'&&X.CAW['tt:plan']===1);}
   // the last moment to get going
   {const m=mk(dt*0.5);X.S.time=5;openAt(m);X.ttStep(m.r,m.b,D);
    ok('the last moment the man can get going, the lane open: he goes (the slide at its speed, a step ahead), the moment noted',m.r.ttGo===true&&Math.abs(m.r.ttGoT-X.S.time)<1e-9,'go='+m.r.ttGo);
@@ -370,6 +368,9 @@ function suite(X){
    ok('...a straight one is counted and ended as one, the shot tallied',X.CAW['tt:straight']===1&&X.CAS.ttShot===1);
    const c=go({w:-12});X.KICKS.length=0;X.ttStep(c.r,c.b,D);ok('...a cut is held at its slide, and the strike gate was shown it carrying on (room to go on sliding at w for T.lead of slide)',X.KICKS.length===1&&c.r.catSv===-12&&X.CAW['tt:cut']===1&&Math.abs(X.gateRoom()-(-12*CA.push.lead))<1e-9,'room '+X.gateRoom());
    const d=go({w:0});d.b.m.position.z-=3;X.KICKS.length=0;X.ttStep(d.r,d.b,D);ok('...the ball still short of where the plan puts it: not yet',X.KICKS.length===0&&d.r.catPh==='tictac');
+   const shut=go({w:0});X.setOut(()=>-5);X.ttStep(shut.r,shut.b,D);
+   ok('a lane closing on the swing tick cancels even between regular looks',X.KICKS.length===0&&shut.r.catPh==='side'&&X.CAW['tt:shut']===1);
+   X.setOut(()=>5);
    const e=go({w:0});e.r.angle=e.sa+0.5;X.KICKS.length=0;X.ttStep(e.r,e.b,D);ok('...the leg not back by then: no swing (it would meet the ball with the box), a side catch',X.KICKS.length===0&&e.r.catPh==='side'&&X.CAW['tt:pose']===1);
    const f=go({w:0});X.setStrike(false);X.KICKS.length=0;const gt=X.CAS.ttGate;X.ttStep(f.r,f.b,D);ok('...the strike gate says the boot would miss: no swing, counted, the rod keeps its slide and waits',X.KICKS.length===0&&X.CAS.ttGate===gt+1&&f.r.catPh==='tictac'&&Math.abs(f.r.target-(f.r.offset+f.r.ttW*dt))<1e-9);X.setStrike(true);
    const h=go({w:0});h.r.ttSt=ST.abortT+0.1;X.KICKS.length=0;X.ttStep(h.r,h.b,D);ok('...a strike that takes too long is given up: a side catch',h.r.catPh==='side'&&X.CAW['tt:slow']===1);
@@ -379,7 +380,7 @@ function suite(X){
   X.setOut(null);}
  // ---- the rally's newer rules (the older tests above run with these off) ----
  {const tmk=(opt)=>{const r=world(X,opt);const b=pinned(X,r,1,-0.7);return {r,b};};
-  const saved=[T.first,SQ.on,TH.on,ST.warm,ST.back,T.lungeRoom,ST.on];
+  const saved=[T.first,SQ.on,TH.on,ST.warm,T.lungeRoom,ST.on];
   // first: a held ball with no shot open is worked between two men before it is carried, tapped or passed
   T.first=true;
   X.setOut((r,bx,bz)=>bz>8?5:-5);const f1=tmk();ok('first: a carry to a z that opens a lane no longer goes first, the tic-tac does',X.pinPlay(f1.r,f1.b,HT,dt,true)===4&&f1.r.ttPk!=null);
@@ -396,7 +397,7 @@ function suite(X){
    ok('starting under a forward leg: the leg turns up first (a lift into the hit), counted',r.catPh==='flift'&&r.flNext==='hit'&&r.ttOn===true&&X.CAS.ttFwd===n0+1&&X.CAS.tt===1,r.catPh);
    const q=world(X,{over:{angle:0.4}});const bb=pinned(X,q,1,3);q.ttPk={s:1,j:2,mi:1,v:0};X.ttStart(q);
    ok('...a ball held ahead of the rod is not under the leg: the hit as usual, from the ball let go at rest',q.catPh==='hit'&&q.hPh==='rest'&&q.hAhead===true);
-   const z=world(X);pinned(X,z,1,-0.7);Object.assign(z,{ttLock:99,ttDec:5,ttSq:7,ttPh:'strike'});z.ttPk={s:1,j:2,mi:1,v:0};X.ttStart(z);ok('a new rally starts with no lock, no decision made and the squaring due',z.ttLock===0&&z.ttDec===-1&&z.ttSq===0);
+   const z=world(X);pinned(X,z,1,-0.7);Object.assign(z,{ttSetup:{offset:3},ttDec:5,ttSq:7,ttPh:'strike'});z.ttPk={s:1,j:2,mi:1,v:0};X.ttStart(z);ok('a new rally starts with no setup, no decision made and the squaring due',z.ttSetup===null&&z.ttDec===-1&&z.ttSq===0);
    const l=world(X,{over:{angle:0.4}});l.ttPk={s:1,j:2,mi:1,v:0};X.ttStart(l,true);ok('...a ball lying loose has nothing to let go',l.catPh==='hit'&&l.hPh==='clear');}
   // the window a strike is committed in is the standing man's face
   {X.setOut(()=>6);
@@ -404,14 +405,12 @@ function suite(X){
    for(let z=-18;z<-1;z+=0.05){const r=rally(X,{sg:1,off:0});const b=view(X,-0.65,z,0,25);const ts=(-(c0+T.margin)-z)/25;
     for(const o of X.ttOpts(r,b,false)){if(ts>o.d)continue;seen.push(ts);if(o.w>0)withBall++;}}   // a slide that starts before the ball reaches his standing face is the moving man's, and has no standing face to count to
    ok('a strike is offered only in the last T.late s before the leg could no longer get back, counted to the face of the man where he stands (he does not move until his go), whatever the slide',seen.length>0&&withBall>0&&seen.every(t=>t>=ST.tilt-0.02&&t<=ST.tilt+ST.late+0.02),'n='+seen.length+' withBall='+withBall+' span='+Math.min.apply(null,seen).toFixed(3)+'..'+Math.max.apply(null,seen).toFixed(3));}
-  // the warm-up and the lock
+  // the warm-up
   {X.setOut(()=>6);ST.on=true;ST.warm=3;
    let z0=null;for(let z=-18;z<-1&&z0==null;z+=0.05){const r=rally(X,{sg:1,off:0});if(X.ttOpts(r,view(X,-0.65,z,0,25),false).length)z0=z;}
    const mkw=(set)=>{const r=rally(X,{sg:1,off:0,set:Object.assign({ttEv:0},set)});return {r,b:view(X,-0.65,z0,0,25)};};
    const a=mkw({ttN:2});X.ttStep(a.r,a.b,D);ok('warm: the rows are not read for a strike before the ball has been touched T.warm times',a.r.ttPh==='bounce');
    const b=mkw({ttN:3});X.ttStep(b.r,b.b,D);ok('...from then they are',b.r.ttPh==='strike');
-   const c=mkw({ttN:3,ttLock:X.S.time+1});X.ttStep(c.r,c.b,D);ok('...not while the lock from a given-up strike lasts',c.r.ttPh==='bounce');
-   const d=mkw({ttN:3,ttLock:X.S.time-1});X.ttStep(d.r,d.b,D);ok('...and again once it is over',d.r.ttPh==='strike');
    ST.warm=0;ST.on=false;}
   // the ease: a rally that has gone on settles for a narrower gap
   {const r=rally(X);r.ttT=ST.patient-0.5;const e0=X.ttEase(r);r.ttT=T.maxT;const e1=X.ttEase(r);r.ttT=(ST.patient+T.maxT)/2;const e2=X.ttEase(r);
@@ -419,26 +418,19 @@ function suite(X){
    X.setOut((r,bx,bz)=>ST.prep-0.5);ST.on=true;ST.warm=0;let zz=null;for(let z=-18;z<-1&&zz==null;z+=0.05){const q=rally(X,{sg:1,off:0});if(X.ttOpts(q,view(X,-0.65,z,0,25),false).length)zz=z;}
    const y=rally(X,{sg:1,off:0,set:{ttEv:0,ttT:0}});X.ttStep(y,view(X,-0.65,zz,0,25),D);ok('...a lane under T.prep is not enough to a young rally',y.ttPh==='bounce');
    const o=rally(X,{sg:1,off:0,set:{ttEv:0,ttT:T.maxT-0.1}});X.ttStep(o,view(X,-0.65,zz,0,25),D);ok('...but is to an old one',o.ttPh==='strike');ST.on=false;}
-  // revert: a committed strike whose lane shuts while the ball is still far from his face squares the leg up again
-  {ST.back=1;
+  // A late cancellation goes to a catch without squaring the foot into the ball.
+  {
    const smk=(d,set)=>{const r=world(X,{off:0}),rel=-0.65,sa=X.sideAngle(rel,false)*dir;
     Object.assign(r,{catPh:'tictac',ttOn:true,ttPh:'strike',ttLo:0,ttN:4,ttT:1,ttSg:1,ttEv:1,ttDead:0,ttGo:false,ttA:X.hitAngle(rel),ttRel:rel,ttMan:1,ttW:0,ttSt:0,ttTz:3,ttClr:5,ttFound:0,ttGoT:0,pinPose:true,pinA:sa,angle:sa},set||{});
     const vz=25,cz=r.baseZ[1]+r.offset-ST.gap,t=d+ST.settle,bz=cz-vz*t;return {r,b:view(X,rel,bz,0,vz),sa};};
-   X.setOut(()=>-5);const a=smk(0.3);const b0=X.CAS.ttBack;X.ttStep(a.r,a.b,D);
-   ok('revert: the lane has shut with the ball still far from his face: back to bouncing, counted, the rally goes on',a.r.ttPh==='bounce'&&a.r.catPh==='tictac'&&a.r.ttOn===true&&X.CAS.ttBack===b0+1&&a.r.ttGo===false);
-   ok('...no strike is read for again for T.relock',a.r.ttLock>X.S.time&&Math.abs(a.r.ttLock-X.S.time-ST.relock)<1e-9);
-   X.ttStep(a.r,a.b,D);ok('...the next frame the foot goes back to the squared angle',a.r.pinPose===true&&Math.abs(a.r.pinA-a.r.ttA*dir)<1e-12);
-   X.setOut(()=>5);const b=smk(0.3);X.ttStep(b.r,b.b,D);ok('...not while the lane is open',b.r.ttPh==='strike');
-   X.setOut(()=>ST.back+0.2);const c=smk(0.3);X.ttStep(c.r,c.b,D);ok('...nor while it clears by T.back',c.r.ttPh==='strike');
-   X.setOut(()=>ST.back-0.2);const d=smk(0.3);X.ttStep(d.r,d.b,D);ok('...a lane just under T.back is enough',d.r.ttPh==='bounce');
-   X.setOut(()=>-5);const e=smk(0.02);X.ttStep(e.r,e.b,D);ok('...not once the ball is nearly at his face (the leg could not come back in time and would meet it turning)',e.r.ttPh==='strike'&&e.r.catPh==='tictac');
-   X.setOut(()=>0.2);const f=smk(0.3,{ttT:T.maxT});X.ttStep(f.r,f.b,D);ok('...an old rally gives up less readily (the ease lowers T.back)',f.r.ttPh==='strike');
+   X.setOut(()=>-5);const a=smk(0.3);X.ttStep(a.r,a.b,D);
+   ok('early lane closure keeps the foot back until the decision to swing',a.r.ttPh==='strike'&&a.r.pinA===a.sa&&!a.r.ttGo);
+   a.b.m.position.z=a.r.baseZ[1]-ST.gap-25*(ST.settle+dt*0.5);X.ttStep(a.r,a.b,D);
+   ok('a lane still shut at the swing goes to the catch with the foot back',a.r.catPh==='side'&&a.r.pinA===a.sa&&X.CAW['tt:shut']===1);
    X.setOut(()=>ST.go-0.4);const g1=smk(dt*0.5);X.ttStep(g1.r,g1.b,D);ok('...at the last moment he needs T.go of it',g1.r.catPh==='side'&&g1.r.ttGo===false);
    const g2=smk(dt*0.5,{ttT:T.maxT});X.ttStep(g2.r,g2.b,D);ok('...and less than that in an old rally (the ease lowers T.go too)',g2.r.ttGo===true);
-   X.setOut(()=>X.AIC.lanes.clear-0.2);const h1=smk(0.3,{ttT:T.maxT});X.ttStep(h1.r,h1.b,D);ok('...but an old rally still gives up a lane under the gate (ai.lanes; T.back - ease is under it)',ST.back-ST.ease<X.AIC.lanes.clear-0.2&&h1.r.ttPh==='bounce');
-   const h2=smk(dt*0.5,{ttT:T.maxT});X.ttStep(h2.r,h2.b,D);ok('...and does not get going into one',h2.r.ttGo===false&&h2.r.catPh==='side');
-   X.AIC.lanes.on=false;const h3=smk(dt*0.5,{ttT:T.maxT});X.ttStep(h3.r,h3.b,D);const h4=smk(0.3,{ttT:T.maxT});X.ttStep(h4.r,h4.b,D);X.AIC.lanes.on=true;ok('...with the gate off it does both (the old rule)',h3.r.ttGo===true&&h4.r.ttPh==='strike');
-   ST.back=-1e9;}
+   X.setOut(()=>X.AIC.lanes.clear-0.2);const h2=smk(dt*0.5,{ttT:T.maxT});X.ttStep(h2.r,h2.b,D);ok('...but an old rally still respects the lane gate',h2.r.ttGo===false&&h2.r.catPh==='side');
+   X.AIC.lanes.on=false;const h3=smk(dt*0.5,{ttT:T.maxT});X.ttStep(h3.r,h3.b,D);X.AIC.lanes.on=true;ok('the same lane is playable with the gate off',h3.r.ttGo===true);}
   // square: between touches the foot follows the ball's depth
   {SQ.on=true;
    const mk=(rel,z,set)=>{const r=rally(X,{sg:1,off:0,set:Object.assign({ttSq:0,ttEv:9},set||{})});return {r,b:view(X,rel,z,0,20),a0:r.ttA};};
@@ -569,7 +561,50 @@ function suite(X){
    for(const rel of [-3.5,-2,-0.65,0,0.5,2]){const a=X.sideAngle(rel,false),d=box(rel,a),d2=box(rel,a+0.02);if(!(d>bD-1e-3))okc=false;if(!(d2<bD+0.02))okm=false;info+=rel+':'+a.toFixed(3)+'/'+d.toFixed(2)+'/'+d2.toFixed(2)+' ';}
    ok('back pose: at every depth the foot box is clear of the ball by side.boxGap past its contact (the v0.1.49 box reaches past side.legD)',okc,info);
    ok('...and no further back than that: 0.02 rad more upright and it is not',okm,info);}
-  T.first=saved[0];SQ.on=saved[1];TH.on=saved[2];ST.warm=saved[3];ST.back=saved[4];T.lungeRoom=saved[5];ST.on=saved[6];X.setOut(null);}
+  T.first=saved[0];SQ.on=saved[1];TH.on=saved[2];ST.warm=saved[3];T.lungeRoom=saved[4];ST.on=saved[5];X.setOut(null);}
+ // Compare setup choices with the feet square, then run the selected move into the strike window.
+ {T.setup=setup;T.lungeRoom=2.5;ST.on=true;ST.warm=3;
+  const lane=(z)=>(r,bx,bz,obs,gx,sl)=>5-3*Math.abs(bz-z)-100*Math.abs(sl);
+  const start=(z=-14.3,vz=20,set={})=>({r:rally(X,{sg:1,set:{ttN:3,ttEv:0,...set}}),b:view(X,-0.65,z,0,vz)});
+  for(const direction of [-1,1]){
+   const name=direction<0?'toward':'away',m=start();
+   X.setOut(lane(direction*1.5-ST.gap));X.ttStep(m.r,m.b,D);
+   const move=m.r.ttSetup;
+   ok('an open lane can justify sliding '+name,move?.offset===direction*1.5&&Math.sign(m.r.target-m.r.offset)===direction);
+   ok('the setup stays square '+name,m.r.ttPh==='bounce'&&m.r.pinA===m.r.ttA*dir&&X.KICKS.length===0);
+   for(let frame=0;frame<90&&m.r.catPh==='tictac'&&!X.KICKS.length;frame++){
+    const want=(m.r.target-m.r.offset)/dt;
+    m.r.slideV+=Math.max(-A*dt,Math.min(A*dt,want-m.r.slideV));
+    m.r.offset+=m.r.slideV*dt;
+    m.r.angle+=(m.r.pinA-m.r.angle)*Math.min(1,T.lerp*dt);
+    m.b.m.position.z+=m.b.v.z*dt;X.S.time+=dt;X.ttStep(m.r,m.b,D);
+   }
+   ok('the setup '+name+' reaches the planned lane and swings',X.KICKS.length===1&&X.CAS.ttSetupShot===1&&m.r.ttW===0&&Math.abs(m.r.offset-direction*1.5)<0.05);
+  }
+  const a=start();X.setOut(()=>5);X.ttStep(a.r,a.b,D);
+  ok('an equally open unshifted lane keeps the normal bounce',!a.r.ttSetup);
+  const b=start(-9.4,20);X.setOut(lane(-1.5-ST.gap));X.ttStep(b.r,b.b,D);
+  ok('an incoming ball too near for the move and backswing keeps the normal bounce',!b.r.ttSetup);
+  const c=start(-18.5+c0+T.margin+0.1);X.setOut(lane(1.5-ST.gap));X.ttStep(c.r,c.b,D);
+  ok('the setup waits for the ball to clear the trailing man',!c.r.ttSetup);
+  const e=start(-14.3,20,{ttPlN:3,ttPlT:true});X.setOut(lane(1.5-ST.gap));X.ttStep(e.r,e.b,D);
+  ok('the setup respects an already planned let-through',!e.r.ttSetup);
+  const f=start();X.setOut(lane(-1.5-ST.gap));X.ttStep(f.r,f.b,D);
+  const move=f.r.ttSetup;
+  X.setOut(lane(1.5-ST.gap));f.r.ttEv=0;X.ttStep(f.r,f.b,D);
+  ok('a changed lane does not reverse the setup during the same traverse',Boolean(move)&&f.r.ttSetup===move);
+  f.b.v.z=-20;X.setOut(()=>-5);X.ttStep(f.r,f.b,D);
+  ok('the next traverse can choose a fresh setup',Boolean(move)&&!f.r.ttSetup);
+  const g=start(-c0-T.margin-(ST.tilt+ST.late/2)*25,25);T.setup=null;
+  X.rods[1].tgV=20;X.rods[1].target=0;
+  const time=(-ST.gap-g.b.m.position.z)/g.b.v.z,gx=X.F.L/2;
+  const limit=X.ttObs(0,g.b.m.position.x,gx,time+ST.guard/2)[0].z;
+  X.setOut((r,bx,bz,obs,gx,sl)=>sl===0&&obs[0].z<limit?5:-5);
+  ok('a defender with time to close makes a nominal opening unsafe',X.ttOpts(g.r,g.b,false).some(o=>o.w===0&&o.clr<0));
+  X.ttStep(g.r,g.b,D);
+  ok('a lane forecast to close leaves the foot square',g.r.ttPh==='bounce'&&g.r.pinA===g.r.ttA*dir);
+  X.setOut(null);
+ }
  return R;
 }
 
@@ -591,7 +626,7 @@ const MUT=[
  {n:'roll: a ball on a man\'s foot is worked',part:'catch',from:'if(p.z<zl||p.z>zh||(sg>0',to:'if((sg>0'},
  {n:'roll: no time asked for the foot to square',part:'catch',from:'||(sg>0?zh-p.z:p.z-zl)/sp<RL.tMin)return false;',to:')return false;'},
  {n:'roll: the man is the one behind it',part:'catch',from:'r.catMan=sg>0?lo+1:lo;r.ttLo=lo;',to:'r.catMan=sg>0?lo:lo+1;r.ttLo=lo;'},
- {n:'roll: it starts with a touch counted',part:'catch',from:'r.ttN=0;r.ttT=0;r.ttEv=0;r.ttDead=0;r.ttGo=false;r.ttLock=0;r.ttSq=0;r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.hPh=null;r.pinOn=false;\n CAS.tt++;CAS.ttRoll++;',to:'r.ttN=1;r.ttT=0;r.ttEv=0;r.ttDead=0;r.ttGo=false;r.ttLock=0;r.ttSq=0;r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.hPh=null;r.pinOn=false;\n CAS.tt++;CAS.ttRoll++;'},
+ {n:'roll: it starts with a touch counted',part:'catch',from:'r.ttN=0;r.ttT=0;r.ttEv=0;r.ttDead=0;r.ttGo=false;r.ttSq=0;r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.ttSetup=null;r.hPh=null;r.pinOn=false;\n CAS.tt++;CAS.ttRoll++;',to:'r.ttN=1;r.ttT=0;r.ttEv=0;r.ttDead=0;r.ttGo=false;r.ttSq=0;r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.ttSetup=null;r.hPh=null;r.pinOn=false;\n CAS.tt++;CAS.ttRoll++;'},
  {n:'the rod drifts before the first touch',part:'catch',from:'stay=hv&&r.ttN>0?',to:'stay=hv?'},
  {n:'meet: a slow ball far off is waited for',part:'catch',from:'far?clamp(r.offset+tw*clamp(MT.v-sp,0,vf)*dt,-r.maxOff,r.maxOff):',to:''},
  {n:'meet: the face goes away from it',part:'catch',from:'far?clamp(r.offset+tw*',to:'far?clamp(r.offset-tw*'},
@@ -695,51 +730,49 @@ const MUT=[
  {n:'a man gone is an obstacle',part:'catch',from:'for(let i=0;i<r2.baseZ.length;i++){if(r2.removedUntil[i]&&r2.removedUntil[i]>S.time)continue;obs.push({x:r2.x,z:r2.baseZ[i]+r2.offset+dz,own:r2.team===team});}',to:'for(let i=0;i<r2.baseZ.length;i++){obs.push({x:r2.x,z:r2.baseZ[i]+r2.offset+dz,own:r2.team===team});}'},
  {n:'the rows are read at the instant the ball is struck, not as it flies on',part:'catch',from:'const tt=t+(r2.x-bx)*dir/AIC.catch.shotV,',to:'const tt=t,'},
  // the plan
- {n:'the plan forgets the man is braking',part:'catch',from:'z0=r.baseZ[f]+r.offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+r.offset,zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;'},
- {n:'the plan forgets the ramp',part:'catch',from:'z0=r.baseZ[f]+r.offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+r.offset+v0*Math.abs(v0)/(2*A),zc=z0+w*ST.settle;'},
+ {n:'the plan forgets the man is braking',part:'catch',from:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+offset,zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;'},
+ {n:'the plan forgets the ramp',part:'catch',from:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*ST.settle;'},
  {n:'the plan forgets the time at speed',part:'catch',from:'+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'+w*Math.abs(w)/(2*A);'},
  {n:'the ball is long past rather than short of his centre',part:'catch',from:'_tp.cz=zc-sg*ST.gap;',to:'_tp.cz=zc+sg*ST.gap;'},
  {n:'the wait forgets the braking',part:'catch',from:'_tp.d=_tp.t-(Math.abs(v0)+Math.abs(w))/A-ST.settle;',to:'_tp.d=_tp.t-Math.abs(w)/A-ST.settle;'},
  {n:'the wait forgets the ramp',part:'catch',from:'_tp.d=_tp.t-(Math.abs(v0)+Math.abs(w))/A-ST.settle;',to:'_tp.d=_tp.t-Math.abs(v0)/A-ST.settle;'},
  {n:'the wait forgets the time at speed',part:'catch',from:'_tp.d=_tp.t-(Math.abs(v0)+Math.abs(w))/A-ST.settle;',to:'_tp.d=_tp.t-(Math.abs(v0)+Math.abs(w))/A;'},
- {n:'the rod is slower to speed up than the plan thinks',part:'catch',from:'const ST=AIC.catch.tictac.strike,A=AIC.slideAccel*stAgil(r),v0=r.slideV,sg=v.z>0?1:-1;',to:'const ST=AIC.catch.tictac.strike,A=AIC.slideAccel*stAgil(r)*3,v0=r.slideV,sg=v.z>0?1:-1;'},
+ {n:'the rod is slower to speed up than the plan thinks',part:'catch',from:'const ST=AIC.catch.tictac.strike,A=AIC.slideAccel*stAgil(r),sg=v.z>0?1:-1;',to:'const ST=AIC.catch.tictac.strike,A=AIC.slideAccel*stAgil(r)*3,sg=v.z>0?1:-1;'},
  // the options
  {n:'a slide with the ball may be as fast as it',part:'catch',from:'if(w*sg>0&&Math.abs(w)>sp*ST.pushMax)continue;',to:''},
- {n:'a man who cannot get going in time is offered',part:'catch',from:'if(!(q.d>=0))continue;',to:''},
- {n:'the leg need not be back before the ball reaches the face',part:'catch',from:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt)||tt>ST.tilt+ST.late)continue;}',to:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(tt>ST.tilt+ST.late)continue;}'},
- {n:'a strike is offered as early as it can be seen',part:'catch',from:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt)||tt>ST.tilt+ST.late)continue;}',to:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt))continue;}'},
- {n:'the window is never asked',part:'catch',from:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt)||tt>ST.tilt+ST.late)continue;}',to:''},
- {n:'the window is asked when the leg is already back',part:'catch',from:'if(!live){const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt)||tt>ST.tilt+ST.late)continue;}',to:'{const ts=((q.z0-sg*ST.gap-p.z)*sg-c)/Math.max(sp,1),tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);if(!(tt>=ST.tilt)||tt>ST.tilt+ST.late)continue;}'},
+ {n:'a man who cannot get going in time is offered',part:'catch',from:'if(!(q.d>=(setup?setup.ready:0)))continue;',to:''},
+ {"n":"the leg need not be back before the ball reaches the face","part":"catch","from":"if(setup?tt<ST.tilt+setup.ready:(!(tt>=ST.tilt)||tt>ST.tilt+ST.late))continue;","to":"if(!setup&&tt>ST.tilt+ST.late)continue;"},
+ {"n":"a strike is offered as early as it can be seen","part":"catch","from":"if(setup?tt<ST.tilt+setup.ready:(!(tt>=ST.tilt)||tt>ST.tilt+ST.late))continue;","to":"if(tt<ST.tilt)continue;"},
+ {"n":"the window is never asked","part":"catch","from":"if(setup?tt<ST.tilt+setup.ready:(!(tt>=ST.tilt)||tt>ST.tilt+ST.late))continue;","to":""},
+ {"n":"the window is asked when the leg is already back","part":"catch","from":"if(!live){\n   const ts=","to":"{\n   const ts="},
  {n:'the slide may run out of rod',part:'catch',from:'if(Math.abs(oc)>r.maxOff-0.3||Math.abs(oc+w*ST.hold)>r.maxOff)continue;',to:''},
  {n:'the slide may run out of rod in the swing',part:'catch',from:'if(Math.abs(oc)>r.maxOff-0.3||Math.abs(oc+w*ST.hold)>r.maxOff)continue;',to:'if(Math.abs(oc)>r.maxOff-0.3)continue;'},
- {n:'the lane is read from the wrong slope',part:'catch',from:'const clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);\n  a.push',to:'const clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,0);\n  a.push'},
- {n:'the lane is read from the wrong z',part:'catch',from:'const clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);\n  a.push',to:'const clr=ttOutlet(r,p.x,p.z,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);\n  a.push'},
- {n:'the rows are read at the wrong time',part:'catch',from:'const clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);\n  a.push',to:'const clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,0),gx,ST.k*w);\n  a.push'},
+ {n:'the lane is read from the wrong slope',part:'catch',from:'let clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);',to:'let clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,0);'},
+ {n:'the lane is read from the wrong z',part:'catch',from:'let clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);',to:'let clr=ttOutlet(r,p.x,p.z,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);'},
+ {n:'the rows are read at the wrong time',part:'catch',from:'let clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,q.t),gx,ST.k*w);',to:'let clr=ttOutlet(r,p.x,q.cz,ttObs(r.team,p.x,gx,0),gx,ST.k*w);'},
  {n:'the aim point is not on the lane',part:'catch',from:'tz:q.cz+Math.abs(gx-p.x)*ST.k*w});',to:'tz:q.cz});'},
  {n:'the man picked is the one the ball has left',part:'catch',from:'f=sg>0?r.ttLo+1:r.ttLo,gx=r.kickDir>0?F.L/2:-F.L/2,sp=Math.abs(v.z),c=',to:'f=sg>0?r.ttLo:r.ttLo+1,gx=r.kickDir>0?F.L/2:-F.L/2,sp=Math.abs(v.z),c='},
  {n:'the worst lane is the best',part:'catch',from:'function ttBest(a){let b=null;for(const o of a)if(!b||o.clr>b.clr)b=o;return b;}',to:'function ttBest(a){let b=null;for(const o of a)if(!b||o.clr<b.clr)b=o;return b;}'},
  {n:'the first lane is the best',part:'catch',from:'function ttBest(a){let b=null;for(const o of a)if(!b||o.clr>b.clr)b=o;return b;}',to:'function ttBest(a){let b=null;for(const o of a)if(!b)b=o;return b;}'},
  // the strike
  {n:'a strike never times out',part:'catch',from:"if(r.ttSt>ST.abortT){ttCatch(r,f,sg,'slow');return;}",to:''},
- {n:'the slide is changed for any better lane, however little',part:'catch',from:'if(b&&(!cur||b.clr>cur.clr+ST.stick)){cur=b;w=r.ttW=b.w;}',to:'if(b&&(!cur||b.clr>cur.clr)){cur=b;w=r.ttW=b.w;}'},
- {n:'the slide is never changed',part:'catch',from:'if(b&&(!cur||b.clr>cur.clr+ST.stick)){cur=b;w=r.ttW=b.w;}',to:'if(b&&!cur){cur=b;w=r.ttW=b.w;}'},
  {n:'a strike with nothing on offer is carried on',part:'catch',from:"if(!cur){ttCatch(r,f,sg,'plan');return;}",to:"if(!cur){return;}"},
  {n:'the man goes as soon as the strike is committed',part:'catch',from:'if(cur.d<=dt*1.5){',to:'if(cur.d<=1e9){'},
  {n:'the man never gets going',part:'catch',from:'if(cur.d<=dt*1.5){',to:'if(false){'},
  {n:'the man goes too soon (a tenth of a second ahead)',part:'catch',from:'if(cur.d<=dt*1.5){',to:'if(cur.d<=0.1){'},
- {n:'a shut lane does not stop the man getting going',part:'catch',from:"if(cur.clr<Math.max(ST.go-ez,lm)){ttCatch(r,f,sg,'shut');return;}",to:''},
- {n:'the lane is judged by the prep, not the go',part:'catch',from:'if(cur.clr<Math.max(ST.go-ez,lm)){',to:'if(cur.clr<Math.max(ST.prep-ez,lm)){'},
+ {n:'a shut lane does not stop the man getting going',part:'catch',from:"if(cur.clr<Math.max(ST.go-ttEase(r),laneMin(r))){ttCatch(r,f,sg,'shut');return;}",to:''},
+ {n:'the lane is judged by the prep, not the go',part:'catch',from:'if(cur.clr<Math.max(ST.go-ttEase(r),laneMin(r))){',to:'if(cur.clr<Math.max(ST.prep-ttEase(r),laneMin(r))){'},
  {n:'the moment he goes is not noted',part:'catch',from:'r.ttGo=true;r.ttGoT=S.time;',to:'r.ttGo=true;'},
  {n:'the man slides before he is told to',part:'catch',from:'r.target=r.ttGo?clamp(r.offset+w*dt,-r.maxOff,r.maxOff):r.offset;\n const cs',to:'r.target=clamp(r.offset+w*dt,-r.maxOff,r.maxOff);\n const cs'},
  {n:'the man slides the wrong way',part:'catch',from:'r.target=r.ttGo?clamp(r.offset+w*dt,-r.maxOff,r.maxOff):r.offset;\n const cs',to:'r.target=r.ttGo?clamp(r.offset-w*dt,-r.maxOff,r.maxOff):r.offset;\n const cs'},
  {n:'the man does not slide once told to',part:'catch',from:'r.target=r.ttGo?clamp(r.offset+w*dt,-r.maxOff,r.maxOff):r.offset;\n const cs',to:'r.target=r.offset;\n const cs'},
  {n:'a lane that shuts under way is not given up',part:'catch',from:"if(clr<Math.max(ST.drop,laneMin(r))){ttCatch(r,f,sg,'shut');return;}",to:''},
- {n:'the lane is looked at under way every frame',part:'catch',from:'if(r.ttGo&&(r.ttEv-=dt)<=0){',to:'if(r.ttGo){'},
- {n:'the lane is never looked at under way',part:'catch',from:'if(r.ttGo&&(r.ttEv-=dt)<=0){',to:'if(false){'},
- {n:'the swing fires the moment the man gets going',part:'catch',from:'if(!r.ttGo||gap-cs*ST.lag>ST.gap)return;',to:'if(!r.ttGo)return;'},
- {n:'the swing never fires',part:'catch',from:'if(!r.ttGo||gap-cs*ST.lag>ST.gap)return;',to:'return;'},
- {n:'the swing ignores how fast the ball closes',part:'catch',from:'const cs=sp-r.slideV*sg;',to:'const cs=0;'},
- {n:'the closing speed forgets the man\'s own slide',part:'catch',from:'const cs=sp-r.slideV*sg;',to:'const cs=sp;'},
+ {n:'the lane is looked at under way every frame',part:'catch',from:'if(r.ttGo&&((r.ttEv-=dt)<=0||fire)){',to:'if(r.ttGo){'},
+ {n:'the lane is never looked at under way',part:'catch',from:'if(r.ttGo&&((r.ttEv-=dt)<=0||fire)){',to:'if(false){'},
+ {n:'the swing fires the moment the man gets going',part:'catch',from:'if(!r.ttGo||!fire)return;',to:'if(!r.ttGo)return;'},
+ {n:'the swing never fires',part:'catch',from:'if(!r.ttGo||!fire)return;',to:'return;'},
+ {n:'the swing ignores how fast the ball closes',part:'catch',from:'const cs=sp-r.slideV*sg,',to:'const cs=0,'},
+ {n:'the closing speed forgets the man\'s own slide',part:'catch',from:'const cs=sp-r.slideV*sg,',to:'const cs=sp,'},
  {n:'the swing fires with the leg anywhere',part:'catch',from:"if(Math.abs(r.angle-sa)>ST.tolA){ttCatch(r,f,sg,'pose');return;}",to:''},
  {n:'the strike gate is not asked',part:'catch',from:"if(!strikeOn(r,best,'trapShot')){r.target=clamp(r.offset+w*dt,-r.maxOff,r.maxOff);CAS.ttGate++;return;}",to:''},
  {n:'a refused gate is not counted',part:'catch',from:'r.maxOff,r.maxOff);CAS.ttGate++;return;}',to:'r.maxOff,r.maxOff);return;}'},
@@ -756,7 +789,7 @@ const MUT=[
  {n:'every shot is a cut',part:'catch',from:"catchEnd(r,CA.cd,w?'tt:cut':'tt:straight');",to:"catchEnd(r,CA.cd,'tt:cut');"},
  {n:'the leg is not sent back for a strike',part:'catch',from:'r.pinPose=true;r.pinA=sa;r.aiMan=f;',to:'r.aiMan=f;'},
  {n:'the leg is sent to the wrong angle',part:'catch',from:'r.pinPose=true;r.pinA=sa;r.aiMan=f;',to:'r.pinPose=true;r.pinA=r.ttA*dir;r.aiMan=f;'},
- {n:'the pose angle is for the wrong depth',part:'catch',from:'sa=sideAngle(rel,false)*dir;\n let w=r.ttW',to:'sa=sideAngle(-0.65,false)*dir;\n let w=r.ttW'},
+ {n:'the pose angle is for the wrong depth',part:'catch',from:'sa=sideAngle(rel,false)*dir;\n const w=r.ttW',to:'sa=sideAngle(-0.65,false)*dir;\n const w=r.ttW'},
  // the bounce
  {n:'a scored ball does not end it',part:'catch',from:"if(rb.scored)why='scored';else if(p.y>AIC.lowY)why='lifted';else if(r.force)why='force';\n else if(!manLive(r,lo)",to:"if(p.y>AIC.lowY)why='lifted';else if(r.force)why='force';\n else if(!manLive(r,lo)"},
  {n:'a lifted ball does not end it',part:'catch',from:"else if(p.y>AIC.lowY)why='lifted';else if(r.force)why='force';\n else if(!manLive(r,lo)",to:"else if(r.force)why='force';\n else if(!manLive(r,lo)"},
@@ -770,8 +803,8 @@ const MUT=[
  {n:'a ball that has died does not end it',part:'catch',from:"if(sp<T.deadV){if((r.ttDead+=dt)>T.deadT){catchEnd(r,0,'tt:dead');return;}}else r.ttDead=0;",to:""},
  {n:'a ball slow for a moment ends it',part:'catch',from:"if((r.ttDead+=dt)>T.deadT){",to:"if((r.ttDead+=dt)>0){"},
  {n:'the dead clock is not reset',part:'catch',from:"}else r.ttDead=0;",to:"}"},
- {n:'a touch is not counted',part:'catch',from:'r.ttSg=sg;r.ttN++;r.ttEv=0;CAS.ttTouch++;',to:'r.ttSg=sg;r.ttEv=0;CAS.ttTouch++;'},
- {n:'a touch is counted every frame',part:'catch',from:'r.ttSg=sg;r.ttN++;r.ttEv=0;CAS.ttTouch++;',to:'r.ttN++;r.ttEv=0;CAS.ttTouch++;'},
+ {n:'a touch is not counted',part:'catch',from:'r.ttSg=sg;r.ttN++;r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;',to:'r.ttSg=sg;r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;'},
+ {n:'a touch is counted every frame',part:'catch',from:'r.ttSg=sg;r.ttN++;r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;',to:'r.ttN++;r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;'},
  {n:'a slow ball is a touch',part:'catch',from:'if(sp>T.minV&&sg!==r.ttSg){',to:'if(sg!==r.ttSg){'},
  {n:'too many touches does not end it',part:'catch',from:"if(r.ttN>T.maxTouch){ttCatch(r,sg>0?hi:lo,sg,'touches');return;}",to:''},
  {n:'too many touches hands it to the wrong man',part:'catch',from:"ttCatch(r,sg>0?hi:lo,sg,'touches')",to:"ttCatch(r,sg>0?lo:hi,sg,'touches')"},
@@ -798,13 +831,13 @@ const MUT=[
  {n:'the middle is the wrong place',part:'catch',from:'hm=clamp(-(r.baseZ[lo]+r.baseZ[hi])/2,-r.maxOff+T.lungeRoom,r.maxOff-T.lungeRoom)',to:'hm=0'},
  {n:'a rod waits by moving the target off its offset for good',part:'catch',from:':r.offset+stay;',to:':r.offset+stay*50;'},
  // committing
- {n:'a strike is committed whatever the lane',part:'catch',from:'if(o&&o.clr>=Math.max(ST.prep-ttEase(r),laneMin(r))){',to:'if(o){'},
- {n:'a strike is never committed',part:'catch',from:'if(o&&o.clr>=Math.max(ST.prep-ttEase(r),laneMin(r))){',to:'if(false){'},
- {n:'the strikes are not switched off by the switch',part:'catch',from:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&(r.ttEv-=dt)<=0){",to:"if(r.ttPh==='bounce'&&sp>T.minV&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&(r.ttEv-=dt)<=0){"},
- {n:'the rows are looked at every frame',part:'catch',from:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&(r.ttEv-=dt)<=0){",to:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)){"},
+ {n:'a strike is committed whatever the lane',part:'catch',from:'if(o&&o.clr>=clearance){',to:'if(o){'},
+ {n:'a strike is never committed',part:'catch',from:'if(o&&o.clr>=clearance){',to:'if(false){'},
+ {n:'the strikes are not switched off by the switch',part:'catch',from:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&(r.ttEv-=dt)<=0){",to:"if(r.ttPh==='bounce'&&sp>T.minV&&r.ttN>=ST.warm&&(r.ttEv-=dt)<=0){"},
+ {n:'the rows are looked at every frame',part:'catch',from:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&(r.ttEv-=dt)<=0){",to:"if(r.ttPh==='bounce'&&ST.on&&sp>T.minV&&r.ttN>=ST.warm){"},
  {n:'a look is not counted',part:'catch',from:'r.ttEv=ST.look;CAS.ttLook++;',to:'r.ttEv=ST.look;'},
- {n:'the rows are not looked at at the bounce',part:'catch',from:"r.ttSg=sg;r.ttN++;r.ttEv=0;CAS.ttTouch++;",to:"r.ttSg=sg;r.ttN++;CAS.ttTouch++;"},
- {n:'a strike on a ball at rest',part:'catch',from:"&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&(r.ttEv-=dt)<=0){",to:"&&ST.on&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&(r.ttEv-=dt)<=0){"},
+ {n:'the rows are not looked at at the bounce',part:'catch',from:"r.ttSg=sg;r.ttN++;r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;",to:"r.ttSg=sg;r.ttN++;r.ttSetup=null;CAS.ttTouch++;"},
+ {n:'a strike on a ball at rest',part:'catch',from:"&&ST.on&&sp>T.minV&&r.ttN>=ST.warm&&(r.ttEv-=dt)<=0){",to:"&&ST.on&&r.ttN>=ST.warm&&(r.ttEv-=dt)<=0){"},
  {n:'the man chosen is not kept',part:'catch',from:"r.ttPh='strike';r.ttMan=o.f;r.ttW=o.w;",to:"r.ttPh='strike';r.ttMan=r.ttLo;r.ttW=o.w;"},
  {n:'the slide chosen is not kept',part:'catch',from:"r.ttMan=o.f;r.ttW=o.w;r.ttGo=false;",to:"r.ttMan=o.f;r.ttW=0;r.ttGo=false;"},
  {n:'a commit is not counted',part:'catch',from:"CAS.ttCommit++;CAS[o.w?'ttCut':'ttStraight']++;",to:"CAS[o.w?'ttCut':'ttStraight']++;"},
@@ -821,9 +854,8 @@ const MUT=[
  {n:'a forward start is not counted',part:'catch',from:"{CAS.ttFwd++;fliftStart(r,'hit');return;}",to:"{fliftStart(r,'hit');return;}"},
  {n:'a ball held ahead is lifted from too',part:'catch',from:'if(!loose&&r.pinB&&!r.hAhead&&r.angle',to:'if(!loose&&r.pinB&&r.angle'},
  {n:'a ball held ahead is not known',part:'catch',from:'r.hAhead=!loose&&!!r.pinB&&r.pinB.pinDx>AIC.catch.side.aheadMin;',to:'r.hAhead=false;'},
- {n:'a new rally keeps the last lock',part:'catch',from:'r.ttGo=false;r.ttLock=0;r.ttSq=0;r.ttDec=-1;',to:'r.ttGo=false;r.ttSq=0;r.ttDec=-1;'},
- {n:'a new rally keeps the last squaring clock',part:'catch',from:'r.ttGo=false;r.ttLock=0;r.ttSq=0;r.ttDec=-1;',to:'r.ttGo=false;r.ttLock=0;r.ttDec=-1;'},
- {n:'a new rally keeps the last let-through decision',part:'catch',from:'r.ttGo=false;r.ttLock=0;r.ttSq=0;r.ttDec=-1;',to:'r.ttGo=false;r.ttLock=0;r.ttSq=0;'},
+ {n:'a new rally keeps the last squaring clock',part:'catch',from:'r.ttGo=false;r.ttSq=0;r.ttDec=-1;',to:'r.ttGo=false;r.ttDec=-1;'},
+ {n:'a new rally keeps the last let-through decision',part:'catch',from:'r.ttGo=false;r.ttSq=0;r.ttDec=-1;',to:'r.ttGo=false;r.ttSq=0;'},
  // ending
  {n:'a rally that ran out of time has the short cooldown',part:'catch',from:"why==='time'||why==='touches'?T.cdTime:T.cd",to:'T.cd'},
  {n:'a rally that ran out of touches has the short cooldown',part:'catch',from:"why==='time'||why==='touches'?T.cdTime:T.cd",to:"why==='time'?T.cdTime:T.cd"},
@@ -831,26 +863,26 @@ const MUT=[
  {n:'every rally is taken under a forward leg',part:'catch',from:'r.catFwd=(r.ttRelNow||0)>=AIC.catch.side.aheadMin;',to:'r.catFwd=true;'},
  // the commit window
  {n:'the standing face is not counted to',part:'catch',from:'tt=ts<=q.d?ts:q.t-c/Math.max(sp-w*sg,1);',to:'tt=q.t-c/Math.max(sp-w*sg,1);'},
- // revert
- {n:'a shut lane never gives a strike up while the ball is on its way',part:'catch',from:'if(tf>ST.untilt&&(!cur||cur.clr<Math.max(ST.back-ez,lm))){ttRevert(r);return;}',to:''},
- {n:'a strike is given up only for a lane that clears by the prep',part:'catch',from:'cur.clr<Math.max(ST.back-ez,lm))){ttRevert',to:'cur.clr<Math.max(ST.prep-ez,lm))){ttRevert'},
- {n:'an old rally gives up as readily as a young one',part:'catch',from:'cur.clr<Math.max(ST.back-ez,lm))){ttRevert',to:'cur.clr<Math.max(ST.back,lm))){ttRevert'},
- {n:'a strike is given up with the ball at his face',part:'catch',from:'if(tf>ST.untilt&&(!cur',to:'if((!cur'},
- {n:'a given-up strike stays a strike',part:'catch',from:"r.ttPh='bounce';r.ttGo=false;r.ttEv=0;r.ttLock=",to:"r.ttGo=false;r.ttEv=0;r.ttLock="},
- {n:'a given-up strike is read for again at once',part:'catch',from:'r.ttLock=S.time+AIC.catch.tictac.strike.relock;',to:''},
- {n:'a given-up strike is not counted',part:'catch',from:'CAS.ttBack++;',to:''},
- {n:'the last moment needs the go whatever the age of the rally',part:'catch',from:"if(cur.clr<Math.max(ST.go-ez,lm)){ttCatch(r,f,sg,'shut');return;}",to:"if(cur.clr<Math.max(ST.go,lm)){ttCatch(r,f,sg,'shut');return;}"},
+ // cancellation
+ {n:'the last moment needs the go whatever the age of the rally',part:'catch',from:"if(cur.clr<Math.max(ST.go-ttEase(r),laneMin(r))){ttCatch(r,f,sg,'shut');return;}",to:"if(cur.clr<Math.max(ST.go,laneMin(r))){ttCatch(r,f,sg,'shut');return;}"},
  // ease
  {n:'a long rally settles for no less',part:'catch',from:'return ST.ease*clamp(',to:'return 0*clamp('},
  {n:'the ease starts at once',part:'catch',from:'(r.ttT-ST.patient)/Math.max(0.1,T.maxT-ST.patient)',to:'(r.ttT)/Math.max(0.1,T.maxT-ST.patient)'},
  {n:'the ease has no top',part:'catch',from:'clamp((r.ttT-ST.patient)/Math.max(0.1,T.maxT-ST.patient),0,1)',to:'((r.ttT-ST.patient)/Math.max(0.1,T.maxT-ST.patient))'},
- {n:'an old rally gives up a lane under the gate no sooner',part:'catch',from:'cur.clr<Math.max(ST.back-ez,lm))){ttRevert',to:'cur.clr<ST.back-ez)){ttRevert'},
- {n:'an old rally gets going into a lane under the gate',part:'catch',from:"if(cur.clr<Math.max(ST.go-ez,lm)){ttCatch",to:"if(cur.clr<ST.go-ez){ttCatch"},
+ {n:'an old rally gets going into a lane under the gate',part:'catch',from:"if(cur.clr<Math.max(ST.go-ttEase(r),laneMin(r))){ttCatch",to:"if(cur.clr<ST.go-ttEase(r)){ttCatch"},
  {n:'a strike under way keeps a lane under the gate',part:'catch',from:'if(clr<Math.max(ST.drop,laneMin(r))){',to:'if(clr<ST.drop){'},
- {n:'a strike is committed at the full prep however old the rally',part:'catch',from:'o.clr>=Math.max(ST.prep-ttEase(r),laneMin(r))',to:'o.clr>=Math.max(ST.prep,laneMin(r))'},
- // the warm-up and the lock
- {n:'the rows are read before the rally has warmed up',part:'catch',from:'&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&',to:'&&S.time>=(r.ttLock||0)&&'},
- {n:'the lock is ignored',part:'catch',from:'&&r.ttN>=ST.warm&&S.time>=(r.ttLock||0)&&',to:'&&r.ttN>=ST.warm&&'},
+ {n:'a strike is committed at the full prep however old the rally',part:'catch',from:'clearance=Math.max(ST.prep-ttEase(r),laneMin(r))',to:'clearance=Math.max(ST.prep,laneMin(r))'},
+ // warm-up
+ {"n":"the rows are read before the rally has warmed up","part":"catch","from":"&&r.ttN>=ST.warm&&(r.ttEv-=dt)","to":"&&(r.ttEv-=dt)"},
+ {"n":"a shot can switch direction after the backswing","part":"catch","from":"const cur=ttOpts(r,rb,true,null,w)[0];","to":"const cur=ttBest(ttOpts(r,rb,true));if(cur)r.ttW=cur.w;"},
+ {"n":"no check on the swing tick","part":"catch","from":"if(r.ttGo&&((r.ttEv-=dt)<=0||fire)){","to":"if(r.ttGo&&(r.ttEv-=dt)<=0){"},
+ {"n":"the defense cannot close during setup","part":"catch","from":"q.t+ST.guard","to":"q.t"},
+ {"n":"a setup ignores time to finish","part":"catch","from":"brake+travel+ST.look","to":"brake"},
+ {"n":"a setup can start alongside the trailing foot","part":"catch","from":"if((p.z-r.baseZ[trail]-r.offset)*sg<fz+P.clear+over*over/(2*A))return null;","to":""},
+ {"n":"a setup ignores a planned let-through","part":"catch","from":"(r.ttPlN===r.ttN&&r.ttPlT)||(r.ttPcN===r.ttN&&r.ttPcT)","to":"false"},
+ {"n":"a setup changes lanes during a traverse","part":"catch","from":"}else if(!r.ttSetup){","to":"}else{"},
+ {"n":"a setup survives the next traverse","part":"catch","from":"r.ttEv=0;r.ttSetup=null;CAS.ttTouch++;","to":"r.ttEv=0;CAS.ttTouch++;"},
+ {"n":"a rally starts with its last setup","part":"catch","from":"r.ttPcN=-1;r.ttSetup=null;","to":"r.ttPcN=-1;"},
  // square
  {n:'the foot jumps to the angle that squares it',part:'catch',from:'r.ttA+=clamp(a-r.ttA,-SQ.step,SQ.step);',to:'r.ttA=a;'},
  {n:'the foot turns with the ball at a face',part:'catch',from:'if(near>=SQ.farT*sp)r.ttA+=',to:'r.ttA+='},
@@ -859,7 +891,7 @@ const MUT=[
  {n:'the foot follows the ball whatever the switch',part:'catch',from:"if(r.ttPh==='bounce'&&SQ&&SQ.on){",to:"if(r.ttPh==='bounce'&&SQ){"},
  {n:'the foot never follows the ball',part:'catch',from:"if(r.ttPh==='bounce'&&SQ&&SQ.on){",to:'if(false){'},
  // thru
- {n:'a ball is never let through',part:'catch',from:"if(r.ttPh==='bounce'&&TH&&TH.on&&TH.roles.indexOf(r.role)>=0&&sp>Math.max(T.minV,TH.minV||0)&&r.ttDec!==r.ttN){",to:'if(false){'},
+ {n:'a ball is never let through',part:'catch',from:"if(r.ttPh==='bounce'&&!r.ttSetup&&TH&&TH.on&&TH.roles.indexOf(r.role)>=0&&sp>Math.max(T.minV,TH.minV||0)&&r.ttDec!==r.ttN){",to:'if(false){'},
  {n:'a let-through ignores the switch',part:'catch',from:'&&TH&&TH.on&&TH.roles',to:'&&TH&&TH.roles'},
  {n:'every rod lets a ball through',part:'catch',from:'&&TH.roles.indexOf(r.role)>=0&&sp>Math.max(T.minV,TH.minV||0)',to:'&&sp>Math.max(T.minV,TH.minV||0)'},
  {n:'a let-through is asked again at every look',part:'catch',from:'&&sp>Math.max(T.minV,TH.minV||0)&&r.ttDec!==r.ttN){',to:'&&sp>Math.max(T.minV,TH.minV||0)){'},
@@ -919,10 +951,10 @@ const MUT=[
  {n:'room: the face still lunges',part:'catch',from:'vm=0;if(r.ttSfR!==r.ttN)',to:'if(r.ttSfR!==r.ttN)'},
  {n:'room: a soft touch needs the whole room',part:'catch',from:'<T.lungeRoom*0.25*vm/vf){',to:'<T.lungeRoom*0.25){'},
  {n:'room: a stand is counted every frame',part:'catch',from:'if(r.ttSfR!==r.ttN){r.ttSfR=r.ttN;CAS.ttSoftRoom++;}',to:'CAS.ttSoftRoom++;'},
- {n:'a new rally keeps the last one\'s plans',part:'catch',from:'r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;'+NL+' CAS.tt++;',to:'r.ttDec=-1;'+NL+' CAS.tt++;'},
+ {n:'a new rally keeps the last one\'s plans',part:'catch',from:'r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.ttSetup=null;'+NL+' CAS.tt++;',to:'r.ttDec=-1;r.ttSetup=null;'+NL+' CAS.tt++;'},
  {n:'the back pose ignores the foot box',part:'catch',from:'&&(top||(_saR.angle=m,footBoxD(_saR,_saP,0,_saN)>bD))',to:''},
  {n:'the back pose ignores side.boxGap',part:'catch',from:'bD=BALL_R*FOOT_BOX_REACH+SD.boxGap;',to:'bD=BALL_R*FOOT_BOX_REACH;'},
- {n:'a rally from a rolling ball keeps the last one\'s plans',part:'catch',from:'r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.hPh=null;',to:'r.ttDec=-1;r.hPh=null;'}
+ {n:'a rally from a rolling ball keeps the last one\'s plans',part:'catch',from:'r.ttDec=-1;r.ttSfN=-1;r.ttSfR=-1;r.ttPlN=-1;r.ttPcN=-1;r.ttSetup=null;r.hPh=null;',to:'r.ttDec=-1;r.hPh=null;'}
 ];
 let caught=0;
 for(const m of MUT){

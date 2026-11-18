@@ -112,7 +112,7 @@ function shotFwdAngle(r){
  const FE=AIC.catch.fetch,h=shotFwdBall(r,FE.near,FE.far,FE.bailV,on?shotFwdZ():0);
  let to;
  if(h){
-  const fa=(h.dz<=(on?A.align:FE.alignZ)&&Math.abs(r.vz)<=(on?A.slideV:FE.slideV))?footAngle(on?shotFwdLead(r,h.b,h.rel):h.rel,true):null;
+  const fa=Math.abs(r.vz)<=(on?A.slideV:FE.slideV)?shotPinContact(h,on?shotFwdLead(r,h.b,h.rel):h.rel,true,on?A.align:FE.alignZ):null;
   to=fa==null?AIC.catch.recv.lift.angle:fa;
  }else{
   const fr=on?shotRollAngle(r,1):null;
@@ -203,14 +203,21 @@ function shotFwdUnder(r){
  return fa==null?up:fa;
 }
 // --- the pin assist (CONFIG.shots.pin.assist) ---
+function shotPinContact(h,rel,fwd,align){
+ const p=h.b.m.position;
+ if(F.W/2-Math.abs(p.z)<=2*BALL_R&&h.dz<=pinSideReach(p))return footAngle(rel,fwd,h.dz,p.y);
+ return h.dz<=align?footAngle(rel,fwd):null;
+}
+
 // the slow low ball a leg posed back (g -1) or forward (g +1) can come down on: fa0 the angle that puts the foot on its top, fa the same once the man is over it and slow (else null), over = the leg is up past fa0
 function shotPinAim(r,g){
  const P=SHOTC.pin,A=P.assist,FE=AIC.catch.fetch;
  if(typeof footAngle!=='function')return null;
  const h=g<0?shotFwdBall(r,P.back,A.near,A.v):shotFwdBall(r,FE.near,FE.far,FE.bailV,shotFwdZ());
  if(!h)return null;
- h.fa0=footAngle(h.rel,g>0);
- h.fa=(h.fa0!=null&&h.dz<=A.align&&Math.abs(r.vz)<=A.slideV)?h.fa0:null;
+ const pose=shotPinContact(h,h.rel,g>0,A.align);
+ h.fa0=pose==null?footAngle(h.rel,g>0):pose;
+ h.fa=Math.abs(r.vz)<=A.slideV?pose:null;
  h.over=h.fa0!=null&&(r.angle*r.kickDir-h.fa0)*g>=-A.overTol;
  return h;
 }

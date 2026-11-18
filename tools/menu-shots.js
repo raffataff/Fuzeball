@@ -85,7 +85,7 @@ const AUDIT=`const o=[],on=e=>e.getClientRects().length,sc=v=>v==='auto'||v==='s
   if(s.querySelector('.lyEditing'))continue;   // the edit canvas grows a drop zone under the panels on purpose
   for(const e of [s,...s.querySelectorAll('*')]){if(!on(e))continue;const cs=getComputedStyle(e),n=(e.id?'#'+e.id:'.'+String(e.className).split(' ')[0]);
    if(sc(cs.overflowY)&&e.scrollHeight>e.clientHeight+1)o.push(n+' scrolls down: '+e.clientHeight+' / '+e.scrollHeight);
-   if(sc(cs.overflowX)&&e.scrollWidth>e.clientWidth+1&&e.id!=='czStrip')o.push(n+' scrolls sideways: '+e.clientWidth+' / '+e.scrollWidth);}}
+   if(sc(cs.overflowX)&&e.scrollWidth>e.clientWidth+1)o.push(n+' scrolls sideways: '+e.clientWidth+' / '+e.scrollWidth);}}
  return o;`;
 /* Characters on the live screen, set in FuzeClip, that the font does not draw (they fall back to Soccer League); informational, never fails the run. */
 const fuzeChars=(()=>{   // the codepoints in FuzeClip's own cmap (format 4), read from the file

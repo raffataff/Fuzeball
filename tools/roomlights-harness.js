@@ -141,7 +141,8 @@ const MIN={name:'Void', backdrop:false, bg:0x05060f, fog:[210,440], lights:[], p
 /* === the authored-light pool (js/world.js) ================================ */
 const POOL_SRC=[sliceConst(WLD,'roomLightPool'),sliceConst(WLD,'roomShadowPool'),sliceFrom(WLD,'rlpWantsShadow'),sliceFrom(WLD,'rlpShadowNeed'),sliceFrom(WLD,'rlpNeed'),sliceFrom(WLD,'rlpType'),
  sliceFrom(WLD,'buildRoomLightPool'),sliceFrom(WLD,'rlpAdd'),sliceFrom(WLD,'rlpGet'),
- sliceFrom(WLD,'rlpFreeAll'),sliceFrom(WLD,'applyAuthoredLights')].join('\n');
+ sliceFrom(WLD,'rlpFreeAll'),sliceFrom(WLD,'applyAuthoredLights'),
+ 'function rlpShadowFit(l,L){l._fit=L;}'].join('\n');   // the real fit needs THREE maths: recorded, checked below
 function pool(rooms,editorOn,padOverride){
  const added=[];
  const mkTarget=()=>({position:{x:0,y:0,z:0,set(a,b,c){this.x=a;this.y=b;this.z=c;}},updateMatrixWorld(){}});
@@ -235,6 +236,11 @@ const R_LIGHTS={
    ok(lit.length===2,'SHADOW: three lights asking, budget 2 -> exactly 2 borrow a casting slot',lit.length);
    ok(lit.every(l=>l.shadow.autoUpdate===true),'SHADOW: ...and a borrowed slot is gated back ON');
    ok(p.warn.some(w=>/past the budget/.test(w)),'SHADOW: ...the third is reported, not silent'); }
+
+ { const p=shPool({point:0,spot:2,dir:0});
+   p.applyAuthoredLights(SH_ROOMS.a);
+   ok(p.roomShadowPool.spot.filter(l=>!l._rlFree).every(l=>l._fit),'SHADOW: a borrowed casting slot is fitted (focus, bias, strength)');
+   ok(p.roomLightPool.spot.every(l=>!l._fit),'SHADOW: ...a plain slot is not'); }
 
  { /* Over budget must DOWNGRADE, never drop the light: a lamp that vanishes is a worse bug
       than a lamp that stops casting. */

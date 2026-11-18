@@ -25,7 +25,7 @@
   renderer.render=function(s,c){if(DIR.draw)rr(s,c);};   // the loop never draws: drawNow does, with the director's camera
   // the reflection cube and the HUD are per drawn frame, not per tick (the HUD gets the time it missed)
   const ubr=window.updateBallReflect,hr=window.hudRender;let hAcc=0;
-  window.updateBallReflect=function(){if(DIR.draw){ballReflN=CONFIG.ballReflect.every-1;ubr();}};
+  window.updateBallReflect=function(){if(DIR.draw){const R=CONFIG.ballReflect,fc=R.faces;ballReflN=R.every-1;R.faces=6;try{ubr();}finally{R.faces=fc;}}};   // a drawn frame gets the whole cube
   window.hudRender=function(rdt){hAcc+=rdt;if(DIR.draw){hr(hAcc);hAcc=0;}};
   const at=()=>+(DIR.i*DIR.tick).toFixed(4),push=e=>{e.t=at();e.st=+S.time.toFixed(3);DIR.ev.push(e);};
   const wrap=(name,fn)=>{const o=window[name];if(typeof o!=='function')return;window[name]=function(){fn.apply(null,arguments);return o.apply(this,arguments);};};

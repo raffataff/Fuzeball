@@ -100,7 +100,7 @@
   const tally=k=>T.by[k]||(T.by[k]={n:0,goal:0,first:{},clr:[],sv:[],rel:[]});
   window.snakeFire=function(r){
    const b=r.pinB,SN=AIC.catch.snake,gx=r.kickDir>0?F.L/2:-F.L/2,p=b.m.position;
-   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObs(r.team,p.x,gx,SN.shotV),gx);
+   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObsAt(r.team,p.x,gx,SN.shotV,SHOT.snake.spin),gx);
    const q=tally(r.role);q.n++;q.clr.push(clr);q.sv.push(Math.abs(r.slideV));q.rel.push(b.pinDx);
    live.push({q,team:r.team,t:S.time,sc:S.score[r.team],first:null});
    return sf.apply(this,arguments);

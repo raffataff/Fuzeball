@@ -29,7 +29,7 @@ function showMatchLoading(on,label){
 // ===== STAGED VENUE SWAP =====
 // room, table, skin, pitch or reflection changes used to run as one synchronous chain with no paint between, so the tab seemed to hang; now four steps, one frame each:
 //   1. veil up, wait out its CSS fade   2. run(done): the caller's applyRoom / applyTable / selectSkin (onReady fires when assets are resident)
-//   3. warm: renderer.compile(scene,camera) forces shader link and texture upload under the veil   4. one clean frame, veil drops
+//   3. warm: compile under the veil and wait for the programs to link (warmWhen)   4. one clean frame, veil drops
 // coalesced, not queued: a request mid-swap replaces the pending one; `silent` runs the staging with no veil
 let venueBusy=false,venuePend=null;
 function venueLoad(run,opts){
@@ -61,12 +61,18 @@ function venueLoad(run,opts){
  };
  const warm=()=>{
   // gated on `staged` so CONFIG.venue.on:false is a true off switch (the old path did no warm)
-  if(staged){
-   try{if(typeof renderer!=='undefined'&&renderer&&scene&&camera)renderer.compile(scene,camera);}
-   catch(e){console.warn('venue warm failed',e);}            // a warm that throws must not strand the veil
-   if(typeof shadowDirty==='function')shadowDirty();
-  }
-  next(finish);
+  if(!staged){next(finish);return;}
+  try{
+   if(typeof renderer!=='undefined'&&renderer&&scene&&camera){
+    if(typeof warmTemplates==='function')warmTemplates();
+    if(typeof warmFlush==='function')warmFlush();
+    const m=typeof warmCompile==='function'?warmCompile(scene):renderer.compile(scene,camera);
+    if(typeof warmTrack==='function')warmTrack(m);
+   }
+  }catch(e){console.warn('venue warm failed',e);}            // a warm that throws must not strand the veil
+  if(typeof shadowDirty==='function')shadowDirty();
+  // the veil stays up until the programs link (models.js warmWhen), capped like the load
+  if(typeof warmWhen==='function')warmWhen(()=>next(finish),V.maxT===undefined?9:V.maxT);else next(finish);
  };
  next(()=>{
   let done=false;

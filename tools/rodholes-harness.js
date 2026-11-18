@@ -171,6 +171,16 @@ near(sh.uniforms.rhY1.value,8.9,1e-6,'C8 rhY1 is this ring\'s own measured top')
 const tall=boot(); tall.__get('registerRodHoles')(tall.__get('root')([tall.__get('ring')('rod_hole_1',DEFS[0].x,5.65,9.35)]),'t','s');
 near(tall.__get('compile')(tall.__x.skinRodHoles.t.s[0].mat).uniforms.rhY1.value,9.35,1e-6,
    'C9 a skin whose rings are a different height gets its own bounds (strike is 5.65..9.35)');
+const arc=CS.__get('ring')('rod_hole_arc_1',DEFS[0].x);
+arc.geometry={getAttribute:name=>name==='_stamina'?{}:undefined};
+CS.__get('registerRodHoles')(CS.__get('root')([arc]),'circuit','standard');
+const arcMaterial=CS.__x.skinRodHoles.circuit.standard[0].mat;
+const arcShader=CS.__get('compile')(arcMaterial);
+ok(arcShader.vertexShader.includes('attribute float _stamina;')&&arcShader.vertexShader.includes('vRhY=_stamina;'),
+   'C13 the arc reads the same authored threshold across each lens');
+ok(arcShader.fragmentShader.includes('float rhT=vRhY;'),'C14 the arc compares the threshold directly against fill');
+ok(arcMaterial.customProgramCacheKey()!==lS[0].mat.customProgramCacheKey(),
+   'C15 arc and height gauges use distinct shader programs');
 // a chunk name that has moved must degrade, not explode
 const CB=boot(),lB2=rig(CB);
 CB.__get('compile')(lB2[1].mat,'void main(){}',null);

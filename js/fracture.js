@@ -247,9 +247,13 @@ function warmBallMaterials(){
       roughness:t.metal?.25:.4,metalness:t.metal||.05}));}
    warmMeshHolder.add(mesh);warmedBallTypes[key]=1;
   }
+  if(!warmedBallTypes._shell){   // the cannonball's warning shell (balls.js makeBall), its own material per ball
+   const sh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,8,6),new THREE.MeshBasicMaterial({transparent:true,opacity:0,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+   sh.userData.noEnv=true;warmMeshHolder.add(sh);warmedBallTypes._shell=1;
+  }
   // a real ball takes the reflection map at birth (applyBallEnv), and null/texture is itself a program: the parked ones follow the option as it is now
   const env=(typeof ballReflectOn==='function'&&ballReflectOn())?ballCubeRT.texture:null;
-  warmMeshHolder.children.forEach(c=>setBallEnv({m:c},env));
+  warmMeshHolder.children.forEach(c=>{if(!c.userData.noEnv)setBallEnv({m:c},env);});
 }
 // what a match needs that needs no match: boot queues it, so the first Start has nothing left to compile (warmMatchAssets calls it too, for a boot that went straight up)
 function warmMatchPrep(){
@@ -266,7 +270,8 @@ function warmMatchAssets(){
   if(!renderer||!scene||!camera)return;
   warmMatchPrep();
   if(typeof warmFlush==='function')warmFlush();   // whatever the boot queue still holds is compiled before the whistle
-  renderer.compile(scene,camera);            // one pass over every scene material at the live light count
+  const m=typeof warmCompile==='function'?warmCompile(scene):renderer.compile(scene,camera);   // one pass over every scene material at the live light count
+  if(typeof warmTrack==='function')warmTrack(m);
   for(const id in explosionTemplates)warmFractureTemplate(explosionTemplates[id]); // re-warm the shatters/swirl for THIS room's exact light set
   warmFractureTemplate(ballExplosionTemplate);
   warmFractureTemplate(respawnSwirlTemplate);

@@ -208,6 +208,7 @@ function fireBuild(){
  m.blendEquation=THREE.AddEquation;m.blendSrc=THREE.OneFactor;m.blendDst=THREE.OneMinusSrcAlphaFactor;
  const mesh=new THREE.Mesh(g,m);
  mesh.frustumCulled=false;mesh.visible=false;mesh.castShadow=mesh.receiveShadow=false;mesh.renderOrder=3;
+ mesh.userData.warmShow=on=>{if(on){mesh.userData.wv=[mesh.visible,g.instanceCount];mesh.visible=true;if(!g.instanceCount)g.instanceCount=1;}else{[mesh.visible,g.instanceCount]=mesh.userData.wv;}};   // the prime draws it once (models.js warmRelease); a zero instance draws nothing
  scene.add(mesh);FIRE.mesh=mesh;FIRE.A=A;
 }
 

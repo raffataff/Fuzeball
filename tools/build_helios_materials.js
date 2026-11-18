@@ -1,7 +1,10 @@
 'use strict';
 // Run from project root. Builds authored-surface PBR maps from the original
-// flat livery art, then replaces only embedded images in the existing GLB.
+// flat livery art, then embeds the maps in the GLB.
+// --goals-only rebakes the goal maps and reuses the existing livery maps.
 const fs=require('fs'),path=require('path'),sharp=require('sharp');
+const bakeGoalMaps=require('./helios_goal_maps.js');
+const {goalGeometry}=require('./helios_goal_geometry.js');
 const dir='assets/tables/arena/helios_runners',source=path.join(dir,'source_art');
 const glb='assets/tables/arena/fuzeball_table_arena_helios.glb';
 fs.mkdirSync(source,{recursive:true});
@@ -39,14 +42,60 @@ async function build(kind,index){
  await Promise.all([png(base,color,w,h),png(path.join(dir,kind+'_roughness.png'),rough,w,h),png(path.join(dir,kind+'_metallic.png'),metal,w,h),png(path.join(dir,kind+'_normal.png'),normal,w,h),png(path.join(dir,kind+'_orm.png'),orm,w,h)]);
  console.log(kind,w,h,'updated');
 }
-function patchGlb(){
+function addGoalHardware(j,names,replacement){
+ const sampler=j.samplers.push({magFilter:9729,minFilter:9987,wrapS:33071,wrapT:10497})-1;
+ const maps={};
+ for(const name of names){
+  const bufferView=j.bufferViews.push({buffer:0})-1;
+  replacement.set(bufferView,fs.readFileSync(path.join(dir,name+'.png')));
+  const source=j.images.push({name,mimeType:'image/png',bufferView})-1;
+  maps[name.slice('goal_frame_'.length)]={index:j.textures.push({name,sampler,source})-1};
+ }
+ const frames=j.nodes.filter(n=>n.name?.startsWith('goal_frame')).flatMap(n=>j.meshes[n.mesh].primitives);
+ if(frames.length!==2)throw new Error('Expected a left and right Helios goal frame');
+ const material=j.materials.push({
+  name:'Helios | solar racing goal hardware',
+  pbrMetallicRoughness:{baseColorTexture:maps.basecolor,metallicRoughnessTexture:maps.orm},
+  normalTexture:maps.normal,
+  occlusionTexture:maps.orm,
+  emissiveTexture:maps.emissive,
+  emissiveFactor:[.72,.72,.72]
+ })-1;
+ function write(index,values){
+  const accessor=j.accessors[index];
+  accessor.count=values.length/(accessor.type==='VEC3'?3:accessor.type==='VEC2'?2:1);
+  replacement.set(accessor.bufferView,Buffer.from(values.buffer));
+ }
+ for(const frame of frames){
+  const attrs=frame.attributes, pos=j.accessors[attrs.POSITION];
+  const side=Math.sign(pos.min[0]);
+  const geo=goalGeometry(side);
+  write(attrs.POSITION,geo.positions);pos.min=geo.min;pos.max=geo.max;
+  write(attrs.NORMAL,geo.normals);
+  write(attrs.TEXCOORD_0,geo.uv);
+  // The old arches shared indices. The mirrored replacement reverses winding.
+  if(side<0){
+   const old=j.accessors[frame.indices];
+   const bufferView=j.bufferViews.push({buffer:0,target:34963})-1;
+   frame.indices=j.accessors.push({...old,bufferView})-1;
+  }
+  write(frame.indices,geo.indices);
+  frame.material=material;
+ }
+}
+function patchGlb(goalMaps){
  const original=path.join(source,'helios-original.glb');if(!fs.existsSync(original))fs.copyFileSync(glb,original);
  const b=fs.readFileSync(original),jl=b.readUInt32LE(12),j=JSON.parse(b.subarray(20,20+jl).toString()),binStart=20+jl+8,old=b.subarray(binStart,binStart+j.buffers[0].byteLength),chunks=[];let offset=0;
  const replacement=new Map();for(const img of j.images||[]){if(parts.some(p=>img.name===p+'_basecolor'||img.name===p+'_normal'||img.name===p+'_orm'))replacement.set(img.bufferView,fs.readFileSync(path.join(dir,img.name+'.png')));}
+ addGoalHardware(j,goalMaps,replacement);
  for(let i=0;i<j.bufferViews.length;i++){
   const view=j.bufferViews[i],bytes=replacement.get(i)||old.subarray(view.byteOffset||0,(view.byteOffset||0)+view.byteLength);
   let pad=(4-offset%4)%4;if(pad){chunks.push(Buffer.alloc(pad));offset+=pad;}view.byteOffset=offset;view.byteLength=bytes.length;chunks.push(bytes);offset+=bytes.length;
  }
  j.buffers[0].byteLength=offset;const raw=Buffer.from(JSON.stringify(j));const jp=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);let bin=Buffer.concat(chunks);bin=Buffer.concat([bin,Buffer.alloc((4-bin.length%4)%4)]);let out=Buffer.alloc(12+8+jp.length+8+bin.length);out.write('glTF');out.writeUInt32LE(2,4);out.writeUInt32LE(out.length,8);out.writeUInt32LE(jp.length,12);out.write('JSON',16);jp.copy(out,20);let pos=20+jp.length;out.writeUInt32LE(bin.length,pos);out.write('BIN\0',pos+4);bin.copy(out,pos+8);fs.writeFileSync(glb,out);
 }
-(async()=>{for(let i=0;i<parts.length;i++)await build(parts[i],i);patchGlb();console.log('Updated embedded GLB maps');})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{
+ if(!process.argv.includes('--goals-only'))for(let i=0;i<parts.length;i++)await build(parts[i],i);
+ patchGlb(await bakeGoalMaps(dir));
+ console.log('Updated embedded GLB maps');
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -64,6 +64,7 @@ function loop(t){
    else if(S.phase==='count')userControlUpdate(FIXED);
    updateRods(FIXED);
    physics(FIXED);
+   for(const b of S.balls)b.cur.copy(b.m.position);
    if(S.phase==='play')recordReplay(); // flight recorder (replay.js): a few float writes into a ring buffer
                                        // post-physics gate on purpose: the goal step isn't recorded, so the buffer ends with the ball at the line
    S.time+=FIXED;physAcc-=FIXED;steps++;stepped=true;
@@ -71,7 +72,6 @@ function loop(t){
   perfAdd('p','sim');perfSteps(steps);   // steps pinned at SIM.maxSteps is the cost-latch signature
   if(steps>=SIM.maxSteps)physAcc=0;                    // spiral-of-death guard: drop the backlog
   if(stepped){
-   for(const b of S.balls)b.cur.copy(b.m.position);    // capture true current sim state
    for(const r of rods){r.iOff=r.offset;r.iAng=r.angle;}
   }
   // --- render interpolation ---

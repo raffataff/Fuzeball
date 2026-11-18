@@ -9,7 +9,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
  const b=to?src.indexOf(to,a):-1;return src.slice(a,b<0?src.length:b);};
 const PH=rd('js/physics.js'),RO=rd('js/rods.js'),SH=rd('js/shots.js'),ST=rd('js/stats.js');
 const parts={
- phys:slice(PH,'function collideRod(b,r){','function ballBall('),
+ phys:slice(PH,'function collideRod(','function ballBall('),
  cap:slice(PH,'function capSpeed(b,r,sweet,in2){',NL+'function collideRod('),
  pin:slice(PH,'function pinUpdate(){','function hitFresh('),
  rods:[slice(RO,'function styleCfg(',NL+'function kickStyleCfg'),slice(RO,'function kickStyleCfg(r){',NL+'function passFaceOK('),slice(RO,'function holdCfg(r){',NL+'function kickRod(')].join(NL),
@@ -17,7 +17,7 @@ const parts={
  stats:[slice(ST,'function stHit(r){',NL),slice(ST,'function stGrip(r){',NL),slice(ST,'function stCapFrac(r){',NL)].join(NL)
 };
 const stubs=[
-"var S={time:0,eff:[{boost:-1,frozen:-1,big:-1},{boost:-1,frozen:-1,big:-1}],balls:[],lastTouch:-1,teamStats:null,shake:0};var rods=[];",
+"var ARENA_ON=false;var S={time:0,eff:[{boost:-1,frozen:-1,big:-1},{boost:-1,frozen:-1,big:-1}],balls:[],lastTouch:-1,teamStats:null,shake:0};var rods=[];",
 "var dbgLogRod=null;","var RNG={jit:function(){return 0.5;}};","var Au={kick:function(){}};",
 "function aimAssist(){} function wallAssist(){} function passFaceOK(){return true;} function shotSpray(){}",
 "function shotConsume(r){if(r.shotOn){r.shotOn=false;r.shotPow=1;r.shotCtl=1;}}",

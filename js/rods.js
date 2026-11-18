@@ -90,7 +90,7 @@ function resetRodRotation(){
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
   r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
-  r.catPh=null;r.catMan=-1;r.catCd=0;r.catUntil=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.unPh=null;r.unT=-9;r.unCd=0;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;r.puPh=null;r.puB=false;
+  r.catPh=null;r.catMan=-1;r.catCd=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.unPh=null;r.unT=-9;r.unCd=0;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;r.puPh=null;r.puB=false;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
  }
@@ -161,7 +161,16 @@ function updateRods(dt){
    r.angle=a;
   }
   // THE PIN POSE (shots.js shotPinInput): finesse + raise, or finesse + kick for the forward pin; below the stick, above the raise; r.pinA is sweep-capped (not the forward one)
-  else if(r.pinPose&&r.pinA!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinA,Math.min(1,(r.ttOn&&r.act==='catch'?AIC.catch.tictac.lerp:seatOf(r)?(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle)?(r.pinRl?SHOT.pin.assist.roll.lerp:SHOT.pin.lower):r.pinFwd?(r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.fwd.lerp):SHOT.pin.lerp):SHOT.pin.lerp)*dt));}   // a player's leg comes down onto a ball at pin.lower (onto a rolling one at roll.lerp), rises to receive at recv.lerp
+  else if(r.pinPose&&r.pinA!=null){
+   let rate=SHOT.pin.lerp;
+   if(r.ttOn&&r.act==='catch')rate=AIC.catch.tictac.lerp;
+   else if(seatOf(r)){
+    if(r.pinA*r.angle>0&&Math.abs(r.pinA)<Math.abs(r.angle))rate=r.pinRl?SHOT.pin.assist.roll.lerp:SHOT.pin.lower;
+    else if(r.pinFwd)rate=r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.fwd.lerp;
+   }else if(r.act==='catch'&&r.catPh==='side')rate=AIC.catch.byDiff[teamDiff(r.team)]?.sideLerp??rate;
+   r.heldFwd=false;
+   r.angle=lerp(r.angle,r.pinA,Math.min(1,rate*dt));
+  }
   // a human's forward pin let go with a ball under the leg: up and forward off it, down only once it is clear (shots.js shotFwdHold); with kick still held it stays up (r.fwdRz)
   else if(r.fwdRz||(r.fwdOut&&shotFwdHold(r))){r.heldFwd=false;r.angle=lerp(r.angle,AIC.catch.recv.lift.angle*r.kickDir,Math.min(1,SHOT.pin.fwd.lerp*dt));}
   // finesse held, leg down: the foot squared onto a ball beside a man (shots.js shotSquare)
@@ -178,9 +187,12 @@ function updateRods(dt){
    if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
   }else{                                              // AI hand: accel-capped so it can't reverse instantly
    const aR=AIC.slideAccel*cvS*(pushBurst(r)?AIC.catch.push.play.acc:1)*stAgil(r),acc=aR*dt;   // spd stat scales direction-change agility (+ stamina fade)
-   const d=r.target-r.offset,want=clamp(r.clOn&&AIC.calm.brake?Math.sign(d)*Math.min(Math.abs(d)/dt,Math.sqrt(2*aR*Math.abs(d))):d/dt,-ms,ms);   // velocity that reaches target this frame, speed-capped; a calm rod no faster than it can still stop in
+   const forwardCarry=r.pinB&&r.catPh==='hold'&&r.pcFwdDir&&r.pcTz!=null;
+   const hitSetup=r.catPh==='hit'&&(r.hPh==='clear'||r.hPh==='aim');
+   const braking=(r.clOn&&AIC.calm.brake)||(r.act==='catch'&&(forwardCarry||hitSetup));
+   const d=r.target-r.offset,want=clamp(braking?Math.sign(d)*Math.min(Math.abs(d)/dt,Math.sqrt(2*aR*Math.abs(d))):d/dt,-ms,ms);
    r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
-   r.offset+=r.slideV*dt;
+   r.offset=clamp(r.offset+r.slideV*dt,-r.maxOff,r.maxOff);
   }
   if(!uSeat&&slideBlocked(r,prevOff,r.offset)){r.offset=prevOff;r.slideV=0;}   // ai.js backGuard: never walk a boot into a ball that is behind it
   msSlide(r,Math.abs(r.offset-prevOff));              // matchstats.js: rod work done, in table units

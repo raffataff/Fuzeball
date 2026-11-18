@@ -1,0 +1,15 @@
+{
+  // Live Server's watcher walks the workspace on Go Live: tools/build (~28k files) held every request for seconds
+  // this replaces Live Server's defaults, so the first four entries repeat them
+  "liveServer.settings.ignoreFiles": [
+    ".vscode/**",
+    "**/*.scss",
+    "**/*.sass",
+    "**/*.ts",
+    "tools",
+    "output",
+    "Claude outputs",
+    "docs",
+    "**/*.md"
+  ]
+}

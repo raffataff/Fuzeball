@@ -1,5 +1,5 @@
 // lanes harness. node tools/lanes-harness.js
-// the lane gate (CONFIG.ai.lanes; laneMin / laneShut, ai.js): no AI kick leaves into an opposing man. A held ball past catch.holdT is shot only through a lane (pinPlay), the snake the same; the dead-ball push, a role off the list and the switch put the old play back
+// The late-shot lane gate and the snake's separate clearance requirement.
 // slices the real catch block (pinOutlet / pinPlay / laneMin / laneShut) with the lane helpers, runs them against live CONFIG with bare-bones rods; the plain kick and the dribble release are checked whole-match by tools/plainkick-soak.js; every mutation must break an assertion
 'use strict';
 const fs=require('fs'),vm=require('vm');
@@ -12,7 +12,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
  fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
- ret:slice(AI,'function retrieveMan(r,bz){',NL+'function retrievePhase('),
+ ret:slice(AI,'function retrieveMan(',NL+'function retrievePhase('),
  clr:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'// z of the live foot nearest'),
  lz:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// the teammate behind us'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
@@ -22,7 +22,7 @@ const stubs=[
  "var KICKS=[],PICK=null;",
  "function pinRelease(r){r.pinB=null;}",
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null});}",
- "function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return PICK;}",
+ "function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return PICK;} function pinPassPlan(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "function rngAi(){return function(){return 0.99;};}",
@@ -49,8 +49,9 @@ function world(X,opt){
  X.S.time=0;X.S.balls=[];X.KICKS.length=0;X.setPick(null);
  const r={x:22.5,team:0,kickDir:1,role:opt.role||'ATT',aiIQ:true,baseZ:[-12,0,12],maxOff:opt.maxOff!=null?opt.maxOff:9,removedUntil:[],offset:0,target:0,slideV:0,angle:0,raise:false,behindFlag:false,aiMan:-1,
   kickT:-1,cd:0,pinB:null,pinOn:false,pinPose:false,pinA:null,act:'catch',catPh:'hold',catT:0,catMan:-1,catO:0,catCd:0,catUntil:0,force:false,catSw:false,catSv:0,catSl:0,vz:0};
- const def={x:37.5,team:1,kickDir:-1,role:'DEF',baseZ:[0,24],offset:opt.defOff!=null?opt.defOff:-1.1,removedUntil:[],vz:0};
- const gk={x:52.5,team:1,kickDir:-1,role:'GK',baseZ:[0],offset:opt.gkOff!=null?opt.gkOff:3.5,removedUntil:[],vz:0};
+ const def={x:37.5,team:1,kickDir:-1,role:'DEF',baseZ:[0,24],offset:opt.defOff!=null?opt.defOff:-1.1,maxOff:24,removedUntil:[],vz:0};
+ const gk={x:52.5,team:1,kickDir:-1,role:'GK',baseZ:[0],offset:opt.gkOff!=null?opt.gkOff:3.5,maxOff:24,removedUntil:[],vz:0};
+ def.target=def.offset;gk.target=gk.offset;
  X.rods.length=0;X.rods.push(r,def,gk);
  return r;
 }
@@ -101,14 +102,14 @@ function suite(X){
   ok('a lane short of catch.lineClear but past the gate: held while young, shot at holdT',X.pinPlay(r,best,0.5,dt)===0&&X.pinPlay(r,best,late,dt)===1);}
  {const r=world(X,{defOff:-3,gkOff:-9,maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);r.slideV=(CA.fireV+CA.push.minV)/2;
   ok('a rod sliding too slowly to push is judged on the straight line at holdT (it leaves straight)',X.pinPlay(r,best,late,dt)===1&&r.catSv===0);}
- {const r=world(X,{maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);X.setPick({score:3,x:7.5,z:5,clr:4,onward:3,th:0.1,rod:{role:'MID'}});
-  ok('a pass with a lane is still the play at holdT (passes judge their own lane)',X.pinPlay(r,best,late,dt)===2);X.setPick(null);}
+ {const r=world(X,{role:'MID',maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);X.setPick({score:3,x:37.5,z:5,clr:4,onward:3,th:0.1,rod:{role:'ATT'}});
+  ok('MID can still pass through a clear lane at holdT',X.pinPlay(r,best,late,dt)===2);X.setPick(null);}
  // ---- the snake past holdT ----
  {const SN=CA.snake,K0=JSON.stringify(SN);SN.use={rookie:1,pro:1,legend:1};SN.relMin=0;SN.relMax=9;
   const r=world(X);r.angle=CA.recv.fwdMin+0.4;pinned(X,r,0,3.5);const best=view(X,3.5,0);
   const v=X.pinPlay(r,best,late,dt);
   ok('a snake hold with its lane shut is not fired at holdT',v===0&&r.pcSn===true,'v='+v+' sn='+r.pcSn);
-  r.force=true;ok('…the dead-ball push fires the snake',X.pinPlay(r,best,late,dt)===1&&r.pcSn===true);r.force=false;
+  r.force=true;ok('…pinPlay leaves the last-chance snake to catchStep',X.pinPlay(r,best,late,dt)===0&&r.pcSn===true);r.force=false;
   Object.assign(SN,JSON.parse(K0));}
  Object.assign(LN,JSON.parse(L0));
  return R;
@@ -127,7 +128,7 @@ const MUT=[
  {n:'laneShut reads the rows where they stand',part:'catch',from:'laneObs(r.team,p.x,gx,AIC.catch.shotV),gx,0)<m;',to:'laneObs(r.team,p.x,gx),gx,0)<m;'},
  {n:'laneShut reads the delayed view',part:'catch',from:'const p=(b.real||b).m.position,gx=',to:'const p=b.m.position,gx='},
  {n:'laneShut never shuts',part:'catch',from:'if(m===-Infinity)return false;',to:'return false;'},
- {n:'past holdT a shot needs no lane',part:'catch',from:'if(lnow>=laneMin(r)){v=1;',to:'if(true){v=1;'},
+ {n:'past holdT a shot needs no lane',part:'catch',from:'if(!sn&&lnow>=laneMin(r)){v=1;',to:'if(true){v=1;'},
  {n:'past holdT the lane is judged on the slide even when it leaves straight',part:'catch',from:'const lnow=(still||sn||sl)?now:',to:'const lnow=true?now:'},
  {n:'a held-on late ball is not counted',part:'catch',from:'else if(!r.pcLn){r.pcLn=1;CAS.laneLate++;}',to:''},
  {n:'…it is counted every frame',part:'catch',from:'if(!r.pcLn){r.pcLn=1;CAS.laneLate++;}',to:'if(true){CAS.laneLate++;}'},

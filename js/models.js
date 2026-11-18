@@ -86,7 +86,7 @@ function loadSkin(id,skinId,cb){
     else if(n.startsWith('goal_frame'))hasFrame=true;                            // custom posts: hide the primitive front frame
    });
    (skinHasFrame[id]=skinHasFrame[id]||{})[skinId]=hasFrame;
-   applyEmissiveStrength(gltf.scene);               // r128 ignores KHR_materials_emissive_strength
+   applyEmissiveStrength(gltf.scene);               // emissive strength the loader left in userData (none since r139)
    grp.add(gltf.scene);gltf.scene.updateMatrixWorld(true);
    registerBigGoalMeshes(gltf.scene);               // wire baked frame + end-walls into the big-goal widen
    registerRodHoles(gltf.scene,id,skinId);          // wire the rod-hole rings into the stamina readout
@@ -180,28 +180,31 @@ function registerBigGoalMeshes(root){
  console.log('registerBigGoalMeshes: '+nGrow+' frame + '+nWall+' wall mesh(es) ('+glbGoalSplit.length+' split)');
 }
 
-// turn one ring's material into a level gauge by world height in the shader (added to gl_FragColor before tonemapping); a missing shader chunk anchor logs and keeps the authored look
-function rodHoleShader(m,y0,y1){
- m.userData.rhU=null;                      // filled in when the program compiles (first render)
+// The lens mesh carries one stamina threshold per window. Older rings use world height.
+function rodHoleShader(m,y0,y1,arc){
+ m.userData.rhU=null;
+ m.customProgramCacheKey=()=>arc?'rodHoleArc':'rodHoleFill';
  m.onBeforeCompile=sh=>{
-  m.userData.rhU=null;                     // a RE-compile that fails an anchor must not leave a handle on the dead program
-  sh.uniforms.rhFill={value:1};            // 0..1 waterline, as a fraction of the ring's height
+  m.userData.rhU=null;
+  sh.uniforms.rhFill={value:1};
   sh.uniforms.rhY0={value:y0};
   sh.uniforms.rhY1={value:y1};
-  sh.uniforms.rhSoft={value:CONFIG.fx.rodHoles.fillSoft};
+  sh.uniforms.rhSoft={value:CONFIG.fx.rodHoles.fillSoft*(arc ? 0.5 : 1)};
   sh.uniforms.rhGlow={value:new THREE.Color(0,0,0)};
+  const coord=arc?'_stamina':'(modelMatrix*vec4(transformed,1.0)).y';
   const v=sh.vertexShader.replace('#include <begin_vertex>',
-   '#include <begin_vertex>\n\tvRhY=(modelMatrix*vec4(transformed,1.0)).y;');
+   '#include <begin_vertex>\n\tvRhY='+coord+';');
   if(v===sh.vertexShader){console.warn('rod hole shader: begin_vertex anchor missing - ring left plain');return;}
-  sh.vertexShader='varying float vRhY;\n'+v;
+  sh.vertexShader=(arc?'attribute float _stamina;\n':'')+'varying float vRhY;\n'+v;
   let anchor=null;
   for(const a of ['#include <tonemapping_fragment>','#include <colorspace_fragment>','#include <dithering_fragment>'])
    if(sh.fragmentShader.indexOf(a)>=0){anchor=a;break;}
   if(!anchor){console.warn('rod hole shader: no fragment anchor - ring left plain');return;}
+  const threshold=arc?'vRhY':'(vRhY-rhY0)/max(1e-4,rhY1-rhY0)';
   sh.fragmentShader='varying float vRhY;\nuniform float rhFill,rhY0,rhY1,rhSoft;\nuniform vec3 rhGlow;\n'+
    sh.fragmentShader.replace(anchor,
-    '\tfloat rhT=(vRhY-rhY0)/max(1e-4,rhY1-rhY0);\n'+
-    '\tgl_FragColor.rgb+=rhGlow*smoothstep(rhFill+rhSoft,rhFill-rhSoft,rhT);\n'+anchor);
+    '\tfloat rhT='+threshold+';\n'+
+    '\tgl_FragColor.rgb+=rhGlow*smoothstep(rhT-rhSoft,rhT+rhSoft,rhFill);\n'+anchor);
   m.userData.rhU=sh.uniforms;
  };
 }
@@ -222,7 +225,7 @@ function registerRodHoles(root,id,skinId){
   if(ri<0){bad++;console.warn('rod hole '+onm(c)+' at x='+cx.toFixed(1)+' matches no rod - skipped ('+id+'/'+skinId+')');return;}
   c.castShadow=false;
   const m=c.material.clone();
-  rodHoleShader(m,bb.min.y,bb.max.y);      // this ring's OWN height — it differs per skin
+  rodHoleShader(m,bb.min.y,bb.max.y,!!c.geometry?.getAttribute('_stamina'));
   c.material=m;
   list.push({o:c,mat:m,rod:ri,fill:1,v:0,col:kitLin(CONFIG.fx.rodHoles.idle),off:false});
  });
@@ -309,7 +312,7 @@ function ensureRoom(id,cb){
    room.traverse(c=>{if(!c.isMesh)return;c.castShadow=false;
     const ms=Array.isArray(c.material)?c.material:[c.material];
     const glass=ms.some(m=>m&&m.transparent);c.receiveShadow=!glass;if(glass)c.renderOrder=-1;});
-   applyEmissiveStrength(room);                    // r128 does not support KHR_materials_emissive_strength
+   applyEmissiveStrength(room);                    // emissive strength the loader left in userData (none since r139)
    const rl=applyRoomLights(room,R);               // candela -> screen; see the block above
    if(rl.length)console.log('room "'+id+'" lights: '+rl.map(l=>(l.name||l.type)+' '+l.intensity.toFixed(3)+(l.distance?'@'+l.distance.toFixed(0):'')).join(', '));
    room.visible=false;scene.add(room);
@@ -338,7 +341,7 @@ function loadRoomModel(){for(const id in CONFIG.rooms)ensureRoom(id);}
 
 // --- room skies (CONFIG.rooms.<id>.sky) ---
 // six KTX2 cube faces (<src>_px.ktx2 ... _nz) in one CubeTexture on scene.background: one draw call, never fogged; ext:'jpg'/'png' works for authoring
-// r128's background can't rotate or dim, so both are baked into the faces; LRU by room id (cacheSkies), active kept
+// turned / dimmed by sky.rot / sky.int (world.js skyView); LRU by room id (cacheSkies), active kept
 const skyCache={},skyOrder=[],skyLoading={},skyFailed={};
 const SKY_FACES=['px','nx','py','ny','pz','nz'];
 function roomHasSky(id){const R=CONFIG.rooms&&CONFIG.rooms[id];return !!(R&&R.sky&&R.sky.src&&!skyFailed[id]);}
@@ -455,9 +458,9 @@ function makeRodModel(men,team,tableId){
    if(!/^team/i.test(mn))return;
    if(!n.includes('handle')&&!n.includes('collar')&&!n.includes('knob'))return;
    const glow=/^team[_.]?glow/i.test(mn),base=glow?teamGlow[team]:teamMat[team];
-   c.material=cloneWithMaps(base,src);
+   c.material=cloneWithMaps(base,src,glow);
    if(c.material===base)return;
-   if(c.material.map)rodGrainSet(c.material);
+   if(c.material.map&&!c.material.emissiveMap)rodGrainSet(c.material);
    clones.push({mat:c.material,isGlow:glow});
   });
   if(clones.length){g.userData.teamClones=clones;g.userData.team=team;}
@@ -498,8 +501,9 @@ function hideMeshes(obj){if(obj)obj.traverse(c=>{if(c.isMesh)c.visible=false;});
 
 // clone dest material and carry over src's maps so baked detail survives team-colour swaps
 // a base-colour map is multiplied by the team colour and keeps src's surface, which the default finish restores to (clone deep-copies userData.fbOrig)
-function cloneWithMaps(dest,src){
- if(!src||!src.map&&!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap)return dest;
+function cloneWithMaps(dest,src,glow){
+ const emissiveMap=glow&&src?.emissiveMap;
+ if(!src||!src.map&&!src.normalMap&&!src.bumpMap&&!src.roughnessMap&&!src.metalnessMap&&!src.aoMap&&!emissiveMap)return dest;
  const m=dest.clone();
  if(src.map){m.map=src.map;m.metalness=src.metalness;m.roughness=src.roughness;
   const o=m.userData.fbOrig;if(o){o.metalness=src.metalness;o.roughness=src.roughness;}}
@@ -508,6 +512,10 @@ function cloneWithMaps(dest,src){
  if(src.roughnessMap)m.roughnessMap=src.roughnessMap;
  if(src.metalnessMap)m.metalnessMap=src.metalnessMap;
  if(src.aoMap)m.aoMap=src.aoMap;
+ if(emissiveMap){
+  m.emissiveMap=emissiveMap;m.emissiveIntensity=src.emissiveIntensity;
+  if(m.userData.fbOrig)m.userData.fbOrig.emissiveIntensity=src.emissiveIntensity;
+ }
  m.needsUpdate=true;
  return m;
 }
@@ -625,14 +633,20 @@ function makeBallModel(key){
 }
 
 // --- shader warm queue ---
-// renderer.compile(scene) links every new program in one block; cold, that is ~0.35 s a program and a frozen splash
-// each material is a job instead, run in short slices; a job compiles on a stand-in scene holding the live lights, fog and environment, so it fills the program cache the real render reads
-const warmQ=[],warmWait=[],warmSeen=new WeakSet();
-let warmScn=null,warmTm=0,warmGate=true,warmHeld=false;
-// put every material under root that has not been compiled on the queue
+// each material is a job, run in short slices on a stand-in scene holding the live lights, fog and environment, so it fills the program cache the real render reads
+// with KHR_parallel_shader_compile a compile only submits: the link finishes off the main thread, and the first draw of a program not yet linked blocks until it is
+// so a job's programs stay pending until linked, and the waiters (the reveal, a venue swap) fire once the queue is empty AND nothing is pending
+const warmQ=[],warmWait=[],warmSeen=new WeakSet(),warmTexSeen=new WeakSet(),warmPend=new Set();
+let warmScn=null,warmTm=0,warmGate=true,warmHeld=false,warmPollT=0,warmPar=null;
+// put every material under root that has not been compiled on the queue, then each of its textures not yet uploaded (one job each: [null,null,tex])
 function warmAdd(root){
  if(!root||!renderer||!scene||!camera)return;
- root.traverse(o=>{for(const m of Array.isArray(o.material)?o.material:[o.material])if(m&&!warmSeen.has(m)){warmSeen.add(m);warmQ.push([m,o]);}});
+ root.traverse(o=>{for(const m of Array.isArray(o.material)?o.material:[o.material])if(m&&!warmSeen.has(m)){warmSeen.add(m);warmQ.push([m,o]);warmTexAdd(m);}});
+}
+function warmTexAdd(m){
+ const add=v=>{if(v&&v.isTexture&&!v.isRenderTargetTexture&&v.version>0&&!warmTexSeen.has(v)){warmTexSeen.add(v);warmQ.push([null,null,v]);}};
+ for(const k in m)add(m[k]);
+ if(m.uniforms)for(const k in m.uniforms)add(m.uniforms[k]&&m.uniforms[k].value);
 }
 function warmKick(ms){if(warmTm)clearTimeout(warmTm);warmTm=setTimeout(warmTick,ms);}
 function warmPush(root){
@@ -652,7 +666,46 @@ function warmTick(){
  warmRun(CONFIG.warm.slice);
  if(warmQ.length&&!warmTm&&!warmHeld)warmKick(CONFIG.warm.gap);
 }
-// run jobs until ms is spent (0 = all); a drained queue looks at the scene once more, and the waiters fire when that finds nothing
+// the materials a compile() returned wait in warmPend until their programs link (no extension: compile already blocked, nothing waits)
+function warmTrack(mats){
+ if(warmPar===null)warmPar=!!(renderer.extensions&&renderer.extensions.has('KHR_parallel_shader_compile'));
+ if(!mats||!warmPar||CONFIG.warm.link===false)return;
+ mats.forEach(m=>warmPend.add(m));
+ if(warmPend.size&&!warmPollT)warmPollT=setTimeout(warmPoll,CONFIG.warm.poll);
+}
+// compile for the screen and, with ball reflections on, for the ball's cube (a render target writes linear colour: every material is a second program there)
+function warmCompile(s,tgt){
+ const m=renderer.compile(s,camera,tgt);
+ if(typeof ballReflectOn==='function'&&ballReflectOn()){
+  const rt=renderer.getRenderTarget();renderer.setRenderTarget(ballCubeRT);
+  try{renderer.compile(s,camera,tgt).forEach(x=>m.add(x));}finally{renderer.setRenderTarget(rt);}
+ }
+ return m;
+}
+function warmLinked(){
+ for(const m of warmPend){const p=renderer.properties.get(m).currentProgram;if(!p||p.isReady())warmPend.delete(m);}
+ return !warmPend.size;
+}
+function warmPoll(){warmPollT=0;if(warmLinked())warmRelease();else warmPollT=setTimeout(warmPoll,CONFIG.warm.poll);}
+// before the waiters go, one real render (still under the hold or the veil) makes what only a render makes: the shadow depth and sky background programs
+// culling off: the driver finishes a program on its first draw, and the menu camera sees a fraction of what a match does
+// an effect hidden until used shows itself for this render through userData.warmShow(on) (the fireball's flame)
+function warmRelease(){
+ if(warmQ.length||!warmWait.length||!warmLinked())return;
+ if(CONFIG.warm.prime!==false){
+  const fc=[],ws=[];
+  scene.traverse(o=>{if(o.userData&&o.userData.warmShow)ws.push(o);if(o.frustumCulled&&o.material){o.frustumCulled=false;fc.push(o);}});
+  try{
+   ws.forEach(o=>o.userData.warmShow(true));
+   if(!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;renderer.render(scene,camera);
+   if(typeof ballReflectOn==='function'&&ballReflectOn()){ballCube.position.set(0,BALL_R,0);ballCube.update(renderer,scene);}   // the sky under the cube's target, made only by a render
+  }catch(e){console.warn('shader prime failed',e);}
+  ws.forEach(o=>{try{o.userData.warmShow(false);}catch(e){}});
+  fc.forEach(o=>{o.frustumCulled=true;});
+ }
+ warmWait.splice(0).forEach(f=>f());
+}
+// run jobs until ms is spent (0 = all); a drained queue looks at the scene once more, and the waiters fire when that finds nothing and every link is done
 function warmRun(ms){
  const t0=performance.now();
  let L=null,s=null;
@@ -664,24 +717,27 @@ function warmRun(ms){
    scene.traverseVisible(c=>{if(c.isLight)L.push(c);});
    s.fog=scene.fog;s.environment=scene.environment;
   }
-  s.children=L.concat(warmQ.shift()[1]);
-  const tj=performance.now();
-  try{renderer.compile(s,camera);}catch(e){console.warn('shader warm failed',e);}
+  const j=warmQ.shift(),tj=performance.now();
+  if(j[2])try{renderer.initTexture(j[2]);}catch(e){console.warn('texture warm failed',e);}   // the upload the first draw would do
+  else{
+   s.children=L.concat(j[1]);
+   try{warmTrack(warmCompile(s));}catch(e){console.warn('shader warm failed',e);}
+  }
   const now=performance.now();
   if(ms&&warmGate&&now-tj>=CONFIG.warm.slow){warmHeld=true;break;}
   if(ms&&now-t0>=ms)break;
  }
  if(s)s.children=[];
  if(!warmQ.length)warmAdd(scene);   // one more look before anyone is let go: a slice can end on the last job
- if(!warmQ.length)warmWait.splice(0).forEach(f=>f());
+ warmRelease();
 }
-// cb once the queue is done (at once if it is), or after cap seconds whatever is left
+// cb once the queue is done and linked and primed (at once if it is), or after cap seconds whatever is left
 function warmWhen(cb,cap){
- if(!warmQ.length){cb();return;}
  let on=true;const go=()=>{if(on){on=false;cb();}};
- warmWait.push(go);setTimeout(go,cap*1000);
+ warmWait.push(go);warmRelease();
+ if(on)setTimeout(go,cap*1000);
 }
-// everything queued, now, held or not (the match start)
+// everything queued, now, held or not (the match start); submits only, warmWhen waits for the links
 function warmFlush(){
  if(warmTm){clearTimeout(warmTm);warmTm=0;}
  warmRun(0);
@@ -737,6 +793,12 @@ function makePUModel(key){const t=puTemplates[key];return t?t.clone(true):null;}
 function warmPowerupShaders(){
  for(const k in puTemplates)warmPush(puTemplates[k]);
 }
+// a venue swap: the templates kept out of the scene (pickups, shatters) again, for the new light set
+function warmTemplates(){
+ for(const k in puTemplates)puTemplates[k].traverse(o=>{for(const m of Array.isArray(o.material)?o.material:[o.material])if(m)warmSeen.delete(m);});
+ warmPowerupShaders();
+ if(typeof warmFractureShaders==='function')warmFractureShaders();
+}
 
 // --- pitches (one GLB each, lazy + LRU) ---
 // fetched when picked, evicted past CONFIG.tableAssets.cachePitches, active protected; split with tools/pitch-split.mjs (see the note above CONFIG.pitches for why the variant key is the material name)
@@ -763,8 +825,7 @@ function ensurePitch(id,cb){
       if(!c.isMesh)return;
       c.castShadow=false;c.receiveShadow=true;
       let m=c.material;
-      // r128's GLTFLoader predates KHR_materials_ior.  Use its native
-      // physical shader when a pitch registry entry supplies the same IOR.
+      // a pitch registry `ior` puts a GLB without KHR_materials_ior on the physical shader (the loader handles the extension itself)
       if(m&&m.isMeshStandardMaterial&&Number.isFinite(P.ior)&&P.ior>=1&&P.ior<=2.333){
        let phys=physicalMats.get(m);
        if(!phys){
@@ -790,7 +851,7 @@ function ensurePitch(id,cb){
         m.needsUpdate=true;
       }
     });
-    applyEmissiveStrength(g);               // match table materials on the r128 loader
+    applyEmissiveStrength(g);               // as the table and room GLBs
     g.visible=false;                        // drawField parents + reveals it
     if(typeof grassAttach==='function')grassAttach(id,g);   // shell grass (js/grass.js), grass pitches only
     pitchGroups[id]=g;

@@ -122,13 +122,13 @@ function liveZone(p){
  }
  return false;
 }
-// real seconds until this ball's whistle if it stays put: the deadzone speed-up, or the live-zone discount until graceMax is spent (mirrors deadBallUpdate); Infinity when the clock is off
-function deadLeft(b){
+// Real seconds until this ball's whistle. A move that takes the foot out of reach can budget without the live-zone discount.
+function deadLeft(b,useGrace=true){
  if(S.trn&&!S.trn.deadball)return Infinity;
  const L=DEAD.live,p=b.cur,need=(S.balls.length>1?DEAD.wedgeT:DEAD.stallT)-(b.stuckT||0);
  if(need<=0)return 0;
  const zm=deadzoneMult(p);
- if(zm===1&&L&&L.on&&L.mult<1&&(b.graceT||0)<L.graceMax&&liveZone(p)){
+ if(useGrace&&zm===1&&L&&L.on&&L.mult<1&&(b.graceT||0)<L.graceMax&&liveZone(p)){
   const slowT=(L.graceMax-(b.graceT||0))/(1-L.mult),gain=slowT*L.mult;   // real seconds the grace budget still buys, and the clock it adds meanwhile
   return need<=gain?need/L.mult:slowT+need-gain;
  }

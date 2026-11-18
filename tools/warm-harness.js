@@ -46,18 +46,24 @@ function world(over){
  const scene=new Scene();scene.fog={f:1};scene.environment={e:1};
  const trav0=scene.traverse;T.trav=0;
  scene.traverse=function(cb){if(++T.trav>3000)throw new Error('runaway: the queue never converges');trav0.call(this,cb);};   // a mutant that re-adds forever ends here
- const log={compiled:[],calls:[]};
+ const log={compiled:[],calls:[],renders:[],tex:[]};
  let stand=null;const stands=new Set(),made=new Set();
+ const par=!!(over&&over.par);
  const renderer={compile(s,cam){
   stands.add(s);stand=s;
   const job=s.children.filter(c=>!c.isLight);
   log.calls.push({t:T.now,kids:s.children.slice(),fog:s.fog,env:s.environment,isScene:s.isScene,cam});
-  let cost=0;
+  let cost=0;const out=new Set();
   job.forEach(o=>o.traverse(c=>{if(c.material){const ms=Array.isArray(c.material)?c.material:[c.material];
-   ms.forEach(m=>{if(m.boom)throw new Error('link failed');if(made.has(m))return;made.add(m);cost+=m.cost;log.compiled.push(m.name);});}}));
-  T.now+=cost;
- }};
- const CONFIG={warm:Object.assign({on:true,slice:6,gap:8,slow:40,holdMax:30},over||{}),fx:{}};
+   ms.forEach(m=>{if(m.boom)throw new Error('link failed');out.add(m);if(made.has(m))return;made.add(m);cost+=m.cost;m.linkAt=T.now+(m.link||0);log.compiled.push(m.name);});}}));
+  T.now+=cost;return out;
+ },
+ initTexture(t){log.tex.push({n:t.name,t:T.now,renders:log.renders.length});T.now+=t.cost||0;},
+ extensions:{has:k=>par&&k==='KHR_parallel_shader_compile'},
+ properties:{get:m=>({currentProgram:{isReady:()=>T.now>=(m.linkAt||0)}})},
+ shadowMap:{autoUpdate:false,needsUpdate:false},
+ render(sc,cam){log.renders.push({t:T.now,shadow:this.shadowMap.needsUpdate,sc,cam});this.shadowMap.needsUpdate=false;}};
+ const CONFIG={warm:Object.assign({on:true,slice:6,gap:8,slow:40,holdMax:30,link:true,poll:16,prime:true},over||{}),fx:{}};
  const console_={warn:(...a)=>T.warns.push(a.join(' ')),log(){}};
  return{T,advance,Scene,mat,mesh,light,group,scene,renderer,CONFIG,log,camera:{cam:1},console:console_,setT,clrT,
   get stand(){return stand;},get stands(){return stands;},node};
@@ -69,7 +75,7 @@ function build(src,over){
  const body=between(src,'// --- shader warm queue ---','// --- power-up pickup models ---')+'\n'+fnAt(src,'warmPowerupShaders')+'\n';
  const puTemplates={};
  const f=new Function('CONFIG','renderer','scene','camera','THREE','performance','setTimeout','clearTimeout','console','puTemplates',
-  body+'\nreturn{warmPush,warmAdd,warmGo,warmWhen,warmFlush,warmRun,warmTick,warmPowerupShaders,warmQ,warmWait};');
+  body+'\nreturn{warmPush,warmAdd,warmGo,warmWhen,warmFlush,warmRun,warmTick,warmTrack,warmPowerupShaders,warmQ,warmWait,warmPend};');
  const api=f(w.CONFIG,w.renderer,w.scene,w.camera,{Scene:w.Scene},{now:()=>w.T.now},w.setT,w.clrT,w.console,puTemplates);
  return Object.assign(w,{api,puTemplates});
 }
@@ -142,6 +148,11 @@ const scenOff=src=>{const w=lit(src,{on:false});w.api.warmPush(w.scene);
 const scenBoom=src=>{const w=build(src);const bad=w.mesh('bad',w.mat('bad',100,{boom:true})),good=w.mesh('good');
  w.scene.children.push(bad,good);w.api.warmPush(w.scene);w.api.warmGo();w.advance(5000);
  return{good:w.log.compiled.includes('good'),warned:w.T.warns.length,timers:w.T.timers.length};};
+const scenLink=(src,over)=>{const w=build(src,Object.assign({par:true},over||{}));
+ for(let i=0;i<3;i++)w.scene.children.push(w.mesh('k'+i,w.mat('k'+i,2,{link:400+i*100})));   // cheap submits, links done 400-600 ms later
+ let n=0,at=-1,rendersAtFire=-1;w.api.warmPush(w.scene);w.api.warmWhen(()=>{n++;at=w.T.now;rendersAtFire=w.log.renders.length;},30);w.api.warmGo();
+ w.advance(100);const early=n,left=w.api.warmQ.length;w.advance(2000);
+ return{early,left,n,at,rendersAtFire,renders:w.log.renders,pend:w.api.warmPend.size,timers:w.T.timers.filter(t=>t.at-w.T.now<1000).length,w};};
 const scenPower=src=>{const w=build(src);
  w.puTemplates.boost=w.group([w.mesh('pb')]);w.puTemplates.frost=w.group([w.mesh('pf')]);
  w.api.warmPowerupShaders();return{queued:w.api.warmQ.length};};
@@ -175,14 +186,14 @@ function buildBalls(src,o){
   ballModel:o.model===false?null:{},ballCubeRT:{texture:'CUBE'},reflectOn:true,
   envLog:[],calls:[],made:0,
   THREE:{Group:function(){this.children=[];this.position={set(){}};this.add=function(x){this.children.push(x);};},
-         Mesh:function(g,m){this.isMesh=true;this.geometry=g;this.material=m;},
-         SphereGeometry:function(){},MeshStandardMaterial:function(){}},
-  makeBallModel(key){this.made++;return{isModel:true,key};},
+         Mesh:function(g,m){this.isMesh=true;this.geometry=g;this.material=m;this.userData={};},
+         SphereGeometry:function(){},MeshStandardMaterial:function(){},MeshBasicMaterial:function(){},BackSide:1,AdditiveBlending:2},
+  makeBallModel(key){this.made++;return{isModel:true,key,userData:{}};},
   ballReflectOn(){return this.reflectOn;},
   setBallEnv(b,env){this.envLog.push([b.m,env]);},
   iceBuild(){this.calls.push('ice');},boostBuild(){this.calls.push('boost');}};
  if(o.noRenderer)ctx.renderer=null;
- const body=between(src,'let warmMeshHolder=null;','function warmMatchAssets(')+'\nreturn{warmBallMaterials,warmMatchPrep,holder:()=>warmMeshHolder,warmed:()=>warmedBallTypes};';
+ const body=between(src,'let warmMeshHolder=null;','function warmMatchAssets(')+'\nreturn{warmBallMaterials,warmMatchPrep,holder:()=>warmMeshHolder&&{children:warmMeshHolder.children.filter(c=>!c.userData.noEnv)},shells:()=>warmMeshHolder?warmMeshHolder.children.filter(c=>c.userData.noEnv).length:0,warmed:()=>warmedBallTypes};';
  const f=new Function('ctx','with(ctx){'+body.replace(/\bmakeBallModel\(/g,'ctx.makeBallModel(').replace(/\bballReflectOn\(/g,'ctx.ballReflectOn(')
    .replace(/\bsetBallEnv\(/g,'ctx.setBallEnv(').replace(/\biceBuild\(/g,'ctx.iceBuild(').replace(/\bboostBuild\(/g,'ctx.boostBuild(')+'}');
  return Object.assign(ctx,{api:f(ctx)});
@@ -194,7 +205,7 @@ function scenBalls(src){
  w.api.warmBallMaterials();const n2=w.api.holder().children.length,made2=w.made;
  w.reflectOn=false;w.envLog.length=0;w.api.warmBallMaterials();
  const env2=w.envLog.map(e=>e[1]);
- return{n1,made1,env1,n2,made2,env2,nTypes:3};
+ return{n1,made1,env1,n2,made2,env2,nTypes:3,shells:w.api.shells(),envAll:w.envLog.length};
 }
 function scenBallLate(src){
  const w=buildBalls(src,{model:false});
@@ -294,6 +305,24 @@ function scenPrep(src,o){
 }
 
 /* ========================================================================= */
+/* 5b. PARALLEL COMPILE: THE WAITERS WAIT FOR THE LINKS, THEN ONE PRIME RENDER */
+/* ========================================================================= */
+{
+ const l=scenLink(MODELS);
+ ok(l.early===0&&l.left===0,'link: the queue is empty but nothing is linked yet, so the waiter waits',l.early+' '+l.left);
+ ok(l.n===1&&l.at>=600&&l.at<700,'link: called once, soon after the last program links',l.n+' at '+l.at);
+ ok(l.pend===0&&l.timers===0,'link: nothing left pending or polling',l.pend+' '+l.timers);
+ ok(l.renders.length===1&&l.rendersAtFire===1,'prime: one real render, before the waiter is called',l.renders.length+' '+l.rendersAtFire);
+ ok(l.renders[0]&&l.renders[0].shadow===true&&l.renders[0].sc===l.w.scene,'prime: of the live scene, with the shadow map asked for (its depth program)');
+ const o=scenLink(MODELS,{link:false});
+ ok(o.n===1&&o.at<100,'link:false: the waiter goes when the queue is empty',o.at);
+ const q=scenLink(MODELS,{par:false});
+ ok(q.n===1&&q.at<100&&q.pend===0,'no extension: compile blocked already, nothing waits',q.at);
+ const z=scenLink(MODELS,{prime:false});
+ ok(z.renders.length===0&&z.n===1,'prime:false: no render',z.renders.length);
+}
+
+/* ========================================================================= */
 /* 6. FRACTURE TEMPLATES: ONE MESH A SOURCE MATERIAL                           */
 /* ========================================================================= */
 {
@@ -314,6 +343,8 @@ function scenPrep(src,o){
  ok(b.n2===b.nTypes&&b.made2===b.made1,'balls: parked once, a second call makes none',b.n2+' '+b.made2);
  ok(b.env1.length===b.nTypes&&b.env1.every(e=>e==='CUBE'),'balls: parked with the reflection map the real balls get at birth',b.env1.join());
  ok(b.env2.length===b.nTypes&&b.env2.every(e=>e===null),'balls: and they follow the option when it is switched off, so a match start compiles what will be used',b.env2.join());
+ ok(b.shells===1,'balls: the cannonball warning shell is parked once',b.shells);
+ ok(b.envAll===b.nTypes,'balls: and it takes no reflection map (makeBall adds the shell after the ball env)',b.envAll);
  const l=scenBallLate(FRAC);
  ok(l.early===0&&l.made===0,'balls: nothing is parked while the ball GLB is still loading (a sphere would stand in for the real one for good)',l.early+' '+l.made);
  ok(l.late===3,'balls: and they are parked on the next call',l.late);
@@ -341,10 +372,68 @@ function scenPrep(src,o){
  ok(/warmGo\(\)/.test(INTRO),'wiring: skipping the intro releases the queue');
  ok(FLOW.indexOf('boot(true)')>0,'wiring: startMatchNow forces the boot without the hold');
  ok(/holdMax:\s*30/.test(CONFIG_SRC.slice(CONFIG_SRC.indexOf('warm:{'))),'wiring: the config block exists');
+ const vl=fnAt(FLOW,'venueLoad');
+ ok(/warmTrack\(m\)/.test(vl)&&/if\(typeof warmWhen==='function'\)warmWhen\(\(\)=>next\(finish\)/.test(vl),'wiring: a venue swap tracks its compile and lifts the veil only once it is linked');
  ok(!/lateAfter/.test(CONFIG_SRC),'wiring: no late phase left in the config');
  const hm=+(/holdMax:\s*(\d+)/.exec(CONFIG_SRC.slice(CONFIG_SRC.indexOf('intro:{'),CONFIG_SRC.indexOf('match:{')))||[0,0])[1];
  ok(hm>=30,'wiring: the intro waits at least as long as the queue is allowed to hold it',hm);
+ ok(/warmTemplates\(\)/.test(vl)&&/warmCompile\(scene\)/.test(vl),'wiring: a venue swap re-warms the pickups and shatters and compiles for the ball cube too');
+ ok(/warmTrack\(m\)/.test(wm)&&/warmCompile\(scene\)/.test(wm),'wiring: the match start compiles for the ball cube and tracks the links');
 }
+
+/* ========================================================================= */
+/* 8a. TEXTURE UPLOADS                                                        */
+/* ========================================================================= */
+const scenTex=src=>{
+ const w=build(src);const tx=(name,x)=>Object.assign({isTexture:true,name,version:1,cost:2},x||{});
+ const shared=tx('shared'),own=tx('own'),late=tx('late',{version:0}),rt=tx('rt',{isRenderTargetTexture:true}),uni=tx('uni');
+ const a=w.mat('a',100,{map:shared,normalMap:own}),b=w.mat('b',100,{map:shared,emissiveMap:late}),c=w.mat('c',100,{envMap:rt,uniforms:{tNoise:{value:uni}}});
+ w.scene.children.push(w.mesh('A',a),w.mesh('B',b),w.mesh('C',c));
+ let fired=null;w.api.warmPush(w.scene);w.api.warmWhen(()=>{fired=w.log.renders.length;},30);w.api.warmGo();w.advance(3000);
+ return{tex:w.log.tex.map(x=>x.n),before:w.log.tex.every(x=>x.renders===0),fired};
+};
+{
+ const t=scenTex(MODELS);
+ ok(t.tex.slice().sort().join()==='own,shared,uni','tex: each loaded texture of a queued material is uploaded once (a shared map once, ShaderMaterial uniforms too)',t.tex.join());
+ ok(!t.tex.includes('late')&&!t.tex.includes('rt'),'tex: not one still loading (version 0) nor a render target',t.tex.join());
+ ok(t.before&&t.fired===1,'tex: all uploaded before the prime render, and the waiter goes after it',t.before+' '+t.fired);
+}
+mut('textures not queued',()=>{
+ const bad=mutate(MODELS,'warmQ.push([m,o]);warmTexAdd(m);','warmQ.push([m,o]);');
+ caught(scenTex(bad).tex.length===3);
+});
+mut('a texture uploaded every time it is met',()=>{
+ const bad=mutate(MODELS,'&&!warmTexSeen.has(v)){warmTexSeen.add(v);','){');
+ caught(scenTex(bad).tex.length===3);
+});
+
+/* ========================================================================= */
+/* 8b. THE BALL CUBE VARIANT                                                  */
+/* ========================================================================= */
+const scenCube=(src,on)=>{
+ const log=[];let tgt=null;
+ const ctx={camera:{},ballCubeRT:'RT',ballReflectOn:()=>on,
+  renderer:{compile(s){log.push(tgt);return new Set([tgt?'m@rt':'m']);},getRenderTarget:()=>tgt,setRenderTarget(t){tgt=t;}}};
+ const f=new Function('ctx','with(ctx){'+between(src,'function warmCompile(','function warmLinked(')+'\nreturn warmCompile;}');
+ const m=f(ctx)({});
+ return{log,mats:[...m],after:tgt};
+};
+{
+ const c=scenCube(MODELS,true);
+ ok(c.log.join()===',RT'&&c.mats.length===2&&c.after===null,'cube: with reflections on a job compiles for the screen and for the ball cube, and the target is put back',c.log.join()+' / '+c.mats.join()+' / '+c.after);
+ const n=scenCube(MODELS,false);
+ ok(n.log.length===1&&n.log[0]===null,'cube: with reflections off only the screen',n.log.join());
+ ok(/ballCube\.update\(renderer,scene\)/.test(fnAt(MODELS,'warmRelease')),'cube: the prime renders the cube once (its sky is made only by a render)');
+ ok(/o\.frustumCulled=false/.test(fnAt(MODELS,'warmRelease'))&&/o\.frustumCulled=true/.test(fnAt(MODELS,'warmRelease')),'prime: culling off for the prime render and back on after');
+}
+mut('no cube variant compiled',()=>{
+ const bad=mutate(MODELS,"if(typeof ballReflectOn==='function'&&ballReflectOn()){\n  const rt=","if(false){\n  const rt=");
+ caught(scenCube(bad,true).log.length===2);
+});
+mut('the cube target left bound',()=>{
+ const bad=mutate(MODELS,'finally{renderer.setRenderTarget(rt);}','finally{}');
+ caught(scenCube(bad,true).after===null);
+});
 
 /* ========================================================================= */
 /* 9. MUTATIONS — re-apply the bugs and prove the suite bites                 */
@@ -383,7 +472,7 @@ mut('no gap between slices',()=>{
  const r=scenSlice(bad);caught(r.calls.slice(1).every((t,i)=>t-r.calls[i]>=108-0.001));
 });
 mut('the stand-in carries no lights',()=>{
- const bad=mutate(MODELS,'s.children=L.concat(warmQ.shift()[1]);','s.children=[warmQ.shift()[1]];');
+ const bad=mutate(MODELS,'s.children=L.concat(j[1]);','s.children=[j[1]];');
  const w=scenStand(bad);caught(w.log.calls[0].kids.includes(w.L));
 });
 mut('lights taken whether visible or not',()=>{
@@ -407,15 +496,15 @@ mut('a new stand-in scene every run',()=>{
  const w=scenStand(bad);caught(w.stands.size===1);
 });
 mut('a material compiled every time it is met',()=>{
- const bad=mutate(MODELS,'if(m&&!warmSeen.has(m)){warmSeen.add(m);warmQ.push([m,o]);}','if(m){warmQ.push([m,o]);}');
+ const bad=mutate(MODELS,'if(m&&!warmSeen.has(m)){warmSeen.add(m);warmQ.push([m,o]);warmTexAdd(m);}','if(m){warmQ.push([m,o]);}');
  const w=scenDedupe(bad);caught(w.log.calls.length===3);
 });
 mut('the waiter called with jobs still queued',()=>{
- const bad=mutate(MODELS,' if(!warmQ.length)warmWait.splice(0).forEach(f=>f());',' warmWait.splice(0).forEach(f=>f());');
+ const bad=mutate(MODELS,' if(warmQ.length||!warmWait.length||!warmLinked())return;',' if(!warmWait.length)return;');
  const r=scenWaiter(bad);caught(r.before===0&&r.left===0);
 });
 mut('no cap on the hold',()=>{
- const bad=mutate(MODELS,'warmWait.push(go);setTimeout(go,cap*1000);','warmWait.push(go);');
+ const bad=mutate(MODELS,' if(on)setTimeout(go,cap*1000);','');
  const r=scenCap(bad);caught(r.at3===1);
 });
 mut('the cap and the drain both calling back',()=>{
@@ -439,9 +528,33 @@ mut('on:false still slicing',()=>{
  const r=scenOff(bad);caught(r.compiled===3&&r.timers===0);
 });
 mut('a failed compile ending the queue',()=>{
- const bad=mutate(MODELS,"  try{renderer.compile(s,camera);}catch(e){console.warn('shader warm failed',e);}","  renderer.compile(s,camera);");
+ const bad=mutate(MODELS,"  try{warmTrack(warmCompile(s));}catch(e){console.warn('shader warm failed',e);}","  warmTrack(warmCompile(s));");
  let r;try{r=scenBoom(bad);}catch(e){throw new Error('caught');}
  caught(r.good&&r.warned===1);
+});
+mut('the waiters let go before the links are done',()=>{
+ const bad=mutate(MODELS,' if(warmQ.length||!warmWait.length||!warmLinked())return;',' if(warmQ.length||!warmWait.length)return;');
+ const l=scenLink(bad);caught(l.early===0&&l.at>=600);
+});
+mut('compiled materials not tracked',()=>{
+ const bad=mutate(MODELS,' mats.forEach(m=>warmPend.add(m));','');
+ const l=scenLink(bad);caught(l.at>=600);
+});
+mut('no poll once something is pending',()=>{
+ const bad=mutate(MODELS,' if(warmPend.size&&!warmPollT)warmPollT=setTimeout(warmPoll,CONFIG.warm.poll);','');
+ const l=scenLink(bad);caught(l.n===1&&l.at<1000);
+});
+mut('no prime render',()=>{
+ const bad=mutate(MODELS,'if(CONFIG.warm.prime!==false){','if(false){');
+ const l=scenLink(bad);caught(l.rendersAtFire===1);
+});
+mut('the prime without the shadow map',()=>{
+ const bad=mutate(MODELS,'   if(!renderer.shadowMap.autoUpdate)renderer.shadowMap.needsUpdate=true;renderer.render','   renderer.render');
+ const l=scenLink(bad);caught(l.renders[0].shadow===true);
+});
+mut('a venue swap that does not wait for the links',()=>{
+ const bad=mutate(FLOW,"if(typeof warmWhen==='function')warmWhen(()=>next(finish),","if(false)warmWhen(()=>next(finish),");
+ caught(/if\(typeof warmWhen==='function'\)warmWhen\(\(\)=>next\(finish\)/.test(fnAt(bad,'venueLoad')));
 });
 mut('powerups not queued',()=>{
  const bad=mutate(MODELS,'for(const k in puTemplates)warmPush(puTemplates[k]);','void 0;');
@@ -456,7 +569,7 @@ mut('a fracture template warmed opaque',()=>{
  const r=scenFrac(bad);caught(r.F.pushed.every(m=>m.material.transparent===true));
 });
 mut('the parked balls not following the option',()=>{
- const bad=mutate(FRAC,'  warmMeshHolder.children.forEach(c=>setBallEnv({m:c},env));\n','');
+ const bad=mutate(FRAC,'  warmMeshHolder.children.forEach(c=>{if(!c.userData.noEnv)setBallEnv({m:c},env);});\n','');
  const b=scenBalls(bad);caught(b.env2.length===b.nTypes&&b.env2.every(e=>e===null));
 });
 mut('the parked balls with no reflection map',()=>{

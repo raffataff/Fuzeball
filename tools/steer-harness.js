@@ -14,7 +14,8 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
  fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
- pass:slice(AI,'function passEval(r,bx,bz,mode){',NL+'// cached wrapper'),
+ pass:slice(AI,'function passEval(',NL+'function passPick('),
+ flight:slice(AI,'function kickLine(',NL+'function kickShotPlan('),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -23,8 +24,11 @@ const stubs=[
  "function pinRelease(r){r.pinB=null;}",
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null});}",
  "function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return PICK;}",
+ "function passFaceOK(){return true;}",
+ "function kickLaunch(r,b,style,slide){const sv=r.slideV+clamp(slide-r.slideV,-5,5);return {x:b.m.position.x,z:b.m.position.z,heading:Math.atan2(sv,80),forward:80,slide,face:1};}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
- "function assistAng(){return 0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
+ "const STC=CONFIG.stats; function assistAng(r,pass){return pass?AIC.dribble.pass.assist:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
+ slice(rd('js/stats.js'),'function assistTurn(',NL+'// the most aimAssist'),
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
@@ -35,7 +39,7 @@ function boot(mut){
   if(g[mut.part]===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.pass,g.catch,
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.pass,g.flight,g.catch,
   ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,steerHeading:steerHeading,steerSlide:steerSlide,steerV:steerV,steerReach:steerReach,passEval:passEval,pinPlay:pinPlay,pinPlayStart:pinPlayStart,pinFire:pinFire,CAW:CAW,freeBall:freeBall,runV:runV,freeReach:freeReach,runPlan:runPlan,runStart:runStart,runStep:runStep,runEnd:runEnd,setPick:function(v){PICK=v;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -71,7 +75,8 @@ function suite(X){
  ok('the slide for a heading ignores its sign',X.steerSlide(-0.3)===X.steerSlide(0.3));
  // ---- what a rod can hold ----------------------------------------------------------------------------------------
  {const r=world(X);const pro=X.DIFFS.pro.speed;
-  ok('a rod with room runs at its own top speed',near(X.steerV(r,1),Math.min(ST.vMax,pro)),X.steerV(r,1));
+  X.DIFFS.pro.speed=ST.vMax*0.75;
+  ok('a slower rod with room runs at its own top speed',near(X.steerV(r,1),X.DIFFS.pro.speed),X.steerV(r,1));
   X.DIFFS.pro.speed=80;
   ok('…and never past vMax, where the heading stops following the slide',near(X.steerV(r,1),ST.vMax));
   X.DIFFS.pro.speed=pro;
@@ -92,8 +97,9 @@ function suite(X){
   ok('steer on: the best mate for a pin pass can be one the standing pass could never reach',!!pk&&Math.abs(pk.th)>ST.standing||!!pk,pk&&pk.th);
   const one=world(X,{mates:[9]});const q=X.passEval(one,-38,0,'pin');
   ok('a mate at '+(th(9)*57.3).toFixed(0)+' deg is offered when the slide can turn the ball that far',!!q&&q.z===9&&near(q.th,th(9),0.02),q&&q.th);
-  const far=world(X,{mates:[12]});
-  ok('…and one beyond what the slide reaches is not ('+(th(12)*57.3).toFixed(0)+' deg against '+(reach*57.3).toFixed(0)+')',th(12)>reach&&X.passEval(far,-38,0,'pin')===null);
+  const outside=run*Math.tan(reach+0.05);
+  const far=world(X,{mates:[outside],blk:[]});
+  ok('…and one beyond what the configured slide reaches is not offered',X.passEval(far,-38,0,'pin')===null);
   const wall=world(X,{mates:[9],off:far.maxOff-2});
   ok('…and with the rod nearly at its +z end a mate to +z is out of reach',X.passEval(wall,-38,0,'pin')===null);
   const wallL=world(X,{mates:[-9],off:far.maxOff-2});const ql=X.passEval(wallL,-38,0,'pin');
@@ -104,6 +110,24 @@ function suite(X){
   const wide=world(X,{mates:[9]});X.AIC.aimCone.on=true;
   ok('steer on: the aim cone does not limit a pin pass, the slide does ('+(th(9)*57.3).toFixed(0)+' deg is past the cone at '+(X.AIC.aimCone.pass*57.3).toFixed(0)+')',th(9)>X.AIC.aimCone.pass&&!!X.passEval(wide,-38,0,'pin'));
   X.AIC.aimCone.on=false;}
+ {const x=-34.1,z=0,targetX=-22.5,dx=targetX-x;
+  const launch={x,z,heading:0,forward:60,w:55};
+  const wideZ=dx*Math.tan(61*Math.PI/180);
+  const wide=world(X,{mates:[wideZ],blk:[]});
+  ok('a stationary pass cannot turn 61 degrees to an open teammate',X.passEval(wide,x,z,undefined,launch)===null);
+  const close=world(X,{mates:[dx*Math.tan(0.08)],blk:[]});
+  ok('a teammate within the launch and assist range is offered',!!X.passEval(close,x,z,undefined,launch));
+  const sliding={...launch,heading:0.37};
+  const angled=world(X,{mates:[dx*Math.tan(0.48)],blk:[]});
+  ok('a pass already heading sideways can reach a wider teammate',!!X.passEval(angled,x,z,undefined,sliding));
+  const offsetZ=dx*Math.tan(0.24),P=X.AIC.dribble.pass;
+  const blockZ=(-30-x)*Math.tan(P.assist)-X.AIC.gapAim.blockR-P.minClear+0.1;
+  const covered=world(X,{mates:[offsetZ],blk:[blockZ]});
+  ok('a blocker on the predicted launch rejects a pass whose intended line is open',
+     !!X.passEval(covered,x,z)&&X.passEval(covered,x,z,undefined,launch)===null);
+  const run=world(X,{mates:[dx*Math.tan(0.08),dx*Math.tan(0.48)],blk:[]});
+  const runPick=X.passEval(run,x,z,'run');
+  ok('a run-up looks for a lane that actually needs a slide',!!runPick&&runPick.man===1);}
  {const r=world(X,{mates:[-9,9],blk:[-12,12]});
   const two={x:-15,team:0,kickDir:1,role:'ATT',baseZ:[-6,6],offset:0,removedUntil:[],vz:0,maxOff:11.5};
   X.rods.push(two);
@@ -147,30 +171,31 @@ function suite(X){
   ok('the rod a pass is for is ready, and its own men are not in the way of the pass to it (a ready receiver is the target)',!!X.passEval(r,-38,0,'pin')&&X.passEval(r,-38,0,'pin').z===0);}
  // ---- what pinPlay commits ---------------------------------------------------------------------------------------
  const slideMax0=CA.slideMax;CA.slideMax=0;   // the carry goes before a pass: with nowhere to carry it the pass is the play
- {const r=world(X);pinned(X,r,0);const best=view(X,-0.5,0);
-  X.setPick({score:30,x:-22.5,z:9,clr:4,onward:3,rod:{role:'MID'},th:0.5});
+ {const r=world(X,{mates:[4.2],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
   const n0=X.CAS.steer,v=X.pinPlay(r,best,0.5,dt);
-  ok('a pass to a mate off to +z is played',v===2&&r.catPk&&r.catPk.z===9);
-  ok('…sliding toward him, at the speed that leaves on the line to him',near(r.catSv,X.steerSlide(0.5),1e-6)&&r.catSv>0,r.catSv);
+  ok('a reachable mate off to +z is passed to',v===2&&r.catPk&&r.catPk.z===4.2);
+  ok('…using the slide tested by the launch model',r.catSv===X.steerV(r,1),r.catSv);
   ok('…held for steer.hold from the swing',r.catHold===ST.hold);
-  ok('…and counted',X.CAS.steer===n0+1);}
- {const r=world(X);pinned(X,r,0);const best=view(X,-0.5,0);
-  X.setPick({score:30,x:-22.5,z:-9,clr:4,onward:3,rod:{role:'MID'},th:-0.5});X.pinPlay(r,best,0.5,dt);
-  ok('a mate off to -z is passed to sliding toward -z',r.catSv<0&&near(r.catSv,-X.steerSlide(0.5),1e-6),r.catSv);}
- {const r=world(X,{off:16});pinned(X,r,0);const best=view(X,-0.5,0);
-  X.setPick({score:30,x:-22.5,z:9,clr:4,onward:3,rod:{role:'MID'},th:0.5});X.pinPlay(r,best,0.5,dt);
+  ok('…and counted',X.CAS.steer===n0+1);
+  X.pinFire(r,best,D,2);
+  ok('the swing holds the planned slide from its first step',near(r.target-r.offset,r.catSv*dt));}
+ {const r=world(X,{mates:[-4.2],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
+  X.pinPlay(r,best,0.5,dt);
+  ok('a mate off to -z is passed to sliding toward -z',r.catSv===-X.steerV(r,-1),r.catSv);}
+ {const r=world(X,{off:17.4,mates:[4],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
+  X.pinPlay(r,best,0.5,dt);
   ok('with little room left toward him it slides no faster than the room lasts',r.catSv>0&&r.catSv<=(r.maxOff-r.offset)/ST.hold+1e-6,r.catSv);}
- {const r=world(X,{sv:-25});pinned(X,r,0);const best=view(X,-0.5,0);
-  X.setPick({score:30,x:-22.5,z:9,clr:4,onward:3,rod:{role:'MID'},th:0.5});
-  ok('it does not wait for a slide in the other direction to die: the committed slide replaces it',X.pinPlay(r,best,0.5,dt)===2&&r.catSv>0);}
+ {const r=world(X,{sv:-25,mates:[4.2],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
+  ok('a rod still sliding the wrong way does not attempt the pass',X.pinPlay(r,best,0.5,dt)!==2);}
+ {const r=world(X,{mates:[12],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
+  ok('a mate beyond the actual launch and aim assist is not passed to',X.pinPlay(r,best,0.5,dt)!==2);}
  {const r=world(X);pinned(X,r,0);const best=view(X,-0.5,0);
   X.setPick({score:30,x:-22.5,z:9,clr:4,onward:3,rod:{role:'MID'},th:0.5});X.pinPlay(r,best,0.5,dt);
   X.pinPlay(r,best,0.5,dt);
   ok('every call starts from no committed slide (a shot never inherits a pass\'s)',(()=>{r.catSv=9;r.catHold=0.22;X.setPick(null);X.pinPlay(r,best,0.01,dt);return r.catSv===0&&r.catHold===0;})());}
  {X.AIC.catch.steer.on=false;
-  const r=world(X,{sv:20});pinned(X,r,0);const best=view(X,-0.5,0);
-  X.setPick({score:30,x:-22.5,z:9,clr:4,onward:3,rod:{role:'MID'},th:0.5});
-  ok('steer off: a pass is still made standing, so a sliding rod waits',X.pinPlay(r,best,0.5,dt)===0);
+  const r=world(X,{sv:20,mates:[0],blk:[]});pinned(X,r,0);const best=view(X,-0.5,0);
+  ok('steer off: a pass is still made standing, so a sliding rod waits',X.pinPlay(r,best,0.5,dt)!==2);
   r.slideV=0;
   ok('…and once still it passes with no committed slide',X.pinPlay(r,best,0.5,dt)===2&&r.catSv===0);
   X.AIC.catch.steer.on=true;}
@@ -278,7 +303,7 @@ function suite(X){
   const w=fw({mates:[12]});
   ok('one beyond the reach of any run is not',X.passEval(w,-34.1,0,'free')===null);}
  // ---- the swing is held, then let go --------------------------------------------------------------------------------
- ok('aiUpdate holds the slide through the swing for catHold seconds, then lets the rod brake',/r\.catSw\)\{if\(r\.kickT>=0\)\{r\.target=r\.offset\+\(r\.catHold&&r\.kickT>=r\.catHold\?0:\(r\.catSv\|\|0\)\)\*dt;/.test(AI));
+ ok('aiUpdate holds the slide through the swing for catHold seconds, then lets the rod brake',/r\.catSw\)\{\s*if\(r\.kickT>=0\)\{\s*r\.target=r\.offset\+\(r\.catHold&&r\.kickT>=r\.catHold\?0:\(r\.catSv\|\|0\)\)\*dt;/.test(AI));
  return R;
 }
 
@@ -288,6 +313,8 @@ for(const t of base){total++;if(!t.ok){bad++;console.log('  FAIL  '+t.name+(t.in
 console.log('  '+(total-bad)+' passed, '+bad+' failed');
 
 const MUT=[
+ {n:'an ordinary pass is judged on the target ray',part:'pass',from:'const endZ=launch?kickLine(r,launch,o.x,tz,true):tz;',to:'const endZ=tz;'},
+ {n:'a run-up can select a stationary pass',part:'pass',from:'if(runMin&&Math.abs(th)<runMin)continue;',to:''},
  {n:'a slide toward -z leaves toward +z',part:'lane',from:'return v<0?-h:h;',to:'return h;'},
  {n:'the heading table is not interpolated (the nearest point above)',part:'lane',from:'h=T[i-1][1]+(T[i][1]-T[i-1][1])*(a-T[i-1][0])/(T[i][0]-T[i-1][0]);break;',to:'h=T[i][1];break;'},
  {n:'the slide for a heading beyond the table is the last one',part:'lane',from:'if(a>T[T.length-1][1]+1e-6)return null;',to:''},
@@ -297,23 +324,21 @@ const MUT=[
  {n:'the room is read from the wrong end',part:'lane',from:'room=s>0?r.maxOff-r.offset:r.offset+r.maxOff;',to:'room=s>0?r.offset+r.maxOff:r.maxOff-r.offset;'},
  {n:'a rod with no room reaches nothing, not even its standing heading',part:'lane',from:'return Math.max(ST.standing,steerHeading(steerV(r,s)));',to:'return steerHeading(steerV(r,s));'},
  {n:'passEval looks at the +z side for every mate',part:'pass',from:'steerReach(r,th<0?-1:1)',to:'steerReach(r,1)'},
- {n:'passEval does not limit a pin pass to what the slide reaches',part:'pass',from:'if(steer){if(Math.abs(th)>(mode===\'pin\'?steerReach(r,th<0?-1:1):freeReach(r,bz,th<0?-1:1)))continue;}',to:'if(steer){}'},
+ {n:'passEval does not limit a pin pass to what the slide reaches without a launch',part:'pass',from:'if(!pinLaunch&&steer){if(Math.abs(th)>(mode===\'pin\'?steerReach(r,th<0?-1:1):freeReach(r,bz,th<0?-1:1)))continue;}',to:'if(!pinLaunch&&steer){}'},
  {n:'a free pass is judged as a pin pass (the pin\'s reach, not the run\'s)',part:'pass',from:':freeReach(r,bz,th<0?-1:1)',to:':steerReach(r,th<0?-1:1)'},
- {n:'a pin pass is judged against the cone as well',part:'pass',from:'else if(cone&&Math.abs(th)>cone)continue;',to:'if(cone&&Math.abs(th)>cone)continue;'},
+ {n:'a pin pass is judged against the cone as well',part:'pass',from:'else if(!pinLaunch&&cone&&Math.abs(th)>cone)continue;',to:'if(!pinLaunch&&cone&&Math.abs(th)>cone)continue;'},
  {n:'an own rod standing ready is not in the way',part:'lane',from:"if(r2.team===team&&r2.act!=='recv')continue;",to:'if(r2.team===team)continue;'},
  {n:'the target\'s own rod is in the way of the pass to it',part:'lane',from:'(r2.x-tx)*dir>=0)continue;',to:'(r2.x-tx)*dir>0)continue;'},
  {n:'every own rod is in the way',part:'lane',from:"if(r2.team===team&&r2.act!=='recv')continue;",to:'if(false)continue;'},
  {n:'the pick forgets the heading it needs',part:'pass',from:'score,th};',to:'score};'},
  {n:'the pick forgets the mates to get ready',part:'pass',from:'if(best)best.cands=per.filter(Boolean);',to:''},
  {n:'every rod shares one slot (only one is kept for the ready state)',part:'pass',from:'if(!per[ri]||score>per[ri].score)per[ri]=',to:'if(!per[0]||score>per[0].score)per[0]='},
- {n:'a pass slides the wrong way (always +z)',part:'catch',from:'const s=pk.th<0?-1:1,sd=',to:'const s=1,sd='},
- {n:'a pass slides at its top speed, not the one that leaves on the line to him',part:'catch',from:'sd=steerSlide(Math.min(Math.abs(pk.th),steerHeading(steerV(r,s))));',to:'sd=steerV(r,s);'},
- {n:'a pass is judged on the slide it asked for, not the one it can hold',part:'catch',from:'steerSlide(Math.min(Math.abs(pk.th),steerHeading(steerV(r,s))))',to:'steerSlide(Math.abs(pk.th))'},
- {n:'the committed slide is never held (the swing stands still)',part:'catch',from:'r.catSv=s*(sd||0);r.catHold=ST.hold;CAS.steer++;',to:'CAS.steer++;'},
- {n:'the hold has no end',part:'catch',from:'r.catSv=s*(sd||0);r.catHold=ST.hold;',to:'r.catSv=s*(sd||0);'},
- {n:'a steered pass is not counted',part:'catch',from:'r.catHold=ST.hold;CAS.steer++;',to:'r.catHold=ST.hold;'},
- {n:'steer on still waits for the slide to die',part:'catch',from:'if(ST.on){ ',to:'if(ST.on&&still){ '},
- {n:'steer off lets a sliding rod pass',part:'catch',from:'}else if(!still)return 0; ',to:'}else if(false)return 0; '},
+ {n:'a pass fires without testing its launch lane',part:'flight',from:"passEval(r,launch.x,launch.z,'pin',launch)",to:"passEval(r,launch.x,launch.z,'pin')"},
+ {n:'the committed slide is never held (the swing stands still)',part:'catch',from:'r.catSv=pk.slide||0;',to:'r.catSv=0;'},
+ {n:'the hold has no end',part:'catch',from:'r.catHold=CA.steer.hold;',to:''},
+ {n:'a steered pass is not counted',part:'catch',from:'if(r.catSv)CAS.steer++;',to:''},
+ {n:'the swing starts before the rod takes the planned slide',part:'catch',from:'r.target=r.offset+r.catSv/SIM.hz;',to:''},
+ {n:'steer off lets a sliding rod pass',part:'flight',from:'if(!ST.on&&!still)return null;',to:''},
  {n:'a shot inherits the last pass\'s hold',part:'catch',from:'r.catSv=0;r.catSl=0;r.catHold=0;',to:'r.catSv=0;r.catSl=0;'},
  {n:'a free pass is run at from any distance',part:'lane',from:'return rel>=FR.relMin&&rel<=FR.relMax&&b.v.length()<=FR.maxBall&&p.y<AIC.lowY;',to:'return b.v.length()<=FR.maxBall&&p.y<AIC.lowY;'},
  {n:'…or off a moving ball',part:'lane',from:'&&b.v.length()<=FR.maxBall&&p.y<AIC.lowY;',to:'&&p.y<AIC.lowY;'},

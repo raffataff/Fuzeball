@@ -343,18 +343,17 @@ function fxUpdate(rdt){
   dropRing.material.opacity=.35+Math.sin(S.time*12)*.25;
   const sc=1+fb.m.position.y*.05;dropRing.scale.set(sc,sc,1);}
  else dropRing.visible=false;
- // held-rod markers, one per seat, tinted by seat colour (seats.js); the bob is phase-offset per seat
+ // the rail LEDs show control, and the cone shows charge or serves as a fallback
  const showInd=(S.phase==='play'||S.phase==='count'||S.phase==='pause');
+ const hasRailLeds=typeof railLedsUpdate==='function'&&railLedsUpdate(showInd&&!S.photo?.hideMarks);
  for(let i=0;i<indicators.length;i++){
   const m=indicators[i],s=showInd?S.seats[i]:null,r=s?seatRod(s):null;
   if(!r){m.visible=false;continue;}
-  m.visible=true;
-  // CHARGE READOUT (js/shots.js): the held-rod marker is the meter: it dips as the charge builds, swells across the sweet band, goes red once overcooked (charge -1 = the old expression)
-  // a wind-up the sweep guard refuses drains to grey; the verdict outlives the release, settling back over CONFIG.shots.charge.holdT
-  const CH=CONFIG.shots.charge,base=seatCol(s);
-  const k=shotCharge(r),blk=shotChargeBlock(r),bad=blk>=CH.blockAt;
-  // 0..1 through the post-release hold; 1 means there is no verdict on screen.
+  const CH=CONFIG.shots.charge,k=shotCharge(r);
   const vt=(k<0&&r.chgEndT!=null)?clamp((S.time-r.chgEndT)/Math.max(.01,CH.holdT),0,1):1;
+  m.visible=!hasRailLeds||k>=0||vt<1;
+  if(!m.visible)continue;
+  const base=seatCol(s),bad=shotChargeBlock(r)>=CH.blockAt;
   let sc=1,dip=0,spin=2;
   if(k>=0){                                                       // winding up
    const band=shotChargeBand(r),c=bad?CHG_COL[3]:(band>=1?CHG_COL[band]:base);

@@ -63,6 +63,7 @@ function reditApply(){
 }
 function reditApplyLights(){
  if(typeof applyAuthoredLights==='function')applyAuthoredLights(reditRoom());
+ if(typeof shadowDirty==='function')shadowDirty();   // the shadow map is frozen between caster moves
  reditMarkers();reditHilite(RE.sel);reditLightReadout();reditBackup();
 }
 
@@ -362,11 +363,21 @@ function reditTabWorld(w){
   v=>{rm.dir.int=v;if(typeof dirLight!=='undefined'&&dirLight)dirLight.intensity=v;reditBackup();}));
  w.appendChild(reColor('dir col',rm.dir.color,v=>{rm.dir.color=v;
   if(typeof dirLight!=='undefined'&&dirLight)dirLight.color.set(v);reditBackup();}));
+ w.appendChild(reSlider('sun shadow str',rm.dir.shadowInt===undefined?1:rm.dir.shadowInt,0,1,0.05,
+  v=>{rm.dir.shadowInt=v;if(typeof dirLight!=='undefined'&&dirLight)dirLight.shadow.intensity=v;reditBackup();}));
  const dp=rm.dir.pos||(rm.dir.pos=[45,100,35]);
- const setDir=()=>{if(typeof dirLight!=='undefined'&&dirLight)dirLight.position.set(dp[0],dp[1],dp[2]);reditBackup();};
+ // sun height: under ~40 deg every shadow leaves its feet
+ const elev=reEl('div','reMuted','');
+ const elevTx=()=>{elev.textContent='sun '+Math.round(Math.atan2(dp[1],Math.hypot(dp[0],dp[2]))*180/Math.PI)+'° up';};
+ const setDir=()=>{if(typeof dirLight!=='undefined'&&dirLight)dirLight.position.set(dp[0],dp[1],dp[2]);
+  elevTx();if(typeof shadowDirty==='function')shadowDirty();reditBackup();};
+ elevTx();w.appendChild(elev);
  w.appendChild(reNum('dir x',dp[0],1,v=>{dp[0]=v;setDir();}));
  w.appendChild(reNum('dir y',dp[1],1,v=>{dp[1]=v;setDir();}));
  w.appendChild(reNum('dir z',dp[2],1,v=>{dp[2]=v;setDir();}));
+ if(rm.sky){const sv=()=>{if(typeof skyView==='function')skyView(rm);reditBackup();};
+  w.appendChild(reSlider('sky turn',rm.sky.rot||0,-180,180,1,v=>{rm.sky.rot=v;sv();}));
+  w.appendChild(reSlider('sky int',rm.sky.int===undefined?1:rm.sky.int,0,3,0.01,v=>{rm.sky.int=v;sv();}));}
  w.appendChild(reEl('h4',null,'atmosphere'));
  w.appendChild(reColor('bg',rm.bg===undefined?0x05060f:rm.bg,v=>{rm.bg=v;
   if(typeof scene!=='undefined'){if(!scene.background||scene.background.isColor)scene.background=new THREE.Color(v);if(scene.fog)scene.fog.color.set(v);}reditBackup();}));
@@ -382,7 +393,7 @@ function reditTabWorld(w){
   v=>{CONFIG.render.exposure=v;if(typeof applyToneMapping==='function')applyToneMapping(renderer,false);}));
  const tm=reEl('div','reRow');tm.appendChild(reEl('label',null,'tone'));
  const sel=document.createElement('select');
- ['aces','none','reinhard','cineon','linear'].forEach(k=>{const o=document.createElement('option');
+ Object.keys(TONEMAP).forEach(k=>{const o=document.createElement('option');
   o.value=o.textContent=k;if((CONFIG.render&&CONFIG.render.toneMapping)===k)o.selected=true;sel.appendChild(o);});
  sel.onchange=()=>{CONFIG.render.toneMapping=sel.value;
   if(typeof applyToneMapping==='function')applyToneMapping(renderer,true);};   // true: define changed, recompile
@@ -443,6 +454,7 @@ function reditSelLight(w){
   if(typeof shadowDirty==='function')shadowDirty();
   reditBackup();reditSync();},
   'One extra render pass per frame (SIX for a point light). Budget: CONFIG.render.roomLightPool.shadow'));
+ if(L.shadow)w.appendChild(reSlider('shadow str',L.shadowInt===undefined?1:L.shadowInt,0,1,0.05,v=>{L.shadowInt=v;set();}));
  if(t!=='point'){
   const k=L.look||(L.look=[0,0,0]);
   w.appendChild(reNum('aim x',k[0],1,v=>{k[0]=v;set();}));
@@ -801,7 +813,7 @@ function reditPropsBlock(specs,ind,key='props'){
 }
 function reditLightsBlock(list,ind){
  if(!list.length)return ind+'lights:[],';
- const order=['type','pos','look','color','int','dist','decay','angle','penumbra','shadow'];
+ const order=['type','pos','look','color','int','dist','decay','angle','penumbra','shadow','shadowInt'];
  const L=[ind+'lights:['];
  list.forEach((x,i)=>{
   const extra=Object.keys(x).filter(k=>order.indexOf(k)<0);

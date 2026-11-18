@@ -163,8 +163,10 @@ function check(file){
  const missing=ROD_X.map((x,i)=>i).filter(i=>!seen.has(i));
  if(missing.length)say(false,'no ring for rod'+(missing.length>1?'s':'')+' '+missing.map(i=>(i+1)+' (x='+ROD_X[i]+')').join(', '));
 
- // the one nobody checks: rings duplicated rather than separated
- const orphan=prims.filter(e=>!/^rod_hole/i.test(e.node)).map(e=>({e,m:measure(g,bin,e)})).filter(c=>c.m.isRings);
+ // Arena arcs sit in new inserts fitted to the bowl's existing metal hardware.
+ const bowlArcs=named.length===8&&named.every(e=>/^rod_hole_arc_/i.test(e.node)&&e.p.attributes._STAMINA!=null);
+ const orphan=prims.filter(e=>!/^rod_hole/i.test(e.node)&&!(bowlArcs&&/^arena_bowl/i.test(e.node)))
+  .map(e=>({e,m:measure(g,bin,e)})).filter(c=>c.m.isRings);
  if(orphan.length)say(false,'ring geometry ALSO still in '+orphan.map(c=>c.e.node).join(', ')
    +' — separate (P) rather than duplicate, or you get unlit rings z-fighting the lit ones');
  else say(true,'no leftover ring geometry in the walls');

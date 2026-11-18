@@ -18,21 +18,26 @@ window.THREE=Object.assign({},T,{GLTFLoader,KTX2Loader});`;
 
 // --- source patches: each anchor must match exactly `n` times or the build stops ---
 const PATCHES={
- 'renderers/webgl/WebGLBackground.js':[
+ 'src/renderers/webgl/WebGLBackground.js':[
   // r152+ never tone-maps an sRGB background; texture.userData.toneMapped (set on the room skies) overrides that
   ['.material.toneMapped = ColorManagement.getTransfer( background.colorSpace ) !== SRGBTransfer;',
    '.material.toneMapped = background.userData.toneMapped !== undefined ? background.userData.toneMapped : ColorManagement.getTransfer( background.colorSpace ) !== SRGBTransfer;',2],
  ],
- 'materials/Material.js':[
+ 'src/materials/Material.js':[
   // r151+ draws a transparent double-sided material twice (back faces, then front); r128 drew it once, and the rooms, glass and debris were tuned on that
   ['this.forceSinglePass = false;','this.forceSinglePass = true;',1],
+ ],
+ 'examples/jsm/loaders/KTX2Loader.js':[
+  // the default transcoder URL reads import.meta.url at load, which an IIFE lacks (throws outside a page); world.js sets the path
+  ["new URL( '../libs/basis/basis_transcoder.wasm', import.meta.url ).toString()","''",1],
+  ["new URL( '../libs/basis/basis_transcoder.js', import.meta.url ).toString()","''",1],
  ],
 };
 // bare 'three' (the entry and every example) from source, not build/three.module.js, so the patches apply
 const srcPlugin={name:'fz-src',setup(b){b.onResolve({filter:/^three$/},()=>({path:path.join(three,'src','Three.js')}));}};
 const patchPlugin={name:'fz-patch',setup(b){
- b.onLoad({filter:/three[\\/]src[\\/].*\.js$/},async a=>{
-  const rel=path.relative(path.join(three,'src'),a.path).split(path.sep).join('/');
+ b.onLoad({filter:/three[\\/](src|examples)[\\/].*\.js$/},async a=>{
+  const rel=path.relative(three,a.path).split(path.sep).join('/');
   const P=PATCHES[rel];if(!P)return undefined;
   let s=await fs.promises.readFile(a.path,'utf8');
   for(const [from,to,n] of P){const c=s.split(from).length-1;if(c!==n)throw new Error(rel+': patch anchor found '+c+'x, want '+n+': '+from);s=s.split(from).join(to);}

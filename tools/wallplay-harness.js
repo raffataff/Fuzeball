@@ -10,7 +10,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const STATS=rd('js/stats.js'),PHYS=rd('js/physics.js'),RODS=rd('js/rods.js');
 const WALL=slice(STATS,'function wallAssist(b,r,noPass){',NL+'}')+NL+'}';
 const HEAVY=[
- slice(PHYS,'function collideRod(b,r){','function ballBall('),
+ slice(PHYS,'function collideRod(','function ballBall('),
  slice(PHYS,'function capSpeed(b,r,sweet,in2){',NL+'function collideRod('),
  slice(RODS,'function styleCfg(',NL+'function kickStyleCfg'),
  slice(RODS,'function kickStyleCfg(r){',NL+'function passFaceOK('),
@@ -165,7 +165,7 @@ function strikes(X){
   ok(nm+': ON, it leaves infield by at least minAng',s1.head>=W.minAng-1e-9,deg(s1.head)+' infield');
   ok(nm+': same speed either way — a rotation, not a kick',Math.abs(s1.speed-s0.speed)<1e-6,s1.speed.toFixed(2)+' u/s');
  }
- const CR=slice(PHYS,'function collideRod(b,r){','function ballBall(');
+ const CR=slice(PHYS,'function collideRod(','function ballBall(');
  const at=re=>[...CR.matchAll(re)].map(m=>m.index);
  const aims=at(/aimAssist\(b,r/g),walls=at(/wallAssist\(b,r/g),sprays=at(/shotSpray\(b,r\)/g);
  ok('both collideRod passes (boot and leg) call wallAssist',walls.length===2&&aims.length===2);

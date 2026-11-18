@@ -9,7 +9,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
  const b=to?src.indexOf(to,a):-1;return src.slice(a,b<0?src.length:b);};
 const PH=rd('js/physics.js');
 const parts={
- col:slice(PH,'function collideRod(b,r){','function ballBall('),
+ col:slice(PH,'function collideRod(','function ballBall('),
  cap:slice(PH,'function capSpeed(b,r,sweet,in2){',NL+'function collideRod('),
  style:slice(rd('js/rods.js'),'function styleCfg(',NL+'function kickStyleCfg'),
  kstyle:slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'function passFaceOK('),
