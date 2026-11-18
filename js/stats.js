@@ -62,23 +62,24 @@ function stPred(r){return Math.max(STC.predFloor,(1+(ST(r,'iq')-STC.base)*STC.pr
 // kick aim-assist: bend the outgoing shot's heading toward the goal-mouth centre; a pure horizontal rotation (no energy), only above base accuracy, on goalward shots near the target cone, clamped small
 // noPass: collideRod sets it for a contact that wasn't a clean front-face boot strike (passFaceOK in rods.js, or the capsule): the ordinary assist applies but the pass target is suppressed
 function aimAssist(b,r,noPass){
- // every rod gets a baseline bend (assistBase), accuracy scales it toward assistMax
- // a pass (r.passTo, set by kickRod) retargets to a teammate with its own larger bend, cone and speed gate (CONFIG.ai.dribble.pass)
- const PS=CONFIG.ai.dribble.pass,pass=(!noPass&&r.passTo)||null;
- let a=assistAng(r,!!pass);
- // a player shot's control figure (js/shots.js): 1 in the sweet band, falling either side and under the power trigger; a wild swing is aimed less as well as sprayed more
- if(r.shotOn)a*=clamp(r.shotCtl,0,1);
- if(a<=0)return;
+ const pass=(!noPass&&r.passTo)||null;
  const dir=r.team===0?1:-1,v=b.v,p=b.m.position;
- if(v.x*dir<(pass?PS.assistMinVX:STC.assistMinVX))return;
- // aim at the receiver on a pass, else the rod's gap when gap-aiming, else the goal-mouth centre (z=0)
  const tx=pass?pass.x:dir*F.L/2;
- const tz=pass?pass.z:((r.aimEv&&CONFIG.ai.gapAim.gap)?r.aimEv.best.tz:0);
+ const tz=pass?pass.z:((r.aimEv&&CONFIG.ai.gapAim.gap)?(r.aimEv.best.target??r.aimEv.best.tz):0);
  const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(tz-p.z,(tx-p.x)*dir);
- let da=want-cur;if(da>Math.PI)da-=2*Math.PI;else if(da<-Math.PI)da+=2*Math.PI;
- if(Math.abs(da)>(pass?PS.assistCone:STC.assistCone))return;
- const th=clamp(da,-a,a)*dir,cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
+ const th=assistTurn(r,cur,want,v.x*dir,!!pass)*dir;
+ if(!th)return;
+ const cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
  v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
+}
+// The same aim correction is used by the collision and the AI's forecast.
+function assistTurn(r,cur,want,forward,pass){
+ const PS=CONFIG.ai.dribble.pass;
+ let a=assistAng(r,pass);
+ if(r.shotOn)a*=clamp(r.shotCtl,0,1);
+ if(a<=0||forward<(pass?PS.assistMinVX:STC.assistMinVX))return 0;
+ let da=want-cur;if(da>Math.PI)da-=2*Math.PI;else if(da<-Math.PI)da+=2*Math.PI;
+ return Math.abs(da)>(pass?PS.assistCone:STC.assistCone)?0:clamp(da,-a,a);
 }
 // the most aimAssist can bend a strike (rad); the AI reads it as how far off straight a shot or a pass can be placed
 function assistAng(r,pass){
@@ -99,7 +100,7 @@ function wallAssist(b,r,noPass){
  const u=v.x*dir;if(u<W.minVX)return;                       // only a ball leaving forward
  const sz=p.z>0?-1:1,w=v.z*sz;                              // +w = heading away from the wall
  const pass=(!noPass&&r.passTo)||null;
- const tx=pass?pass.x:dir*F.L/2,tz=pass?pass.z:((r.aimEv&&AIC.gapAim.gap)?r.aimEv.best.tz:0);
+ const tx=pass?pass.x:dir*F.L/2,tz=pass?pass.z:((r.aimEv&&AIC.gapAim.gap)?(r.aimEv.best.target??r.aimEv.best.tz):0);
  const want=clamp(Math.atan2((tz-p.z)*sz,(tx-p.x)*dir),W.minAng,W.maxAng);
  const th=want-Math.atan2(w,u);
  if(th<=0)return;                                           // already leaving at least that far infield

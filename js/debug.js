@@ -259,6 +259,7 @@ function dbgKickGate(r,g){
  else if(!g.aligned)why='not-aligned dz='+g.dz.toFixed(2);
  else if(!g.low)why='ball-high';
  else if(g.wait)why='wait-sweetspot';
+ else if(g.noContact)why='no-live-contact';
  else if(g.holdShot)why='hold-for-lane';
  else if(g.shut)why='lane-shut';
  else why='?';

@@ -27,6 +27,7 @@
   o=Object.assign({rooms:['arcade','open','saucer','moon'],cams:['home',0,2,4],w:1280,h:720,set:{},t:3},o||{});
   const back={};for(const p in o.set)back[p]=setPath(p,o.set[p]);
   if(typeof hazeApply==='function')hazeApply();
+  if(typeof applyToneMapping==='function')applyToneMapping(renderer,true);   // a render.toneMapping / exposure set takes effect
   const out=[],info=[];
   size(o.w,o.h);
   for(const id of o.rooms){
@@ -39,6 +40,7 @@
    }
   }
   for(const p in back)setPath(p,back[p]);
+  if(typeof applyToneMapping==='function')applyToneMapping(renderer,true);
   return {shots:out,info,errs};
  };
  // GPU cost of a frame per room, camera and atmosphere level: median ms of n draws, each finished by a 1px readPixels

@@ -37,15 +37,18 @@ function mkWorld(opt){
  const renderer={shadowMap:sm,render(){shadowRender();}};
  W.renderer=renderer;W.sm=sm;
  W.env={
-  CONFIG:{ballReflect:{on:true,res:32,every:opt.every||2,near:1,far:300,intensity:1}},
+  CONFIG:{ballReflect:{on:true,res:32,every:opt.every||2,faces:6,near:1,far:300,intensity:1}},
+  clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
   S:{balls:[{m:ball}],phase:'play'},
   camera:{position:{x:0,y:50,z:80}},
   renderer,
   ballReflectOn:()=>true,
-  ballCube:{position:{copy(){}},update(r,s){for(let i=0;i<6;i++){W.cubeFaces++;r.render(s,null);}}},
+  ballCube:{position:{copy(){}}},
+  ballCubeFaces:n=>W.faceFn(n),
   scene:{}
  };
  // shadowDirty() as world.js defines it, for the autoUpdate:false path
+ W.faceFn=n=>{for(let i=0;i<n;i++){W.cubeFaces++;renderer.render();}};
  W.shadowDirty=()=>{if(!sm.autoUpdate)sm.needsUpdate=true;};
  W.mainRender=()=>{shadowRender();W.mainDraws++;};
  return W;
@@ -55,7 +58,7 @@ function mkWorld(opt){
    is threaded through a closure variable here exactly as the throttle needs. */
 function build(W,fnSrc){
  const keys=Object.keys(W.env);
- const body='let ballReflN=0;'+fnSrc+';return updateBallReflect;';
+ const body='let ballReflN=0,ballCubeF=0;'+fnSrc+';return updateBallReflect;';
  return new Function(...keys,body)(...keys.map(k=>W.env[k]));
 }
 
@@ -126,7 +129,7 @@ function run(fnSrc,frames,opt){
 {
  const W=mkWorld({every:1});
  let seen=null;
- W.env.ballCube.update=(r,s)=>{seen=W.ball.visible;for(let i=0;i<6;i++)r.render(s,null);};
+ W.faceFn=n=>{seen=W.ball.visible;for(let i=0;i<n;i++)W.renderer.render();};
  const f=build(W,FN);f();
  ok(seen===false,'lead ball is hidden during the cube pass (unchanged)');
  ok(W.ball.visible===true,'and its visibility is restored after');

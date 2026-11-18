@@ -2,6 +2,7 @@
 
 Run: blender -b output/arena-skins-2026-11-08/federation-finals-grand-v2.blend
      --python tools/build_arena_federation.py
+Then run node tools/build_federation_hardware.mjs to install the finished goals.
 """
 import bpy, bmesh, os, tempfile, math
 

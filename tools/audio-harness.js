@@ -150,6 +150,12 @@ function suite(src,verbose){
   ok('…panned by the ball',path2(lastSrc,Au.mg,'pan'));
   ok('…and sent into the room',reach(lastSrc,Au.rv.f));}
  ok('an unknown id plays nothing',Au.play('no_such_sound')===false);
+ {const recorded=buf(A);Au.bank.ball_post=[recorded];Au.bank.ball_post_classic=[recorded];
+  Au.ctx.currentTime+=1;const o0=osc(),s0=srcs();Au.post(60,{freqs:[523,832,1290,1900]},ball(40,0));
+  const rings=A.made.filter(n=>n.kind==='osc').slice(o0),sources=A.made.filter(n=>n.kind==='src').slice(s0);
+  ok('post hits use the original synthesized ring even with recorded takes loaded',rings.length===4&&sources.every(n=>n.buffer!==recorded));
+  ok('the synthesized post is panned and sent into the room',rings.every(n=>path2(n,Au.mg,'pan')&&reach(n,Au.rv.f)));
+  delete Au.bank.ball_post;delete Au.bank.ball_post_classic;}
  {const b1=buf(A),b2=buf(A),b3=buf(A),bh=buf(A),bf=buf(A);Au.bank.ball_kick=[b1,b2,b3];Au.bank.ball_kick_hard=[bh];Au.bank.ball_kick_fire=[bf];
   const fired=()=>A.made.filter(n=>n.kind==='src').pop().buffer;
   Au.ctx.currentTime+=1;const o0=osc();Au.kick(30,{},ball(0,0));
@@ -392,7 +398,8 @@ function staticChecks(){
  for(const m of AUDIO.matchAll(/this\.play\('([a-z_]+)'[,)]/g))ok('audio.js plays \''+m[1]+'\', a configured sound',!!AUSND[m[1]]);
  for(const id in AUSND){const D=AUSND[id];if(D.syn===false)continue;
   const has=id.startsWith('ui_')?!!AU_UI[id.slice(3)]:id.startsWith('sting_')?!!AU_STING[id.slice(6)]:
-   id.startsWith('crowd_bed_')?true:id.startsWith('crowd_')?(!!AUREACT[id.slice(6)]||id==='crowd_applause'):AUDIO.includes("'"+id+"'");
+   id.startsWith('crowd_bed_')?true:id.startsWith('crowd_')?(!!AUREACT[id.slice(6)]||id==='crowd_applause'):
+   id==='ball_post'?AUDIO.includes('post(p,aC,src)'):AUDIO.includes("'"+id+"'");
   ok(id+' has a synthesized stand-in (or is marked syn:false)',has);}
  for(const id in AUSND){const b=AUSND[id].bus;ok(id+' is on a real bus',b==='fx'||b==='crowd'||b==='ui',b);
   const g=AUSND[id].gate;if(g)ok(id+' gates on a configured voice cap',!!CONFIG.audioMix.voices[g],g);}
@@ -449,6 +456,7 @@ function mutate(find,repl,name){
  const m=AUDIO.split(find).join(repl);if(m===AUDIO)return{name,err:'mutant is identical to the source'};
  return{name,src:m};}
 const MUTS=[
+ mutate("// Keep the original synthesized ring even when Sound Lab post takes are loaded.","if(this.play('ball_post',{p,src})){this.exc=Math.min(1,this.exc+.25);return;}",'recorded post takes replace the original ring'),
  mutate('let k=Math.floor(r*(n-1));if(k>=last)k++;return k;','return Math.floor(r*n)%n;','round-robin may repeat a take'),
  mutate('return Math.max(-1,Math.min(1,_auV.x/h));}','return Math.max(-1,Math.min(1,-_auV.x/h));}','pan is mirrored'),
  mutate('k=6.9078/T,','k=3.4539/T,','the impulse decays at half the room\'s rate'),

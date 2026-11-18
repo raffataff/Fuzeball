@@ -1,6 +1,6 @@
 // retrieve harness. node tools/retrieve-harness.js
 // slices the real retrieveStep / retrieveEnd / retrieveMan (ai.js) and helpers and steps them against live CONFIG with a bare-bones rod (slide and lift ease like updateRods, a pin takes when the leg is over the ball); the entry and bail tests live in aiUpdate and aren't covered
-// pins the sequence: side (clear of the ball) > lift > over > pin / drop, in that order and never out of it; every mutation must break an assertion
+// covers the approach, pin geometry and both fallback lanes; every mutation must break an assertion
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -13,20 +13,23 @@ const parts={
  foot:slice(AI,'const _fb={nx:0',NL+'function sweepClips('),
  guard:slice(AI,'const BGS={lift:0',NL+'function clearOffset('),   // the retrieve block sits at its end
  clearOffset:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'function nearestFootZ('),
- lane:slice(AI,'function inLaneZ(r,lz,cz){',NL+'function laneMate(')
+ lane:slice(AI,'function inLaneZ(r,lz,cz){',NL+'function laneMate('),
+ pose:slice(AI,'const FA_R={',NL+'function sideAngle('),
+ hand:slice(AI,'function retrieveTap(',NL+'function sidePick(')
 };
 const stubs=[
  "var S={balls:[],time:0}; var SEAT=null; function seatOf(){return SEAT;}",
  "var dbgLogRod=null; function dbgRod(){}",
- "var KICKS=[],STRIKE=true,RELEASED=0;",
+ "var KICKS=[],STRIKE=true,RELEASED=0,SHUT=false; function laneShut(){return SHUT;}",
  "function pinRelease(r){r.pinB=null;RELEASED++;}",
  "function kickRod(r,style){r.kickT=0;r.act=null;KICKS.push(style);}",
  "function strikeOn(){return STRIKE;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;}",
  // the carry (catch-harness pins it) is stubbed to the plain rule: play it once settleT is up; pinFire asks the strike gate like the real one
- "var PLAY=null,SAWTAP=null,TAPPED=0; function retrieveTap(r){TAPPED++;r.act='catch';}",
+ "var PLAY=null,SAWTAP=null,TAPPED=0; function tapStart(r){TAPPED++;r.catPh='tap';} function ttStart(r){r.catPh='hit';}",
  "function pinPlayStart(){} function pinPlay(r,best,t,dt,tap){SAWTAP=tap;if(t<AIC.retrieve.settleT)return 0;return PLAY!=null?PLAY:1;}",
  "function pinFire(r,best,D,v){if(r.kickT>=0)return 0;if(!strikeOn())return -1;kickRod(r,'trapShot');return 1;}",
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
+ slice(rd('js/physics.js'),'function footBoxD(',NL+'function pinSurfaceY('),
+ 'const CAS={retTap:0};',
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
@@ -36,9 +39,9 @@ function boot(mut){
   if(g[mut.part]===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.foot,g.guard,g.clearOffset,g.lane,
-  ';globalThis.X={S:S,AIC:AIC,KICK:KICK,SIM:SIM,BALL_R:BALL_R,ARM:ARM,retrieveStep:retrieveStep,retrieveMan:retrieveMan,'+
-  'retrievePhase:retrievePhase,KICKS:KICKS,setStrike:function(v){STRIKE=v;},setPlay:function(v){PLAY=v;},tapped:function(){return TAPPED;},sawTap:function(){return SAWTAP;},released:function(){return RELEASED;}};'].join(NL),ctx);
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.foot,g.guard,g.clearOffset,g.lane,g.pose,g.hand,
+  ';globalThis.X={S:S,AIC:AIC,KICK:KICK,SHOT:SHOT,SIM:SIM,BALL_R:BALL_R,FOOT_BOX:FOOT_BOX,footUnder:footUnder,retrieveStep:retrieveStep,retrieveMan:retrieveMan,'+
+  'retrievePhase:retrievePhase,KICKS:KICKS,setStrike:function(v){STRIKE=v;},setShut:function(v){SHUT=v;},setPlay:function(v){PLAY=v;},tapped:function(){return TAPPED;},sawTap:function(){return SAWTAP;},released:function(){return RELEASED;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -53,14 +56,15 @@ function mkBall(X,rel,bz){const b={scored:false,m:{position:{x:-52.5+rel,y:X.BAL
 function run(X,r,b,opt){
  opt=opt||{};const dt=1/X.SIM.hz,D={cd:1},tr=[],phases=[];
  const best={m:b.m,v:b.v,real:b,scored:false};
- const fin=Math.asin(Math.max(-0.95,Math.min(0.95,(b.m.position.x-r.x)/X.ARM)));
  for(let i=0;i<Math.round((opt.T||6)*X.SIM.hz)&&r.act==='retrieve';i++){
   X.retrieveStep(r,best,D);
   if(r.retPh&&r.retPh!==phases[phases.length-1])phases.push(r.retPh);   // retPh goes null when the action ends
   r.offset+=Math.max(-40*dt,Math.min(40*dt,r.target-r.offset));
   const tgt=(r.pinPose&&r.pinA!=null)?r.pinA:(r.raise?X.KICK.raiseA:0),rate=(r.pinPose&&r.pinA!=null)?X.AIC.retrieve.pinLead*0+14:(r.raise?X.KICK.raiseLerp:X.KICK.dropLerp);
   r.angle+=(tgt-r.angle)*Math.min(1,rate*dt);
-  if(r.pinPose&&!r.pinB&&opt.takePin!==false&&r.angle>=fin-0.06&&Math.abs(r.offset+r.baseZ[0]-b.m.position.z)<1.5)r.pinB=b;
+  if(r.pinOn&&r.pinPose&&!r.pinB&&opt.takePin!==false&&r.retPh==='pin'&&Math.abs(r.angle-r.pinA)<X.SHOT.pin.capA&&X.footUnder(r,b.m.position,r.baseZ[r.retMan]+r.offset)){
+   b.pinMan=r.retMan;r.pinB=b;
+  }
   tr.push({ph:r.retPh,raise:r.raise,ang:r.angle,off:r.offset,pinA:r.pinA,pose:r.pinPose,pinB:!!r.pinB,act:r.act});
  }
  return {phases,tr};
@@ -68,13 +72,14 @@ function run(X,r,b,opt){
 
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
+ const clearZ=X.FOOT_BOX.z+X.BALL_R+X.AIC.clearMargin;
  const order=(ph)=>{const want=['side','lift','over','pin','drop'];let k=-1;for(const p of ph){const j=want.indexOf(p);if(j<k)return false;k=j;}return true;};
  // ---- the sequence, ball beside a man ------------------------------------------------------------------
  {X.KICKS.length=0;const r=mkRod(X,{offset:0});const b=mkBall(X,-1.5,1.0);const o=run(X,r,b);
   ok('a man on the ball steps clear, lifts, slides over, pins, then plays the pin shot (phases in order)',o.phases.join('>')==='side>lift>over>pin','phases='+o.phases.join('>'));
   const firstLift=o.tr.findIndex(t=>t.raise);
   ok('the boot is never raised while a man still overlaps the ball lane',o.tr.slice(0,Math.max(0,firstLift)).every(t=>t.ph==='side'||!t.raise)&&firstLift>0&&
-   Math.abs(o.tr[firstLift].off+r.baseZ[0]-b.m.position.z)>3.3,'first lift at dz='+(firstLift>0?Math.abs(o.tr[firstLift].off-b.m.position.z).toFixed(2):'-'));
+   Math.abs(o.tr[firstLift].off+r.baseZ[0]-b.m.position.z)>=clearZ,'first lift at dz='+(firstLift>0?Math.abs(o.tr[firstLift].off-b.m.position.z).toFixed(2):'-'));
   ok('the slide to the ball starts only after the boot is over it',(()=>{const i=o.tr.findIndex(t=>t.ph==='over');return i>=0&&o.tr[i].ang<-0.5;})());   // a ball 1.5 behind is passed at ~-0.75: the boot is then behind it and every contact faces forward
   ok('a pin takes and exactly one pin shot is played',X.KICKS.length===1&&X.KICKS[0]==='trapShot','kicks='+X.KICKS.join(','));
   ok('the action winds up clean: act cleared, pin flags down',r.act===null&&!r.pinOn&&!r.pinPose&&r.pinA===null&&r.retCd>0);}
@@ -97,15 +102,31 @@ function suite(X){
  {X.KICKS.length=0;X.setStrike(false);const r=mkRod(X,{offset:0});const b=mkBall(X,-3,0);const o=run(X,r,b,{T:4});X.setStrike(true);
   ok('when the strike gate refuses the pin shot the rod DROPS instead of swinging at nothing',X.KICKS.length===0&&o.phases.includes('drop'),'kicks='+X.KICKS.length+' phases='+o.phases.join('>'));}
  {X.KICKS.length=0;const r=mkRod(X,{offset:0});const b=mkBall(X,-3,0);const o=run(X,r,b,{takePin:false,T:5});
-  ok('a pin that never takes falls back to the drop (pinT), with no kick',o.phases.join('>').endsWith('pin>drop')&&X.KICKS.length===0,'phases='+o.phases.join('>'));}
+  ok('a pin that never takes falls back to the drop (pinT), with no kick',o.phases.join('>').endsWith('pin>drop')&&X.KICKS.length===0,'phases='+o.phases.join('>'));
+  const lastPose=o.tr.findLast(t=>t.ph==='pin');
+  ok('the sole stops at the pin geometry while waiting for the ball to take',
+     !!lastPose&&X.footUnder({...r,angle:lastPose.ang},b.m.position,r.baseZ[0]+lastPose.off));}
  {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'MID',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
-  ok('a rod that is neither the keeper nor smart drops through the ball (no pin)',!o.phases.includes('pin')&&o.phases.includes('drop')&&X.KICKS.length===0,'phases='+o.phases.join('>'));}
+  ok('an outfield rod pins and shoots even when its IQ roll fails',o.tr.some(t=>t.pinB)&&X.KICKS[0]==='trapShot','phases='+o.phases.join('>'));}
  {const r=mkRod(X,{offset:0,role:'GK',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
   ok('…except the keeper, who always tries to pin',o.phases.includes('pin'),'phases='+o.phases.join('>'));}
- {const r=mkRod(X,{offset:0,role:'MID',aiIQ:false,catUntil:1e9});const b=mkBall(X,-3,0);const o=run(X,r,b);
-  ok('…and a rod a catch handed the ball to, whatever its iq roll says now',o.phases.includes('pin'),'phases='+o.phases.join('>'));}
- {const r=mkRod(X,{offset:0});const b=mkBall(X,-5.9,0);const o=run(X,r,b);
-  ok('a ball beyond the pin window (shots.pin.back) is dropped through, not pinned',!o.phases.includes('pin')&&o.phases.includes('drop'),'phases='+o.phases.join('>'));}
+ {const r=mkRod(X,{offset:0,retPh:'over',angle:X.KICK.raiseA,slideV:X.AIC.retrieve.slideV+1});const b=mkBall(X,-3,0);
+  const best={m:b.m,real:b,v:b.v};X.retrieveStep(r,best,{cd:1});
+  ok('the boot stays up while the rod slides across the ball',r.retPh==='over'&&r.raise&&!r.pinOn);
+  r.slideV=0;X.retrieveStep(r,best,{cd:1});
+  ok('the rod starts the pin once it has settled over the ball',r.retPh==='pin'&&r.pinOn&&!r.raise);}
+ {const r=mkRod(X,{offset:0});const b=mkBall(X,X.SHOT.pin.back-0.1,0);const o=run(X,r,b);
+  ok('beyond pin reach, the open lane still allows the drop',!o.phases.includes('pin')&&o.phases.includes('drop'),'phases='+o.phases.join('>'));}
+ {X.KICKS.length=0;X.setShut(true);
+  const r=mkRod(X,{offset:0});const b=mkBall(X,-3,0);const o=run(X,r,b,{takePin:false});
+  X.setShut(false);
+  const retreat=o.tr.filter(t=>t.ph==='clear');
+  ok('a failed pin with the lane shut lifts and slides clear without a swing',
+     retreat.length>0&&retreat.every(t=>t.raise&&!t.pinB)&&Math.abs(r.offset-b.m.position.z)>=clearZ&&r.act===null&&X.KICKS.length===0,'phases='+o.phases.join('>'));}
+ {X.KICKS.length=0;X.setStrike(false);X.setShut(true);
+  const r=mkRod(X,{offset:0});const b=mkBall(X,-3,0);const o=run(X,r,b,{T:3});
+  X.setStrike(true);X.setShut(false);
+  ok('a refused shot holds its pin when the straight lane is blocked',r.pinB===b&&!o.phases.includes('drop')&&X.KICKS.length===0,'phases='+o.phases.join('>'));}
  // ---- housekeeping ----------------------------------------------------------------------------------------------
  {const r=mkRod(X,{offset:0,baseZ:[0]});const b=mkBall(X,-1.5,2);b.m.position.z=40;X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
   ok('a ball no man can get to (out of slide reach) ends the action',r.act===null);}
@@ -120,6 +141,9 @@ function suite(X){
   X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});X.setPlay(null);
   ok('a shot is still a shot (and the tap is not taken)',X.KICKS.length===1&&X.KICKS[0]==='trapShot'&&X.tapped()===n0,'kicks '+X.KICKS.join(',')+' tapped '+X.tapped());}
  // ---- a re-seat from a forward pin (retFl): the leg stays up while the man steps clear ----
+ {X.KICKS.length=0;X.setPlay(4);const r=mkRod(X,{retPh:'pin',retHold:1});const b=mkBall(X,-3,0);r.pinB=b;b.pinMan=0;
+  X.retrieveStep(r,{m:b.m,v:b.v,real:b},{cd:1});X.setPlay(null);
+  ok('a tic-tac choice hands the held ball to the catch action',r.act==='catch'&&r.catPh==='hit'&&r.pinB===b&&X.KICKS.length===0);}
  {const up=X.AIC.catch.recv.lift.angle;
   {const r=mkRod(X,{offset:0,retFl:true});const b=mkBall(X,-0.8,1.0);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
    ok('a re-seat holds the leg up and forward while the man steps clear: pin pose on at the lift angle, no ball pinned',r.retPh==='side'&&r.pinOn===true&&r.pinPose===true&&Math.abs(r.pinA-up)<1e-9,'ph='+r.retPh+' pinA='+r.pinA);}
@@ -127,7 +151,7 @@ function suite(X){
    ok('…an ordinary retrieve does not',r.pinOn===false&&r.pinPose===false);}
   {const r=mkRod(X,{offset:9.9,baseZ:[0],retFl:true});const b=mkBall(X,-1.5,8.0);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
    ok('with the leg up the way clear through a close ball is free: it crosses, not gives up',r.act==='retrieve'&&r.retDir===-1,'act='+r.act+' retDir='+r.retDir);}
-  {X.KICKS.length=0;const r=mkRod(X,{offset:0,retFl:true});const b=mkBall(X,-0.8,1.0);const o=run(X,r,b);
+  {X.KICKS.length=0;const r=mkRod(X,{offset:0,retFl:true});const b=mkBall(X,-1.5,1.0);const o=run(X,r,b);
    const lift=o.tr.find(t=>t.ph==='lift');
    ok('once clear the leg is let go (the lift is the back-lift again) and the sequence goes on to the pin shot',o.phases.join('>')==='side>lift>over>pin'&&lift&&lift.pose===false&&r.retFl===false&&X.KICKS.length===1,'phases='+o.phases.join('>')+' retFl='+r.retFl);}
   {const r=mkRod(X,{offset:0,retFl:true,retPh:'side'});r.pinOn=true;r.pinPose=true;r.pinA=up;const b=mkBall(X,-0.8,40);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
@@ -149,17 +173,19 @@ const MUT=[
  {n:'a pinned-at-the-limit man crosses a close ball anyway',part:'guard',from:'else if(rel<RT.crossRel||up)r.retDir=-away;',to:'else if(true)r.retDir=-away;'},
  {n:'a far ball is never crossed',part:'guard',from:'else if(rel<RT.crossRel||up)r.retDir=-away;',to:'else if(up)r.retDir=-away;'},
  {n:'the slide-in starts before the boot is over the ball',part:'guard',from:'if(backHit(r,KICK.raiseA*dir,mn.o)===null)retrievePhase(r,\'over\');',to:'if(true)retrievePhase(r,\'over\');'},
- {n:'the pin pose is set at the FINAL angle (out of the catch window all the way down)',part:'guard',from:'r.pinA=r.pinB?r.angle:r.angle+clamp(fin-r.angle,-RT.pinLead,RT.pinLead);',to:'r.pinA=fin;'},
+ {n:'the pin pose is set at the final angle before the leg settles',part:'guard',from:'r.pinA+=clamp(pose*dir-r.angle,-RT.pinLead,RT.pinLead);',to:'r.pinA=pose*dir;'},
  {n:'the keeper plays a caught ball at once (no settle)',part:'guard',from:'v=(r.retHold>=RT.settleT&&r.cd<=0)?1:0;',to:'v=(r.cd<=0)?1:0;'},
- {n:'a refused pin shot no longer drops the rod through the ball',part:'guard',from:'else if(f<0)retrievePhase(r,\'drop\');',to:'else if(f<0)void 0;'},
+ {n:'a refused pin shot can never use the open drop',part:'guard',from:"if(!laneShut(r,ball))retrievePhase(r,'drop');",to:'void 0;'},
+ {n:'a refused pin shot always drops, including in a shut lane',part:'guard',from:"if(!laneShut(r,ball))retrievePhase(r,'drop');",to:"retrievePhase(r,'drop');"},
  {n:'a pin that never takes hangs on instead of dropping',part:'guard',from:'if(r.retT>RT.pinT)retrievePhase(r,\'drop\');',to:'void 0;'},
- {n:'every rod pins, smart or not',part:'guard',from:'(r.aiIQ||r.role===\'GK\'||!RT.pinIQ||S.time<(r.catUntil||0))',to:'true'},
- {n:'the keeper is no longer exempt from the iq gate',part:'guard',from:'(r.aiIQ||r.role===\'GK\'||!RT.pinIQ||',to:'(r.aiIQ||!RT.pinIQ||'},
- {n:'a rod a catch handed the ball to still needs a fresh iq roll',part:'guard',from:'||S.time<(r.catUntil||0))',to:')'},
- {n:'the pin window is ignored (a ball too deep to pin is pinned)',part:'guard',from:'rel>SHOT.pin.back+0.2&&',to:''},
+ {n:'the IQ roll is required for a pin',part:'guard',from:'const pin=RT.pin&&P.on',to:"const pin=(r.aiIQ||r.role==='GK')&&RT.pin&&P.on"},
+ {n:'the rod lowers at full slide speed',part:'guard',from:'Math.abs(mn.o-r.offset)<=RT.alignZ&&Math.abs(r.slideV)<=RT.slideV',to:'Math.abs(mn.o-r.offset)<=RT.alignZ'},
+ {n:'the retrieve estimates the angle from the arm alone',part:'guard',from:'const pose=footAngle(rel,false,dz,p.y);',to:'const pose=Math.asin(clamp(rel/ARM,-0.95,0.95));'},
+ {n:'a shut lane still allows the drop',part:'guard',from:"if(laneShut(r,ball)){",to:'if(false){'},
  {n:'retrieve never offers the tap',part:'guard',from:'v=pinPlay(r,best,r.retHold,dt,true);',to:'v=pinPlay(r,best,r.retHold,dt);'},
- {n:'a tap is fired as a shot',part:'guard',from:'if(v===3){retrieveTap(r);return;}',to:''},
- {n:'every pin is tapped',part:'guard',from:'if(v===3){retrieveTap(r);return;}',to:'if(v){retrieveTap(r);return;}'},
+ {n:'a tap is fired as a shot',part:'guard',from:'if(v===3||v===4){retrieveTap(r,v);return;}',to:'if(v===4){retrieveTap(r,v);return;}'},
+ {n:'every pin is tapped',part:'guard',from:'if(v===3||v===4){retrieveTap(r,v);return;}',to:'if(v){retrieveTap(r,v);return;}'},
+ {n:'a tic-tac is treated as a tap',part:'hand',from:'if(play===4)ttStart(r);',to:'if(false)ttStart(r);'},
  {n:'an unreachable ball no longer ends the action',part:'guard',from:'if(!mn){retrieveEnd(r,RT.cd);return;}',to:'if(!mn){return;}'},
  {n:'ending leaves the pin held',part:'guard',from:' if(r.pinB)pinRelease(r);\n r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;',to:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;'},
  {n:'ending leaves the pin flags up',part:'guard',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;',to:' r.act=null;'},
@@ -168,8 +194,8 @@ const MUT=[
  {n:'every retrieve holds the leg up',part:'guard',from:'const up=r.retFl;',to:'const up=true;'},
  {n:'the leg is not let go once the man is clear',part:'guard',from:'r.retFl=false;r.pinOn=false;r.pinPose=false;r.pinA=null;\n  retrievePhase(r,\'lift\');',to:'retrievePhase(r,\'lift\');'},
  {n:'ending leaves the re-seat flag up',part:'guard',from:'r.retCd=cd||0;r.retFl=false;',to:'r.retCd=cd||0;'},
- {n:'a rod that has just let a ball go reads the delayed view',part:'guard',from:'p=(S.time<(r.retKnow||0)?(best.real||best):best).m.position',to:'p=best.m.position'},
- {n:'…and reads the real ball for ever',part:'guard',from:'p=(S.time<(r.retKnow||0)?(best.real||best):best).m.position',to:'p=(best.real||best).m.position'}
+ {n:'the retrieve always reads the delayed view',part:'guard',from:'p=(live?ball:best).m.position',to:'p=best.m.position'},
+ {n:'the retrieve always reads the real ball',part:'guard',from:'p=(live?ball:best).m.position',to:'p=ball.m.position'}
 ];
 let missed=0;
 for(const m of MUT){

@@ -131,11 +131,11 @@ function buildRoom(src){
  const st={bgSet:[],shows:0,envs:[],prunedRooms:[],prunedSkies:[],ready:0,skyCb:{},roomCb:{},dirty:0};
  const THREE=mkTHREE({cubes:0,freed:[]});
  const rooms={
-  sky:{bg:1,sky:{src:'s'},glb:'x.glb'},       // both
+  sky:{bg:1,sky:{src:'s',rot:90,int:0.5},glb:'x.glb'},   // both; turned and dimmed
   flat:{bg:2,glb:'y.glb'},                    // backdrop only
   bare:{bg:3,sky:{src:'t'}}                   // sky only, no glb
  };
- const env={CONFIG:{rooms,leds:{}},cfg:{room:'sky'},scene:{background:null},activeRoom:null,
+ const env={CONFIG:{rooms,leds:{}},cfg:{room:'sky'},scene:{background:null,backgroundIntensity:1,backgroundRotation:{y:0,set(x,y,z){this.y=y;}}},activeRoom:null,
   skyCache:{},roomGroups:{},propGroups:{},groundMesh:{visible:false}};
  const f=new Function('THREE','E','st',
   'let activeRoom=null,curLeds=null;const ledMat=null,hemiLight=null,dirLight=null;\n'+
@@ -149,7 +149,7 @@ function buildRoom(src){
   'function ensureSky(id,cb){if(skyCache[id]){cb(skyCache[id]);return;}st.skyCb[id]=cb;}\n'+
   'function ensureRoom(id,cb){st.roomCb[id]=cb;}\n'+
   'function pruneSkies(k){st.prunedSkies.push(k);} function pruneRooms(k){st.prunedRooms.push(k);}\n'+
-  fnAt(src,'applyRoom')+'\nreturn{applyRoom,active:()=>activeRoom};');
+  fnAt(src,'skyView')+'\n'+fnAt(src,'applyRoom')+'\nreturn{applyRoom,active:()=>activeRoom};');
  const api=f(THREE,env,st);
  // show() counts through the props callback's visibility writes
  return{api,st,env,
@@ -171,6 +171,12 @@ function roomSuite(src){
   const w2=buildRoom(src);w2.go('sky');w2.room('sky');
   t(w2.st.ready===0,'backdrop alone is not ready (sky still loading)',w2.st.ready);
   w2.sky('sky');t(w2.st.ready===1,'...ready when the sky lands second',w2.st.ready);
+ }
+ /* 6b. sky.rot / sky.int turn and dim the background; a room without them resets both */
+ {
+  const w=buildRoom(src);w.go('sky');const b=w.env.scene;
+  t(Math.abs(b.backgroundRotation.y-Math.PI/2)<1e-9&&b.backgroundIntensity===0.5,'sky.rot (degrees) and sky.int reach the scene',b.backgroundRotation.y+' '+b.backgroundIntensity);
+  w.go('bare');t(b.backgroundRotation.y===0&&b.backgroundIntensity===1,'a room with no rot / int resets them',b.backgroundRotation.y+' '+b.backgroundIntensity);
  }
  /* 7. absent halves count as resident; a cached sky is on screen at once */
  {
@@ -248,6 +254,8 @@ const MUT=[
  ['frees the sky on screen','models',"if(typeof scene!=='undefined'&&scene&&scene.background===t)return;",""],
  ['LRU keeps one too many','models',"const extra=Math.max(0,((CONFIG.tableAssets||{}).cacheSkies||1)-1);","const extra=Math.max(0,((CONFIG.tableAssets||{}).cacheSkies||1));"],
  ['ready on the first half','world',"let wait=2;","let wait=1;"],
+ ['sky turn read as radians','world',"(S.rot||0)*Math.PI/180","(S.rot||0)"],
+ ['sky view not reset for a plain room','world',"scene.backgroundIntensity=S.int===undefined?1:S.int;","if(S.int!==undefined)scene.backgroundIntensity=S.int;"],
  ['stale sky goes on screen','world',"if(t&&live()){scene.background=t;renderDirty();}","if(t){scene.background=t;renderDirty();}"],
  ['stale backdrop installs its env','world',"if(live()){show();setRoomEnv(id,rm);","if(true){show();setRoomEnv(id,rm);"],
  ['stale show() runs','world',"  if(!live())return;\n",""],

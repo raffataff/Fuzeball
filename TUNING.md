@@ -567,23 +567,24 @@ with the intelligence stat.
 
 ### `strikeGate`
 
-`alignSlow` / `alignFast` are a *static* snapshot read off the rod's delayed view of the
-ball (`aiView` / `DIFFS.reactDelay`), and they were tuned for the normal kick — whose
-boot is on the ball almost the instant it commits. An **aimed** swing is slower:
-`passShot` contacts at .08–.20s. Stack the two lags (~.25s perception + ~.20s swing) and
-the AI was committing passes to where the ball had been nine units earlier; by contact it
-had rolled between two men. The result was a swing at nothing, or a clip off the *side*
-of a foot box that still resolves as a hit in `collideRod` and then collects the pass
-aim-assist — so a deflection read as a deliberate pass.
+`alignSlow` and `alignFast` read the ball through the rod's delayed view.
+`diffs.<difficulty>.reactDelay` sets the age of that sample and `react` sets the
+smoothing time constant in seconds. Lower values make the rod respond sooner.
+`pred` multiplies the estimated lateral lead used for tracking and cover, with
+an additional multiplier from the rod's IQ and stamina. A value of 1 uses the
+full estimate before that additional multiplier.
 
-`strikeOn` (`ai.js`) replays the style's real swing curve, advances the real ball to each
-sample, slides the men on too, and asks `footBoxDist` whether a boot is genuinely there.
-Reach, front-face and z-centred are all three required, or the action is refused and the
-rod plays an ordinary kick instead. Only the listed `styles` are gated — the plain swing
-is deliberately absent, so the AI's clearing reflex is untouched.
+Normal kicks and dribble releases use `kickLaunch` to forecast contact against
+the live ball. The rod commits to the slide used by that forecast and needs a
+forward contact before it can swing. A reachable pass can still be selected
+when the normal kick has no contact or its lane is covered.
 
-Debug: press C then L to trace a rod; refusals log as `GATE:PASS` / `GATE:TRAPSHOT` with
-the measurement that failed.
+`strikeOn` checks the configured styles at its call sites. It samples the swing
+curve and the live ball, accounting for the rod's slide. The tuned contact
+requires reach, a forward-facing part of the foot and lateral alignment.
+
+Press C then L to trace a rod. A normal kick can log `no-live-contact`.
+`GATE:PASS` and `GATE:TRAPSHOT` log the failed measurement.
 
 - `samples` 9 ≈ 15ms apart on a pass swing. This runs only when a pass or trap shot is
   already being considered — a handful of times a second at most — so buy the
@@ -608,10 +609,9 @@ centrable z-range — that man is pinned at ±`maxOff` — so `dz` can never fal
 `alignSlow` even though the leg capsule (radius `BALL_R` + `PRAD` ≈ 2.6) is still
 touching it. The rod stands there beside the ball into a dead-ball.
 
-When the nearest man is within `wallSlack` of its slide limit *toward* such a ball and
-the ball is within `wallReach` in z, count it aligned so the rod swings and knocks it
-loose. Guarded to genuine wall-hugs plus a maxed-out man, so normal midfield aiming is
-untouched.
+When the nearest man is within `wallSlack` of its slide limit *toward* such a ball
+and the ball is within `wallReach` in z, count it as aligned for the live contact
+check.
 
 ### `hands`
 

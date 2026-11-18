@@ -9,7 +9,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 
 /* ---- the real functions, lifted verbatim ---- */
 const real=[
- slice(rd('js/physics.js'),'function collideRod(b,r){','function ballBall('),
+ slice(rd('js/physics.js'),'function collideRod(','function ballBall('),
  slice(rd('js/rods.js'),'function styleCfg(',NL+'function kickStyleCfg'),
  slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'function passFaceOK('),
  slice(rd('js/rods.js'),'function holdCfg(r){',NL+'function kickRod('),

@@ -62,7 +62,12 @@ function suite(X){
  {const p=pick(-3.0,-20,0,10,{baseZ:[-12,0,12]});ok('...past a man that is behind it, to the next one ahead',p.got&&p.r.catMan===0,'man '+p.r.catMan);}
  {const p=pick(-3.0,-6,0,14,{removedUntil:[0,1e9,0]});ok('a man a cannonball took is not the one it is received by',p.got&&p.r.catMan===2,'man '+p.r.catMan);}
  {ok('not too slow (retrieve\'s)',!pick(-3.0,-8,0,SD.minV-1).got);}
- {ok('not too quick (a shot to block)',!pick(-3.0,-8,0,SD.maxV+1).got);}
+ {const {sideV,sideTMin}=X.AIC.catch.byDiff.pro,gap=sideV*(sideTMin+0.01);
+  ok('pro takes a fast roll that needs the shorter setup window',pick(-3.0,-gap,0,sideV,{baseZ:[0]}).got);
+  ok('pro leaves a roll over its speed ceiling',!pick(-3.0,-gap,0,sideV+1,{baseZ:[0]}).got);
+  const tune=X.AIC.catch.byDiff.pro;delete X.AIC.catch.byDiff.pro;
+  ok('the default side catch leaves a roll over its speed ceiling',!pick(-3.0,-8,0,SD.maxV+1).got);
+  X.AIC.catch.byDiff.pro=tune;}
  {ok('not a ball that is also running up the table',!pick(-3.0,-8,SD.maxVX+1,10).got);}
  {ok('not deeper than the pin\'s own window',!pick(X.SHOT.pin.back-0.1,-8,0,10).got&&pick(X.SHOT.pin.back+0.3,-8,0,10).got);}
  {ok('not under the rod, where no foot can come down on it',!pick(-1.00,-8,0,10).got&&!pick(1.5,-8,0,10).got&&pick(-2.0,-8,0,10).got);}
@@ -97,7 +102,9 @@ function suite(X){
  {const a=step(-2.0,-1,v).pinA,b=step(-4.0,-1,v).pinA;ok('...which takes a deeper ball more tilted back',b<a,a.toFixed(2)+' vs '+b.toFixed(2));}
  {const r=world(X);const real=view(X,-3.0,-8,0,v);const seen=view(X,-3.0,-8,0,0);seen.real=real;X.catchStep(r,seen,D0);
   ok('it reads the real ball, not the delayed view (which still shows a ball that was held)',r.act==='catch'&&r.raise&&!X.CAW['side:slow'],JSON.stringify(X.CAW));}
- {const r=step(-3.4,-1,SD.cushionV+8);ok('a ball too quick even to cushion is let through: the men stay up all the way',!r.pinPose&&r.raise&&!r.catCush);}
+ {const saved=X.DIFFS.pro.speed;X.DIFFS.pro.speed=100;
+  const r=step(-3.4,-1,X.AIC.catch.byDiff.pro.sideV+1);X.DIFFS.pro.speed=saved;
+  ok('a ball over the cushion speed ceiling passes under the raised men',!r.pinPose&&r.raise&&!r.catCush);}
  {const r=step(-3.4,0.4,v,{});ok('just past the man it is still being waited on (the pose holds)',r.pinPose&&r.act==='catch');}
 
  // ---- the cushion: a quick ball is met by a rod already running along with it ----
@@ -145,7 +152,7 @@ const MUT=[
  {n:'the forward edge is gone',from:'rel<SHOT.pin.back||rel>SD.fwdFront||',to:'rel<SHOT.pin.back||'},
  {n:'a ball ahead of the rod is not taken',from:'const ahead=rel>0;',to:'const ahead=false;'},
  {n:'a ball no foot can come down on is picked',from:'||footAngle(rel,ahead)==null)return false;',to:')return false;'},
- {n:'the foot angle ignores whether it is on top of the ball',from:'return FA_D[0]>=SHOT.pin.down?lo:null;',to:'return lo;'},
+ {n:'the foot angle ignores whether it is on top of the ball',from:'return FA_D[0]>=down?lo:null;',to:'return lo;'},
  {n:'a ball ahead is taken under a back leg',from:'r.catSg=sg;r.catCush=false;r.catFwd=ahead;',to:'r.catSg=sg;r.catCush=false;r.catFwd=false;'},
  {n:'a side catch ahead ends the moment it is past the old line',from:'rel>(r.catFwd?SD.fwdFront:SD.front)+1',to:'rel>SD.front+1'},
  {n:'the pose ahead is not a forward pin',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;}',to:'r.pinFwd=false;r.pinA=fa*dir;}'},
@@ -153,7 +160,7 @@ const MUT=[
  {n:'the FARTHEST man ahead is the one picked',from:'d<=SD.far&&d<bd)',to:'d<=SD.far&&d>bd)'},
  {n:'a cannonballed man is still picked',from:'if(!manLive(r,i))continue;\n  const d=(r.baseZ[i]+r.offset-p.z)*sg;',to:'const d=(r.baseZ[i]+r.offset-p.z)*sg;'},
  {n:'a quick ball is not picked (through off)',from:'||(sp>SD.pinV&&!SD.through)||',to:'||(sp>SD.pinV)||'},
- {n:'the time window is ignored',from:'bd/sp<SD.tMin||bd/sp>SD.tMax',to:'false'},
+ {n:'the time window is ignored',from:'bd/sp<tMin||bd/sp>SD.tMax',to:'false'},
  {n:'catchPick never asks for a side catch',from:"if(sidePick(r,best))return 'side';",to:''},
  {n:'the pose goes on at once (no waiting for it to roll in)',from:'(r.catCush||cl<=SD.pinV)&&tA<=SD.dropT)',to:'(r.catCush||cl<=SD.pinV))'},
  {n:'the pose is the fixed pin angle, whatever the ball\'s depth',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;}',to:'r.pinFwd=r.catFwd;r.pinA=CA.front.angle*dir;}'},
@@ -173,9 +180,9 @@ const MUT=[
  {n:'the cushion starts at once',from:'&&ahead<=Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD))r.catCush=true;',to:')r.catCush=true;'},
  {n:'the cushion starts from the distance cap only (the time is ignored)',from:'Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD)',to:'SD.cushionD'},
  {n:'the cushion has no distance cap',from:'Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD)',to:'SD.cushionT*Math.max(cl,1)'},
- {n:'the speed of the rod itself is not asked about',from:'&&bv<=DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r)+SD.pinV+SD.cushionSlack',to:''},
+ {n:'the speed of the rod itself is not asked about',from:'&&bv<=DIFFS[difficulty].speed*rodSpeedMult(r)+SD.pinV+SD.cushionSlack',to:''},
  {n:'the slack on the rod speed is ignored',from:'+SD.pinV+SD.cushionSlack',to:'+SD.pinV'},
- {n:'the cushion tries a ball it cannot match',from:'&&bv<=SD.cushionV&&',to:'&&'},
+ {n:'the cushion tries a ball it cannot match',from:'&&bv<=cushionV&&',to:'&&'},
  {n:'the cushion ignores the room it has',from:'&&(sg>0?r.maxOff-r.offset:r.offset+r.maxOff)>=SD.cushionRoom;',to:';'},
  {n:'the cushion runs at the ball\'s own speed (it never closes)',from:'Math.max(0,bv-SD.cushionW)',to:'Math.max(0,bv)'},
  {n:'the cushion runs the wrong way',from:'clamp(r.offset+sg*Math.max(0,bv-SD.cushionW)*dt',to:'clamp(r.offset-sg*Math.max(0,bv-SD.cushionW)*dt'},

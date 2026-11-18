@@ -25,7 +25,11 @@ const ICO={
  figure:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="5" r="2.6"/><path d="M12 7.8v7M12 14.8 8.6 21M12 14.8 15.4 21M6.6 10.4 12 9l5.4 1.4"/></svg>',
  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>',
  // a double chevron pointing up: promotion (rotated, relegation)
- chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 12 5.5l7 6.5M5 18.5 12 12l7 6.5"/></svg>'
+ chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 12 5.5l7 6.5M5 18.5 12 12l7 6.5"/></svg>',
+ // Customize's stage tools: a figure on a turning base, a framed centre, a camera
+ spin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.6" r="1.7"/><path d="M12 7.2v6.6"/><path d="M6.2 13.6C4.5 14.2 3.5 15 3.5 16c0 1.9 3.8 3.4 8.5 3.4s8.5-1.5 8.5-3.4c0-1-1-1.8-2.7-2.4"/><path d="M14.6 21.4l2.2-2-2.1-2"/></svg>',
+ fit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="1.6"/></svg>',
+ cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3.5 8.2h3.4l1.7-2.4h6.8l1.7 2.4h3.4v10.6h-17z"/><circle cx="12" cy="13.3" r="3.3"/></svg>'
 };
 const ico=(k,cls)=>'<span class="ico'+(cls?' '+cls:'')+'">'+(ICO[k]||'')+'</span>';
 // ---- figurine portrait ----

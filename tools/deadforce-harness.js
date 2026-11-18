@@ -39,7 +39,8 @@ function suite(X){
  {reset();X.setTable({deadzones:[{xMin:40,zMin:20}]});const b=ball(45,1,0,25);X.S.balls=[b];ok('a table deadzone runs it at zoneMult',near(X.deadLeft(b),(D.stallT-1)/D.zoneMult),'got '+X.deadLeft(b));}
  {reset();X.setRods([rod()]);const b=ball(12,0);X.S.balls=[b];
   const slowT=L.graceMax/(1-L.mult),gain=slowT*L.mult;
-  ok('a strikeable ball: the grace budget buys slow seconds first, then the clock runs at full speed',near(X.deadLeft(b),slowT+D.stallT-gain),'got '+X.deadLeft(b));}
+  ok('a strikeable ball: the grace budget buys slow seconds first, then the clock runs at full speed',near(X.deadLeft(b),slowT+D.stallT-gain),'got '+X.deadLeft(b));
+  ok('stepping off a strikeable ball: budget with the clock running at full speed',near(X.deadLeft(b,false),D.stallT));}
  {reset();X.setRods([rod()]);const b=ball(12,D.stallT-0.4);X.S.balls=[b];
   ok('...and when the grace outlasts the stall, the remainder ticks at the discounted speed',near(X.deadLeft(b),0.4/L.mult),'got '+X.deadLeft(b));}
  {reset();const r=rod();r.x=-2;X.setRods([r]);const b=ball(0,0);X.S.balls=[b];ok('a lane outranks the live discount (nobody can swing at a ball there)',near(X.deadLeft(b),D.stallT/D.rodGaps.mult),'got '+X.deadLeft(b));}
@@ -62,10 +63,11 @@ console.log('  '+(total-bad)+' passed, '+bad+' failed');
 
 /* Mutations: each edits the REAL source and must fail at least one assertion above. */
 const MUT=[
+ {n:'a re-seat budgets the live-zone discount while the foot steps off',from:'if(useGrace&&zm===1&&',to:'if(zm===1&&'},
  {n:'multi-ball uses the whole-table stall limit',from:'(S.balls.length>1?DEAD.wedgeT:DEAD.stallT)',to:'DEAD.stallT'},
  {n:'a due whistle can read negative',from:'if(need<=0)return 0;',to:''},
  {n:'the deadzone speed-up is ignored',from:'return need/Math.max(zm,1e-6);',to:'return need;'},
- {n:'the live discount is applied in a deadzone too',from:'if(zm===1&&L&&L.on',to:'if(L&&L.on'},
+ {n:'the live discount is applied in a deadzone too',from:'if(useGrace&&zm===1&&L&&L.on',to:'if(useGrace&&L&&L.on'},
  {n:'a part-spent budget is read as a full one',from:'const slowT=(L.graceMax-(b.graceT||0))/(1-L.mult)',to:'const slowT=L.graceMax/(1-L.mult)'},
  {n:'the discounted seconds are not counted as stall gained',from:'gain=slowT*L.mult;',to:'gain=0;'},
  {n:'a grace budget that outlasts the stall still adds the slow window',from:'return need<=gain?need/L.mult:slowT+need-gain;',to:'return slowT+need-gain;'},

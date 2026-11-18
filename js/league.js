@@ -934,24 +934,14 @@ function openSlots(){
 }
 /* ---- setup form ---- */
 /* ---- 3D figurine preview for setup form ---- */
-
-let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats:[],rim:null,ringM:null,plat:null,lid:null,bs:1,
+// Customize's studio (czStudio, a narrower plinth) at the size of #lgSetupStage, drawn on change (no turntable)
+let LSP={ready:false,W:0,H:0,dpr:1,scene:null,cam:null,root:null,m:null,mats:[],parts:null,lid:null,bs:1,
  init(){
   if(this.ready)return;
   this.dpr=Math.min(devicePixelRatio,2);
-  this.scene=new THREE.Scene();
-  this.scene.add(new THREE.HemisphereLight(0xe8eeff,0x4f4756,2.98));
-  const k=new THREE.DirectionalLight(0xffffff,3.77);k.position.set(5,11,7);this.scene.add(k);
-  this.rim=new THREE.PointLight(0xffffff,3.47,50,0);this.rim.position.set(-4,4,-5);this.scene.add(this.rim);
-  this.cam=new THREE.PerspectiveCamera(36,this.W/this.H,.1,200);
-  this.cam.position.set(0,2.0,8.5);this.cam.lookAt(0,1.65,0);
-  this.root=new THREE.Group();this.scene.add(this.root);
-  const ring=new THREE.Mesh(new THREE.RingGeometry(3.1,3.45,64),
-   new THREE.MeshBasicMaterial({color:0xa0c4ff,transparent:true,opacity:.45,side:THREE.DoubleSide}));
-  ring.rotation.x=-Math.PI/2;ring.position.y=.05;this.scene.add(ring);this.ringM=ring;
-  const plat=new THREE.Mesh(new THREE.CylinderGeometry(2.8,3.1,.3,48),
-   new THREE.MeshStandardMaterial({color:0x3d4763,emissive:0x5a6a89,emissiveIntensity:.5,roughness:.35,metalness:.7}));
-  plat.position.y=-.2;this.scene.add(plat);this.plat=plat;
+  this.scene=new THREE.Scene();this.parts=czStudio(this.scene,.8);
+  this.cam=new THREE.PerspectiveCamera(CONFIG.playerModel.studio.fov,1,.1,200);
+  this.root=new THREE.Group();this.root.rotation.y=czYaw(0);this.scene.add(this.root);
   this.ready=true;
  },
  load(modelId,col){
@@ -967,7 +957,7 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
     g.position.x-=ctr.x;g.position.z-=ctr.z;g.position.y-=box.min.y;
     const tp=new Set(am.teamParts.map(s=>s.toLowerCase()));
     this.mats=[];g.traverse(ch=>{if(!ch.isMesh)return;const cm=ch.material.clone();ch.material=cm;if(tp.has(cm.name.toLowerCase()))this.mats.push(cm);});
-    this.m=g;this.lid=am.id;this.root.add(g);this.root.rotation.y=cfg.redYaw||0;
+    this.m=g;this.lid=am.id;this.root.add(g);
     this.paint(col);
    };
    const cached=typeof PV!=='undefined'&&PV.cache&&PV.cache[am.id];
@@ -987,9 +977,16 @@ let LSP={ready:false,W:200,H:260,dpr:1,scene:null,cam:null,root:null,m:null,mats
  paint(col){
   const c=kitLin(col);   // linear for the sRGB preview renderer (world.js kitLin)
   this.mats.forEach(m=>{m.color.copy(c);applyTeamFinish(m,0,c,false);});
-  if(this.rim)this.rim.color.copy(c);
-  if(this.ringM)this.ringM.material.color.copy(c);
-  if(this.plat)this.plat.material.emissive.copy(c).multiplyScalar(.28);
+  czPaint(this.parts,c);
+  this.draw();
+ },
+ // the camera fitted to the stage as it is laid out now, then one frame
+ draw(){
+  const st=$('lgSetupStage');if(!this.ready||!st)return;
+  this.W=st.clientWidth;this.H=st.clientHeight;if(!this.W||!this.H)return;
+  const S=CONFIG.playerModel.studio,d=czFrameD(this.cam,this.W,this.H,1,S.frameW*.8);
+  this.cam.aspect=this.W/this.H;this.cam.updateProjectionMatrix();
+  this.cam.position.set(0,S.look+Math.sin(S.pitch)*d,Math.cos(S.pitch)*d);this.cam.lookAt(0,S.look,0);
   PRV.draw(this.scene,this.cam,$('lgSetupFig'),this.W,this.H,this.dpr);
  }
 };
@@ -998,47 +995,33 @@ function openSetup(slot){
  $('lgSetupLgName').value='LEAGUE '+(slot+1);
  $('lgSetupName').value=cfg.redName||'RED';
  $('lgSetupLgName').maxLength=$('lgSetupName').maxLength=CONFIG.control.nameMaxLength;
- $('lgSetupColor').value=cfg.redColor;
- $('lgSetupHex').textContent=cfg.redColor;
-
-$('lgSetupGoals').value=String(cfg.goals||LGC.goals);
-  $('lgSetupGameTime').value=String(cfg.gameTime||0);
-  $('lgSetupSpecial').checked=cfg.special;
-  $('lgSetupPower').checked=cfg.power;
-  $('lgSetupControl').value=(LG&&LG.control)||''; // default rod control baked into this save (overridable in the lobby)
-  $('lgSetupDiv').value='1';
-  LSP.load(cfg.modelRed,cfg.redColor); // initial 3D preview
- const pal=$('lgSetupPal');pal.innerHTML='';
- CONFIG.playerModel.swatches.forEach(hex=>{
-  const c=document.createElement('div');c.className='czChip';c.style.background=hex;c.dataset.hex=hex.toLowerCase();
-  c.onclick=()=>{
-   $('lgSetupColor').value=hex.toLowerCase();
-   $('lgSetupHex').textContent=hex.toLowerCase();
-   pal.querySelectorAll('.czChip').forEach(x=>x.classList.toggle('on',x===c));
-   LSP.paint(hex.toLowerCase());
-  };
-  pal.appendChild(c);
- });
- const models=$('lgSetupModels');models.innerHTML='';
- const mids=CONFIG.playerModel.models.filter(m=>m.src);
- mids.forEach(m=>{
-  const b=document.createElement('button');b.className='miniBtn';b.dataset.id=m.id;b.textContent=m.name;
-  b.onclick=()=>{
-   models.querySelectorAll('.miniBtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-   LSP.load(m.id,$('lgSetupColor').value);
-  };
-  models.appendChild(b);
- });
- const cur=cfg.modelRed;models.querySelectorAll('.miniBtn').forEach(b=>{if(b.dataset.id===cur)b.classList.add('on');});
- $('lgSetupColor').oninput=e=>{$('lgSetupHex').textContent=e.target.value;LSP.paint(e.target.value);};
+ $('lgSetupGoals').value=String(cfg.goals||LGC.goals);
+ $('lgSetupGameTime').value=String(cfg.gameTime||0);
+ $('lgSetupSpecial').checked=cfg.special;
+ $('lgSetupPower').checked=cfg.power;
+ $('lgSetupControl').value=(LG&&LG.control)||''; // default rod control baked into this save (overridable in the lobby)
+ $('lgSetupDiv').value='1';
+ // the club's kit starts as Kick Off's team 1: figure cards, swatches and the mixer from Customize (js/customize.js)
+ const kit={model:cfg.modelRed,col:cfg.redColor.toLowerCase()},pal=$('lgSetupPal'),pn=document.querySelector('.lgSetupKit');
+ const setCol=hex=>{kit.col=hex.toLowerCase();show();};
+ const mix=czMixBuild($('lgSetupMix'),'lsM',setCol);
+ const show=()=>{
+  const am=CONFIG.playerModel.models.find(m=>m.id===kit.model)||CONFIG.playerModel.models[0];
+  czRosterMark($('lgSetupModels'),am.id);czSwatchMark(pal,kit.col);czMixSync('lsM',mix,kit.col);
+  $('lgSetupFigName').textContent=am.name;$('lgSetupFigBlurb').textContent=am.blurb||'';
+  if(pn)pn.style.setProperty('--tc',kit.col);
+  LSP.load(am.id,kit.col);
+ };
+ czRoster($('lgSetupModels'),id=>{kit.model=id;show();});
+ czSwatches(pal,setCol);
+ requestAnimationFrame(show);   // the stage has its laid-out size once the screen is showing
  $('lgSetupCancel').onclick=()=>showScreen('lgSlots');
  $('lgSetupCreate').onclick=()=>{
-  const selModel=models.querySelector('.miniBtn.on');
   const opts={
    name:$('lgSetupLgName').value.trim().toUpperCase()||'LEAGUE '+(slot+1),
    teamName:($('lgSetupName').value||'YOU').toUpperCase(),
-   teamCol:$('lgSetupColor').value,
-   model:selModel?selModel.dataset.id:cfg.modelRed,
+   teamCol:kit.col,
+   model:kit.model,
    startDiv:+$('lgSetupDiv').value,
    goals:+$('lgSetupGoals').value,
    gameTime:+$('lgSetupGameTime').value,
@@ -1051,6 +1034,7 @@ $('lgSetupGoals').value=String(cfg.goals||LGC.goals);
   openLeague();
  };
 }
+
 /* ============== CHAMPIONS CUP ================ */
 
 function cupEnt(id,pool){

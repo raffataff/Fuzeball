@@ -14,6 +14,7 @@ let glbGoalGrow=[[],[]],glbGoalWall=[[],[]],glbGoalSplit=[];
 let rods=[],indicators=[],dropRing,pinRings=[];   // indicators: one held-rod marker per seat, pinRings one pinned-ball ring per seat (fx.js drives them)
 let rodCustomMats=[]; // {mat, team, isGlow} — rod GLB materials detached from teamMat/teamGlow via cloneWithMaps
 let rodsDressedFor=null; // rod-set key the rods currently wear (reskinRods skips a no-op switch)
+let railLeds=null;
 let sprites=[],spriteTex,particles,pGeo,pData=[];
 let smokePuffs=[],dustRing;   // explosion smoke pool + its ground dust ring — spawned and driven by js/fx.js
 let playerModel=[null,null]; const playerTeamMats=[{},{}]; const playerHairParts=[new Set(),new Set()]; const modelCache={}; const modelCacheOrder=[]; // LRU key order, most-recent at end
@@ -96,7 +97,7 @@ const PRV={r:null,bw:0,bh:0,w:0,h:0,dpr:0,scratch:null,
 
 // tone mapping rolls off light above 1.0 (needed for emissive strength); changing it recompiles; CONFIG.render.toneMapping:'none' restores the old look
 const TONEMAP={none:THREE.NoToneMapping,linear:THREE.LinearToneMapping,reinhard:THREE.ReinhardToneMapping,
-  cineon:THREE.CineonToneMapping,aces:THREE.ACESFilmicToneMapping};
+  cineon:THREE.CineonToneMapping,aces:THREE.ACESFilmicToneMapping,agx:THREE.AgXToneMapping,neutral:THREE.NeutralToneMapping};
 function toneMapMode(){const R=(typeof CONFIG!=='undefined'&&CONFIG.render)||{};
  const m=TONEMAP[R.toneMapping];return m===undefined?THREE.ACESFilmicToneMapping:m;}
 function applyToneMapping(r,recompile){
@@ -142,21 +143,21 @@ function initThree(){
   applyDisplay();   // apply saved Display settings (render scale / shadows) at boot
 }
 
-// shadow-map filter: PCFSoft is a 9-tap filter per receiver, so its cost scales with screen coverage
-const SHADOW_TYPES={pcfsoft:THREE.PCFSoftShadowMap,pcf:THREE.PCFShadowMap,basic:THREE.BasicShadowMap,
+// shadow-map filter: PCF = 5 Vogel-disk taps of hardware 2x2 PCF, `radius` texels wide (r186 dropped PCFSoft: 'pcfsoft' is an alias)
+const SHADOW_TYPES={pcfsoft:THREE.PCFShadowMap,pcf:THREE.PCFShadowMap,basic:THREE.BasicShadowMap,
  vsm:THREE.VSMShadowMap};
 // active shadow tuning: CONFIG.render.shadow plus .quality.<low|high> overrides, resolved once for initThree and applyDisplay
 const SHADOW_BASE={bias:-0.0002,normalBias:0.35,radius:1,left:-76,right:76,top:46,bottom:-46,far:260,
- type:'pcfsoft',mapSize:2048,autoUpdate:false};
+ type:'pcf',mapSize:2048,autoUpdate:false};
 function shadowQLevel(){return (typeof cfg!=='undefined'&&cfg.shadowQuality==='high')?'high':'low';}
 function shadowQ(){
  const S=(typeof CONFIG!=='undefined'&&CONFIG.render&&CONFIG.render.shadow)||{};
  return Object.assign({},SHADOW_BASE,S,(S.quality&&S.quality[shadowQLevel()])||{});
 }
-function shadowMapType(){const k=String(shadowQ().type||'pcfsoft').toLowerCase();
- const t=SHADOW_TYPES[k];return t===undefined?THREE.PCFSoftShadowMap:t;}
+function shadowMapType(){const k=String(shadowQ().type||'pcf').toLowerCase();
+ const t=SHADOW_TYPES[k];return t===undefined?THREE.PCFShadowMap:t;}
 // ===== KTX2 / BASIS TEXTURES =====
-// stays compressed in VRAM (~4x smaller) and transcodes in a worker; r128 has no KTX2Loader, so vendor/ carries r137's (vendor/basis/README.md)
+// stays compressed in VRAM (~4x smaller) and transcodes in a worker; loader and transcoder come from the same three release (vendor/README.md)
 // every GLTFLoader must come from newGLTF() or a required KHR_texture_basisu file throws; encode with tools/ktx2-encode.mjs
 let _ktx2=null,_ktx2Tried=false;
 function ktx2Support(){
@@ -223,7 +224,7 @@ function renderIdleSkip(rdt){
     Math.abs(Q.z-_idleQuat.z)>R||Math.abs(Q.w-_idleQuat.w)>R){
   _idleCam.copy(P);_idleQuat.copy(Q);renderDirty();
  }
- // not testing shadowMap.needsUpdate: with shadows off r128 never clears it, so every frame would read dirty
+ // not testing shadowMap.needsUpdate: with shadows off three never clears it, so every frame would read dirty
  _idleT+=rdt;
  if(_idleT<(I.settle===undefined?0.4:I.settle)){_idleAcc=0;return false;}
  const hz=I.hz===undefined?4:I.hz;
@@ -264,6 +265,7 @@ function applyDisplay(){
    // plain uniforms, no redraw or recompile; radius is the blur half-width in texels for both PCF and VSM
    d.bias=S.bias;d.normalBias=S.normalBias;d.radius=S.radius;
   }
+  for(const t in roomShadowPool)for(const l of roomShadowPool[t])if(l.shadow){l.shadow.radius=S.roomRadius||1;l.shadow.needsUpdate=true;}
   if(renderer.shadowMap.type!==t){renderer.shadowMap.type=t;recompile=true;}
   // Low casts the silhouette mesh only, High every part
   refreshShadowCasters();
@@ -397,17 +399,34 @@ function setBallEnv(b,env){
 }
 function applyBallEnv(b){setBallEnv(b,ballReflectOn()?ballCubeRT.texture:null);}   // called from makeBall
 function refreshBallReflect(){if(!ballCubeRT)return;const env=ballReflectOn()?ballCubeRT.texture:null;for(const b of S.balls)setBallEnv(b,env);} // Options toggle
+// a few faces a step, so the cost is even across frames; three re-filters the cube (PMREM) only once the sixth face is in
+let ballCubeF=0;
+function ballCubeFaces(n){
+ const C=ballCube,rt=ballCubeRT,tx=rt.texture;
+ if(C.coordinateSystem!==renderer.coordinateSystem){C.coordinateSystem=renderer.coordinateSystem;C.updateCoordinateSystem();}
+ C.updateMatrixWorld();
+ const r0=renderer.getRenderTarget(),f0=renderer.getActiveCubeFace(),l0=renderer.getActiveMipmapLevel(),mu=tx.mipmapsAutoUpdate;
+ for(let k=0;k<n&&ballCubeF<6;k++,ballCubeF++){
+  tx.mipmapsAutoUpdate=ballCubeF===5?mu:false;   // mipmaps once, after the last face
+  renderer.setRenderTarget(rt,ballCubeF,0);if(!renderer.autoClear)renderer.clearDepth();
+  renderer.render(scene,C.children[ballCubeF]);
+ }
+ tx.mipmapsAutoUpdate=mu;renderer.setRenderTarget(r0,f0,l0);
+ if(ballCubeF>=6){ballCubeF=0;tx.needsPMREMUpdate=true;}
+}
 function updateBallReflect(){
  if(!ballReflectOn()||!S.balls.length)return;
  if(S.phase!=='play'&&S.phase!=='goal'&&S.phase!=='count')return;               // only while live balls are the visible reflectors
- if(++ballReflN%CONFIG.ballReflect.every)return;                                // throttle whole-cube updates
+ const R=CONFIG.ballReflect;
+ if(++ballReflN%R.every)return;
  let lead=S.balls[0],bd=1e30;                                                   // lead = ball nearest the camera (its reflection is the one the player sees)
  for(const b of S.balls){const d=b.m.position.distanceToSquared(camera.position);if(d<bd){bd=d;lead=b;}}
- // suppress the shadow pass while the cube renders (autoUpdate alone isn't enough); both flags go down for the 6 faces and needsUpdate goes back to the main render
+ // suppress the shadow pass while the cube renders (autoUpdate alone isn't enough); needsUpdate goes back to the main render
  const sa=renderer.shadowMap.autoUpdate,sn=renderer.shadowMap.needsUpdate;
- renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=false;      // 6 faces reuse the map already on the card
+ renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=false;
  const vis=lead.m.visible;lead.m.visible=false;                                 // don't let the ball reflect itself
- ballCube.position.copy(lead.m.position);ballCube.update(renderer,scene);
+ if(!ballCubeF)ballCube.position.copy(lead.m.position);                         // one place for a whole turn of faces
+ ballCubeFaces(clamp(Math.round(R.faces||6),1,6));
  lead.m.visible=vis;renderer.shadowMap.autoUpdate=sa;renderer.shadowMap.needsUpdate=sn;
 }
 
@@ -459,6 +478,91 @@ function buildTable(){
   const gl=new THREE.PointLight(0xffffff,0,70*CONFIG.fx.lightReach,0);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
  tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh&&c!==pitchShadowCaster);  // procedural fallback (hidden when a skin GLB is shown)
+}
+
+// --- rod selection LEDs ---
+function buildRailLeds(){
+ const C=CONFIG.fx.railLeds,count=2*RODDEFS.length;
+ const lathe=profile=>new THREE.LatheGeometry(
+  profile.map(([r,y])=>new THREE.Vector2(r*C.radius,y*C.radius)),C.segments);
+ const bezelGeo=lathe([[.94,-.16],[1,-.10],[1,.035],[.96,.085],[.84,.105],[.76,.102],[.72,.065]]);
+ const lensGeo=lathe([[.755,.052],[.755,.081],[.70,.126],[.58,.164],[.4,.177],[.19,.185],[0,.186]]);
+ const bezelMat=new THREE.MeshStandardMaterial({color:C.bezel,metalness:.6,roughness:.32});
+ const offMat=new THREE.MeshStandardMaterial({color:C.glass,metalness:.1,roughness:.24});
+ const group=new THREE.Group();
+ group.name='Rod selection LEDs';
+ const bezels=new THREE.InstancedMesh(bezelGeo,bezelMat,count);
+ const off=new THREE.InstancedMesh(lensGeo,offMat,count);
+ const on=[cfg.redColor,cfg.blueColor].map((color,team)=>{
+  const mat=offMat.clone();
+  mat.emissive.copy(kitLin(color));
+  mat.emissiveIntensity=C.glow;
+  const lenses=new THREE.InstancedMesh(lensGeo,mat,RODDEFS.length);
+  lenses.name='Team '+(team+1)+' lit LED lenses';
+  return lenses;
+ });
+ bezels.name='LED bezels';off.name='Unlit LED lenses';
+ for(const lenses of [off,...on]){
+  lenses.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  lenses.frustumCulled=false;   // the active subset can jump to the other end of the table
+ }
+ group.add(bezels,off,...on);
+ const mounts=Array.from({length:count},()=>new THREE.Matrix4());
+ return {group,bezels,off,on,mounts,table:null,held:-1};
+}
+
+function railLedsApply(id,hasSkin){
+ const parent=tableGroups[id];
+ if(!parent||(!hasSkin&&id!=='classic')){
+  if(railLeds)railLeds.group.visible=false;
+  return;
+ }
+ const C=CONFIG.fx.railLeds,assembly=railLeds||(railLeds=buildRailLeds());
+ assembly.group.visible=true;
+ if(assembly.table===id)return;
+ parent.add(assembly.group);
+ assembly.table=id;
+ const mount=new THREE.Object3D();
+ for(let i=0;i<RODDEFS.length;i++){
+  const x=RODDEFS[i].x;
+  const rim=id==='arena'?C.arena[Math.abs(x)]:null;
+  const z=rim?rim[0]:F.W/2+C.flatInset;
+  const y=rim?rim[1]:CONFIG.tables[id].wallH;
+  const tilt=rim?Math.atan(rim[2]):0;
+  for(let team=0;team<2;team++){
+   const side=team?-1:1,index=2*i+team;   // Team 1 uses the near rail, at positive Z
+   mount.position.set(x,y,side*z);
+   mount.rotation.x=-side*tilt;
+   mount.updateMatrix();
+   assembly.mounts[index].copy(mount.matrix);
+   assembly.bezels.setMatrixAt(index,mount.matrix);
+  }
+ }
+ assembly.bezels.instanceMatrix.needsUpdate=true;
+ assembly.bezels.computeBoundingSphere();
+ assembly.held=-1;
+ railLedsUpdate(false);
+}
+
+function railLedsUpdate(show){
+ const assembly=railLeds;
+ if(!assembly||!assembly.group.visible)return false;
+ let held=0;
+ if(show)for(const seat of S.seats){
+  const rod=seatRod(seat);
+  if(rod)held|=1<<(2*rod.idx+rod.team);
+ }
+ if(held===assembly.held)return true;
+ assembly.held=held;
+ const {off,on,mounts}=assembly;
+ off.count=on[0].count=on[1].count=0;
+ for(let i=0;i<mounts.length;i++){
+  const lenses=(held&(1<<i))?on[i%2]:off;
+  lenses.setMatrixAt(lenses.count++,mounts[i]);
+ }
+ off.instanceMatrix.needsUpdate=on[0].instanceMatrix.needsUpdate=on[1].instanceMatrix.needsUpdate=true;
+ renderDirty();
+ return true;
 }
 
 // --- procedural goal net ---
@@ -652,7 +756,8 @@ function dressRod(r,tid){
  const hl=CONFIG.rods.handleLen,cl=CONFIG.rods.collarLen,cap=CONFIG.rods.capOut;
  const rodM=new THREE.MeshStandardMaterial({color:0xe5e9ee,roughness:.25,metalness:.9});
  const bumpMat=new THREE.MeshStandardMaterial({color:0x4f5662,roughness:.7,metalness:.2});
- const rodMesh=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,2*(collar+cl+cap),10),rodM);
+ const shaftRadius=CONFIG.rods.fallbackShaftRadius;
+ const rodMesh=new THREE.Mesh(new THREE.CylinderGeometry(shaftRadius,shaftRadius,2*(collar+cl+cap),10),rodM);
  rodMesh.rotation.x=Math.PI/2;rodMesh.castShadow=true;r.pivot.add(rodMesh);r.rodBar=rodMesh;
  const hg=new THREE.Group();
  const hb=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,hl,12),teamMat[r.team]);hb.rotation.x=Math.PI/2;hg.add(hb);
@@ -760,6 +865,7 @@ function buildFxPools(){
  }
  buildMarkPool();   // wall scuffs — one batched mesh of its own (js/marks.js)
  vfxBuild();        // GPU particle pools: sparks, confetti, blasts (js/vfx.js)
+ if(typeof contactBuild==='function')contactBuild();   // contact shadows under boots and balls (js/contact.js)
 }
 
 // ===== fx light pool =====
@@ -850,6 +956,26 @@ function rlpFreeAll(){
  for(const t in roomShadowPool)for(const l of roomShadowPool[t]){l.intensity=0;l._rlFree=true;
   if(l.shadow){l.shadow.autoUpdate=false;l.shadow.needsUpdate=false;}}
 }
+// --- room light shadow fit (CONFIG.render.shadow.room) ---
+// three makes a spot's shadow camera 2 x angle wide: a wide beam spreads the map over the room (a 1.5 rad spot drew ~2.6 u a texel on the table)
+const _rsfA=new THREE.Vector3(),_rsfV=new THREE.Vector3();
+function rlpShadowFit(l,L){
+ const sh=l.shadow;if(!sh)return;
+ const R=((CONFIG.render&&CONFIG.render.shadow)||{}).room||{};
+ sh.intensity=L.shadowInt!==undefined?L.shadowInt:(R.int===undefined?1:R.int);
+ sh.radius=shadowQ().roomRadius||1;
+ if(!l.isSpotLight){sh.focus=1;return;}
+ const hx=F.L/2+(R.padX||0),hz=F.W/2+(R.padZ||0),top=R.top===undefined?18:R.top;
+ _rsfA.copy(l.target.position).sub(l.position).normalize();
+ let half=0;
+ for(const x of [-hx,hx])for(const y of [-1,top])for(const z of [-hz,hz]){
+  _rsfV.set(x,y,z).sub(l.position).normalize();half=Math.max(half,Math.acos(clamp(_rsfV.dot(_rsfA),-1,1)));}
+ half=Math.min(l.angle,R.maxHalf||1.4,half*(R.margin||1));
+ sh.focus=half/l.angle;
+ const tex=2*Math.tan(half)*l.position.length()/sh.mapSize.x;   // u a texel at the table centre
+ sh.normalBias=tex*(R.nb===undefined?0.6:R.nb);sh.bias=R.bias===undefined?-0.0002:R.bias;
+ sh.needsUpdate=true;
+}
 // drive the pool from one room's lights: a full re-drive, so it never disagrees with the spec list
 function applyAuthoredLights(rm){
  rlpFreeAll();
@@ -866,6 +992,7 @@ function applyAuthoredLights(rm){
   if(t!=='dir'){l.distance=L.dist===undefined?0:L.dist;l.decay=L.decay===undefined?2:L.decay;}
   if(t==='spot'){l.angle=L.angle===undefined?0.6:L.angle;l.penumbra=L.penumbra===undefined?0.4:L.penumbra;}
   if(l.target){const k=L.look||[0,0,0];l.target.position.set(k[0]||0,k[1]||0,k[2]||0);l.target.updateMatrixWorld();}
+  if(l.castShadow)rlpShadowFit(l,L);
  });
  if(over)console.warn('room lights: '+over+' over the pool — raise CONFIG.render.roomLightPool.pad/max');
  if(short)console.warn('room lights: '+short+' asked to cast shadows past the budget — lit but not casting.'
@@ -949,16 +1076,21 @@ function setRoomEnv(id,rm){
  if(roomEnvCache[key]){scene.environment=roomEnvCache[key];touchEnv(key);}
  pruneEnvs(key);
 }
+// rooms.<id>.sky.rot (degrees about y) / .int (brightness); applies only to a texture background
+function skyView(rm){const S=(rm&&rm.sky)||{};
+ scene.backgroundIntensity=S.int===undefined?1:S.int;
+ scene.backgroundRotation.set(0,(S.rot||0)*Math.PI/180,0);}
 // apply the selected room: backdrop colour, fog, lighting, LED mood, reflection env, backdrop geometry; onReady fires once its GLB is resident (sync if cached)
 function applyRoom(onReady){
  const id=CONFIG.rooms[cfg.room]?cfg.room:'open';
  const rm=CONFIG.rooms[id];activeRoom=rm;
  // sky (rooms.<id>.sky, models.js ensureSky): a resident one goes on at once, else the flat bg holds; set before pruneSkies
  const wantSky=(typeof roomHasSky==='function')&&roomHasSky(id);
- scene.background=(wantSky&&skyCache[id])||new THREE.Color(rm.bg);
- applyFog();                                             // honours cfg.atmos; reads THIS room's near/far and air
+ scene.background=(wantSky&&skyCache[id])||new THREE.Color(rm.bg);skyView(rm);
+ applyFog();                                            // honours cfg.atmos; reads THIS room's near/far and air
  if(hemiLight&&rm.hemi){hemiLight.color.set(rm.hemi.sky);hemiLight.groundColor.set(rm.hemi.ground);hemiLight.intensity=rm.hemi.int;}
- if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);}
+ if(dirLight&&rm.dir){dirLight.color.set(rm.dir.color);dirLight.intensity=rm.dir.int;if(rm.dir.pos)dirLight.position.set(rm.dir.pos[0],rm.dir.pos[1],rm.dir.pos[2]);
+  dirLight.shadow.intensity=rm.dir.shadowInt===undefined?1:rm.dir.shadowInt;}
  applyRoomKeyLights(rm);
  // LED mood: room override over CONFIG.leds; a 'hold' idle seeds the strip colour, 'rainbow' is per-frame
  curLeds=Object.assign({},CONFIG.leds,rm.led||{});
@@ -1003,7 +1135,7 @@ function applyRoom(onReady){
   ready();
  }
 }
-// kit colour for a material: r128 reads a hex as linear but the renderer outputs sRGB, so a raw swatch looks lighter and greyer; HUD and CSS take the hex as-is
+// kit colour for a material: THREE.Color reads the hex as sRGB (colour management on), the colour HUD and CSS show
 function kitLin(hex){return new THREE.Color(hex);}
 function applyColors(){
  const K=[kitLin(cfg.redColor),kitLin(cfg.blueColor)];
@@ -1012,6 +1144,7 @@ function applyColors(){
   for(const mat of Object.values(playerTeamMats[t]))mat.color.copy(K[t]);
   teamGlow[t].color.copy(K[t]);teamGlow[t].emissive.copy(K[t]);
   netMats[t].color.copy(K[t]);
+  if(typeof railLeds!=='undefined'&&railLeds)railLeds.on[t].material.emissive.copy(K[t]);
  }
  for(const c of rodCustomMats){c.mat.color.copy(K[c.team]);if(c.isGlow)c.mat.emissive.copy(K[c.team]);c.mat.needsUpdate=true;}
  document.documentElement.style.setProperty('--c0',cfg.redColor);

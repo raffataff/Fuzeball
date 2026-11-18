@@ -94,6 +94,7 @@ function clearRodAI(r){
  r.dribMan=-1;r.dribZ=0;r.dribZ0=0;
  r.laneDir=0;
  r.passTo=null;r.aimEv=null;
+ r.catSw=false;r.catAim=null;r.catSv=0;r.catHold=0;
 }
 // the player has taken the raise themselves (button, stick or kick): the inherited latch is done
 function rodRaiseRelease(r){if(r)r.raiseKeep=false;}

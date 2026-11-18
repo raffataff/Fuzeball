@@ -26,11 +26,12 @@ function arenaGrad(x,z,gh0,gh1){
 }
 
 // ---- contact response: roll vs bounce ----
-function arenaContact(b,pen,nx,ny,nz){
+function arenaContact(b,pen,nx,ny,nz,settle){
  const p=b.m.position,v=b.v;
  p.x+=nx*pen;p.y+=ny*pen;p.z+=nz*pen;
  const vn=v.x*nx+v.y*ny+v.z*nz;
  if(vn<0){
+  if(settle){v.x-=vn*nx;v.y-=vn*ny;v.z-=vn*nz;return;}
   // static geometry: mass-free reflection; slow contact goes inelastic so the ball rolls
   // the bounce branch fires a gated one-shot, the inelastic branch drives the roll layer (physics.js rollProbe skips the bowl walls)
   if(-vn>ARENA.bounceCut){const j=-(1+PHY.wallRest)*vn;v.x+=nx*j;v.y+=ny*j;v.z+=nz*j;
@@ -69,7 +70,7 @@ const tablePrimObjs={};                // table id -> [procedural fallback meshe
 let arenaMorph=[],arenaMorphDirty=false;
 // Smooth split bowl vertices during a morph while preserving each surface's authored normal direction, including the outward-facing shell.
 // Give interleaved or normalized normals their own float buffer before morphing.
-// Three r128 getters/setters expose raw normalized integers.
+// read from the raw array, which holds the normalized integers.
 function prepareArenaNormals(geo){
  const n=geo.attributes.normal;if(!n||(!n.normalized&&!n.isInterleavedBufferAttribute))return n;
  const raw=n.array||(n.data&&n.data.array);if(!raw)return n;
@@ -265,6 +266,7 @@ function applySkin(id){
  else if(!active&&primLedMat)ledMat=primLedMat;
  // rod-hole rings follow the same rule; empty for a skin with no rings (the arena bowl), which makes fx.js inert
  rodHoleMeshes=(active&&skinRodHoles[id]&&skinRodHoles[id][sk])||[];
+ if(typeof railLedsApply==='function'&&activeTable===T)railLedsApply(id,!!active);
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
  const hideNet=!!(active&&T.skins&&T.skins[sk]&&T.skins[sk].hideGoalNet);
  goalFrames.forEach(gf=>{if(!gf.userData)return;

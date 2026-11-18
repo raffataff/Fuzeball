@@ -4,7 +4,7 @@
 // not a draw-call fix (a room's cost is its textures, ~167 MB uploaded for the pub): the wins are shared assets (a prop is loaded and uploaded once for every room) and count (crowds, FEATURE-IDEAS 4.1)
 // a template is flattened into parts (one per geometry+material pair); N placements build one InstancedMesh per part, matrix = place x partLocal
 // disposal trap: instanced meshes share geometry and material with the resident template, so freeing a room's props removes the meshes only (disposeProp() may free the template)
-// lights are stripped from props (r128 bakes the light count into every program): use an emissive material or fxLightGet
+// lights are stripped from props (three bakes the light count into every program): use an emissive material or fxLightGet
 
 const propTemplates={};   // id -> {parts:[{geo,mat,m}], box} — flattened, resident, shared
 const propLoading={};     // id -> [cbs] while its glb is in flight

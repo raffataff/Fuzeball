@@ -717,7 +717,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim
   this.dst=null;},
 
  post(p,aC,src){if(!this.ctx)return;
-  if(this.play('ball_post',{p,src})){this.exc=Math.min(1,this.exc+.25);return;}
+  // Keep the original synthesized ring even when Sound Lab post takes are loaded.
   const c=this.ctx,ak=aC||{},R=this.rate>0?this.rate:1,J=AUMIX.jitter,
   frs=ak.freqs||[523,832,1290,1900],dr=ak.droop??.94,
   at=(ak.attack??.003)/R,de=(ak.decay??.28)/R,ds=(ak.decayShift??.045)/R,

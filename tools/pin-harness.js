@@ -10,7 +10,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
  const b=src.indexOf(to,a);if(b<0)throw new Error('slice end miss: '+to);return src.slice(a,b);};
 
 const stubs=[
-"var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;function isUserRod(r){return !!r.user;}",
+"var ARENA_ON=false;var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;function isUserRod(r){return !!r.user;}",
 "var KICKS=[];function kickRod(r,style,aim,curve){if(r.kickT>=0)return;if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:curve||null});}",
 "var CAP=null;function shotPullCap(r,a0,a1){return CAP==null?a1:CAP;}",
 "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
@@ -162,7 +162,7 @@ function suite(X,quiet){
  ok(k&&k.style==='trapShot','a kick from the pin swings the trap-shot curve');
  ok(k&&k.on&&k.pow===P.pow,'…armed with the pin shot\'s power');
  ok(r.shotCtl===P.ctl,'…and its control');
- ok(k&&k.curve&&k.curve.strike===P.swing.strike&&k.curve.powTo===P.swing.powTo&&k.curve.strikeA===X.AIC.trapShot.strikeA,'…on the pin swing: the trapShot curve with shots.pin.swing over it');
+ ok(k&&k.curve&&k.curve.strike===P.swing.strike&&k.curve.powTo===P.swing.powTo&&k.curve.strikeA===P.swing.strikeA,'…on the pin swing: the trapShot curve with shots.pin.swing over it');
  ok(!r.pinB&&!b.pinR,'…and the swing lets the ball go so it can strike it');
  ok(!r.pinPose,'…and the pose ends');
 
@@ -188,8 +188,8 @@ const muts=[
  ['physics','const fwd=la>0,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;','const fwd=la>0,back=fwd?P.fwdBack:P.back,front=P.front;','the forward window is the back pin\'s'],
  ['physics','const fwd=la>0,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;','const fwd=!!r.pinFwd,back=fwd?P.fwdBack:P.back,front=fwd?P.fwdFront:P.front;','the window follows the flag, not the lean'],
  ['physics','    if(!footUnder(r,p,mz))continue;\n','','any ball in the window is caught'],
- ['physics','&&PIN_DN[0]>=P.down&&',' &&','a shin or the side of the foot holds a ball'],
- ['physics','&&PIN_DN[1]===0;',';','a ball under the edge of the boot, past the foot, is held'],
+ ['physics','&&PIN_DN[0]>=(PIN_DN[1]>0?P.wallDown:P.down)','','a shin or the side of the foot holds a ball'],
+ ['physics','if(Math.abs(p.z-mz)>pinSideReach(p))return false;','','a ball under the edge of the boot, past the foot, is held'],
  ['physics','return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);','return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot);','the pin shot swings the plain trapShot curve'],
  ['physics','d<=BALL_R*FOOT_BOX_REACH+P.touch&&','d<=BALL_R*FOOT_BOX_REACH+P.touch+0.6&&','the foot holds a ball it is only near'],
  ['physics','dn[0]=d>1e-4?(cdx*ca-cdy*sa)/d:0;','dn[0]=d>1e-4?(cdx*ca+cdy*sa)/d:0;','down is measured the wrong way round'],
@@ -200,8 +200,8 @@ const muts=[
  ['physics','if(Math.abs(v.x-b.pinVx)+Math.abs(v.z-b.pinVz)+Math.abs(v.y)>P.breakV){pinRelease(r,true);return false;}','','another ball cannot knock it loose'],
  ['physics','if(Math.abs(p.x-b.pinPx)+Math.abs(p.z-b.pinPz)>1){pinRelease(r,true);return false;}','','a re-dropped ball is yanked back to the rod'],
  ['physics','if(Math.abs(cz-tz)>P.zSlip){pinRelease(r);return false;}','','a ball squeezed into the wall stays pinned'],
- ['physics','if(!ext){const H=r.vzH;b.v.x=0;b.v.y=0;b.v.z=(H&&isUserRod(r)?(H[0]+H[1]+H[2]+H[3])/4:b.v.z)*(k!=null?k:SHOT.pin.carryOut);}','if(!ext){b.v.set(0,0,0);}','a released ball forgets the slide'],
- ['physics','b.v.z=(H&&isUserRod(r)?','b.v.z=(false?','a player\'s release keeps only the last step\'s slide'],
+ ['physics','b.v.set(0,0,intoRail?0:vz);','b.v.set(0,0,0);','a released ball forgets the slide'],
+ ['physics','const vz=(H&&isUserRod(r)?','const vz=(false?','a player\'s release keeps only the last step\'s slide'],
  ['physics','v.set((tx-p.x)/h,0,(cz-p.z)/h);','v.set(0,0,0);','a carried ball reports no velocity'],
  ['shots','r.pinOn=(fin||pp)&&r.chg<0&&r.kickT<0;','r.pinOn=(fin||pp)&&r.kickT<0;','a wind-up and a pin at once'],
  ['shots',' const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from,pp=',' const fin=I.lt>SHOTC.hold.from,pp=','the pin waits for the finesse grip to ease in'],

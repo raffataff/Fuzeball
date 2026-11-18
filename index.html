@@ -53,7 +53,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.54</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.6</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -202,43 +202,45 @@
 <div id="customize" class="screen hidden">
   <button id="czDoneBtn" class="optGear backBtn" title="Done">&#9664;</button>
   <button id="czResetBtn" class="optGear resetBtn" title="Reset all">&#10226;</button>
-  <div class="czWrap">
-    <div class="czStage">
-      <canvas id="pvCanvas"></canvas>
-      <div class="czTeamTgl">
-        <button class="teamBtn on" id="czTeamR">RED KIT</button>
-        <button class="teamBtn" id="czTeamB">BLUE KIT</button>
-      </div>
-      <div class="czStageBar">
-        <button class="miniBtn" id="czSpin">⟳ SPIN</button>
-        <button class="miniBtn" id="czView">⌖ RESET VIEW</button>
-        <button class="miniBtn" id="czSnap">SNAPSHOT</button>
-      </div>
-      <div class="czDrag">drag to rotate · scroll to zoom</div>
+  <div class="czHead">
+    <h2 class="czTitle">CUSTOMIZE</h2>
+    <div class="czTeamTgl">
+      <button class="teamBtn on" id="czTeamR"><span class="sw"></span><span id="czTeamRN">Team 1</span></button>
+      <button class="teamBtn" id="czTeamB"><span class="sw"></span><span id="czTeamBN">Team 2</span></button>
     </div>
-    <div class="czStrip" id="czStrip">
-      <div id="czModels" class="czModels"></div>
+  </div>
+  <div class="panel czFig">
+    <h3>Figure</h3>
+    <div id="czModels" class="czRoster"></div>
+    <div class="czSlide czSize"><label for="czScale">Figure size</label><input type="range" id="czScale" min="0.7" max="1.4" step="0.01"><span class="czVal" id="czScaleV"></span></div>
+  </div>
+  <div class="czStage">
+    <canvas id="pvCanvas"></canvas>
+    <div class="czPlate"><div class="nm" id="czName"></div><div class="bl" id="czBlurb"></div></div>
+    <div class="czHint">Drag to turn · wheel to zoom</div>
+    <div class="czTools">
+      <button class="miniBtn" id="czSpin" title="Turntable"></button>
+      <button class="miniBtn" id="czView" title="Reset view"></button>
+      <button class="miniBtn" id="czSnap" title="Snapshot"></button>
     </div>
-    <div class="czPanel">
-      <h2 class="czTitle">CUSTOMIZE</h2>
-      <div class="czSect">
-        <h4>Kit colour</h4>
-        <div id="czSwatch" class="czSwatch"></div>
-        <div class="czRow">
-          <input type="color" id="czColor">
-          <span class="czHex" id="czHex">#ffffff</span>
-          <button class="miniBtn" id="czRand">RANDOM</button>
-        </div>
-      </div>
-      <div class="czSect">
-        <h4>Finish</h4>
-        <div id="czFinish" class="czChips"></div>
-        <div class="czSlide"><label>Metallic</label><input type="range" id="czMetal" min="0" max="1" step="0.01"><span class="czVal" id="czMetalV"></span></div>
-        <div class="czSlide"><label>Roughness</label><input type="range" id="czRough" min="0" max="1" step="0.01"><span class="czVal" id="czRoughV"></span></div>
-        <div class="czSlide"><label>Glow</label><input type="range" id="czGlow" min="0" max="2" step="0.01"><span class="czVal" id="czGlowV"></span></div>
-        <div class="czSlide"><label>Size</label><input type="range" id="czScale" min="0.7" max="1.4" step="0.01"><span class="czVal" id="czScaleV"></span></div>
-        <div class="czSlide"><label>Rotation</label><input type="range" id="czYaw" min="-3.15" max="3.15" step="0.01"><span class="czVal" id="czYawV"></span></div>
-      </div>
+  </div>
+  <div class="czSide">
+    <div class="panel">
+      <h3>Kit colour</h3>
+      <div class="czSub">Club colours</div>
+      <div id="czSwatch" class="czSwatch"></div>
+      <div class="czSub">Mix your own</div>
+      <div class="czMix" id="czMix"></div>
+      <div class="czHexRow"><span class="czCur"></span><span class="czHex" id="czHex"></span><button class="miniBtn" id="czRand">Random</button></div>
+      <div class="czClash" id="czClash"></div>
+    </div>
+    <div class="panel">
+      <h3>Finish</h3>
+      <div id="czFinish" class="czFinish"></div>
+      <div class="czSub">Fine tune</div>
+      <div class="czSlide"><label for="czMetal">Metallic</label><input type="range" id="czMetal" min="0" max="1" step="0.01"><span class="czVal" id="czMetalV"></span></div>
+      <div class="czSlide"><label for="czRough">Roughness</label><input type="range" id="czRough" min="0" max="1" step="0.01"><span class="czVal" id="czRoughV"></span></div>
+      <div class="czSlide"><label for="czGlow">Glow</label><input type="range" id="czGlow" min="0" max="2" step="0.01"><span class="czVal" id="czGlowV"></span></div>
     </div>
   </div>
 </div>
@@ -282,11 +284,15 @@
     <div class="panel lgSetupPanel lgSetupKit">
       <h3>Kit &amp; Figurine</h3>
       <div class="lgSetupKitRow">
-        <canvas id="lgSetupFig" width="200" height="260"></canvas>
+        <div class="czStage" id="lgSetupStage">
+          <canvas id="lgSetupFig"></canvas>
+          <div class="czPlate"><div class="nm" id="lgSetupFigName"></div><div class="bl" id="lgSetupFigBlurb"></div></div>
+        </div>
         <div class="lgSetupKitSide">
-          <div class="row"><input type="color" id="lgSetupColor"><span class="lgSetupHex" id="lgSetupHex"></span></div>
-          <div class="kitPal" id="lgSetupPal"></div>
-          <div id="lgSetupModels" class="lgSetupModels"></div>
+          <div id="lgSetupModels" class="czRoster"></div>
+          <div class="czSub">Kit colour</div>
+          <div class="czSwatch" id="lgSetupPal"></div>
+          <div class="czMix" id="lgSetupMix"></div>
         </div>
       </div>
     </div>
@@ -710,27 +716,27 @@ if(DEV){
  // index.html cannot cache-bust itself — hard-reload (Ctrl+F5) if markup looks stale.
 
  var boot=[
-  'vendor/three.bundle.js',   // three r164 + GLTFLoader + KTX2Loader (tools/build-three.mjs); everything is local, there is no CDN fallback
+  'vendor/three.bundle.js',   // three r187 + GLTFLoader + KTX2Loader (tools/build-three.mjs); everything is local, there is no CDN fallback
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/vfx.js','js/ice.js','js/boost.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/contact.js','js/vfx.js','js/ice.js','js/boost.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/figedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
- function loadOne(src,done){
-  var s=document.createElement('script'),fired=false;s.src=stamped(src);s.async=false;
-  function end(ok){if(fired)return;fired=true;
-   if(!ok)console.error('Fuzeball: failed to load',src,src.indexOf('vendor/')===0?'— is vendor/ populated? run: node tools/build-three.mjs':'');
-   done();}
-  s.onload=function(){end(true);};s.onerror=function(){end(false);};
-  if(src.indexOf('vendor/')===0)setTimeout(function(){end(false);},7000); // some file:// loads fire neither event
-  document.body.appendChild(s);
- }
- (function next(k){if(k>=boot.length)return;loadOne(boot[k],function(){next(k+1);});})(0);
-
- setTimeout(function(){
+ // an intro that never went live (intro.js missing or threw) gives way to the menu; never on a timer, a slow server only delays it
+ function introOff(){
   var i=document.getElementById('intro');
   if(i&&!i.dataset.live){i.style.display='none';var m=document.getElementById('home');if(m)m.classList.remove('introHide');}
- },12000);
+ }
+ // every script fetched at once, run in list order (async=false)
+ boot.forEach(function(src){
+  var s=document.createElement('script'),intro=src==='js/intro.js';s.src=stamped(src);s.async=false;
+  s.onerror=function(){
+   console.error('Fuzeball: failed to load',src,src.indexOf('vendor/')===0?'— is vendor/ populated? run: node tools/build-three.mjs':'');
+   if(intro)introOff();
+  };
+  if(intro)s.onload=introOff;
+  document.body.appendChild(s);
+ });
 })();
 </script>
 </body>

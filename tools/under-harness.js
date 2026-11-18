@@ -14,14 +14,14 @@ const parts={
  geo:slice(AI,'const _fb={nx:0,ny:0,cwx:0,cwy:0};',NL+'// --- strike gate ---'),
  lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
  fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
- ret:slice(AI,'function retrieveMan(r,bz){',NL+'function retrievePhase('),
+ ret:slice(AI,'function retrieveMan(',NL+'function retrievePhase('),
  clr:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'// z of the live foot nearest'),
  lz:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// the teammate behind us'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:'),
  phys:slice(PHYS,'function pinUpdate(){',NL+'// ================= contact AUDIO gating')
 };
 const stubs=[
- "var S={balls:[],time:0}; var rods=[];",
+ "var ARENA_ON=false;var S={balls:[],time:0}; var rods=[];",
  "var KICKS=[];",
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null});}",
  "function strikeOn(){return true;} function passPick(){return null;}",

@@ -2,7 +2,7 @@
 // ================= WALL MARKS =================
 // the scuff a hard hit leaves on a wall; decoration only (physics.js and arena.js hand over the contact point, surface and impact speed)
 // one mesh, not one per mark: each mark is a quad in a single geometry and material (one draw call); an 'off' mark has its four corners parked on one spot
-// fading is in the colour attribute (four floats per vertex, r128 reads the fourth as alpha), since material.opacity would fade every mark together
+// fading is in the colour attribute (four floats per vertex, three reads the fourth as alpha), since material.opacity would fade every mark together
 // a mark darkens the wall, it never paints on it (blend multiplies the wall by 1 - strength; painting dark would lighten any wall darker than the paint); so it has no colour of its own, a fireball burns harder (ballTypes.markMul)
 // tuning in CONFIG.fx.marks; toggle in Options > Display > Effects > Wall marks
 
