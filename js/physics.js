@@ -524,9 +524,11 @@ function collideRod(b,r,pushLeft=Infinity){
     if(aim&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
     if(aim)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
-     if(sweet){S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}   // juice: a clean strike thumps
+    const fsh=typeof feelShakeOn==='function'&&feelShakeOn();   // js/feel.js owns the shake: the old one stays off
+    if(sweet){if(!fsh)S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
-     if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
+     if(-vn>KICK.hardHit&&!fsh){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
+    if(aim&&typeof feelHit==='function')feelHit(b,r,Math.hypot(b.v.x-V0.x,b.v.y-V0.y,b.v.z-V0.z),sweet,nx,ny,nz);   // hitstop, shake, sparks, the kick's body
     momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
     if(S.trial)trialTouch(r);                             // a trial's clock starts on your side's first touch (js/trials.js)
     if(typeof boostTouch==='function')boostTouch(b,r,trapping);   // js/boost.js: a boosted strike's flash, sparks and comet
@@ -598,7 +600,8 @@ function collideRod(b,r,pushLeft=Infinity){
     if(aim)wallAssist(b,r,true);
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
-    if(-vn>KICK.hardHit){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
+    if(-vn>KICK.hardHit&&!(typeof feelShakeOn==='function'&&feelShakeOn())){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
+   if(aim&&typeof feelHit==='function')feelHit(b,r,Math.hypot(b.v.x-V0.x,b.v.y-V0.y,b.v.z-V0.z),false,nx,ny,nz);
    momContact(b,r);msContact(b,r);S.lastTouch=r.team;
    if(S.trial)trialTouch(r);
    if(typeof boostTouch==='function')boostTouch(b,r,trapping);

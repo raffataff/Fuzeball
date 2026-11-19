@@ -53,7 +53,7 @@
       <div class="modeCard dev" id="btnRoomEdit"><span class="big">Room Editor</span><span class="sub">Dev &middot; props &middot; lighting</span></div>
     </div>
   </div>
-  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.6</i></div>
+  <div class="homeTicker"><b>Fuzeball Federation</b><span>Table football, taken far too seriously</span><i>v0.1.65</i></div>
 </div>
 
 <!-- DAILY CHALLENGE (js/screens.js, rendered by js/trials.js) -->
@@ -422,7 +422,8 @@
         <div class="row"><label>Wall marks</label><input type="checkbox" id="optMarks"></div>
         <div class="row"><label>Rod stamina rings</label><input type="checkbox" id="optRodHoles"></div>
         <div class="row"><label>Pin shot hint</label><input type="checkbox" id="optPinHint"></div>
-        <div class="optHint">Cosmetic only. Turn them off if the frame rate drops. The pin shot hint is the key prompt shown while you hold a pinned ball; the ring under the ball stays.</div>
+        <div class="row"><label>Walkout</label><select id="optWalkout"><option value="full">Full</option><option value="short">Short</option><option value="off">Off</option></select></div>
+        <div class="optHint">Cosmetic only. Turn them off if the frame rate drops. The pin shot hint is the key prompt shown while you hold a pinned ball; the ring under the ball stays. The walkout introduces both teams before a match; any button skips it.</div>
       </div>
       <div class="panel optPanel">
         <h3>Performance</h3>
@@ -719,7 +720,7 @@ if(DEV){
   'vendor/three.bundle.js',   // three r187 + GLTFLoader + KTX2Loader (tools/build-three.mjs); everything is local, there is no CDN fallback
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
   'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
-  'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/contact.js','js/vfx.js','js/ice.js','js/boost.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
+  'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/contact.js','js/vfx.js','js/ice.js','js/boost.js','js/feel.js','js/show.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
   'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/figedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
  // an intro that never went live (intro.js missing or threw) gives way to the menu; never on a timer, a slow server only delays it

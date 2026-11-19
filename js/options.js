@@ -55,6 +55,7 @@ function syncDisplayUI(){                                     // push cfg → di
  $('optRodHoles').checked=cfg.rodHoles!==false;
  $('optAtmos').value=cfg.atmos;
  $('optPinHint').checked=cfg.pinHint!==false;
+ $('optWalkout').value=cfg.walkout||'full';
  $('optFpsCap').value=String(cfg.fpsCap||0);
  $('optPhysQ').value=cfg.physQuality||'high';
  $('optShowFps').checked=!!cfg.showFps;
@@ -355,6 +356,7 @@ function bindOptions(){
  // off <-> on recompiles every material once (fog is a shader define); low <-> high only moves uniforms
  $('optAtmos').onchange=e=>{cfg.atmos=e.target.value;cfg.gfxPreset='custom';$('optPreset').value='custom';applyFog();saveCfg();};
  $('optPinHint').onchange=e=>{cfg.pinHint=e.target.checked;saveCfg();};   // hud.js reads it live, so it takes effect mid-match
+ $('optWalkout').onchange=e=>{cfg.walkout=e.target.value;saveCfg();};      // the next match start reads it (js/show.js)
  $('optFpsCap').onchange=e=>{const v=e.target.value;cfg.fpsCap=v==='match'?'match':+v;cfg.gfxPreset='custom';$('optPreset').value='custom';saveCfg();};
  $('optPhysQ').onchange=e=>{cfg.physQuality=e.target.value;applyPhysQuality();saveCfg();};   // CPU sim precision — separate from the GPU preset
  $('optShowFps').onchange=e=>{cfg.showFps=e.target.checked;saveCfg();};

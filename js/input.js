@@ -52,6 +52,7 @@ addEventListener('keydown',e=>{
  if(e.repeat)return;keys[e.code]=true;
  // photo mode (F1) takes the keyboard, after the keys[] write since photo.js reads that map
  if(S.photo)return;
+ if(S.show&&S.show.walk){e.preventDefault();walkSkip();return;}   // any key skips the walkout and goes no further (js/show.js)
  // the save key is tested first, before every other key skips the replay
  if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',e.code))replaySaveClip();else if(bindIs('music',e.code))musicCycle();else replaySkip();return;}
  if(e.code==='Escape'){
@@ -96,7 +97,7 @@ addEventListener('blur',()=>{
 const cvs=$('game');
 // every mouse path is gated on S.photo (the canvas is a viewfinder)
 cvs.addEventListener('mousemove',e=>{
- if(S.photo||S.freeRoam||(S.phase!=='play'&&S.phase!=='count'))return;
+ if(S.photo||S.freeRoam||(S.phase!=='play'&&S.phase!=='count')||(S.show&&S.show.walk))return;
  const ms=devSeat('mouse'),r=ms?seatRod(ms):null;if(!r)return;
  const dy=e.movementY||0;   // relative, works locked or not
  // a fixed span per screen-height on every rod; frozen for a beat after an auto hand-over (js/seats.js)
@@ -108,6 +109,7 @@ cvs.addEventListener('mousedown',e=>{
  const code='Mouse'+e.button;
  keys[code]=true;
  if(e.button===1||e.button>2)e.preventDefault();   // middle = autoscroll, 3/4 = browser Back/Forward
+ if(S.show&&S.show.walk){walkSkip();return;}       // a click skips the walkout (js/show.js)
  if(S.phase==='replay'){mouseLockRequest();if(bindIs('saveClip',code))replaySaveClip();else replaySkip();return;}   // any other click skips the goal replay
  if(S.freeRoam||!inMatch())return;
  if(!devSeat('mouse'))return;
@@ -206,6 +208,7 @@ function gamepadUpdate(dt){
   for(const i of [0,1,3,4,5,7,8,9,14,15,17]){const d=gpDown(gp,i);just[i]=d&&!prev[i];prev[i]=d;}
   // a press a menu used is still down on the first frame of play and would arrive as a kick
   padNavFilter(idx,just);
+  if(S.show&&S.show.walk){walkPad(just);continue;}   // the walkout: any fresh press skips it, nothing reaches a rod (js/show.js)
   // the touchpad works in the replay and pause too (padnav reads buttons 0-16 only)
   if(just[17]&&!didMusic){didMusic=true;musicCycle();}
   // Y saves the clip (must beat the skip buttons); A/B/Start still skip

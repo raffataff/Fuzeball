@@ -596,7 +596,8 @@ function hudRender(rdt){
  const X=HUD.x,T=HUD.t,R=HUD.rep;
  HUD.lowFx=document.body.classList.contains('lowFx');
  if(HUD.on)for(let t=0;t<2;t++)if(HUD.sc[t]!==S.score[t]){HUD.sc[t]=HUD.scFrom[t]=S.score[t];HUD.scT[t]=-9;}   // a change nobody announced snaps
- const ca=HUD.on&&S.phase!=='replay'&&S.phase!=='menu'?1:0;
+ const wk=!!(S.show&&S.show.walk);   // the walkout (js/show.js) has the screen: no chrome until it ends, its own cards instead
+ const ca=HUD.on&&S.phase!=='replay'&&S.phase!=='menu'&&!wk?1:0;
  if(ca>HUD.chromeA)HUD.chromeA=Math.min(1,HUD.chromeA+rdt/.25);else if(ca<HUD.chromeA)HUD.chromeA=Math.max(0,HUD.chromeA-rdt/.3);
  if(HUD.ntc&&T-HUD.ntc.t>HUD.ntc.d)HUD.ntc=null;
  if(HUD.bnr&&T-HUD.bnr.t>HUD.bnr.d)HUD.bnr=null;
@@ -605,7 +606,7 @@ function hudRender(rdt){
  // dev readouts ride a match or free roam; the room editor's panel lives where the rail would sit
  let dev=false;if(!S.redit&&(HUD.on||S.freeRoam))for(const k in HUD.dev){dev=true;break;}
  const rep=HUD.on&&(R.on||T-R.t<.32);
- const need=!S.photo&&!!(HUD.chromeA>0||HUD.ntc||HUD.bnr||HUD.tst.length||HUD.cnt||HUD.cntOut||rep||dev);
+ const need=!S.photo&&!!(HUD.chromeA>0||HUD.ntc||HUD.bnr||HUD.tst.length||HUD.cnt||HUD.cntOut||rep||dev||wk);
  if(!need&&!HUD.dirty)return;
  X.setTransform(1,0,0,1,0,0);X.clearRect(0,0,HUD.c.width,HUD.c.height);
  HUD.dirty=need;if(!need)return;
@@ -620,6 +621,7 @@ function hudRender(rdt){
  }
  if(dev)hudDevDraw();
  if(rep)hudReplayDraw();
+ if(wk)walkHud();
  if(HUD.ntc)hudNotice();
  if(HUD.bnr)hudBanner();
  if(HUD.cntOut)hudCountOne(HUD.cntOut,true);

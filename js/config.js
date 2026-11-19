@@ -264,7 +264,7 @@ matchStats:{
  tableAssets:{
   preloadAll:false,   // true = fetch every table skin + every room at boot
   cacheSkins:2,       // max skin GLBs resident, LRU (active always protected)
-  cacheRooms:1,       // max room GLBs resident, LRU (active always protected)
+  cacheRooms:2,       // max room GLBs resident, LRU (active always protected)
   cacheEnvs:10,       // max baked reflection maps held, LRU; rooms x 2 (glb + synthetic), see roomenv-harness
   cacheSkies:2,       // max room skies (6 KTX2 cube faces, ~8MB at 1024²) resident, LRU
   cachePitches:2      // max pitch GLBs resident, LRU. 2 keeps an A/B warm
@@ -291,8 +291,8 @@ physics:{
    prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back, and the foot box's rear face is this far behind the leg
    head:{ len:2.0, r:1.1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
-   footBox:{x:1.75,y:1.1,z:0.9},   // foot box half-extents: x along leg, y perpendicular, z along rod
-   footBoxOff:{x:-1.26,y:0.44},    // foot box centre offset from foot-base, rod-local: the box runs 3.89..7.39 down the leg, its sole 0.11 over the pitch (the drawn soles sit -0.03..0.13)
+   footBox:{x:1.75,y:1.1,z:1.1},   // foot box half-extents: x along leg, y perpendicular, z along rod
+   footBoxOff:{x:-1.0,y:0.44},    // foot box centre offset from foot-base, rod-local: the box runs 3.89..7.39 down the leg, its sole 0.11 over the pitch (the drawn soles sit -0.03..0.13)
    footBoxReach:1.0,                // multiplier on BALL_R for foot contact distance (lower = tighter)
    footJitter:0,                // random velocity nudge after a foot hit (stops perfect oscillations)
    subMin:3, subMax:16, subTravel:0.2,  // adaptive substep bounds and target travel per step (PHYS_Q overrides by cfg.physQuality)
@@ -332,9 +332,9 @@ kick:{
    boostHitMult:2.50, freezeMult:0.1, // power-up multipliers: boost (hit impulse, strikes only), freeze (speed)
    boostSwingW:8,                 // boost powers a pad-stick swing only while it turns the leg forward faster than this (rad/s); kicks and player shots always
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
-   rest:0, restPower:0.65,      // passive touch / struck shot
+   rest:0.1, restPower:0.65,      // passive touch / struck shot
    powFrom:0.001, powTo:0.02,       // swing-time window in which restPower is used instead of rest
-   grip:0.9,                     // fraction of the foot's velocity lerped into the ball on contact
+   grip:0.4,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.6,
    sideRest:0.55,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
@@ -2378,6 +2378,7 @@ deadball:{
     sting_win:   {bus:'fx', vol:0.8, gate:'sting'},
     sting_trophy:{bus:'fx', vol:0.8, gate:'sting'},
     sting_medal: {bus:'fx', vol:0.8, gate:'sting'},
+    sting_anthem:{bus:'fx', vol:0.8, gate:'sting'},   // the walkout (js/show.js)
     // the crowd
     crowd_bed_calm:{bus:'crowd'},
     crowd_bed_busy:{bus:'crowd'},   // no stand-in of its own: the synthesized bed crossfades calm into wild
@@ -2583,7 +2584,7 @@ deadball:{
       led:{idle:'rainbow'}
    },
    saucer:{
-      name:'SaucerBar', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:false,
+      name:'Saucer-Bar', folder:'assets/rooms/saucer/', glb:'fuzeball_room_saucer.glb', reflect:false,
       light:{gain:0,reach:0},
       bg:0x04070b, fog:[800,1600],
       sky:{src:'assets/rooms/saucer/sky/saucer'},
@@ -2616,14 +2617,15 @@ deadball:{
       light:{gain:0,reach:0.2},
       bg:0x100d12, fog:[260,690],
       sky:{src:'assets/rooms/arcade/sky/starport'},
-      hemi:{sky:0xd4cac1,ground:0x89695a,int:0.911,on:true},
-      dir:{color:0xd08a66,int:4.68,pos:[45,91,-62],on:true,shadow:true},
+      hemi:{sky:0xd4cac1,ground:0x89695a,int:0.78,on:false},
+      dir:{color:0xeaae90,int:1.95,pos:[45,91,-62],on:true,shadow:true,shadowInt:1},
       env:{shell:0x473d4b,panels:[[0xffd79b,-250,16,-40,184,56],[0x7ce9f0,-46,28,-236,128,54],[0xf49ac4,114,22,-227,105,40],[0xffeed6,-26,130,89,156,44],[0xb3c0c7,237,37,85,104,60]]},
       lights:[
-        {type:'spot', pos:[-24,92,58], look:[0,-1,-3], color:0xffebcc, int:249, dist:221, decay:0.75, angle:0.77, penumbra:0.53, shadow:true},
-        {type:'spot', pos:[-145,20,-47], look:[-205,-28,-50], color:0xffb762, int:171, dist:152, decay:0.7, angle:0.98, penumbra:0.65},
-        {type:'spot', pos:[-54,8,-173], look:[-41,-43,-166], color:0x53e4ec, int:97.4, dist:109, decay:0.6, angle:1.04, penumbra:0.62},
-        {type:'spot', pos:[105,8,-175], look:[118,-43,-159], color:0xfd82ba, int:79.9, dist:109, decay:0.65, angle:1.02, penumbra:0.65}
+        {type:'spot', pos:[-101,92,74], look:[-28,-1,-3], color:0xffebcc, int:199, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9},
+        {type:'spot', pos:[-145,20,-47], look:[-205,-28,-50], color:0xffb762, int:104, dist:152, decay:0.7, angle:0.98, penumbra:0.65},
+        {type:'spot', pos:[-54,51,-173], look:[-41,-43,-118], color:0x53e4ec, int:17.7, dist:240, decay:0.6, angle:1.04, penumbra:0.62},
+        {type:'spot', pos:[105,56,-175], look:[118,-43,-124], color:0xfd82ba, int:39, dist:109, decay:0.65, angle:1.18, penumbra:0.65},
+        {type:'spot', pos:[101,92,74], look:[28,-1,-3], color:0xffebcc, int:199, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9}
       ],
       bakedProps:[
         {prop:'fuzeballArcadeStool', at:[
@@ -2719,13 +2721,13 @@ deadball:{
 
   /* ---- pitches ------- */
   pitches:{
-   pub_classic:      {folder:'assets/pitches/', glb:'pitch_pub_classic.glb',      tex:'pitches/pubClassic.jpeg',      name:'Pub Classic'},
-   cork:             {folder:'assets/pitches/', glb:'pitch_cork.glb',             tex:'pitches/cork.jpeg',            name:'Cork'},
+   pub_classic:      {folder:'assets/pitches/', glb:'pitch_pub_classic.glb',      tex:'pitches/pubClassic.jpeg',      name:'Pub Classic', lines:{mode:'off'}},
+   cork:             {folder:'assets/pitches/', glb:'pitch_cork.glb',             tex:'pitches/cork.jpeg',            name:'Cork', lines:{mode:'off'}},
    royal:            {folder:'assets/pitches/', glb:'pitch_royal.glb',            tex:'pitches/royal.jpeg',           name:'Royal Grass', grass:true},
    premier_championship:{folder:'assets/pitches/', glb:'pitch_premier_championship.glb', tex:'pitches/premier_championship.jpeg', name:'Premier Championship', grass:{height:.30,density:3.5}},
    strike:           {folder:'assets/pitches/', glb:'pitch_strike.glb', tex:'pitches/strike.jpeg', name:'Strike'},
-   cyatron:          {folder:'assets/pitches/', glb:'pitch_cyatron.glb',          tex:'pitches/cyatron.jpeg',         name:'Cyatron Grid'},
-   neon:             {folder:'assets/pitches/', glb:'pitch_neon.glb',             tex:'pitches/neon_nights.jpg',      name:'Neon Nights'},
+   cyatron:          {folder:'assets/pitches/', glb:'pitch_cyatron.glb',          tex:'pitches/cyatron.jpeg',         name:'Cyatron Grid', lines:{mode:'glow'}},
+   neon:             {folder:'assets/pitches/', glb:'pitch_neon.glb',             tex:'pitches/neon_nights.jpg',      name:'Neon Nights', lines:{mode:'glow'}},
    verdantia:        {folder:'assets/pitches/', glb:'pitch_verdant.glb',          tex:'pitches/verdantia.jpeg',       name:'Verdantia'},
    champions_green:  {folder:'assets/pitches/', glb:'pitch_champions_green.glb',  tex:'pitches/champions_green.png',  name:'Champions Green', grass:true},
    champions_purple: {folder:'assets/pitches/', glb:'pitch_champions_purple.glb', tex:'pitches/champions_purple.png', name:'Champions Purple', grass:true},
@@ -2733,10 +2735,10 @@ deadball:{
    helios_runners: {folder:'assets/pitches/', glb:'pitch_helios_runners.glb', tex:'pitches/helios_runners.jpeg', name:'Helios Runners'},
    moon:             {folder:'assets/pitches/', glb:'pitch_moon.glb',             tex:'pitches/moon.jpeg',            name:'Moon Dust'},   // tools/build_moon_pitch.mjs
    deck:             {folder:'assets/pitches/', glb:'pitch_deck.glb',             tex:'pitches/deck.jpeg',            name:'Deck Plate'},  // tools/build_deck_pitch.mjs
-   alien_tech:       {folder:'assets/pitches/', glb:'pitch_alien_tech.glb',       tex:'pitches/alien_tech.jpeg',      name:'Alien Tech'},
-   obsidian_volt:    {folder:'assets/pitches/', glb:'pitch_obsidian_volt.glb',    tex:'pitches/obsidian_volt.jpeg',   name:'Obsidian Volt'},
+   alien_tech:       {folder:'assets/pitches/', glb:'pitch_alien_tech.glb',       tex:'pitches/alien_tech.jpeg',      name:'Alien Tech', lines:{mode:'glow'}},
+   obsidian_volt:    {folder:'assets/pitches/', glb:'pitch_obsidian_volt.glb',    tex:'pitches/obsidian_volt.jpeg',   name:'Obsidian Volt', lines:{mode:'glow'}},
    synaptic_relic:   {folder:'assets/pitches/', glb:'pitch_synaptic_relic.glb', tex:'pitches/synaptic_relic.jpeg', name:'Synaptic Relic'},
-   solar_forge:      {folder:'assets/pitches/', glb:'pitch_solar_forge.glb', tex:'pitches/solar_forge.jpeg', name:'Solar Forge', ior:1.29},
+   solar_forge:      {folder:'assets/pitches/', glb:'pitch_solar_forge.glb', tex:'pitches/solar_forge.jpeg', name:'Solar Forge', ior:1.29, lines:{mode:'off'}},   // the lava owns the glow; no mask
    circuit_standard: {folder:'assets/pitches/', glb:'pitch_circuit_standard.glb', tex:'pitches/circuit_standard.jpeg', name:'Circuit', ior:1.33},
    silver_circuit:   {folder:'assets/pitches/', glb:'pitch_silver_circuit.glb',   tex:'pitches/silver_circuit.jpeg',  name:'Silver Circuit', ior:1.2222222},
    },
@@ -2761,6 +2763,112 @@ deadball:{
     seed:7          // lawn layout; the same seed always grows the same lawn
    }
   },
+
+  /* ---- feel: hitstop, camera shake, follow-through, the kick's weight, the goal (js/feel.js) ---- */
+  // each part has its own `on`; feel.on:false = the game as it was (the old shake, the plain goal)
+  // a hit's strength is the ball's change of speed at one contact (a strike and a blocked shot both count), `from` = 0 .. `full` = 1
+ feel:{
+  on:true,
+  from:55,          // a contact changing the ball's speed by less than this (u/s) is a touch: no feel
+  full:170,         // ...this much is a full-strength hit
+  gap:0.22,         // s before the same rod's next hit counts (a swing meets the ball many times)
+  ai:0.55,          // strength share of an AI rod's hit (the player's own hits land hardest)
+  sweet:0.25,       // strength added by a clean centre strike
+  hitstop:{
+   on:true,
+   ms:[22,62],      // real-time freeze of the sim at the weakest and the strongest hit (ms)
+   min:0.75,        // strength under this gets no freeze
+   gap:0.12         // real s after a freeze ends before another may start
+  },
+  shake:{
+   on:true,                 // false = the old positional shake (CONFIG.camera.shakeX / shakeY)
+   hit:0.45,                // trauma a full-strength hit adds (0..1)
+   decay:2.4,               // trauma lost per second
+   pow:1.6,                 // shake = trauma^pow: higher = small hits stay smaller
+   rot:[0.6,0.45,0.9],      // yaw, pitch, roll at full trauma (degrees)
+   move:0.2,                // camera translation at full trauma (units)
+   hz:16,                   // shake frequency
+   push:0.45,               // camera shoved along the shot at a full-strength hit (units)
+   pushHz:4.5,              // ...spring rate of that shove (critically damped)
+   legacy:0.4,              // trauma per unit of the old S.shake (cannon blast, old goal / win paths)
+   cine:0.5                 // share on the cinematic camera
+  },
+  swing:{
+   on:true,                 // display only: the drawn leg runs on past a strike's stop and springs back
+   decel:20,                // forward speed lost in one frame (rad/s) that reads as a strike stopping
+   full:60,                 // ...this much lost gives the whole overshoot
+   over:0.28,               // overshoot at a full stop (rad)
+   hz:6,                    // spring rate of the overshoot
+   damp:0.45,               // ...its damping (under 1 rings once)
+   max:0.45                 // the drawn leg never runs further than this past the real one (rad)
+  },
+  spark:{
+   on:true,                 // a flash and a few sparks off a hard hit
+   min:0.55,                // strength from which a hit throws them
+   n:[3,9], speed:[12,34], life:[0.12,0.3], size:[0.07,0.12], power:2.2,   // spark count, speed, life, size weakest..strongest; brightness
+   flash:{ life:0.07, size:[1.4,3.4], power:1.4 }                            // the flash billboard at the contact
+  },
+  sound:{
+   on:true,                                     // a designed low body under the lab's kick take; the rest of the table ducks under a player's hit
+   body:{ f:115, low:46, d:[0.06,0.13], v:0.4 },   // thump: start / end pitch (Hz), length weakest..strongest (s), level at full strength
+   knock:{ f:720, d:0.03, v:0.12, q:1.3 },          // mid knock: band centre (Hz), length, level, filter Q
+   crack:{ from:0.6, f:3300, d:0.02, v:0.16, q:0.9 },   // a hard strike's crack, from this strength up
+   ai:0.6,                                      // level share of these layers on an AI rod's hit
+   send:0.4,                                    // reverb send of the layers
+   duck:{ depth:0.6, hold:0.08, rel:0.25 }      // a player's hit: loops and AI rod bumps dip this far for hold s, back over rel s
+  },
+  goal:{
+   on:true,
+   freeze:0,             // s the frame holds with the ball over the line before the blast (0 = blast at once)
+   shake:1,                 // trauma of the blast
+   after:0.5,               // time-scale through the celebration (null = match.goalSlowmo)
+   boom:{ on:true, f:110, low:30, d:0.75, v:0.5 },   // a sub drop under the stinger: start / end pitch (Hz), length (s), level
+   spin:{ on:true, turns:2.2, fall:45, speed:220, T:1.1 },   // the blast turns the men: turns at the goal (rounded), falling off over `fall` units, wave speed (u/s), each spin's length (s)
+   approach:{ on:true, scale:0.3, lead:0.1, past:3.5, minV:30 }   // slow-mo for a ball past the keeper going in: time-scale, from this long before the line (sim s), clear of the keeper rod by this, speed at least
+  }
+ },
+
+  /* ---- the show (js/show.js): table boards, pitch line glow, the walkout ---- */
+  // optional file: without it the game runs as before. A pitch picks its line mode with CONFIG.pitches.<id>.lines:{mode:'off'|'react'|'glow'}; no entry = lines.mode
+ show:{
+  on:true,
+  shot:{ min:90, jump:0.35 },   // a ball leaving faster than min (km/h), having gained this share of its speed in one frame, goes up on the boards
+  board:{
+   on:true,
+   cols:26, rows:12,            // dots across and down
+   w:11.4, h:5.28,              // size (u) with the bezel: fits between two rods' wall holes and above the arena's crease
+   rim:0.24, rimCol:0x2b2824,   // bezel width (u) and colour
+   at:[[-15,7.64,-33.96],[15,7.64,-33.96]],   // centres on the far wall's inner face (left board, right board)
+   tables:{},                   // table id -> its own `at` list, for a table whose far wall sits elsewhere
+   dot:0.36,                    // dot radius as a share of the dot pitch (0.5 = touching)
+   gain:2.2,                    // brightness of a lit dot
+   off:0x1c1611, back:0x060505, // an unlit dot, the panel between dots
+   amber:0xf0b24a,              // the boards' own colour
+   speedT:4, goalT:5,           // s a shot's speed / the GOAL scroll stays up
+   scroll:16                    // dots per second a scroll moves
+  },
+  lines:{
+   on:true,
+   mode:'react',                // for a pitch with no lines entry
+   dir:'assets/pitches/lines/', // <pitch id>.png from tools/pitch-lines.mjs
+   glow:0.35,                   // idle glow on 'glow' pitches, x the line's own colour
+   flood:{ speed:110, width:22, tail:46, T:2.6, gain:6 },    // a goal: front speed (u/s), soft front, trailing fade (u), length (s), peak; in the scorer's colour from the end it went in
+   pulse:{ speed:62, width:7, T:1.5, gain:4, col:0xffe7b8 } // a kickoff: a ring out of the centre circle
+  },
+  walk:{
+   on:true,
+   T:{ full:9, short:4.5 },     // length (s); cfg.walkout picks one or off
+   spin:{ T:0.9, turns:1 },     // each rod's flourish as the camera passes it
+   posW:4.5, lookW:5.5,         // spring rates the camera follows the path at (higher = tighter)
+   // [u 0..1, x,y,z, lookX,lookY,lookZ], red's goal at -x, the near side +z; the play camera is the last key
+   path:{
+    full:[[0,-94,30,-24,-40,2,0],[0.12,-80,24,-46,-40,4,0],[0.42,30,20,-56,40,4,4],[0.55,86,30,-18,40,4,0],[0.62,86,30,26,38,4,0],[0.85,-22,24,58,-28,4,-4]],
+    short:[[0,-92,38,30,-30,2,0],[0.6,24,26,60,12,4,0]]
+   },
+   pass:{ full:[[0.12,0.42],[0.62,0.85]], short:[[0,0.6],[0,0.6]] },     // path u while the camera runs along team 0's / team 1's rods
+   cards:{ full:[[0.1,0.5],[0.58,0.92]], short:[[0.08,0.92],[0.08,0.92]], venue:[0.02,0.36] }   // walkout share each team's name card (and the venue line) is up
+  }
+ },
 
   /* ---- LED strip fx --------------------------------------------------- */
  leds:{
@@ -3586,6 +3694,8 @@ let cfg={diff:'pro',goals:5,gameTime:0,room:'arcade',reflections:true,atmos:'hig
  tutSeen:false,tutDone:false,
  // the "kick = pin shot" plate while a ball is pinned (js/hud.js); Options > Display
  pinHint:true,
+ // the walkout before a Kick Off / League / Cup match (js/show.js): 'full' | 'short' | 'off'
+ walkout:'full',
  // gameTime: match limit in minutes (0 = unlimited, first to `goals`).
  redName:'Team 1',blueName:'Team 2',redColor:CONFIG.playerModel.kitDefault[0],blueColor:CONFIG.playerModel.kitDefault[1],
  // Per-team AI difficulty (overrides legacy single `diff`).
@@ -3645,6 +3755,7 @@ const CFG_PLAYER=new Set([
  'tutSeen','tutDone',                                            // the tutorial: offered once, and finished (an achievement reads tutDone)
  'pinHint',                                                      // an on-screen help preference, follows the person
  'musicMatch',                                                   // the in-match track they last picked
+ 'walkout',                                                      // the walkout before a match: full, short or off
  'theme','model','metalness','roughness','glow','modelScale'     // legacy, migrated just below
 ]);
 /* Bucket a key. Unlisted -> PLAYER, reported ONCE per key per session. */

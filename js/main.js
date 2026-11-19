@@ -32,23 +32,24 @@ function loop(t){
  const active=S.phase==='play'||S.phase==='goal'||S.phase==='count';
  if(active){
   const FIXED=1/SIM.hz;
+  const sdt=S.photo||typeof feelFrame!=='function'?rdt:feelFrame(rdt);   // js/feel.js: a hitstop takes its share of the frame from the sim and the match clock
   // --- wall-clock timers (real time, once per frame) ---
   // …all of them held while photo mode is up. See the note above loop().
   if(!S.photo){
-   if(S.phase==='play'){S.matchTime+=rdt;checkMatchClock();}
+   if(S.phase==='play'){S.matchTime+=sdt;checkMatchClock();}
    // goal hold: instant replay if there's footage, else straight on; finishPendingWin() (flow.js) is the backstop for a win whose replay stopped being playable
    if(S.phase==='goal'){S.goalT-=rdt;if(S.goalT<=0){if(replayPending())replayStart();else if(!finishPendingWin())startCount(MATCH.recount);}}
    else if(S.phase==='count'){
     S.countT-=rdt;
     const v=Math.ceil(S.countT);
     if(v!==S.lastCount&&v>=1&&v<=3){S.lastCount=v;Au.count(v);}
-    hudCount(S.countT>3?'READY':v>=1?v:'');
+    hudCount(S.show&&S.show.walk?'':S.countT>3?'READY':v>=1?v:'');   // the walkout (js/show.js) runs in the long front of the count
     if(S.countT<=0){hudCount('');Au.count(0);serve();}
    }
   }
   if(S.timeScale<1)S.timeScale=Math.min(1,S.timeScale+rdt*.9);
   // --- fixed-rate simulation (slow-mo just consumes sim-time slower) ---
-  physAcc+=rdt*S.timeScale;
+  physAcc+=sdt*S.timeScale;
   // training freeze: hold the sim; each queued step (Step button / O) releases one fixed slice
   if(S.trn&&S.trn.freeze){if(S.trn.stepQ>0){S.trn.stepQ--;physAcc=FIXED;}else physAcc=0;}
   // photo freeze: same lever, applied last so it wins over training's
@@ -56,12 +57,13 @@ function loop(t){
   for(const r of rods)r.aimSweet=-1;   // clear BEFORE the sim so physics can set it and debug reads it this frame
   let stepped=false,steps=0;
   perfMark('p');
-  while(physAcc>=FIXED&&steps<SIM.maxSteps){
+  const fh=typeof feelHeld==='function';
+  while(physAcc>=FIXED&&steps<SIM.maxSteps&&!(fh&&feelHeld())){   // a hitstop starting mid-frame stops the steps there
    if(!stepped)for(const b of S.balls)b.m.position.copy(b.cur); // undo last frame's interp → true sim state
    for(const b of S.balls)b.prev.copy(b.m.position);
    for(const r of rods){r.iPrevOff=r.offset;r.iPrevAng=r.angle;}
    if(S.phase==='play'){aiUpdate(FIXED);userControlUpdate(FIXED);powerupUpdate(FIXED);deadBallUpdate(FIXED);cannonballUpdate(FIXED);}
-   else if(S.phase==='count')userControlUpdate(FIXED);
+   else if(S.phase==='count'&&!(S.show&&S.show.walk))userControlUpdate(FIXED);   // input is frozen while the walkout plays
    updateRods(FIXED);
    physics(FIXED);
    for(const b of S.balls)b.cur.copy(b.m.position);
@@ -86,11 +88,13 @@ function loop(t){
     if(typeof fireFeed==='function')fireFeed(b.key,b.m.position,b.v,rdt*S.timeScale,b,b.light);   // the fireball's flame (js/fire.js)
    }
    heatClose();
+    const fp=typeof feelPose==='function';
     for(const r of rods){
      if(r.iOff===undefined){r.iOff=r.iPrevOff=r.offset;r.iAng=r.iPrevAng=r.angle;}
     r.pivot.position.z=lerp(r.iPrevOff,r.iOff,alpha);
-    // r.trem (the overcharge tremble, js/shots.js) goes on the display pose, not r.angle: angVel is differenced from r.angle, so a shaking sim boot would kick the ball
-    r.pivot.rotation.z=lerpAng(r.iPrevAng,r.iAng,alpha)+(r.trem||0);
+    // r.trem (the overcharge tremble, js/shots.js) and feelPose (follow-through, the goal blast's spin) go on the display pose, not r.angle: angVel is differenced from r.angle, so a shaking sim boot would kick the ball
+    const a=lerpAng(r.iPrevAng,r.iAng,alpha);
+    r.pivot.rotation.z=a+(r.trem||0)+(fp?feelPose(r,a,rdt):0);
    }
    // casters moved: the frozen shadow map (CONFIG.render.shadow.autoUpdate:false) needs a redraw; gated on a sim step or alpha moving, so a photo/training freeze holds the map
    if(stepped||alpha!==lastAlpha){shadowDirty();lastAlpha=alpha;}

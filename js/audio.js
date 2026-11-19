@@ -176,7 +176,8 @@ const AU_STING={
  goal:  {v:.05,brass:[[220,0,.1],[220,.13,.1],[146.83,.26,.95],[293.66,.26,.95],[392,.26,.95],[440,.26,.95]]},
  win:   {v:.045,brass:[[220,0,.13],[293.66,.15,.13],[392,.30,.13],[146.83,.45,1.5],[293.66,.45,1.5],[440,.45,1.5],[587.33,.45,1.5]]},
  trophy:{v:.045,bell:[[1174.66,0,1.4],[1567.98,.09,1.4],[1760,.18,1.6],[2349.32,.27,2]],brass:[[146.83,.27,1.4],[293.66,.27,1.4],[440,.27,1.4]]},
- medal: {v:.05,bell:[[1174.66,0,1.2],[1567.98,.08,1.2],[1760,.16,1.6]]}};
+ medal: {v:.05,bell:[[1174.66,0,1.2],[1567.98,.08,1.2],[1760,.16,1.6]]},
+ anthem:{v:.042,brass:[[293.66,0,.16],[293.66,.2,.1],[369.99,.34,.16],[440,.52,.34],[392,.9,.14],[369.99,1.06,.14],[146.83,1.24,2.2],[293.66,1.24,2.2],[369.99,1.24,2.2],[440,1.24,2.2],[587.33,1.24,2.2]],bell:[[1174.66,1.24,1.8]]}};
 
 const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim:null,nbuf:null,exc:0,rate:1,vol:1,
  dst:null, // beep/noise/wood/bell/brass route here instead of mg while set (route() / ui point it)
@@ -594,7 +595,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim
   if(v*g>P.want*P.g||!P.want){P.want=v;P.g=g;P.rt=rt||1;V.src=src||V.src;}},
  // gain, rate and pan glide to each frame's value (loops.glide): a step a frame clicks on every start and buzzes at the frame rate on every change
  lpTick(dt){if(!this.lp||!this.lp.size||!this.ctx)return;
-  const live=cfg.sound&&this.inMatch(),R=this.rate>0?this.rate:1,t=this.ctx.currentTime,gl=Math.max(AUMIX.loops.glide||0,dt/3);
+  const live=cfg.sound&&this.inMatch(),R=this.rate>0?this.rate:1,t=this.ctx.currentTime,gl=Math.max(AUMIX.loops.glide||0,dt/3),dm=1-this.dkLvl();   // dm: ducked under a player's hit (duck)
   for(const V of this.lp.values()){let any=false;
    for(const n in V.parts){const P=V.parts[n],C=P.C,sp=live?P.want:0,u=auLpN(sp,C),
      tgt=u>0?Math.pow(u,C.curve)*P.g:0,a=1-Math.exp(-dt/Math.max(1e-3,tgt>P.lvl?C.attack:C.release));
@@ -607,7 +608,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim
    const Pn=AUMIX.pan;if(V.pn&&V.src&&Pn&&Pn.on)V.pn.pan.setTargetAtTime(auPanOf(V.src)*Pn.width,t,gl);
    for(const n in V.parts){const P=V.parts[n],C=P.C;if(!P.ls)this.lpPart(V,P);
     const u=auLpN(P.spd,C),rt=P.rt*R;auXf(u,P.at,P.w);
-    for(let i=0;i<P.ls.length;i++){const l=P.ls[i];l.g.gain.setTargetAtTime(P.lvl*P.w[i]*l.v*this.vol,t,gl);l.s.playbackRate.setTargetAtTime(auLpRate(P.spd,C,l.at)*rt,t,gl);}}}},
+    for(let i=0;i<P.ls.length;i++){const l=P.ls[i];l.g.gain.setTargetAtTime(P.lvl*P.w[i]*l.v*this.vol*dm,t,gl);l.s.playbackRate.setTargetAtTime(auLpRate(P.spd,C,l.at)*rt,t,gl);}}}},
  lpStart(V){const c=this.ctx;let send=0;
   for(const n in V.parts)for(const id of V.parts[n].C.ids)send=Math.max(send,(AUSND[id]&&AUSND[id].send)||0);
   V.out=c.createGain();V.in=this.route(this.mg,null,send);V.pn=c.createStereoPanner?c.createStereoPanner():null;
@@ -642,7 +643,23 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim
    let im=0;for(const x of r.vzH||[r.vz])im=Math.max(im,Math.abs(x));
    if(im>=(ai?B.aiMin??B.min:B.min)&&im<L.vzCap)this.bump(im,ai?B.ai:1,{x:pv.x,y:pv.y,z:Math.sign(r.offset)*F.W/2});}},
  // a rod hitting the end of its travel; a = level (an AI rod's is lower); recorded only
- bump(p,a,src){if(this.ctx)this.play('rod_bump',{p,src,vol:a||1});},
+ bump(p,a,src){if(this.ctx)this.play('rod_bump',{p,src,vol:(a||1)*(1-this.dkLvl())});},
+ // CONFIG.feel.sound (js/feel.js feelHit): a designed thump, knock and crack under the lab's kick take, k = the hit's strength 0..1; a player's hit ducks the table
+ kickBody(k,src,hu){if(!this.ctx||!(k>0))return;const D=CONFIG.feel.sound,J=AUMIX.jitter,v=hu?1:D.ai,B=D.body,N=D.knock,C=D.crack,f=B.f*(1+.15*k);
+  this.dst=this.route(this.mg,src,D.send);
+  this.beep(f,lerp(B.d[0],B.d[1],k),'sine',B.v*k*v,B.low-f,J.pitch*.5);
+  this.noise(N.d,N.f*(1+.2*k),N.v*k*v,J.pitch,N.q);
+  if(k>C.from)this.noise(C.d,C.f,C.v*v*(k-C.from)/Math.max(1e-6,1-C.from),J.pitch,C.q);
+  this.dst=null;
+  if(hu)this.duck(k);},
+ duck(k){const D=CONFIG.feel.sound.duck;if(!D||!this.ctx)return;this.dkA=Math.max(this.dkLvl(),D.depth*clamp(k,0,1));this.dkT=this.ctx.currentTime;},
+ dkLvl(){if(!this.dkA||!this.ctx)return 0;const D=CONFIG.feel.sound.duck,e=this.ctx.currentTime-this.dkT;
+  if(e<D.hold)return this.dkA;const u=(e-D.hold)/Math.max(1e-3,D.rel);if(u>=1){this.dkA=0;return 0;}return this.dkA*(1-u);},
+ // CONFIG.feel.goal.boom: a sub drop under the goal stinger
+ goalBoom(src){if(!this.ctx)return;const B=CONFIG.feel.goal.boom,c=this.ctx,t=c.currentTime,R=this.rate>0?this.rate:1,o=c.createOscillator(),g=c.createGain(),d=B.d/R;
+  o.type='sine';o.frequency.setValueAtTime(B.f*R,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,B.low*R),t+d);
+  this.env(g,t,.004,d,B.v*this.vol);o.connect(g);g.connect(this.route(this.mg,src,.6));o.start(t);o.stop(t+d+.1);
+  this.noise(d*.6,240,B.v*.5,0,.7);},
 
  env(g,t0,a,d,pk){g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(pk,t0+a);g.gain.exponentialRampToValueAtTime(.0001,t0+a+d);},
 

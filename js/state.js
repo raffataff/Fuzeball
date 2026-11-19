@@ -14,7 +14,7 @@ const S={phase:'menu',mode:'red',userTeam:0,score:[0,0],balls:[],time:0,matchTim
  eff:[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}],lastTouch:-1,lastSwitch:0,
  stats:null,pu:{obj:null,timer:10,type:null,spin:0},shake:0,winT:0,camMode:0,camLookX:0,freeRoam:false,camYaw:0,camPitch:0,
   fromScreen:'home', // screen the live match was launched from: gotoMenu returns there
-  rodLockRole:null,teamStats:null,lg:null,trn:null,trial:null,photo:null,redit:null,frac:[],swirl:[]}; // teamStats: per-team stat builds (stats.js) · lg: league bridge · trn: training bridge · photo: photo mode (F1) · redit: room editor (F2) · frac / swirl: live fracture and respawn-swirl instances; null = off, and other files gate on these only
+  rodLockRole:null,teamStats:null,lg:null,trn:null,trial:null,photo:null,redit:null,show:null,frac:[],swirl:[]}; // teamStats: per-team stat builds (stats.js) · lg: league bridge · trn: training bridge · photo: photo mode (F1) · redit: room editor (F2) · show: boards, line glow, walkout (js/show.js; .walk while one plays) · frac / swirl: live fracture and respawn-swirl instances; null = off, and other files gate on these only
 // the match ledger: written by js/matchstats.js (saves and woodwork by js/moments.js), read by the post-match sheet; arrays are [team0,team1]; `terr` is by pitch third in world-x order; `rods` is keyed 'team|role' (built by msRod)
 function freshStats(){return{
  kicks:[0,0],poss:[0,0],topSpeed:0,saves:[0,0],woodwork:[0,0],

@@ -334,6 +334,7 @@ function fxUpdate(rdt){
  vfxWinTick(rdt);  // the full-time board waits on the finale
  if(!vfxLive())goalLights.forEach(g=>g.intensity=Math.max(0,g.intensity-rdt*7.2));
  ledUpdate(rdt);
+ if(S.show)showTick(rdt);   // the boards, the pitch line glow, the walkout (js/show.js)
  rodHolesUpdate(rdt);   // rod-hole stamina rings — decoration only, writes material colour and nothing else
  if(S.pu.obj&&S.phase!=='play')S.pu.obj.rotation.y+=rdt*(S.pu.spin||PWR.spin);
  let fb=null;
@@ -488,7 +489,10 @@ function cameraUpdate(rdt){
  }
  camMenuOn=false;
  vfxCamPre();   // takes last frame's punch back out before the ease reads the position
- if(typeof cineUpdate==='function'&&cineUpdate(rdt)){vfxCamPost(rdt);return;}   // the cinematic camera directs itself (js/cine.js)
+ const fl=typeof feelCamPre==='function';
+ if(fl)feelCamPre();   // ...and the shake (js/feel.js), nested inside the punch
+ if(S.show&&walkCam(rdt)){if(fl)feelCamPost(rdt,true);vfxCamPost(rdt);return;}   // the walkout has the camera until it lands on this pose (js/show.js)
+ if(typeof cineUpdate==='function'&&cineUpdate(rdt)){if(fl)feelCamPost(rdt,true);vfxCamPost(rdt);return;}   // the cinematic camera directs itself (js/cine.js)
  let bx=0;
  if(S.balls.length){for(const b of S.balls)bx+=b.m.position.x;bx/=S.balls.length;}
  const m=CAM.modes[S.camMode];
@@ -502,10 +506,11 @@ function cameraUpdate(rdt){
  camera.position.x=lerp(camera.position.x,px,k);
  camera.position.y=lerp(camera.position.y,m[1],k);
  camera.position.z=lerp(camera.position.z,m[2],k);
- if(S.shake>0){S.shake=Math.max(0,S.shake-rdt*CAM.shakeDecay);
+ if(S.shake>0&&!(fl&&feelShakeOn())){S.shake=Math.max(0,S.shake-rdt*CAM.shakeDecay);   // the old shake; feel.shake takes S.shake as trauma instead
   camera.position.x+=rand(-1,1)*S.shake*CAM.shakeX;
   camera.position.y+=rand(-1,1)*S.shake*CAM.shakeY;}
  S.camLookX=lerp(S.camLookX,lx,k);
  camera.lookAt(S.camLookX,m[4],m[5]);
+ if(fl)feelCamPost(rdt,false);
  vfxCamPost(rdt);   // this frame's goal / blast punch rides on top (spring, js/vfx.js)
 }

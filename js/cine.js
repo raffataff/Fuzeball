@@ -147,3 +147,10 @@ function cineOff(){
 }
 // the fov with no cinematic zoom (the replay restores to it)
 function cineFovBase(){return CINE.on?CINE.fov0:camera.fov;}
+// a camera handed over mid-move (js/show.js, the end of the walkout) at pose E [x,y,z,lookX,lookY,lookZ]: the first shot is picked as usual and glided to from E
+function cineFrom(E){
+ if(!cineUpdate(0))return;
+ const o=CINE;
+ for(let k=0;k<3;k++){o.p[k*2]=E[k];o.p[k*2+1]=0;o.l[k*2]=E[3+k];o.l[k*2+1]=0;}
+ o.glide=1;camera.position.set(E[0],E[1],E[2]);camera.lookAt(E[3],E[4],E[5]);
+}

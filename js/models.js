@@ -849,6 +849,7 @@ function ensurePitch(id,cb){
         if(m.aoMap){m.aoMap.colorSpace=THREE.NoColorSpace;m.aoMap.needsUpdate=true;}
         if(m.bumpMap){m.bumpMap.colorSpace=THREE.NoColorSpace;m.bumpMap.needsUpdate=true;}
         m.needsUpdate=true;
+        if(typeof showPitchPatch==='function')showPitchPatch(m);   // the line glow rides every pitch's own program (js/show.js)
       }
     });
     applyEmissiveStrength(g);               // as the table and room GLBs

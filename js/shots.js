@@ -592,7 +592,7 @@ function shotSeatsUpdate(dt){
  if(S.photo||!S.seats)return;                  // photo mode freezes everything, a held wind-up included
  const K=SHOTC&&SHOTC.kbm,kOn=!!(K&&K.on)&&typeof bindHeld==='function';
  for(const s of S.seats){
-  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count'))?seatRod(s):null;
+  const r=(!S.freeRoam&&(S.phase==='play'||S.phase==='count')&&!(S.show&&S.show.walk))?seatRod(s):null;   // nothing during the walkout (js/show.js)
   if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}
   s.shotRod=r;s.rcvAsk=false;
   const P=s.shotPad;

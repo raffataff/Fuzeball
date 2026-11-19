@@ -116,6 +116,7 @@ function startMatchNow(mode,rodLockRole){
  S.serveAt=null;S.kickTeam=-1;   // a restart spot or kicking team left over from the last match must not aim the opening drop
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
+ if(typeof feelReset==='function')feelReset();   // a held goal, freeze, shake or blast spin from the last match dies here (js/feel.js)
   clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();vfxClear();
   if(typeof iceClear==='function')iceClear();
   if(typeof boostClear==='function')boostClear();
@@ -154,8 +155,10 @@ function startMatchNow(mode,rodLockRole){
   // a normal match gets no tag chip; league/cup/spectate get one (information you can't infer)
   const sub=S.lg?(S.lg.cup?S.lg.banner:'LEAGUE · ROUND '+(LG.round+1)):(S.userTeam<0?'AI SHOWDOWN':'');
   const _lim=gameTimeLimit();
-  banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7,'var(--gold)');
- startCount(MATCH.countIn);
+  const kb=()=>banner(_lim>0?(_lim/60)+' MIN · TO '+goalTarget():'FIRST TO '+goalTarget(),sub,1.7,'var(--gold)');
+  const wk=S.show?walkStart(kb):0;   // js/show.js: the walkout runs inside a longer count and puts this banner up when it ends
+  if(!wk)kb();
+ startCount(MATCH.countIn+wk);
 }
 function startCount(t){S.phase='count';S.countT=t;S.lastCount=-1;}   // the loop is the count's only writer (main.js → hudCount)
 function onGoal(team,b){
@@ -163,12 +166,19 @@ function onGoal(team,b){
  Au.goalIn(b);   // the ball dropping into the goal (recorded only)
  if(S.trn){trainingGoal(team,b);return;}   // training: fx + reset to the last placed spot, never ends anything
  b.scored=true;
+ if(typeof feelGoal==='function'&&feelGoal(team,b,()=>goalLand(team,b)))return;   // js/feel.js holds the frame with the ball over the line, then lands it
+ goalLand(team,b);
+}
+// the goal itself: score, blast, banner, and the goal phase (or the win)
+function goalLand(team,b){
  const val=b.t.value||1;
+ const gs=typeof feelGoalScale==='function'?feelGoalScale():MATCH.goalSlowmo;
  // classify the goal before removeBall (b.v is the velocity at the line); M carries the sub chip and banner accent (js/moments.js)
  const M=momGoal(team,b);
  msGoal(team,b);msRallyEnd();   // matchstats.js: scorer credit and rally clock; both read records hanging off the ball, which removeBall frees
  S.score[team]+=val;S.kickTeam=1-team;   // the team that conceded kicks off
  goalFx(team,b,msScorer(b,team));   // the ring flash wants the scoring rod; msScorer decides (matchstats.js)
+ if(typeof feelGoalFx==='function')feelGoalFx(team,b);   // shake, the sub drop, the men turned by the blast (js/feel.js)
  updateScoreUI(team);
  removeBall(b);
  const wins=S.suddenDeath||S.score[team]>=goalTarget();   // golden goal after a level time-up, or the target reached
@@ -178,14 +188,14 @@ function onGoal(team,b){
   if(REPLAY.winner&&!S.balls.length&&replayReady()){
    // the winner keeps its own sub (the format outranks the flavour); an own goal still takes the neutral accent
    banner(teamName(team)+' GOAL',S.suddenDeath?'GOLDEN GOAL':'MATCH WINNER',1.9,M.col);
-   resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
+   resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=gs;
    replayQueue(team);S.pendingWin=team;return;
   }
   endMatch(team);return;
  }
  // accented in the scoring team's colour
  banner(teamName(team)+' GOAL',M.sub,1.9,M.col);
- if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=MATCH.goalSlowmo;
+ if(!S.balls.length){resetRodRotation();S.phase='goal';S.goalT=MATCH.goalHold;S.timeScale=gs;
   replayQueue(team);}   // instant replay plays after the celebration (main.js goal-timer handoff; gated by cfg.replay and footage length)
 }
 // open the win screen for a goal held back for its replay; false when nothing is waiting; onGoal is the only writer of S.pendingWin
