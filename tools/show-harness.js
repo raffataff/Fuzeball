@@ -40,7 +40,7 @@ function boot(src){
   document:{getElementById:()=>null,createElement:t=>t==='canvas'?{width:0,height:0,style:{},getContext:ctx2d}:{style:{}},documentElement:{style:{setProperty(){}}}}};
  ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
  vm.runInNewContext(THREE_SRC,ctx);
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),STUB,rd('js/cine.js'),rd('js/feel.js'),src,EXPORT].join(NL),ctx);
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),'CONFIG.fx.goalFx.on=true;',STUB,rd('js/cine.js'),rd('js/feel.js'),src,EXPORT].join(NL),ctx);
  if(!ctx.X||!ctx.X.SH)throw new Error('export line did not run');
  ctx.X.DOTS=DOTS;
  // the loader never fires in node: a load hands back a texture at once, a miss is logged
@@ -135,7 +135,7 @@ function lines(X){
  const sh=lib=>({vertexShader:T3.ShaderLib[lib].vertexShader,fragmentShader:T3.ShaderLib[lib].fragmentShader,uniforms:{}});
  WARN.length=0;const a=sh('standard'),p=sh('physical');m1.onBeforeCompile(a);m2.onBeforeCompile(p);
  ok(WARN.length===0,'every anchor found ('+WARN.join('; ').slice(0,200)+')');
- ok(a.fragmentShader.includes('totalEmissiveRadiance+=shL*')&&a.vertexShader.includes('shUv=uv;')&&a.uniforms.shLine===X.shLineU().shLine,'the glow is added to the emissive, the mask read by the mesh uv, uniforms shared');
+ ok(a.fragmentShader.includes('totalEmissiveRadiance+=(shL+shH)*')&&a.vertexShader.includes('shUv=uv;')&&a.uniforms.shLine===X.shLineU().shLine,'the glow is added to the emissive, the mask read by the mesh uv, uniforms shared');
  ok(m1.customProgramCacheKey()==='shLines'&&m2.customProgramCacheKey()==='shLines','one cache key for every pitch');
  const f1=m1.onBeforeCompile;X.showPitchPatch(m1);ok(m1.onBeforeCompile===f1,'patching twice is a no-op');
  // a pitch change swaps a texture, never a program
@@ -143,16 +143,18 @@ function lines(X){
  ok(u.shLine.value.userData.url===L.dir+'royal.png','a react pitch loads its mask');
  X.cfg.pitch='neon';X.shLinesTick();
  ok(m1.version===v1,'switching pitch leaves the materials alone (no recompile)');
- ok(u.shLine.value.userData.url===L.dir+'neon.png'&&near(u.shIdle.value,L.glow),'a glow pitch: its mask and the idle glow');
+ ok(u.shLine.value.userData.url===L.dir+'neon.png'&&u.shIdle.value>=L.glow*(1-L.breathe.amp)-1e-6&&u.shIdle.value<=L.glow*(1+L.breathe.amp)+1e-6,'a glow pitch: its mask and the idle glow');
+ {const i0=u.shIdle.value;SH.t+=L.breathe.T/4;X.shLinesTick();const i1=u.shIdle.value;SH.t-=L.breathe.T/4;X.shLinesTick();ok(Math.abs(i1-i0)>0.01,'...which breathes');}
  X.cfg.pitch='royal';X.shLinesTick();ok(near(u.shIdle.value,0),'a react pitch has no idle glow');
  LOADS.length=0;X.cfg.pitch='cork';X.shLinesTick();ok(LOADS.length===0&&!u.shLine.value.userData.url,'an off pitch loads nothing and shows black');
  // flood and pulse
  X.cfg.pitch='royal';X.shLinesTick();
  SH.goal={team:0,t:SH.t};X.shLinesTick();
- ok(near(u.shFlood.value.x,X.F.L/2)&&near(u.shFlood.value.y,0)&&u.shFloodC.value.r>1,'team 0 scores at +x: the flood starts from that end in its colour');
+ ok(near(u.shFlood.value.x,X.F.L/2)&&near(u.shFlood.value.y,0)&&u.shFloodC.value.r>0&&u.shFloodC.value.r>u.shFloodC.value.b,'team 0 scores at +x: the flood starts from that end in its colour');
+ ok(near(u.shTint.value,L.flood.tint),'...and the lines turn that colour');
  SH.t+=0.5;X.shLinesTick();ok(near(u.shFlood.value.y,0.5*L.flood.speed),'...its front runs at flood.speed');
  const f0=u.shFloodC.value.r;SH.t+=0.5;X.shLinesTick();ok(u.shFloodC.value.r<f0,'...and fades');
- SH.t+=L.flood.T;X.shLinesTick();ok(u.shFloodC.value.r===0&&u.shFloodC.value.g===0,'...gone after flood.T');
+ SH.t+=L.flood.T;X.shLinesTick();ok(u.shFloodC.value.r===0&&u.shFloodC.value.g===0&&u.shTint.value===0,'...gone after flood.T');
  SH.goal={team:1,t:SH.t};X.shLinesTick();ok(near(u.shFlood.value.x,-X.F.L/2),'team 1 scores at -x');
  X.cfg.pitch='cork';X.shLinesTick();ok(u.shFloodC.value.r===0,'an off pitch never floods');
  X.cfg.pitch='royal';SH.goal=null;SH.kick=SH.t-0.2;X.shLinesTick();
@@ -280,9 +282,11 @@ const MUT=[
  ['if(!m||!S.show||!SHC.lines||!SHC.lines.on||m.userData.shLines)return;','if(!m||!S.show||!SHC.lines||!SHC.lines.on)return;','a material is patched twice'],
  ["m.customProgramCacheKey=()=>'shLines';","m.customProgramCacheKey=()=>'shLines'+Math.random();",'a program per pitch'],
  ['shUv=uv;','shUv=shWp.xz/120.+.5;','the mask is read in world space, not by the uv'],
- ['totalEmissiveRadiance+=shL*(','totalEmissiveRadiance+=(','the glow ignores the mask'],
+ ['totalEmissiveRadiance+=(shL+shH)*(','totalEmissiveRadiance+=(','the glow ignores the mask'],
+ ['U.shTint.value=FL.tint*Math.min(1,e*2);','U.shTint.value=0;','the flood never recolours the lines'],
+ ['U.shIdle.value=md===\'glow\'?LC.glow*(1+BR.amp*Math.sin(SH.t*2*Math.PI/BR.T)):0;','U.shIdle.value=md===\'glow\'?LC.glow:0;','the idle glow never breathes'],
  ["if(md!=='off')new THREE.TextureLoader()","new THREE.TextureLoader()",'an off pitch loads a mask'],
- ['U.shIdle.value=md===\'glow\'?LC.glow:0;','U.shIdle.value=LC.glow;','every pitch glows idle'],
+ ['U.shIdle.value=md===\'glow\'?LC.glow*','U.shIdle.value=1?LC.glow*','every pitch glows idle'],
  ['U.shFlood.value.set((g.team===0?1:-1)*F.L/2,','U.shFlood.value.set((g.team===0?-1:1)*F.L/2,','the flood from the wrong end'],
  ['U.shFloodC.value.copy(kitLin(teamCol(g.team))).multiplyScalar(FL.gain*e*e);','U.shFloodC.value.copy(kitLin(teamCol(g.team))).multiplyScalar(FL.gain);','the flood never fades'],
  ["if(md!=='off'&&ga<FL.T){","if(ga<FL.T){",'an off pitch floods'],

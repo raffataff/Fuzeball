@@ -11,8 +11,8 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
- lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
+ lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
+ fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -23,7 +23,7 @@ const stubs=[
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
@@ -130,7 +130,7 @@ function suite(X){
   ok('blocked here, nowhere to carry it, a neighbour is open: tap it',v===3&&pk&&pk.j===1,'v='+v+' pk='+JSON.stringify(pk));}
  {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,null,false);const pk=r.tapPk;back();
   ok('...but only when the caller asks for it (retrieve shares this carry and cannot tap)',v!==3&&!pk);}
- {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.settleT-0.05);back();ok('...not before the held ball has settled',v===0);}
+ {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,(CA.byDiff.pro?.settleT??CA.settleT)-0.05);back();ok('...not before the held ball has settled',v===0);}
  {const r=stuck({tapN:TP.maxChain});pinned(X,r,0,-0.7);const v=play(r);back();ok('...not once it has been tapped maxChain times on this possession',v!==3);}
  {const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.holdT+0.01);back();ok('...a ball held too long with its lane shut is still tapped, never shot into the row (ai.lanes)',v===3);}
  {X.AIC.lanes.on=false;const r=stuck();pinned(X,r,0,-0.7);const v=play(r,CA.holdT+0.01);back();X.AIC.lanes.on=true;ok('...with the gate off it is played (late), not tapped',v===1);}

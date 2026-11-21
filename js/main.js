@@ -87,6 +87,7 @@ function loop(t){
     heatFeed(b.m,b.key,b.v.length(),b);
     if(typeof fireFeed==='function')fireFeed(b.key,b.m.position,b.v,rdt*S.timeScale,b,b.light);   // the fireball's flame (js/fire.js)
    }
+   if(typeof netBallFeed==='function')netBallFeed(rdt);   // a scored ball in the net (js/goalnet.js)
    heatClose();
     const fp=typeof feelPose==='function';
     for(const r of rods){
@@ -127,6 +128,7 @@ function loop(t){
  }
  // the canvas HUD is outside the idle-skip gate (a toast or fade must land on a frame the table skipped)
  hudRender(rdt);
+ if(S.asl)aslDraw(rdt);                 // the assist ledger's tags and panel (js/assists.js, F9)
  perfAdd('p','rend');
  perfFrameEnd();
 }

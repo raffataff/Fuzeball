@@ -463,6 +463,7 @@
       <div class="row"><label>Control mode</label><select id="optCtlMode"><option value="classic">Classic</option><option value="total">Total Control</option></select></div>
       <div class="row" id="optChargeRow"><label>Charge with</label><select id="optChargeBtn"><option value="rt">RT / R2</option><option value="kick">A / ✕ (hold)</option><option value="both">Either</option></select></div>
       <div class="optHint" id="optChargeHint"></div>
+      <div class="row"><label>Pin pass / shot</label><select id="optPinBtns"><option value="sq">X / B</option><option value="ci">B / X</option><option value="off">A / RT + A</option></select></div>
       <div id="optTC" class="hidden">
         <div class="czSlide"><label>Base speed</label><input type="range" id="optTCBase" min="0.3" max="1.2" step="0.05"><span class="czVal" id="optTCBaseV"></span></div>
         <div class="czSlide"><label>LT fine</label><input type="range" id="optTCFine" min="0.05" max="1" step="0.05"><span class="czVal" id="optTCFineV"></span></div>
@@ -514,7 +515,7 @@
         <div class="ctlPad" data-pad="X"></div><span>raise players</span>
         <div class="ctlPad" data-pad="LT"></div><span>hold: finesse — soft, aimed</span>
         <div class="ctlPad" data-pad="LT+A"></div><span>forward pin — hold it</span>
-        <div class="ctlPad" data-pad="LT+X"></div><span>pin the ball — A passes, A twice shoots</span>
+        <div class="ctlPad" data-pad="LT+X"></div><span id="optPinRef">pin the ball — A passes, RT + A shoots</span>
         <div class="ctlPad" data-pad="RT+X"></div><span>hold: wind up — A (or flick the stick forward) shoots</span>
         <div class="ctlPad" data-pad="LB/RB"></div><span>switch rod</span>
         <div class="ctlPad" data-pad="RS"></div><span>rod angle</span>
@@ -719,9 +720,9 @@ if(DEV){
  var boot=[
   'vendor/three.bundle.js',   // three r187 + GLTFLoader + KTX2Loader (tools/build-three.mjs); everything is local, there is no CDN fallback
   'js/core.js','js/config.js','js/rng.js','js/screens.js','js/intro.js','js/arena.js','js/audio.js','js/state.js','js/stats.js','js/moments.js','js/matchstats.js',
-  'js/seats.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
+  'js/seats.js','js/goalnet.js','js/world.js','js/balls.js','js/rods.js','js/physics.js','js/ai.js','js/shots.js','js/binds.js','js/input.js',
   'js/powerups.js','js/flow.js','js/fx.js','js/cine.js','js/marks.js','js/contact.js','js/vfx.js','js/ice.js','js/boost.js','js/feel.js','js/show.js','js/fire.js','js/haze.js','js/capture.js','js/replay.js','js/hud.js','js/ui.js','js/roster.js','js/options.js','js/league.js','js/layout.js',
-  'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/figedit.js','js/vsel.js','js/padnav.js','js/main.js'
+  'js/customize.js','js/props.js','js/models.js','js/grass.js','js/fracture.js','js/debug.js','js/assists.js','js/perf.js','js/sweetspot.js','js/training.js','js/trials.js','js/tutorial.js','js/photo.js','js/roomedit.js','js/figedit.js','js/vsel.js','js/padnav.js','js/main.js'
  ];
  // an intro that never went live (intro.js missing or threw) gives way to the menu; never on a timer, a slow server only delays it
  function introOff(){

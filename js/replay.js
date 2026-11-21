@@ -322,7 +322,7 @@ function replayUpdate(rdt){
   RP.t+=rdt*lerp(REPLAY.speed,REPLAY.slowSpeed,zk);
   if(RP.t>=RP.len){RP.t=RP.len;RP.mode='hold';RP.hold=REPLAY.holdT;
    // the horn lands on the freeze-frame at normal pitch (it's the celebration, not footage)
-   if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();if(vfxLive())vfxGoal(RP.team,RP.focus);}}
+   if(REPLAY.audio.on&&REPLAY.audio.goalSting&&!RP.sting){RP.sting=true;Au.goal();if(vfxLive()&&goalFxOn())vfxGoal(RP.team,RP.focus);}}
  }else{RP.hold-=rdt;if(RP.hold<=0){replayEnd();return;}}
  const j=clamp(RP.start+RP.t*SIM.hz,0,RB.n-1);
  // SIM steps since the last frame as sim time; ghost speed and the ice's clock run on it, not rdt, so slow-mo doesn't cool a flying ball (js/balls.js)

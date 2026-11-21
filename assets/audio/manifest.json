@@ -443,6 +443,13 @@
    "sfx/ball_wall_split_05.wav",
    "sfx/ball_wall_split_06.wav"
   ],
+  "boost_on": [
+   "sfx/boost_on_01.wav"
+  ],
+  "ice_form": [
+   "sfx/ice_form_1.wav",
+   "sfx/ice_form_2.mp3"
+  ],
   "ir_arcade": [
    "ir/ir_arcade.wav"
   ],
@@ -454,6 +461,9 @@
   ],
   "ir_saucer": [
    "ir/ir_saucer.wav"
+  ],
+  "power_pickup": [
+   "sfx/power_pickup_01.wav"
   ],
   "rod_bump": [
    "sfx/rod_bump_01.wav",
@@ -539,6 +549,9 @@
   "ui_value": [
    "ui/ui_value_01.wav",
    "ui/ui_value_02.wav"
+  ],
+  "ui_wipe": [
+   "ui/ui_wipe_01.wav"
   ]
  }
 }

@@ -11,6 +11,7 @@ function shRep(src,a,b,name){
  return src.replace(a,typeof b==='function'?b:()=>b);
 }
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
+const byTeam=(v,t)=>Array.isArray(v)?v[t]:v;   // a CONFIG switch given as [red, blue] (duels), else the one value
 const lerpAng=(a,b,t)=>{let d=b-a;if(d>Math.PI)d-=2*Math.PI;else if(d<-Math.PI)d+=2*Math.PI;return a+d*t;};   // the short way round (a rod's angle wraps in a snake)
 // ---- inline icon set ----
 // shared SVG marks for the menus (replacing OS colour emoji); they draw on `currentColor` and are sized by CSS (`.ico svg{width:...}`)

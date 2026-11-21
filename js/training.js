@@ -236,7 +236,7 @@ function trainingGoal(team,b){
  if(S.tut&&typeof tutGoal==='function')tutGoal(team);
  if(TRN.score){S.score[team]+=(b.t.value||1);updateScoreUI(team);}
  goalFx(team,b,msScorer(b,team));   // same scorer record the trial credit reads, so the ring agrees with it
- removeBall(b);
+ if(!(typeof netBallStart==='function'&&netBallStart(team===0?1:0,b)))removeBall(b);
  notice(teamName(team)+' GOAL',1.1,teamCol(team));
  // a finished trial keeps the table as it was; a 'saveRun' trial holds it empty between attempts (S.trial.serving); read as data off S.trial so a missing trials.js leaves this false
  if(!S.balls.length&&!(S.trial&&(S.trial.done||S.trial.serving))){const s=trnSpot();trnSpawnBall(TRN.ballType,s.x,s.z);}

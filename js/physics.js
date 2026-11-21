@@ -18,7 +18,7 @@ function physics(dt){
  for(let s=0;s<sub;s++){
   const f=(s+1)/sub;
   for(const r of rods){r.angle=lerp(r.sA0,r.sA1,f);r.offset=lerp(r.sO0,r.sO1,f);}
-  for(let bi=S.balls.length-1;bi>=0;bi--)stepBall(S.balls[bi],h);
+  for(let bi=S.balls.length-1;bi>=0;bi--){const b=S.balls[bi];if(b)stepBall(b,h);}   // a goal can end the match and clear every ball mid-loop
   for(let i=0;i<S.balls.length;i++)for(let j=i+1;j<S.balls.length;j++){
    const a=S.balls[i],b=S.balls[j];
    if(!ballBall(a,b))continue;
@@ -398,8 +398,9 @@ function goalFrameCollide(b,h){
   // net roof: an over-the-bar lob (b.overBar) is caught at any depth below the roofline, others keep the thin band
   const xin=sx>0?(p.x>gx&&p.x<gx+GD):(p.x<gx&&p.x>gx-GD);
   const roofSolid=sx>0?(b.overBar===1||b.noGoal===1):(b.overBar===-1||b.noGoal===-1);
-   if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<GH+BALL_R:(p.y>=GH&&p.y<GH+BALL_R))){
-   p.y=GH+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall,b,1);
+  const roof=typeof wedgeRoofHeight==='function'?wedgeRoofHeight(sx,p.x):GH;
+   if(xin&&Math.abs(p.z)<gh&&v.y<0&&(roofSolid?p.y<roof+BALL_R:(p.y>=roof&&p.y<roof+BALL_R))){
+   p.y=roof+BALL_R;if(hitFresh(b,0,-v.y,PHY.floorHitSnd))Au.wall(Math.abs(v.y)*.4,b.t.audio?.wall,b,1);
    v.y=-v.y*PHY.floorRest;if(v.y<PHY.floorRestCut)v.y=0;
    const f=Math.exp(-PHY.floorFric*h);v.x*=f;v.z*=f;
   }
@@ -529,7 +530,7 @@ function collideRod(b,r,pushLeft=Infinity){
     if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
      if(-vn>KICK.hardHit&&!fsh){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
     if(aim&&typeof feelHit==='function')feelHit(b,r,Math.hypot(b.v.x-V0.x,b.v.y-V0.y,b.v.z-V0.z),sweet,nx,ny,nz);   // hitstop, shake, sparks, the kick's body
-    momContact(b,r);msContact(b,r);S.lastTouch=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
+    momContact(b,r);msContact(b,r);S.lastTouch=r.team;b.tchT=S.time;b.tchTm=r.team;   // moments.js contact record (reads the previous one, so first); matchstats keeps its own
     if(S.trial)trialTouch(r);                             // a trial's clock starts on your side's first touch (js/trials.js)
     if(typeof boostTouch==='function')boostTouch(b,r,trapping);   // js/boost.js: a boosted strike's flash, sparks and comet
     if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,true,pow,sweet,-vn,b,
@@ -602,7 +603,7 @@ function collideRod(b,r,pushLeft=Infinity){
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit&&!(typeof feelShakeOn==='function'&&feelShakeOn())){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}
    if(aim&&typeof feelHit==='function')feelHit(b,r,Math.hypot(b.v.x-V0.x,b.v.y-V0.y,b.v.z-V0.z),false,nx,ny,nz);
-   momContact(b,r);msContact(b,r);S.lastTouch=r.team;
+   momContact(b,r);msContact(b,r);S.lastTouch=r.team;b.tchT=S.time;b.tchTm=r.team;
    if(S.trial)trialTouch(r);
    if(typeof boostTouch==='function')boostTouch(b,r,trapping);
    if(r.kickT>=0&&!r.kickHit){r.kickHit=true;if(dbgLogRod===r)dbgHit(r,i,false,pow,false,-vn,b,

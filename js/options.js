@@ -6,7 +6,7 @@
 const OPT_DEFAULTS={padSlideAxis:'ly',padAngleAxis:'ry',padSlideSens:1,padAngleSens:1,padSlideCurve:1,
  padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,mouseSens:1,kbdSens:1,mouseLock:true,
  padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
- padChargeBtn:'rt',
+ padChargeBtn:'rt',padPinBtns:'sq',
  sound:true,ambience:true,volMaster:1,volFx:1,volCrowd:1,volUi:1,volMusic:1,volAmbience:1,muteBg:false};
 
 // Standard-layout button map for the live tester (index → label).
@@ -147,6 +147,11 @@ function updateOptLabels(){
  $('optTCFastV').textContent=(+cfg.padTCFast).toFixed(2)+'×';
  $('optTCSwerveV').textContent=(+cfg.padTCSwerve).toFixed(2)+'×';
 }
+// the reference's pin line follows the pinned-ball buttons (cfg.padPinBtns) and how the pin shoots (shots.pin.press.shoot)
+function optPinRefSet(){
+ const c=cfg.padPinBtns||'sq',e=$('optPinRef');if(!e)return;
+ e.textContent=CONFIG.shots.pin.press.shoot!=='power'?'pin the ball — A passes, A twice shoots':c==='off'?'pin the ball — A passes, RT + A shoots':c==='ci'?'pin the ball — B passes, X shoots':'pin the ball — X passes, B shoots';
+}
 function updateTCVis(){                                    // TC sliders + tester swerve preview only make sense in Total Control mode
  const off=cfg.padControlMode!=='total';
  $('optTC').classList.toggle('hidden',off);$('optSwerve').classList.toggle('hidden',off);
@@ -182,6 +187,7 @@ function syncOptionsUI(){                                     // push cfg → co
  $('optMouseLock').checked=cfg.mouseLock!==false;
  $('optCtlMode').value=cfg.padControlMode;
  $('optChargeBtn').value=cfg.padChargeBtn||'rt';
+ $('optPinBtns').value=cfg.padPinBtns||'sq';optPinRefSet();
  $('optTCBase').value=cfg.padTCBase;$('optTCFine').value=cfg.padTCFine;
  $('optTCFast').value=cfg.padTCFast;$('optTCSwerve').value=cfg.padTCSwerve;
  $('optTCSpinInv').checked=!!cfg.padTCSpinInvert;
@@ -320,6 +326,7 @@ function bindOptions(){
  $('optMouseLock').onchange=e=>{cfg.mouseLock=e.target.checked;saveCfg();};   // input.js re-reads it every frame, so it takes effect mid-match
  $('optCtlMode').onchange=e=>{cfg.padControlMode=e.target.value;updateTCVis();updateAxisLines();saveCfg();};
  $('optChargeBtn').onchange=e=>{cfg.padChargeBtn=e.target.value;saveCfg();};
+ $('optPinBtns').onchange=e=>{cfg.padPinBtns=e.target.value;optPinRefSet();saveCfg();};
  $('optTCBase').oninput=e=>{cfg.padTCBase=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCFine').oninput=e=>{cfg.padTCFine=+e.target.value;updateOptLabels();saveCfg();};
  $('optTCFast').oninput=e=>{cfg.padTCFast=+e.target.value;updateOptLabels();saveCfg();};

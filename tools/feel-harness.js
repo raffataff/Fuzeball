@@ -35,7 +35,7 @@ function boot(src){
   localStorage:{getItem:()=>null,setItem:()=>{}},document:{getElementById:()=>null,createElement:()=>({style:{}}),documentElement:{style:{setProperty(){}}}}};
  ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
  vm.runInNewContext(THREE_SRC,ctx);
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),STUB,src,EXPORT].join(NL),ctx);
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),'CONFIG.fx.goalFx.on=true;',STUB,src,EXPORT].join(NL),ctx);
  if(!ctx.X||!ctx.X.FLS)throw new Error('export line did not run');
  return ctx.X;
 }

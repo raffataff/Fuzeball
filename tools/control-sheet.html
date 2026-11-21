@@ -1,0 +1,230 @@
+<title>Fuzeball Control Sheet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600&family=JetBrains+Mono:wght@400&family=Russo+One&display=swap">
+<style>
+/* layout: a header with the how-to and the ledger paste, then one block per assist group; each row = name + decision, then the six audit columns; stacked under 1100px */
+:root{
+ --bg:#0c1320;--panel:#131d2e;--panel2:#18253a;--line:#263652;--fg:#dfe7f3;--dim:#8d9cb4;
+ --gold:#F0B24A;--gold-ink:#1b1204;--hot:#ff8a5c;
+ --g-aim:#ffcf4d;--g-pin:#3ec6ff;--g-pad:#ff7ad1;--g-sw:#7dff8a;--g-kick:#d8dde6;
+ --f-head:"Russo One","Exo 2",system-ui,sans-serif;--f-body:"Exo 2",system-ui,sans-serif;--f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+ color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+ --bg:#eef2f8;--panel:#ffffff;--panel2:#f4f7fb;--line:#d3dbe8;--fg:#142033;--dim:#56647c;
+ --gold:#d8961e;--gold-ink:#1b1204;--hot:#c4501f;
+ --g-aim:#8a5d00;--g-pin:#08739f;--g-pad:#a82c74;--g-sw:#1d7d36;--g-kick:#3d4a5c;color-scheme:light}}
+:root[data-theme="light"]{
+ --bg:#eef2f8;--panel:#ffffff;--panel2:#f4f7fb;--line:#d3dbe8;--fg:#142033;--dim:#56647c;
+ --gold:#d8961e;--gold-ink:#1b1204;--hot:#c4501f;
+ --g-aim:#8a5d00;--g-pin:#08739f;--g-pad:#a82c74;--g-sw:#1d7d36;--g-kick:#3d4a5c;color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-body);margin:0}
+.wrap{max-width:1480px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:28px}
+h1,h2{font-family:var(--f-head);font-weight:400;letter-spacing:.04em;margin:0;text-wrap:balance}
+h1{font-size:clamp(26px,4vw,38px)}
+h2{font-size:17px;letter-spacing:.12em;text-transform:uppercase}
+.lede{color:var(--dim);max-width:72ch;margin:6px 0 0}
+.top{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px}
+@media (max-width:900px){.top{grid-template-columns:1fr}}
+.box{background:var(--panel);border:1px solid var(--line);padding:16px 18px;min-width:0}
+.box h3{font:600 12px var(--f-body);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-top:12px;font-size:14px}
+.legend b{font-weight:600}
+textarea{width:100%;min-height:74px;resize:vertical;background:var(--panel2);color:var(--fg);border:1px solid var(--line);font:12px/1.4 var(--f-mono);padding:8px}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.status{color:var(--dim);font-size:13px}
+.plate{--pc:7px;position:relative;border:0;cursor:pointer;font:600 12px var(--f-body);letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;color:var(--fg);background:var(--line);
+ clip-path:polygon(var(--pc) 0,100% 0,100% calc(100% - var(--pc)),calc(100% - var(--pc)) 100%,0 100%,0 var(--pc))}
+.plate:hover{background:color-mix(in srgb,var(--line) 70%,var(--fg) 30%)}
+.plate.on{background:var(--gold);color:var(--gold-ink)}
+.plate:focus-visible{outline:none;background:color-mix(in srgb,var(--gold) 55%,var(--line));color:var(--fg)}
+.plate.on:focus-visible{background:var(--gold);color:var(--gold-ink);text-decoration:underline}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.bar .count{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
+.bar .count b{color:var(--fg);font-weight:600}
+.group{display:flex;flex-direction:column;gap:0}
+.ghead{display:flex;align-items:baseline;gap:12px;padding-bottom:10px}
+.ghead .sw{width:10px;height:10px;transform:rotate(45deg);background:var(--gc)}
+.ghead .n{color:var(--dim);font-size:13px}
+.cols,.row{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(0,1.05fr) minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1fr) 128px;gap:0 14px}
+.cols{font:600 11px var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding:0 14px 6px}
+.row{background:var(--panel);border:1px solid var(--line);border-top:0;padding:12px 14px}
+.cols+.row{border-top:1px solid var(--line)}
+.row[hidden]{display:none}
+.name{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tag{font:400 13px var(--f-head);letter-spacing:.06em;color:var(--gc);background:color-mix(in srgb,var(--gc) 12%,transparent);align-self:flex-start;padding:3px 8px}
+.id{font:11px var(--f-mono);color:var(--dim)}
+.sus{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--hot)}
+.picks{display:flex;flex-wrap:wrap;gap:5px}
+.picks .plate{padding:4px 8px;font-size:11px;--pc:5px}
+.noteIn{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--fg);font:13px var(--f-body);padding:4px 6px}
+.cell{min-width:0;font-size:14px}
+.cell .lab{display:none;font:600 11px var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:2px}
+.cfg{display:flex;flex-direction:column;gap:3px;font:12px/1.35 var(--f-mono);overflow-wrap:anywhere}
+.cfg span{color:var(--dim)}
+.fires{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:13px;font-variant-numeric:tabular-nums;align-content:start}
+.fires dt{color:var(--dim)}
+.fires dd{margin:0;text-align:right}
+.fires .avg{color:var(--dim);font-size:12px}
+.fires .you{color:var(--fg);font-weight:600}
+.rnote{grid-column:2/-1;margin-top:8px;font-size:13px;color:var(--dim);border-left:2px solid var(--line);padding-left:8px}
+@media (max-width:1100px){
+ .cols{display:none}
+ .row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 18px;border-top:1px solid var(--line);margin-top:10px}
+ .cols+.row{margin-top:0}
+ .name{grid-column:1/-1}
+ .cell .lab{display:block}
+ .rnote{grid-column:1/-1;margin-top:0}
+}
+@media (max-width:560px){.row{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:no-preference){.plate{transition:background .12s}}
+</style>
+
+<div class="wrap">
+ <header>
+  <h1>Fuzeball Control Sheet</h1>
+  <p class="lede" id="lede">Every player-side assist and every thing a kick press can turn into, read from the game's code and config. Pick what happens to each one.</p>
+ </header>
+
+ <section class="top">
+  <div class="box">
+   <h3>How to fill it in</h3>
+   <ol class="steps">
+    <li>In a match, press <b>F9</b> (or tick Assist Ledger in the C overlay). A tag flashes over your rod each time an assist acts.</li>
+    <li>Play 3 or 4 matches. Pause, or the full-time board, shows the ledger table; press <b>COPY</b> there.</li>
+    <li>Paste it below so the "You" column fills in, then pick one answer per row.</li>
+   </ol>
+   <div class="legend">
+    <b>Keep</b><span>It finishes what you meant.</span>
+    <b>Show it</b><span>Keep it, but add a cue so you can see it act.</span>
+    <b>Setting</b><span>Make it part of the per-player assist levels (Full / Light / Off).</span>
+    <b>Cut</b><span>Take it out.</span>
+   </div>
+  </div>
+  <div class="box">
+   <h3>Your ledger</h3>
+   <textarea id="ledIn" placeholder='Paste the ledger COPY here: {"v":1,"matches":[...]}' aria-label="Pasted assist ledger"></textarea>
+   <div class="row-btns">
+    <button class="plate on" id="ledGo" type="button">Read ledger</button>
+    <button class="plate" id="ledClear" type="button">Clear mine</button>
+    <span class="status" id="ledStatus">No matches of yours yet. The bot's columns are filled in.</span>
+   </div>
+   <p class="status" id="botLine" style="margin:12px 0 0"></p>
+  </div>
+ </section>
+
+ <nav class="bar" aria-label="Filter rows">
+  <button class="plate on" data-f="all" type="button">All rows</button>
+  <button class="plate" data-f="open" type="button">Not decided</button>
+  <button class="plate" data-f="sus" type="button">First suspects</button>
+  <span class="count" id="count"></span>
+ </nav>
+
+ <main id="groups" style="display:flex;flex-direction:column;gap:30px"></main>
+ <p class="status" id="store"></p>
+</div>
+
+<script>
+const SHEET=/*SHEET*/null;
+const PICKS=[['keep','Keep'],['show','Show it'],['setting','Setting'],['cut','Cut']];
+const GC={aim:'--g-aim',pin:'--g-pin',pad:'--g-pad',sw:'--g-sw',kick:'--g-kick'};
+const dec={},rowsEl={};let mine=null,filter='all',db=null;
+const $=id=>document.getElementById(id);
+const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e;};
+const allRows=()=>SHEET.groups.flatMap(g=>g.rows);
+
+// --- build once ---
+function build(){
+ const m=SHEET.meta;
+ $('botLine').textContent=m.bot?`Bot columns: ${m.bot.matches} matches of ${m.bot.mins} min per input arm against ${m.bot.diff} AI, a scripted player using the real keys, mouse and pad (tools/assist-soak.js). Built ${m.built}.`:'No bot run yet.';
+ const host=$('groups');
+ for(const g of SHEET.groups){
+  const sec=el('section','group');sec.id='g-'+g.id;sec.style.setProperty('--gc',`var(${GC[g.id]})`);
+  const h=el('div','ghead');h.append(el('span','sw'),el('h2',null,g.name),el('span','n',g.rows.length+' rows'));sec.append(h);
+  const cols=el('div','cols');['Assist','Input','When it applies','What it moves','What you see','Config switch','Fires / match'].forEach(t=>cols.append(el('div',null,t)));sec.append(cols);
+  for(const r of g.rows){
+   const row=el('article','row');row.style.setProperty('--gc',`var(${GC[g.id]})`);
+   const nm=el('div','name');nm.append(el('span','tag',r.tag),el('span','id',r.id));
+   if(r.suspect)nm.append(el('span','sus','First suspect: '+r.suspect));
+   const pk=el('div','picks');pk.setAttribute('role','group');pk.setAttribute('aria-label','Decision for '+r.tag);
+   for(const [k,l] of PICKS){const b=el('button','plate',l);b.type='button';b.dataset.k=k;b.addEventListener('click',()=>pick(r.id,k));pk.append(b);}
+   const note=el('input','noteIn');note.id='note-'+r.id;note.placeholder='Note (optional)';note.setAttribute('aria-label','Note for '+r.tag);
+   let tm=0;note.addEventListener('input',()=>{clearTimeout(tm);tm=setTimeout(()=>save(r.id,{note:note.value}),700);});
+   nm.append(pk,note);row.append(nm);
+   const cell=(lab,body)=>{const c=el('div','cell');c.append(el('div','lab',lab));if(typeof body==='string')c.append(document.createTextNode(body));else c.append(body);row.append(c);};
+   cell('Input',r.input);cell('When it applies',r.when);cell('What it moves',r.moves);cell('What you see',r.see);
+   const cf=el('div','cfg');if(!r.sw.length)cf.append(el('span',null,'none'));for(const s of r.sw){const d=el('div');d.append(document.createTextNode(s.p+' '),el('span',null,'= '+s.v));cf.append(d);}cell('Config switch',cf);
+   const fi=el('dl','fires');cell('Fires / match',fi);
+   if(r.note)row.append(el('div','rnote',r.note));
+   sec.append(row);rowsEl[r.id]={row,pk,note,fi,r};
+  }
+  host.append(sec);
+ }
+ document.querySelectorAll('.bar [data-f]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.f;document.querySelectorAll('.bar [data-f]').forEach(x=>x.classList.toggle('on',x===b));paint();}));
+ $('ledGo').addEventListener('click',readLedger);
+ $('ledClear').addEventListener('click',()=>{mine=null;paint();if(db)db.doc('ledger/mine').delete().catch(()=>{});$('ledStatus').textContent='Cleared.';});
+}
+
+// --- the fires column: bot keyboard + mouse, bot pad, yours ---
+const fmt=(c,u)=>{if(!c||!c.n)return '·';return c.n+(c.avg!=null&&u?` (${Math.round(c.avg)}${u})`:'');};
+function fires(o){
+ const {fi,r}=o;fi.textContent='';
+ const add=(k,v,cls)=>{fi.append(el('dt',null,k));const d=el('dd',cls,v);fi.append(d);};
+ if(r.unlogged){add('','not logged');return;}
+ add('Bot KBM',fmt(r.kbm,r.u));add('Bot pad',fmt(r.pad,r.u));
+ const y=mine&&mine.ids&&mine.ids[r.id];add('You',mine?fmt(y?{n:y.perMatch,avg:y.avg}:null,r.u):'—','you');
+}
+function paint(){
+ let n=0,decided=0;const by={};
+ for(const id in rowsEl){
+  const o=rowsEl[id],d=dec[id]||{};n++;if(d.pick){decided++;by[d.pick]=(by[d.pick]||0)+1;}
+  o.pk.querySelectorAll('.plate').forEach(b=>{const on=b.dataset.k===d.pick;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);});
+  if(document.activeElement!==o.note&&o.note.value!==(d.note||''))o.note.value=d.note||'';
+  fires(o);
+  o.row.hidden=filter==='open'?!!d.pick:filter==='sus'?!o.r.suspect:false;
+ }
+ $('count').innerHTML=`<b>${decided}</b> of ${n} decided`+(decided?' · '+PICKS.filter(p=>by[p[0]]).map(p=>`${by[p[0]]} ${p[1].toLowerCase()}`).join(' · '):'');
+ if(mine)$('ledStatus').textContent=`Yours: ${mine.matches} match${mine.matches===1?'':'es'}, ${mine.mins} min${mine.devs?' ('+mine.devs+')':''}.`;
+}
+
+// --- decisions: one document per row ---
+const wq={};
+function save(id,patch){
+ dec[id]=Object.assign({},dec[id],patch,{at:Date.now()});paint();
+ if(!db)return;
+ const body=Object.assign({pick:null,note:''},dec[id]);
+ wq[id]=(wq[id]||Promise.resolve()).then(()=>db.collection('decisions').doc(id).set(body)).catch(e=>{$('store').textContent='Could not save '+id+': '+(e&&e.message||e)+'.';});
+}
+function pick(id,k){save(id,{pick:(dec[id]&&dec[id].pick)===k?null:k});}
+
+// --- the pasted ledger: mean per match and the value's mean, per assist ---
+function readLedger(){
+ let o;try{o=JSON.parse($('ledIn').value.trim());}catch(e){$('ledStatus').textContent='That is not the ledger COPY: it did not parse as JSON.';return;}
+ const ms=Array.isArray(o)?o:o&&o.matches;
+ if(!Array.isArray(ms)||!ms.length){$('ledStatus').textContent='No matches in it. Play a match with F9 on, then COPY from pause or the full-time board.';return;}
+ const ids={},n=ms.length,dv={};let secs=0;
+ for(const m of ms){secs+=m.secs||0;if(m.dev)dv[m.dev]=(dv[m.dev]||0)+1;for(const k in m.ids||{}){const e=m.ids[k],a=ids[k]||(ids[k]={c:0,vn:0,v:0});a.c+=e.n||0;a.vn+=e.vn||0;a.v+=e.v||0;}}
+ const out={};for(const k in ids)out[k]={perMatch:+(ids[k].c/n).toFixed(1),avg:ids[k].vn?+(ids[k].v/ids[k].vn).toFixed(1):null};
+ mine={matches:n,mins:+(secs/60).toFixed(1),devs:Object.entries(dv).map(([k,v])=>v+' '+k).join(', '),ids:out,at:Date.now()};
+ paint();$('ledIn').value='';
+ if(db)db.doc('ledger/mine').set(mine).catch(e=>{$('store').textContent='Could not save your ledger: '+(e&&e.message||e)+'.';});
+}
+
+// --- the store ---
+async function connect(){
+ const c=window.claude;db=c&&c.use?await c.use('db'):null;
+ if(!db){$('store').textContent='Decisions are not saved in this view: open the published page to keep them.';return;}
+ let fresh=false;const t=setTimeout(()=>{if(!fresh)$('store').textContent='Saved decisions cannot be reached yet; picks made now may not keep.';},10000);
+ db.collection('decisions').onSnapshot(s=>{
+  for(const d of s.docs){const v=d.data();dec[d.id]={pick:v.pick||null,note:v.note||'',at:v.at||0};}
+  if(!s.metadata.fromCache){fresh=true;clearTimeout(t);$('store').textContent='';}
+  paint();
+ },e=>{clearTimeout(t);$('store').textContent='Saved decisions are unavailable: '+(e&&e.code||'error')+'.';});
+ db.doc('ledger/mine').onSnapshot(s=>{mine=s.exists?s.data():null;paint();},()=>{});
+}
+build();paint();connect();
+</script>

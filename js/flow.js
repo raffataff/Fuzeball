@@ -117,6 +117,8 @@ function startMatchNow(mode,rodLockRole){
  S.eff=[{boost:0,frozen:0,big:0},{boost:0,frozen:0,big:0}];
  S.lastTouch=-1;S.lastSwitch=0;S.shake=0;
  if(typeof feelReset==='function')feelReset();   // a held goal, freeze, shake or blast spin from the last match dies here (js/feel.js)
+ readReset();   // the read and what each team learned of the other (js/ai.js)
+ if(S.asl)aslStart();                            // the assist ledger opens this match's record (js/assists.js)
   clearBalls();clearPU();clearFractures();replayAbort();replayCut();clearMarks();vfxClear();
   if(typeof iceClear==='function')iceClear();
   if(typeof boostClear==='function')boostClear();
@@ -180,7 +182,7 @@ function goalLand(team,b){
  goalFx(team,b,msScorer(b,team));   // the ring flash wants the scoring rod; msScorer decides (matchstats.js)
  if(typeof feelGoalFx==='function')feelGoalFx(team,b);   // shake, the sub drop, the men turned by the blast (js/feel.js)
  updateScoreUI(team);
- removeBall(b);
+ if(!(typeof netBallStart==='function'&&netBallStart(team===0?1:0,b)))removeBall(b);   // js/goalnet.js: the ball itself plays on into the net
  const wins=S.suddenDeath||S.score[team]>=goalTarget();   // golden goal after a level time-up, or the target reached
  if(wins){
   // the winning goal gets the same celebration and replay: S.pendingWin parks the winner, main.js's goal timer hands off to replayStart, replayEnd routes to endMatch
@@ -222,6 +224,7 @@ function outOfBounds(b){
 }
 function endMatch(w){
  S.phase='win';S.pendingWin=null;   // cleared here too: a clock-out/forfeit can land while a goal replay is queued
+ if(S.asl)aslEnd();
  Au.goal('win');Au.whistle(3);
  if(vfxLive())flash(w===0?cfg.redColor:cfg.blueColor,0.5,0.9);else{flash();S.shake=1;}
  clearBalls();clearPU();replayAbort();clearFxRail();

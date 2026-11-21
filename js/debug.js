@@ -320,6 +320,15 @@ function buildAIPanel(){
   lbl.appendChild(document.createTextNode('Kick→Console (L=pick rod)'));
   dbgAIPanel.appendChild(lbl);
  }
+ // the assist ledger (js/assists.js): counts and tags every player-side assist; F9 does the same
+ if(typeof aslToggle==='function'){const lbl=document.createElement('label');
+  const cb=document.createElement('input');cb.type='checkbox';cb.className='aslCb';cb.checked=!!S.asl;
+  cb.addEventListener('change',()=>aslToggle(cb.checked));
+  lbl.appendChild(cb);
+  const dot=document.createElement('span');dot.className='dot';dot.style.backgroundColor='#3ec6ff';lbl.appendChild(dot);
+  lbl.appendChild(document.createTextNode('Assist Ledger (F9)'));
+  dbgAIPanel.appendChild(lbl);
+ }
  document.body.appendChild(dbgAIPanel);
 }
 

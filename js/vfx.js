@@ -424,6 +424,7 @@ function vfxRebase(){
  VFX.t=0;
 }
 function vfxClear(){
+ if(typeof wedgeNetReset==='function')wedgeNetReset();
  if(!VFX.sp)return;
  for(const P of VFX.pools){const a=P.A.aP.array;for(let i=0;i<P.n;i++)a[i*4+3]=-1e4;P.A.aP.needsUpdate=true;P.live=0;P.mesh.visible=false;}
  for(const e of VFX.lights){if(e.l){if(e.pooled)fxLightPut(e.l);else e.l.intensity=0;}}

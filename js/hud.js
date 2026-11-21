@@ -444,13 +444,21 @@ function hudHintDraw(a){
 }
 
 // ===== pin shot hint =====
-// while a seat's rod holds a ball on the pin, the key that shoots it: a slim plate bottom centre with a slab in the seat's colour; it settles back after CONFIG.shots.pin.hint.hold (Options > Display, cfg.pinHint)
+// while a seat's rod holds a ball on the pin, the keys that play it: a slim plate bottom centre with a slab in the seat's colour; it settles back after CONFIG.shots.pin.hint.hold (Options > Display, cfg.pinHint)
 function hudPinHint(a,rdt){
  const H=SHOT.pin.hint,P=HUD.pin,on=shotPinHintOn(),bk=on?shotPinSeat():null,s=bk||(on?shotSnakeSeat():null),kd=!bk?'snk':shotPinPassOn(seatRod(bk))?'pp':'ps';
+ const pw=shotPinPow(),pb=cfg.padPinBtns||'sq',ky=kd+(pw?'p':'d')+pb;
  if(s){
-  if(!P.on||P.k!==kd){P.on=true;P.k=kd;P.t=HUD.t;   // rebuilt per catch, so a rebind shows; under the forward leg it is the snake's two presses, on the back pin of a rod that passes (shots.pin.press) one press and two
-   P.tok=hudTok(kd==='snk'?(bindHint('kick','x2 snake',2)||'x2 snake'):kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · x2 shot':(bindHint('kick','pin shot',2)||'pin shot'));
-   P.tokP=hudTok(kd==='snk'?'{A} x2 snake':kd==='pp'?'{A} pass · x2 shot':'{A} pin shot');}
+  if(!P.on||P.k!==ky){P.on=true;P.k=ky;P.t=HUD.t;   // rebuilt per catch, so a rebind shows
+   if(pw){
+    const pk=(bindCap('power')||'[power]')+' + '+(bindCap('kick')||'[kick]'),ps=pb==='ci'?'{B}':'{X}',sh=pb==='ci'?'{X}':'{B}',pp=pb==='off'?'{RT} + {A}':sh;
+    P.tok=hudTok(kd==='snk'?pk+' snake':kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · '+pk+' shot':(bindHint('kick','pin shot',2)||'pin shot'));
+    P.tokP=hudTok(kd==='snk'?pp+' snake':kd==='pp'?(pb==='off'?'{A}':ps)+' pass · '+pp+' shot':'{A} pin shot');
+   }else{
+    P.tok=hudTok(kd==='snk'?(bindHint('kick','x2 snake',2)||'x2 snake'):kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · x2 shot':(bindHint('kick','pin shot',2)||'pin shot'));
+    P.tokP=hudTok(kd==='snk'?'{A} x2 snake':kd==='pp'?'{A} pass · x2 shot':'{A} pin shot');
+   }
+  }
   P.s=s;
  }else P.on=false;
  P.a=P.on?Math.min(1,P.a+rdt/Math.max(.01,H.inT)):Math.max(0,P.a-rdt/Math.max(.01,H.outT));

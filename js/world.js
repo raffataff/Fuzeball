@@ -475,6 +475,8 @@ function buildTable(){
   vfxNetPatch(netM);   // the goal ripple + glow ride this material's shader (js/vfx.js)
   netMats.push(netM);
   g.userData.net=buildGoalNet(g,sx*GD,GHW,GH,netM);   // swept cage; panels collected so bigGoalUpdate can taper the back
+  g.userData.legacyNet=g.userData.net;
+  buildWedgeNet(g,sx,GHW,GH,GD);
   const gl=new THREE.PointLight(0xffffff,0,70*CONFIG.fx.lightReach,0);gl.position.set(sx*5,GH+7,0);g.add(gl);goalLights.push(gl);
   goalFrames.push(g);scene.add(g);});
  tablePrimObjs.classic=primTable.children.filter(c=>c.isMesh&&c!==fieldMesh&&c!==pitchShadowCaster);  // procedural fallback (hidden when a skin GLB is shown)
