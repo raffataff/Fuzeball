@@ -49,8 +49,10 @@ function contactUpdate(){
    ctPut(n++,bcx,y,m.position.z+r.pivot.position.z,Fo.x*gr,Fo.z*gr,Fo.str*k);
   }
  }
- for(const b of S.balls){
-  if(!b.m||!b.m.visible||n>=CT_MAX)continue;
+ const nb=typeof NB!=='undefined'?NB:null;   // a scored ball in the net keeps its shadow until it drops out (js/goalnet.js)
+ for(let i=0,nb0=S.balls.length;i<nb0+2;i++){
+  const b=i<nb0?S.balls[i]:nb&&nb[i-nb0]&&!nb[i-nb0].sink?nb[i-nb0].b:null;
+  if(!b||!b.m||!b.m.visible||n>=CT_MAX)continue;
   const p=b.m.position,h=Math.max(0,p.y-BALL_R),k=ctFade(h,Bo.fade);
   if(k<=0)continue;
   const gr=Bo.r*(1+h*Bo.grow);

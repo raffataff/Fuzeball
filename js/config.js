@@ -162,7 +162,9 @@ matchStats:{
  table:{ L:120, W:68, wallH:10, goalHalf:11, goalH:10.2, goalDepth:9 },
 
 /* ---- procedural goal net shape (cosmetic only) ----------------------- */
- goalNet:{ bevel:{ r:1.8, segs:4 }, cell:1.6, backInset:0.98 },
+ goalNet:{ bevel:{ r:1.8, segs:4 }, cell:1.6, backInset:0.98,
+  wedge:{roof:2.7,hem:.25,cell:1.55,radius:.047,cord:0xeee1c5,binding:0x682c3a,
+   give:{ spread:32, poke:34, max:3.2, hz:9, damp:2.6, back:0.8 } } },   // the cloth: dent size (higher = wider), a poke's speed per unit of bulge, the most it gives, ring rate (rad/s), ring decay (1/s), share of the leaving ball's speed it springs back with
 
 /* ---- rod sets (models.js loadRodSet) ----------------------------------- */
 // a skin's `rods` picks one, else its table's `rods`, else the stock assets/rods/; a size missing from a set borrows the stock rod
@@ -334,9 +336,9 @@ kick:{
    // Contact restitution. 0 = dead trap touch, 1 = fully elastic. See TUNING.md.
    rest:0.1, restPower:0.65,      // passive touch / struck shot
    powFrom:0.001, powTo:0.02,       // swing-time window in which restPower is used instead of rest
-   grip:0.4,                     // fraction of the foot's velocity lerped into the ball on contact
+   grip:0.45,                     // fraction of the foot's velocity lerped into the ball on contact
    slidePush:0.6,
-   sideRest:0.55,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
+   sideRest:0.25,                 // bounce off a man's side face (a ball rolling along the rod); a front touch stays at `rest`
    sideDot:0.7,                   // a contact is a side face when its normal is at least this far along the rod (z)
    rearDot:0.3,                   // a contact is the back of a man when its normal points at least this far backward (dir-relative x)
    rearCarry:0,                   // share of the rod's slide the back of an unposed man hands a ball: 0 = it is left behind, 1 = dragged along as before
@@ -347,8 +349,8 @@ kick:{
 // base + strength + what the strike earned; raise `base` if play feels slow; on:false restores the hard clip
   cap:{
       on:true,
-      knee:0.62,     // speed under this fraction of the ceiling is passed through UNCHANGED
-      base:0.52,     // ceiling at base str
+      knee:0.82,     // speed under this fraction of the ceiling is passed through UNCHANGED
+      base:0.62,     // ceiling at base str
       str:0.16,      // ...moved this far either way at str 0 / str 10
       sweet:0.20,    // a clean centre strike earns this much more ceiling
       shot:0.75,     // a player shot adds this x its power trim (r.shotPow-1): finesse lowers the ceiling, a timed charge raises it
@@ -389,7 +391,7 @@ kick:{
 
    soft:{strike:0.115,strikeA:0.95, hold:0.26, drop:0.40},   //  8.3 rad/s — a controlled push
    hard:{strike:0.045,strikeA:1.30, hold:0.24, drop:0.31},   // 28.9 rad/s — a snapped strike
-   softPow:0.80, hardPow:1.06,     // impulse TRIM at each end of the axis (the arc does the work)
+   softPow:0.80, hardPow:1.3,      // impulse TRIM at each end of the axis (the arc does the work); 1.3 = a power + kick strike leaves ~144 u/s (1.06 was ~118); past ~1.35 the AI keeper's foot catches more of them
    softCtl:1.00, hardCtl:0.55,     // control at each end: scales aim-assist, and 1-ctl is the spray
    hardExert:2.2,                  // stamina (stats.js kickFat) charged for a full-power swing
 // Total Control: the axis scales how fast the rod tracks the right stick; LT heavy, RT snappy
@@ -413,8 +415,8 @@ kick:{
    rest:0,           // restitution at full squeeze (0 = the boot kills the ball's relative speed)
    side:0.5,         // share of kick.sideRest a side face keeps at full squeeze, eased in as finesse goes down (0 = a held man's side stops a ball dead, 1 = no softer than free)
    grip:0.55,       // how far the ball is lerped toward the boot's velocity, which carries it
-   carry:0.45,       // slide-speed multiplier while carrying: a dribble is a shuffle, not a swipe (the over-run knob)
-   lead:0.02         // while held (or pinned) the slide target runs at most this many seconds ahead of the rod: the man stops when the hand does
+   carry:1,          // slide-speed multiplier while finesse is held, ball or not (1 = full speed; 0.45 = the old dribble shuffle)
+   lead:0.02         // while the slide is slowed (pinned, a grip under carry 1) the slide target runs at most this many seconds ahead of the rod: the man stops when the hand does
    },
 
   // finesse held with the leg down squares the foot onto a ball beside a man (shots.js shotSquare): its side meets the ball's centre, for a tap
@@ -422,8 +424,8 @@ kick:{
    on:true,
    back:-6.9, front:7.4,   // a ball this deep behind / ahead of the rod (dir-relative x): the foot's face reaches it
    zMax:16,         // ...within this of a man's z, beside him (in his lane the leg is held where it is)
-   lerp:25,        // ease rate onto the angle
-   dead:0.03       // the target only moves for a change bigger than this (rad)
+   lerp:35,        // ease rate onto the angle
+   dead:0.01       // the target only moves for a change bigger than this (rad)
    },
 
   // THE PIN (shots.js shotPinInput, physics.js pinUpdate): finesse + raise tilts the men; a slow ball under a man's foot is caught and carried
@@ -436,7 +438,7 @@ kick:{
    lower:22,         // a player's leg coming down toward upright onto a ball, either pin (a rolling ball is aimed 1/lower s ahead, the leg's own lag)
    capA:0.12,        // rod within this of the pose's target (rad) = posed, so a ball can be caught
    band:[-1.3,-0.2], // rod-local angles a right stick can pin from without the pose
-   back:-6.9,        // catch window behind the rod (dir-relative x)
+   back:-6.5,        // catch window behind the rod (dir-relative x)
    front:0.01,        // …and in front of it
    fwdFront:7.5,     // …a rod posed as a forward pin (r.pinFwd: the leg over a ball lying ahead) catches as far out as this: past it the man is laid out flat
    fwdBack:2.6,      // …and from this near the rod (dir-relative x); a ball from behind stops against the forward foot at 2.9, so keep this under it
@@ -445,7 +447,7 @@ kick:{
    wallDown:0.62,    // at the rail the outside edge of the foot can press down and into the wall
    yTol:0.6,         // …on the floor (centre no higher than BALL_R + this)
    capV:60,          // relative speed under which a touching ball is caught (the finesse grip slows it first)
-   carry:0.9,        // rod slide-speed multiplier while pinned (the hold's 0.45 is for a loose dribble)
+   carry:0.9,        // rod slide-speed multiplier while pinned (hold.carry is the loose grip's)
    zSlip:0.6,        // pinned ball pressed this far into a side wall slips out
    breakV:20,        // velocity change from outside (another ball) that knocks a pinned ball loose
    releaseA:0.35,    // rod turned this far off the pin angle (a stick flick) lets the ball go
@@ -454,15 +456,17 @@ kick:{
    carryOut:0.9,     // fraction of the carried slide velocity the ball keeps when let go
    pow:1.15,         // pin shot power trim (r.shotPow): a still, set ball is struck clean
    ctl:0.6,            // pin shot control (r.shotCtl): no spray
-   // a player's kick on a back-pinned ball: one press is the pin pass (the AI's pin pass curve, `pass` above), two within `dbl` the pin shot (shots.js shotPinPass)
+   // a player's kick on a back-pinned ball: the pin pass (the AI's pin pass curve, `pass` above) or the pin shot (shots.js shotKickEdge)
    press:{
     on:true,        // false = every kick from the back pin is the pin shot (kick held after it is the pass the receiver takes)
-    roles:['GK','DEF','MID'],   // rods that pass on one press; the rest (the ATT, nothing ahead to pass to) shoot on the first press
-    dbl:0.17,        // the second press within this of the first is the shot (s); the pass waits this long for it, so longer = a later pass
+    roles:['GK','DEF','MID'],   // rods that pass; the rest (the ATT, nothing ahead to pass to) shoot on any kick
+    shoot:'power',  // 'power' = kick alone passes at once, power + kick shoots (and is the snake under the forward leg); 'double' = a second kick within dbl shoots (snake.dbl for the snake)
+    powAt:0.5,      // pad RT depth that counts as power held for the pin shot
+    dbl:0.17,        // 'double': the second press within this of the first is the shot (s); the pass waits this long for it, so longer = a later pass
     swing:{strike:0.07},    // laid over the pin pass curve (ai.passShot + `pass`): the ball leaves at the boot's speed, so the sweep time is the pass speed: 0.2 (the AI's) 62 u/s, 0.13 94, 0.1 122, 0.09 131, 0.07 too quick to receive (the pin shot ~200); a plain swing, no shot trim
     recv:true       // a clicked pass is received too while finesse is held (the stroke's receive, assist.recv.strokeT); false = only kick held after it poses the man ahead
     },
-   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, kick pressed twice is the snake (shots.snake)
+   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, power + kick is the snake (shots.snake, press.shoot)
    fwd:{
     on:true,        // false = finesse + kick is the assisted pass swing again (shots.pass)
     assist:true,    // beside a slow ball lying ahead (ai.catch.fetch near..far) the leg is up and clear, over it it lowers onto the top; false = always `angle`
@@ -555,10 +559,10 @@ kick:{
     }
    },
 
-  // THE SNAKE (shots.js shotSnakeFire, rods.js updateRods): kick pressed twice with a ball held under the forward leg; the man rolls over the top of the rod and strikes it from behind
+  // THE SNAKE (shots.js shotSnakeFire, rods.js updateRods): power + kick (pin.press.shoot) with a ball held under the forward leg; the man rolls over the top of the rod and strikes it from behind
   snake:{
    on:true,
-   dbl:0.25,         // the second kick press within this of the first (s)
+   dbl:0.25,         // pin.press.shoot 'double': the second kick press within this of the first (s)
    spin:0.15,         // from the pin pose over the top, round and through the ball to strikeA past a full turn (s); quicker = a faster shot, but past ~20 rad/s at the ball the foot overtakes it and scoops it
    ease:1.2,           // 1 = an even spin; higher leaves the ball slower and arrives faster
    strikeA:1.1,      // rod-local follow-through past the full turn
@@ -918,8 +922,9 @@ ai:{
        // Faster catches on higher difficulties. sideV is the ceiling for entering a side catch and for cushioning it.
        // A shorter setup window and faster pose let the foot get down before a quick roll passes the figure.
        byDiff:{
-          pro:   {sideV:62, sideTMin:0.15},
-          legend:{sideV:72, sideTMin:0.13, sideLerp:33, frontMaxClose:70, behindMaxClose:75}
+          // settleT / holdT override catch.settleT / holdT: a better rod plays a held ball sooner
+          pro:   {sideV:62, sideTMin:0.15, settleT:0.15, holdT:0.8},
+          legend:{sideV:72, sideTMin:0.13, sideLerp:33, frontMaxClose:70, behindMaxClose:75, settleT:0.1, holdT:0.6}
        },
       front:{
          angle:-1.1,      // rod-local pose (shots.pin.angle): the ball rolls under the rod and stops under the boot
@@ -1062,7 +1067,7 @@ ai:{
       tictac:{
          on:true,
          roles:['ATT','MID','DEF'],   // the rods that work a ball between two men (the keeper has one); a MID's men are 11.9 apart, so it is worked slower (byRole)
-         share:0.65,        // share of the held balls that start one
+         share:0.45,        // share of the held balls that start one
          first:true,       // a held ball with no shot open is worked as a tic-tac before it is carried, tapped or passed (false = only when none of those has a lane)
          loose:true,       // a ball lying between two men with no shot open also starts one (hit.loose picks the moment; the same share chooses it over a plain hit)
          // a ball rolling along the row under the rod (no foot can come down on it) is worked from where it is instead of kicked: the man it rolls to squares his foot onto it and slides into it
@@ -1101,7 +1106,7 @@ ai:{
          minV:1.5,         // slower than this the ball is at rest between the men
          deadV:3,          // a ball this slow for deadT has died
          deadT:0.5,
-         maxVX:40,          // |x speed| over this: it is off the row
+         maxVX:60,          // |x speed| over this: it is off the row
          drift:1.0,        // the ball creeps off the depth the foot is squared on; handed to the side catch once it is this far off (u), unless the foot follows it (square)
          // square: between touches the foot is turned to the angle that squares it on the ball's depth now, so a ball that creeps along the face does not end the rally; it is let go when no angle fits
          square:{
@@ -1193,8 +1198,13 @@ ai:{
       },
       // the carry: scan ball z's the man can reach for the best way forward (ATT: the straight line to goal; the rest: the gap past the row in front)
       settleT:0.2,        // hold still this long after the catch (s)
-      holdT:3.0,          // past this a pass needs no edge over the shot and a shot no more than ai.lanes.clear (s, keep under deadball.stallT)
-      slideMax:12,        // cumulative z travel from the catch
+      holdT:3.0,          // past this a pass needs no edge over the shot, and the hold is worked (late) (s, keep under deadball.stallT)
+      // late: a hold past holdT plays a move that works the ball instead of waiting on a lane
+      late:{
+         moves:true,      // the pull and the tic-tac are played whatever their draws (use / share), the tic-tac past its time-out cooldown
+         shot:false       // true = the old way: a still shot through any lane past ai.lanes.clear (fired into a man that closes it)
+      },
+      slideMax:12,       // cumulative z travel from the catch
       samples:5,          // candidate ball z's scanned
       range:14,           // ...spanning at most this far either side of the ball
       centrePull:0.35,    // weight on getting central (a tie-break: the lane decides)
@@ -1227,18 +1237,20 @@ ai:{
          play:{
             on:true,
             roles:['ATT', 'MID'],
-            use:{rookie:0.3, pro:0.6, legend:0.8},    // share of holds played this way (drawn once a hold); the rest tic-tac or carry as before
+            use:{rookie:0.3, pro:{ATT:1, MID:0.6}, legend:{ATT:1, MID:0.8}},   // share of back-pinned holds played this way, drawn once a hold (a number or by role; [red, blue] for duels); ATT at 1 drew level in duels, MID at 1 lost at legend
             fake:{rookie:0.5, pro:0.7, legend:0.85},  // ...of those already wide, the share that sell wider first (a narrower ball always goes wide first); every pull faked scored 54% / 26% at pro / legend, none 43% / 7% (ppVsAI)
             wide:11,       // the ball must get at least this far from the middle (u): nearer, a push at minV already lands past the near post's band
             sellD:5,       // a fake goes this much wider (u)
             sellT:0.4,     // the sell's time limit (s)
             post:[7,9.6],  // the pull fires when the line it leaves on reaches the goal this far from the middle on the ball's own side (u)
             aim:8.5,       // ...the burst holds the slide that lands it here
-            clear:-2,      // ...unless a man stands this far inside that line (catch.lineClear is the still shot's)
+            clear:{ATT:-2, MID:0},   // ...unless a man stands this far inside that line (catch.lineClear is the still shot's); the ATT beats a keeper leading the ball, a MID's line crosses field rows
             burst:1.0,     // the burst: x the rod's top speed while it holds the ball (a carry is shots.pin.carry)
             acc:1.5,       // ...and x its acceleration
             burstT:0.5,    // the burst's time limit (s)
-            tries:2        // plays a hold may make before the ordinary carry
+            tries:2,       // plays a hold may make before the ordinary carry
+            fwd:['ATT'],   // roles that also pull a forward hold the snake shoots, fired as the snake on the burst ([] = back pins only; [red, blue] for duels)
+            fwdMinV:6      // ...fired at this slide or faster (the snake carries any slide; a push needs push.minV)
          }
       },
       // snake: a shot from a ball held under a forward leg is the player's snake (shots.snake), the slide carried through; off = the ball is let go and re-pinned from behind for the pin shot (reseat)
@@ -1346,22 +1358,38 @@ ai:{
          vMax:43,         // faster than this the heading stops following the slide
          hold:0.22,       // slide commitment from the swing start (s); also budgets room to the rod's travel limit
          standing:0.30,   // a pass from a standing rod leaves on this heading toward its target (rad)
-         // free: a pass off a slow ball in front of the rod runs at it first. The man backs off to the far side, slides at the pass's speed and the swing fires when it is predicted to be on the ball by the time the boot arrives
+         // free: a pass off a slow ball in front of the rod runs at it first. The man backs off to the far side and slides at it; the swing fires on the step whose predicted launch lands on the mate (the boot's corner turns the ball, not the slide)
          free:{
             on:true,         // false = a free pass is kicked where the rod stands, whatever lane it was judged on
             relMin:3.0,      // the ball is at least this far ahead of the rod (nearer, the foot's side drags it and the heading is erratic)
             relMax:5.0,      // ...and no further (past it the pass swing does not reach)
             maxBall:8,       // ...and slower than this (u/s); the run takes ~0.5 s
             standing:0.12,   // a pass this close to straight (rad) is kicked as it stands
-            lead:0.14,       // s from the swing's start to the boot meeting the ball: it fires when the man is predicted to be on the ball's z by then (measured: 26/27 runs within 3 deg of the table)
-            fireMax:0.8,     // fire while the predicted offset is within this past the ball (the swing is the late part, units); later is given up
+            lead:0.14,       // s from the swing's start to the boot meeting the ball: sizes the back-off and the late test
+            fireMax:0.8,     // given up once the man is predicted this far past the ball when the boot arrives (units)
             back:1.5,        // run-up beyond what the speed's own acceleration needs (units)
-            vTol:0.9,        // the swing waits for the slide to reach this share of its speed
+            land:0.5,        // fire on the step whose predicted launch (kickLaunch + the pass assist) crosses the mate within this (units)
+            reach:[[0.9,0.68],[2,0.449],[10,0.145]],   // ball mass -> heading (rad) the swing's off-centre contact can put on it at the slowest run, before the assist (plReach in tools/passlane-soak.js; re-measure when a mass or the pass swing changes)
+            thMax:0.57,      // never planned steeper than this (rad): a receiver held 98% of run-up passes leaving under 0.6 and 0/14 above (plSoak, 72 pro matches)
             vMin:8, vStep:3, // slowest slide worth a run, and the step the feasibility search takes down from the top speed
             settle:0.5, settleV:10,   // backed off when within settle units of the start at under settleV u/s
-            thTol:0.12,      // the mate is looked at again at the fire (he slides during the run): he must still be within this of the planned heading (rad), with a clear lane, or it is given up
+            thTol:0.12,      // the mate is looked at again once a launch is predicted (he slides during the run): he must still be within this of the planned heading (rad), with a clear lane, or it is given up
             abortT:1.5,      // the whole run, s
             cd:0.6           // s before another run after one ends without a pass
+         },
+         // shot: a striker's run-up off a slow ball in front: the boot's corner turns a plain kick (the slide hardly does: ~0.001 rad per u/s; ~0.2 rad at most from a ball 3 ahead, ~0.45 at 2.5 or 4.5), so the man slides slowly across the ball and fires on the first step whose predicted shot clears the lane
+         shot:{
+            on:false,        // [red, blue] for a duel. Off: pro duels 3 x 48, the running team 0.22 : 0.33 and 0.23 : 0.27; ~0.15 shots a match fire, 80-100% touched by the other team first (the defence moves during the run)
+            roles:['ATT'],
+            relMin:2.0,      // the ball this far ahead of the rod...
+            relMax:5.5,      // ...to this
+            maxBall:8,       // ...and slower than this (u/s)
+            open:1.5,        // a shot already clearing the lane by this is kicked as it stands
+            clear:1.0,       // the run fires once its predicted shot clears the lane by this (ai.lanes.clear is the floor)
+            step:0.4,        // the run is planned by predicting the shot (kickSlidePlan) every this far along it, each side; it runs to the side whose shot clears soonest
+            pre:0.5,         // the man first stands this far on the near side of the ball's centre (units), so the corner crosses it from square
+            v:12,            // the slide (u/s): slow, so the corner crosses the ball over many steps
+            past:3.2         // given up once the man is this far off the ball (units): the boot no longer reaches it
          }
       },
       cd:0.9              // re-entry lockout after the action ends (s)
@@ -1439,7 +1467,7 @@ ai:{
    // A man's shadow is the stretch of goal line his body hides from the shot; the fit evens out what is left open.
    cover:{
       on:true,            // false = both sit on the ball→goal line (defend above)
-      mouth:0.9,          // fraction of goalHalf that counts as open mouth (the ball's width keeps it off the posts)
+      mouth:0.95,          // fraction of goalHalf that counts as open mouth (the ball's width keeps it off the posts)
       tMin:0.35,          // a man nearer the ball than this fraction of the way to goal is shaded as if this far out (close up, the ball can be sidestepped)
       nomAhead:25,        // ball behind the defence: assume the shot comes from this far in front of the DEF (a turnover, then a shot from their ATT or MID rod)
       nomZ:0.8,           // …at this fraction of the ball's z
@@ -1447,8 +1475,8 @@ ai:{
       shotV:[15,35],      // …and a ball heading for the goal at this speed range (u/s) is a real shot whatever its x: the assumed point fades out
       mix:1,              // 0 = the old ball-to-goal line, 1 = the full split; in between stands that share of the way off the line
       playReach:5,        // the keeper, while the DEF plays the ball, stays this near the old line (u): it only steps off a DEF it would stack behind
-      gkWide:4,           // a ball this far beyond the keeper's slide (u) is out of its reach: the keeper covers the goal instead of chasing it, the DEF takes the ball
-      gkFollow:0.75,      // a shot going in (shotV): share of the way from the cover answer to where the keeper reads it will cross; 0 = the cover answer
+      gkWide:6,           // a ball this far beyond the keeper's slide (u) is out of its reach: the keeper covers the goal instead of chasing it, the DEF takes the ball
+      gkFollow:0.15,      // a shot going in (shotV): share of the way from the cover answer to where the keeper reads it will cross; 0 = the cover answer
       gkPost:2,           // …faded out as that read goes this far (u) past the post
       reachMax:40,        // furthest a rod may stand from the ball-to-goal line when nothing is coming (u)
       speedMul:0.7,       // share of the difficulty's slide speed a rod can count on (it has to get going)
@@ -1472,12 +1500,83 @@ ai:{
       refine:0.25,
       every:0.04          // re-solve cadence (s)
    },
+   // Strike reaction: after an opponent's hit the AI sees the ball where it was heading before it, for the difficulty's rt (x the reaction stat)
+   // Rod view: the other team's rods are seen as they were the difficulty's rt ago (x k), carried on toward where they were heading (no one sees a row's intent or a reversal it has not made yet)
+   rodView:{
+      on:false,           // shipped off: on, AI plain kicks +50% (66% of its open lanes met an opponent, from 39%), snakes x2, goals +23%; the late reader lost every duel; true = on, [red, blue] for a duel (the team that reads)
+      k:1,                // share of rt the view lags
+      lead:1              // share of that lag a seen slide is carried on for, never past the target it was heading for then
+   },
+   jolt:{
+      on:true,            // false = the ball is seen through the plain reaction delay only; [red, blue] for a duel
+      v:35                // a rod contact that changes the ball's speed by more than this in one step is a strike (u/s)
+   },
+   // Reading the holder: the keeper and DEF stand against the shots a held ball can become, not against the ball (a shot beats any reaction)
+   read:{
+      on:true,            // false = the cover fits against the ball where it is; [red, blue] for a duel
+      hold:{
+         roles:['ATT','MID'],   // opposing rows whose held ball is read
+         vx:12,           // a ball slower than this along the table (u/s)…
+         rel:[-1.5,4],    // …this far ahead of an opposing rod (u, its direction) is held
+         minT:0.12,       // held this long before it is read (s): a deflection is not a hold
+         grace:0.1        // a hold lost from view for less than this stays read (s)
+      },
+      moves:[-6,-3,0,3,6],          // where the holder may strike from, from the ball's z (u): pulls and pushes
+      moveP:[0.14,0.16,0.4,0.16,0.14],   // prior weight of each
+      moveTol:1.5,        // a strike within this of the hold's z counts as straight in the memory (u)
+      targets:7,          // aim points across the mouth
+      tzP:[1.3,1,0.8,0.6,0.8,1,1.3],     // prior weight of each: shooters go for the posts
+      aim:0.8,            // the aim points span this share of goalHalf
+      onGoal:1.15,        // a shot whose line misses the mouth by more than this share of goalHalf is not learned
+      shotV:40,           // a ball leaving a hold toward our goal faster than this is a shot (u/s)
+      soft:0.6,           // a line this close to a man's block edge is half blocked (u)
+      minAhead:2,         // a row must be this far past the ball to stand in a shot
+      travel:0.012,       // cost per unit of slide, against a goal chance of 1
+      grid:1.5, refine:0.25,        // search step (u), halved down to refine
+      every:0.04,         // re-solve cadence (s)
+      // what the team learns of the opponent's shots over a match: aim bins, strike side, hold time
+      mem:{
+         bins:5,          // aim bins across the mouth
+         prior:1.5,       // pseudo-shots per bin before anything is seen
+         decay:0.97,      // each shot scales the old counts by this
+         use:{rookie:0.2,pro:0.7,legend:1}   // how far each difficulty leans on what it learned
+      },
+      // the guess: the strike point it favours, re-picked every so often (a moving keeper is hard to read); shipped off: k 1.5/2.5/3 conceded more in pro duels
+      guess:{
+         k:{rookie:1,pro:1,legend:1},        // weight on the guessed strike point (1 = no guess)
+         every:[0.35,0.8]                    // seconds between re-picks
+      },
+      // the jostle: against a held ball the keeper and DEF never stand still; each slides to a fresh spot near its fit, drawn among spots that cover nearly as well
+      jostle:{
+         on:true,            // false = they stand on the fit; [red, blue] for a duel
+         roles:['ATT', 'MID'],      // holds by these opposing rows are jostled against
+         amp:{rookie:3,pro:3.5,legend:4.0},     // furthest a spot may be from the fit (u)
+         every:{rookie:[0.25,0.5],pro:[0.15,0.35],legend:[0.12,0.3]},   // seconds between fresh spots
+         step:0.9,           // a fresh spot is at least this far from the last (u)
+         n:9,                // spots tried across the fit ± amp
+         slack:0.01          // goal chance a spot gives away over the best spot tried for its weight to fall to 1/e (higher = wider, less careful moves)
+      },
+      // the tell: a swing starting, or the ball sliding fast; seen after the difficulty's rt
+      tell:{
+         w:6,             // holder rod turning faster than this (rad/s)
+         vz:20            // ball sliding faster than this (u/s)
+      },
+      // bait: leave the opponent's favourite lane open, then close it as they shoot; shipped off: 0.3 at pro conceded more in duels (the AI's lane forecast reads the open lane and shoots before the jump)
+      bait:{
+         p:{rookie:0.3,pro:0.2,legend:0.1},        // chance per hold
+         leave:0.15,      // weight left on the bait lane while baiting
+         take:4,          // weight on it once the defence jumps
+         at:[0.6,0.95],   // jump at this share of the opponent's usual hold time…
+         t0:0.9,          // …taken as this before any shot is seen (s)
+         hold:0.6         // the jump holds this long, then the defence settles (s)
+      }
+   },
    alignSlow:1.5, alignFast:1.25,             // z-alignment tolerance for a swing (slow / fast ball)
 
    // Strike gate: replay the swing curve and refuse an aimed shot the boot can't reach.
    strikeGate:{
       on:true,
-      styles:['pass','trapShot', 'kick'], // kick styles that must clear the gate 
+      styles:['pass','trapShot', 'kick', 'snake'], // kick styles that must clear the gate 
       samples:9,                // arc samples across the contact window
       lead:0.05, lag:0.02,      // widen the sampled window this far either side of the power window (s); the pin shot has no wind-up, so its boot is on the ball before the window opens
       pad:0.2,                  // slack on footBoxReach, to cover the gap between arc samples
@@ -1492,10 +1591,41 @@ ai:{
 
    // Lane gate for plain kicks, dribble releases, late pin shots and tic-tac strikes. Passes and snakes use their own clearance margins.
    // The dead-ball push (ai.force) bypasses this gate.
+   // power: a plain kick swings the player's power shot (shots.mod.hard blended by m: a snapped strike, ~144 u/s at 1 against ~118, less aim assist, more stamina), so the defence has less time to reach the lane (~0.15 s to the first row)
+   // shipped off: pro duels 6 x 48, power at 0.7 (134 u/s) 0.91 : 1.13; without its aim / stamina costs 1.16 : 1.15; at 1 without costs 0.93 : 1.13. Field blocks did not fall: the row ahead moves during the flight anyway, and 14% less flight barely changes it
+   power:{
+      on:true,        // [red, blue] for a duel
+      roles:['ATT'],  // the rods whose plain kicks swing the power shot
+      m:{rookie:0.3, pro:0.7, legend:1}   // the power axis it swings at, by difficulty
+   },
+   // lane look: a shot's lane (laneObs, fwdClr: anything judged at a ball speed) reads each opposing row where it is heading (its target, at its top speed, over the flight + wind-up) and widened by part of what it can reach in that time
+   // off = offset + vz x flight: lanes judged open were touched by that row 47% of the time (the row moves ~2.7 u a shot, the forecast missed by 2.6); target + reach 0.25: 32%, but half the plain kicks are refused
+   // shipped off: no setting scored more in pro duels (6 x 48: reach 0.25 0.90 : 0.98, mode 'aim' 1.00 : 1.13; reach 0 and 0.4 lost by ~0.2 on 3 sets): a shot a defender can reach still scores sometimes, refusing it never does
+   laneLook:{
+      on:false,       // [red, blue] for a duel
+      mode:'all',     // 'all' = every shot lane; 'aim' = only which lane a plain kick aims at (whether it shoots is judged as before)
+      windup:0.05,    // s from the swing's start to the boot meeting the ball, added to the flight
+      lat:0.05,       // s the row needs to see the shot before it reacts
+      reach:0.25      // share of its top speed over the rest of the time the lane is widened by (0 = where it is heading only)
+   },
    lanes:{
       on:true,
       roles:['DEF','MID','ATT'],  // the keeper still clears (it has no catch)
       clear:0                     // least clearance (z past gapAim.blockR, the rows read at catch.shotV) a kick may leave through: pro plain kicks under 0 were touched first by the other team 73-79% of the time, 0 and over 33-56%
+   },
+
+   // Kick worth: a plain kick (not a pass) has to beat keeping the ball; while it doesn't the man stays down on the ball and a fetch may take it. Off = every kick the lane gate allows fires at once.
+   // Pro, 3 x 48 matches: plain kicks 15 -> 12 but goals 0.79-0.94 -> 0.67-0.79, pin shots flat: the held balls are lost, not kept (the catch had already turned them down)
+   kickWorth:{
+      on:true,
+      roles:['DEF','MID','ATT'],  // the keeper clears as before
+      open:{ATT:1.5,MID:1.5,DEF:1.5}, // a lane clearing by this much (kickShotPlan's clr: ATT the goal, others past the row ahead) always shoots
+      ctrlV:30,           // a ball this fast (u/s, real ball) can't be kept: kick it; lower = more first-time kicks
+      threat:20,          // a ball heading for our own goal faster than this (u/s) is kicked
+      oppX:3.5,           // an opposing rod this near the ball in x contests it: kick
+      wait:{rookie:0.4,pro:0.8,legend:1.2}, // longest a rod holds its kick on one ball (s), then it plays it; higher = more patient
+      dumb:0.5,           // a rod whose iq roll failed waits this share of it
+      gap:0.15            // a hold broken for longer than this (s) starts the wait over
    },
 
    wallReach:2.6, wallSlack:0.7,              // wall-hug rescue: capsule z-reach / slack at the slide limit
@@ -1520,6 +1650,22 @@ ai:{
    retargetDead:0.1,                          // z the desired slide must differ by before re-aiming
    errLerp:7.0,                               // rate the wandering aim error drifts to its new target (per s)
    slideAccel:600,                            // AI rod slide acceleration cap (u/s²)
+   // --- slide: how an AI rod moves onto its target ---
+   slide:{
+      brake:true,         // brake in time to stop on the target and follow a moving one; false = the old full-speed run that overshoots and comes back (~2 u at pro speed); [red, blue] for an A/B
+      roles:['GK','DEF','MID','ATT'], // rods that brake
+      diffs:['pro','legend'],         // ...on these difficulties (a rookie still runs past and comes back)
+      strike:{roles:['ATT'],rel:[-2,8]}, // ...except these with the ball (as the AI sees it, dir-relative x) this near: the old run, whose overshoot carries slide through the strike
+      ffLerp:20,          // rate the target's own motion is read at (per s); lower = smoother, laggier following
+      cmdTol:2            // a target within a step that moved with the rod (to this, u/s) is a slide speed asked for (target = offset + v·dt): driven as given
+   },
+   // --- strike slide: a plain kick picks the slide it carries through contact (the heading), as the pin pass does ---
+   // off: the plain swing reaches the ball in a few steps, too soon to build a new slide, so another slide almost never won (~20 of ~1100 plans a match) and goals did not move
+   strikeSlide:{
+      on:false,
+      v:[0,0.5,1],        // slides tried (share of the rod's top speed, both ways); the current slide is always one
+      margin:0.3          // another slide must clear the lane by this much more than the current one (z)
+   },
    // --- calm: a rod the play is far from stands its ground instead of chasing the ball's z (plain alignment, goal cover, ready for a team ball) ---
    calm:{
       on:true,            // false = every rod tracks the ball's z at full speed wherever the ball is
@@ -1545,7 +1691,7 @@ ai:{
   models:[
    // ROBOTS
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
-      src:'assets/fuzeball_cyborg.glb',scale:0.9, rodY:8.63,
+      src:'assets/fuzeball_cyborg.glb',scale:0.92, rodY:8.63,
       mug:'assets/renders/render_cyborg_mugshot_v2.png',
       renderTop:64,
       teamParts:['kit_cyborg', 'kit_cyborg_visor'],
@@ -1553,21 +1699,21 @@ ai:{
       explosionSrc:'assets/animations/cyborg_explosion.glb'
    },
    {id:'deltaborg',name:'Deltaborg',blurb:'Ruthless and fast',
-      src:'assets/fuzeball_deltaborg.glb',scale:0.88, rodY:8.63,
+      src:'assets/fuzeball_deltaborg.glb',scale:0.895, rodY:8.63,
       mug:'assets/renders/render_deltaborg_mugshot_v2.png',
       renderTop:41,
       teamParts:['kit_deltaborg'],hairParts:[],
       explosionSrc:'assets/animations/deltaborg_explosion.glb'
    },
    {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
-      src:'assets/fuzeball_irnman.glb',scale:0.87, rodY:8.63,
+      src:'assets/fuzeball_irnman.glb',scale:0.89, rodY:8.63,
       mug:'assets/renders/render_irnman_mugshot_v2.png',
       renderTop:51,
       teamParts:['kit_irnman','kit_irnman_centre'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
-      src:'assets/fuzeball_mechaman.glb',scale:0.88, rodY:8.63,
+      src:'assets/fuzeball_mechaman.glb',scale:0.9, rodY:8.63,
       mug:'assets/renders/render_mechaman_mugshot_v2.png',   
       renderTop:90,
       teamParts:['kit_mechaman_new'],hairParts:[],
@@ -1576,7 +1722,7 @@ ai:{
    
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
-      src:'assets/fuzeball_rocko.glb',scale:0.88, rodY:8.63,
+      src:'assets/fuzeball_rocko.glb',scale:0.895, rodY:8.63,
       mug:'assets/renders/render_rocko_mugshot_v2.png',   
       renderTop:33,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
@@ -1585,21 +1731,21 @@ ai:{
 
    // MEN
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
-      src:'assets/fuzeball_manRichie.glb',scale:0.845, rodY:8.63,
+      src:'assets/fuzeball_manRichie.glb',scale:0.865, rodY:8.63,
       mug:'assets/renders/render_richie_mugshot_v2.png',   
       renderTop:38,
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
    {id:'manDeano',name:'Deano',blurb:'Calm and clinical',
-      src:'assets/fuzeball_manDeano.glb',scale:0.885, rodY:8.63,
+      src:'assets/fuzeball_manDeano.glb',scale:0.905, rodY:8.63,
       mug:'assets/renders/render_deano_mugshot_v2.png',
       renderTop:89,
       teamParts:['kit_deano'],hairParts:[],
       explosionSrc:'assets/animations/deano_explosion.glb'
    },
    {id:'manLeo',name:'Leo',blurb:'Calm and clinical',
-      src:'assets/fuzeball_manLeo.glb',scale:0.885, rodY:8.63,
+      src:'assets/fuzeball_manLeo.glb',scale:0.905, rodY:8.63,
       mug:'assets/renders/render_leo_mugshot_v2.png',
       renderTop:109,
       teamParts:['kit_leo'],hairParts:['kit_leo_hair'],
@@ -1608,42 +1754,42 @@ ai:{
 
    // WOMEN
    {id:'womanMaria',name:'Maria',blurb:'Determined and strong',
-      src:'assets/fuzeball_womanMaria.glb',scale:0.89, rodY:8.63,
+      src:'assets/fuzeball_womanMaria.glb',scale:0.9, rodY:8.63,
       mug:'assets/renders/render_maria_mugshot_arena_cutout.png',   
       renderTop:70,
       teamParts:['kit_maria'],hairParts:['kit_maria_hair'],
       explosionSrc:'assets/animations/maria_explosion.glb'
    },
    {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
-      src:'assets/fuzeball_womanSasha.glb',scale:0.86, rodY:8.63,
+      src:'assets/fuzeball_womanSasha.glb',scale:0.87, rodY:8.63,
       mug:'assets/renders/render_sasha_mugshot_v2.png',
       renderTop:136,
       teamParts:['kit_sasha'],hairParts:[],
       explosionSrc:'assets/animations/sasha_explosion.glb'
    },
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
-      src:'assets/fuzeball_womanKimi.glb',scale:0.875, rodY:8.63,
+      src:'assets/fuzeball_womanKimi.glb',scale:0.89, rodY:8.63,
       mug:'assets/renders/render_kimi_mugshot_v2.png',   
       renderTop:85,
       teamParts:['kit_kimi'],hairParts:[ 'kit_kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
    {id:'womanSandy',name:'Sandy',blurb:'Cunning and quick',
-      src:'assets/fuzeball_womanSandy.glb',scale:0.885, rodY:8.63,
+      src:'assets/fuzeball_womanSandy.glb',scale:0.905, rodY:8.63,
       mug:'assets/renders/render_sandy_mugshot_v2.png',
       renderTop:90,
       teamParts:['kit_sandy'],hairParts:['kit_sandy_hair'],
       explosionSrc:'assets/animations/sandy_explosion.glb'
    },
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
-      src:'assets/fuzeball_womanTalia.glb',scale:0.885, rodY:8.63,
+      src:'assets/fuzeball_womanTalia.glb',scale:0.9, rodY:8.63,
       mug:'assets/renders/render_talia_mugshot_v2.png',   
       renderTop:89,
       teamParts:['kit_talia', 'kit_talia_centre'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
       },
    {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
-      src:'assets/fuzeball_womanTanya.glb',scale:0.875, rodY:8.63,
+      src:'assets/fuzeball_womanTanya.glb',scale:0.894, rodY:8.63,
       mug:'assets/renders/render_tanya_mugshot_v2.png',   
       renderTop:52,
       teamParts:['kit_tanya', 'kit_tanya_centre'],hairParts:[ 'kit_tanya_hair' ],
@@ -1651,7 +1797,7 @@ ai:{
       },      
     
    {id:'womanFaye',name:'Faye',blurb:'Bold and fearless',
-      src:'assets/fuzeball_womanFaye.glb',scale:0.86, rodY:8.63,
+      src:'assets/fuzeball_womanFaye.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_faye_mugshot_v2.png',
       renderTop:125,
       teamParts:['kit_faye'],hairParts:['kit_faye_hair'],
@@ -1660,70 +1806,70 @@ ai:{
 
    // ALIENS
    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
-      src:'assets/fuzeball_womanZaneesh.glb',scale:0.885, rodY:8.63,
+      src:'assets/fuzeball_womanZaneesh.glb',scale:0.895, rodY:8.63,
       mug:'assets/renders/render_zaneesh_mugshot_v2.png',   
       renderTop:131,
       teamParts:['kit_zaneesh'],hairParts:[],
       explosionSrc:'assets/animations/zaneesh_explosion.glb'
    }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
-      src:'assets/fuzeball_alienTamirok.glb',scale:0.87, rodY:8.63,
+      src:'assets/fuzeball_alienTamirok.glb',scale:0.895, rodY:8.63,
       mug:'assets/renders/render_tamirok_mugshot_v2.png',   
       renderTop:83,
       teamParts:['kit_tamirok', 'kit_tamirok_centre'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
    {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
-      src:'assets/fuzeball_alienGrimlot.glb',scale:0.865, rodY:8.63,
+      src:'assets/fuzeball_alienGrimlot.glb',scale:0.88, rodY:8.63,
       mug:'assets/renders/render_grimlot_mugshot_v2.png',   
       renderTop:82,
       teamParts:['kit_Grimlot'],hairParts:[],
       explosionSrc:'assets/animations/grimlot_explosion.glb'
       },
    {id:'alienKatum',name:'Katum',blurb:'Fierce and aggressive',
-      src:'assets/fuzeball_alienKatum.glb',scale:0.88, rodY:8.63,
+      src:'assets/fuzeball_alienKatum.glb',scale:0.89, rodY:8.63,
       mug:'assets/renders/render_katum_mugshot_v2.png',   
       renderTop:10,
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
       },
    {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
-      src:'assets/fuzeball_alienKodus.glb',scale:0.875, rodY:8.63,
+      src:'assets/fuzeball_alienKodus.glb',scale:0.89, rodY:8.63,
       mug:'assets/renders/render_kodus_mugshot_v2.png',   
       renderTop:84,
       teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
     {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
-       src:'assets/fuzeball_alienZargon.glb',scale:0.875, rodY:8.63,
+       src:'assets/fuzeball_alienZargon.glb',scale:0.89, rodY:8.63,
        mug:'assets/renders/render_zargon_mugshot_v2.png',   
        renderTop:51,
        teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
        explosionSrc:'assets/animations/zargon_explosion.glb'
        },
    {id:'alienZorloth',name:'Zorloth',blurb:'Mysterious and powerful',
-      src:'assets/fuzeball_alienZorloth.glb',scale:0.875, rodY:8.63,
+      src:'assets/fuzeball_alienZorloth.glb',scale:0.85, rodY:8.63,
       mug:'assets/renders/render_zorloth_mugshot_arena_cutout.png',   
       renderTop:51,
       teamParts:['kit_Zorloth'],hairParts:['kit_zorloth_hair'],
       explosionSrc:'assets/animations/zorloth_explosion.glb'
       },   
     {id:'alienDrako',name:'Drako',blurb:'Fierce and mysterious',
-       src:'assets/fuzeball_alienDrako.glb',scale:0.875, rodY:8.63,
+       src:'assets/fuzeball_alienDrako.glb',scale:0.89, rodY:8.63,
        mug:'assets/renders/render_drako_mugshot_v2.png',
        renderTop:131,
        teamParts:['kit_drako'],hairParts:[],
        explosionSrc:'assets/animations/drako_explosion.glb'
        },
     {id:'alienAda',name:'Ada',blurb:'Sharp and fearless',
-       src:'assets/fuzeball_alienAda.glb',scale:0.875, rodY:8.63,
+       src:'assets/fuzeball_alienAda.glb',scale:0.885, rodY:8.63,
        mug:'assets/renders/render_ada_mugshot.png',
        renderTop:79,
        teamParts:['kit_ada'],hairParts:[],
        explosionSrc:'assets/animations/ada_explosion.glb'
        },
     {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
-      src: 'assets/fuzeball_animalAzlar.glb', scale:0.875, rodY:8.63,
+      src: 'assets/fuzeball_animalAzlar.glb', scale:0.87, rodY:8.63,
       mug: 'assets/renders/render_azlar_mugshot.png',
       renderTop:7,
       teamParts: ['kit_Azlar', 'kit_azlar_claws'], hairParts: ['kit_azlar_hair'],
@@ -1811,9 +1957,10 @@ ai:{
    //   react = smoothing time constant (s), reactDelay = age of the ball sample (s, under CONFIG.ai.reactMax)
    //   pred = fraction of the estimated lateral lead before IQ and stamina scaling
    //   speed = slide speed (u/s), err = aim wander, cd = kick cooldown multiplier, aim = accuracy, iq = smart-choice chance
-  rookie:{speed:45,react:.25,err:0.35,range:5.8,pred:.55,cd:0.85,aim:.6,iq:.48,reactDelay:.12},
-  pro:   {speed:53,react:.14,err:0.15,range:6.3,pred:.85,cd:.55,aim:.8,iq:.75,reactDelay:.055},
-  legend:{speed:60,react:.07,err:.05, range:6.6,pred:0.95,cd:.20,aim:.95,iq:.95,reactDelay:.025}
+   //   rt = reaction to an opponent's strike (s, CONFIG.ai.jolt): a club player ~0.25, a fast pro ~0.2, the fastest humans ~0.16
+  rookie:{speed:65,react:.18,err:0.35,range:5.8,pred:.55,cd:0.85,aim:.6,iq:.48,reactDelay:.062,rt:.25},
+  pro:   {speed:85,react:.12,err:0.15,range:6.3,pred:.85,cd:.55,aim:.8,iq:.75,reactDelay:.045,rt:.20},
+  legend:{speed:92,react:.075,err:.05, range:6.6,pred:0.95,cd:.20,aim:.95,iq:.95,reactDelay:.035,rt:.16}
  },
 
  // ---- rod stats (league builds) ----
@@ -2512,6 +2659,17 @@ deadball:{
    roomEditor:true,
         // true = F2 opens the room editor (js/roomedit.js)
    figEditor:true,      // true = F4 in the menus opens the Figurine Sizer (js/figedit.js)
+   // the assist ledger (js/assists.js): F9 counts every player-side assist as it acts and tags it over the rod
+   assistLog:{
+    on:true,            // false = F9 does nothing (the player build)
+    gap:0.3,            // an assist quiet this long (s) counts again the next time it acts
+    tagT:1.1,           // a tag stays over the rod this long after the assist last acted (s)
+    font:13,            // tag text size (px at 1x)
+    lift:7,             // tags sit this far above the rod (table units)
+    keep:20,            // matches kept for COPY
+    saveEvery:10,       // s between saves while it is on
+    panel:'pause'       // 'pause' = the table shows in pause, on the win board and with C up; 'always' = in play too
+   },
   },
 
  /* ---- power-up types ------------------------------------------------- */
@@ -2573,12 +2731,12 @@ deadball:{
       name:'Void', folder:'assets/rooms/void/', glb:'fuzeball_room_void.glb', backdrop:false, reflect:false,
       bg:0x05060f, fog:[210,440],
       sky:{src:'assets/rooms/void/sky/nebula',int:1.03,rot:111},
-      hemi:{sky:0xe8eeff,ground:0x5d5347,int:2.05,on:true},
-      dir:{color:0xffead0,int:2.78,pos:[-140,185,-90],on:true,shadow:true,shadowInt:0.85},
+      hemi:{sky:0xe8eeff,ground:0x5d5347,int:0.96,on:true},
+      dir:{color:0xffead0,int:1.04,pos:[-140,185,-90],on:true,shadow:false,shadowInt:0.85},
       env:{shell:0x2e495d,panels:[[0x88c5d4,-250,30,-110,260,120],[0xdda762,250,30,110,260,120],[0x4b88a3,0,150,-250,340,90],[0xeff6ff,0,155,0,150,150]]},
       lights:[
-        {type:'spot', pos:[76,37,-47.51], look:[37,0,0], color:0xffffff, int:604, dist:160, decay:1.2, angle:0.45, penumbra:0.72, shadow:true, shadowInt:0.8},
-        {type:'spot', pos:[-75,37,-47.51], look:[-36,0,0], color:0xffffff, int:624, dist:160, decay:1.2, angle:0.45, penumbra:0.72, shadow:true, shadowInt:0.85}
+        {type:'spot', pos:[76,37,-47.51], look:[36,0,0], color:0x034a6b, int:17.1, dist:145, decay:0.7, angle:0.51, penumbra:0.72, shadow:true, shadowInt:1},
+        {type:'spot', pos:[-75,37,-47.51], look:[-36,0,0], color:0xbe9a96, int:17.1, dist:210, decay:0.7, angle:0.72, penumbra:0.72, shadow:true, shadowInt:1}
       ],
       props:[],
       led:{idle:'rainbow'}
@@ -2592,17 +2750,17 @@ deadball:{
       dir:{color:0xf9e6bd,int:1.07,pos:[29,100,-81],on:true,shadow:true,shadowInt:1},
       env:{shell:0x3b4b55,panels:[[0xffe9d2,30,25,-230,46,92],[0xffe0c1,89,25,-214,46,92],[0xffebd6,141,25,-184,46,92],[0xf6d4b9,184,25,-141,46,92],[0x86cec8,-139,35,-37,55,8],[0x86cec8,-104,35,-101,55,8],[0x86cec8,-50,35,-135,55,8],[0xe7ae6d,-165,-7,0,35,54],[0xf1ece2,0,128,0,108,108]]},
       lights:[
-        {type:'spot', pos:[50,35,24], look:[26,1,0], color:0xf3c896, int:557, dist:95, decay:1.3, angle:1.2, penumbra:0.49, shadow:false, shadowInt:1},
-        {type:'spot', pos:[-50,35,-34], look:[-26,1,0], color:0xfcd0af, int:514, dist:95, decay:1.3, angle:1.2, penumbra:0.54, shadow:true, shadowInt:1},
-        {type:'spot', pos:[50,35,-34], look:[26,1,0], color:0xffd2a0, int:514, dist:220, decay:1.2, angle:1.2, penumbra:0.86, shadow:true, shadowInt:1},
-        {type:'spot', pos:[-50,35,34], look:[-26,1,0], color:0xfcd0af, int:557, dist:159, decay:1.2, angle:1.2, penumbra:0.32, shadow:false, shadowInt:1}
+        {type:'spot', pos:[50,35,24], look:[26,1,0], color:0xf3c896, int:215, dist:95, decay:1.3, angle:1.2, penumbra:0.49, shadow:false, shadowInt:1},
+        {type:'spot', pos:[-50,35,-34], look:[-26,1,0], color:0xfcd0af, int:208, dist:95, decay:1.3, angle:1.2, penumbra:0.54, shadow:true, shadowInt:1},
+        {type:'spot', pos:[50,35,-34], look:[26,1,0], color:0xffd2a0, int:338, dist:220, decay:1.2, angle:1.2, penumbra:0.86, shadow:true, shadowInt:1},
+        {type:'spot', pos:[-50,35,34], look:[-26,1,0], color:0xfcd0af, int:288, dist:159, decay:1.2, angle:1.2, penumbra:0.32, shadow:false, shadowInt:1}
       ],
       props:[
         {prop:'fuzeballSaucerStool', at:[
           [-124.2,-52,-30.97,1.33,1],
           [-149.63,-52,-10.46,1.5,1],
           [-83.2,-52,-89.23,0.75,1],
-          [-52.47,-52,-117.85,0.42,1],
+          [-52.47,-52,117.85,0.42,1],
           [-22.05,-52,-125.07,0.17,1],
           [147.72,-52,-26.05,-1.4,1],
           [11.5,-52,-131.5,-0.09,0.8],
@@ -2616,16 +2774,16 @@ deadball:{
       name:'Starport Arcade', folder:'assets/rooms/arcade/', glb:'fuzeball_room_arcade.glb', reflect:false,
       light:{gain:0,reach:0.2},
       bg:0x100d12, fog:[260,690],
-      sky:{src:'assets/rooms/arcade/sky/starport'},
+      sky:{src:'assets/rooms/arcade/sky/starport',rot:0},
       hemi:{sky:0xd4cac1,ground:0x89695a,int:0.78,on:false},
-      dir:{color:0xeaae90,int:1.95,pos:[45,91,-62],on:true,shadow:true,shadowInt:1},
+      dir:{color:0xeaae90,int:0.53,pos:[154,171,8],on:true,shadow:false,shadowInt:1},
       env:{shell:0x473d4b,panels:[[0xffd79b,-250,16,-40,184,56],[0x7ce9f0,-46,28,-236,128,54],[0xf49ac4,114,22,-227,105,40],[0xffeed6,-26,130,89,156,44],[0xb3c0c7,237,37,85,104,60]]},
       lights:[
-        {type:'spot', pos:[-101,92,74], look:[-28,-1,-3], color:0xffebcc, int:199, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9},
+        {type:'spot', pos:[-101,92,74], look:[-28,-1,-3], color:0xffebcc, int:149, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9},
         {type:'spot', pos:[-145,20,-47], look:[-205,-28,-50], color:0xffb762, int:104, dist:152, decay:0.7, angle:0.98, penumbra:0.65},
         {type:'spot', pos:[-54,51,-173], look:[-41,-43,-118], color:0x53e4ec, int:17.7, dist:240, decay:0.6, angle:1.04, penumbra:0.62},
         {type:'spot', pos:[105,56,-175], look:[118,-43,-124], color:0xfd82ba, int:39, dist:109, decay:0.65, angle:1.18, penumbra:0.65},
-        {type:'spot', pos:[101,92,74], look:[28,-1,-3], color:0xffebcc, int:199, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9}
+        {type:'spot', pos:[101,92,74], look:[28,-1,-3], color:0xffebcc, int:149, dist:221, decay:0.75, angle:0.49, penumbra:0.53, shadow:true, shadowInt:0.9}
       ],
       bakedProps:[
         {prop:'fuzeballArcadeStool', at:[
@@ -2832,7 +2990,7 @@ deadball:{
   // optional file: without it the game runs as before. A pitch picks its line mode with CONFIG.pitches.<id>.lines:{mode:'off'|'react'|'glow'}; no entry = lines.mode
  show:{
   on:true,
-  shot:{ min:90, jump:0.35 },   // a ball leaving faster than min (km/h), having gained this share of its speed in one frame, goes up on the boards
+  shot:{ min:110, jump:0.35 },   // a ball leaving faster than min (km/h), having gained this share of its speed in one frame, goes up on the boards
   board:{
    on:true,
    cols:26, rows:12,            // dots across and down
@@ -2851,8 +3009,10 @@ deadball:{
    on:true,
    mode:'react',                // for a pitch with no lines entry
    dir:'assets/pitches/lines/', // <pitch id>.png from tools/pitch-lines.mjs
-   glow:0.35,                   // idle glow on 'glow' pitches, x the line's own colour
-   flood:{ speed:110, width:22, tail:46, T:2.6, gain:6 },    // a goal: front speed (u/s), soft front, trailing fade (u), length (s), peak; in the scorer's colour from the end it went in
+   glow:0.6,                    // idle glow on 'glow' pitches, x the line's own colour
+   breathe:{ amp:0.35, T:3.2 }, // the idle glow swells by this share over T s
+   halo:{ lod:1.5, k:0.4 },     // spill round each lit line: mask mip bias (higher = wider), strength
+   flood:{ speed:110, width:22, tail:46, T:2.6, gain:0.7, tint:1 },   // a goal: front speed (u/s), soft front, trailing fade (u), length (s), emissive peak, how far the lines turn the scorer's colour (0..1); from the end it went in
    pulse:{ speed:62, width:7, T:1.5, gain:4, col:0xffe7b8 } // a kickoff: a ring out of the centre circle
   },
   walk:{
@@ -2894,11 +3054,18 @@ deadball:{
     }
    },
    // contact shadows (js/contact.js): a soft dark blob on the pitch under each boot and ball, whatever the lights; sizes in u, fade = height (u) at which it is gone
-   contact:{ on:true, foot:{ x:2.6, z:2.6, str:0.45, fade:4, grow:0.25 }, ball:{ r:2.8, str:0.45, fade:8, grow:0.2 }, y:0.03 },
+   contact:{ on:true, foot:{ x:2.0, z:2.0, str:0.45, fade:4, grow:0.25 }, ball:{ r:2.8, str:0.45, fade:8, grow:0.2 }, y:0.03 },
    // resident PointLights effects borrow from, keeping the light count constant (changing it recompiles); overflow drops the glow
    lightPool:3,
    lightReach:0.89,   // a glow's cutoff as a share of its asked radius: fx lights have no distance falloff (decay 0), this window fits r128's linear one
    warmMatch:true, // true = compile every fx a match can fire before kickoff
+   // the goal blast: particles and the screen flash (shake, spin, slow-mo, line flood live in CONFIG.feel.goal / CONFIG.show); the scored ball always plays on into the net
+   goalFx:{ on:false,
+    lights:true,       // the goal lights flash in the team colour, blast or not
+    sound:true,        // keep the goal stinger + crowd (Au.goal) when off
+    net:{ grav:180, rest:0.22, floorRest:0.3, fric:2.2, poke:4, life:1.6, sink:14,   // the ball in the net: gravity, share of speed the side walls and roof give back, floor bounce, roll friction (1/s), impact speed that pokes the cloth, s before it drops out, drop speed (u/s) through the tray
+     soft:{ k:1400, c:30, max:3.2, fric:3 } },   // the back of the net: spring (a 150 u/s ball sinks ~2 u), damping (higher = deader), deepest it gives (u), drag on a ball sliding across it (1/s)
+   },
 
    /* ---- vfx: GPU particles, blasts and confetti (js/vfx.js) ------------
       power = brightness (1 is a plain lit surface, the core of a goal flash is ~7). Sizes are table units: the ball is 3.8 across, the goal mouth 22.
@@ -2923,7 +3090,7 @@ deadball:{
      glitter:{ n:30, speed:[5,40], drag:[0.8,1.6], life:[1.2,2.6], size:[0.14,0.26], power:3.8 },
      embers:{ n:36, speed:[3,14], life:[1.4,2.8], size:[0.35,0.8], power:1.0 },   // big soft glows lifting off
      fountain:{ n:34, speed:[34,58], life:[0.8,1.3], size:[0.14,0.26], tail:0.06, power:3.4, over:1.1 },   // gold cold-spark fountains off the goal posts (over = seconds they run)
-     confetti:{ n:50, speed:[40,100], life:[2.8,4.2], size:[0.1,0.2] },
+     confetti:{ n:0, speed:[40,100], life:[2.8,4.2], size:[0.1,0.2] },
      light:{ goal:6.3, flash:5.3, decay:3 },
      net:{ pulse:2.4, ripple:1.0, speed:34 },       // the net lights in the team colour and a wave runs across it
      punch:1
@@ -2950,7 +3117,7 @@ deadball:{
     finale:{
      board:2.6,                 // seconds the full-time board waits while it plays (0 = straight in; a key or click skips); with particles off it is 0
      rings:{ n:3, gap:0.32, life:1.2, size:62, power:1.0 },     // pulses rolling off the centre spot
-     cannons:{ pieces:48, sparks:16, volleys:2, gap:0.55, speed:[45,100], life:[3.0,4.4], size:[0.7,1.15] },   // per corner
+     cannons:{ pieces:24, sparks:16, volleys:2, gap:0.55, speed:[45,100], life:[3.0,4.4], size:[0.2,0.45] },   // per corner
      fountains:{ n:4, per:30, over:2.2, speed:[40,66], life:[0.9,1.5], power:3.4 },    // per rail, gold
      shells:{ n:7, from:0.5, gap:0.38, rise:0.7, sparks:110, glitter:40, speed:[16,46], life:[1.2,2.2], power:3.6, light:1.45 },
      rain:{ n:160, from:0.7, over:2.8, height:[58,95], life:[3.4,5], size:[0.3,0.7] },
@@ -3147,10 +3314,10 @@ deadball:{
     kbm:'Press [rodPrev] and [rodNext] to change rods. Take hold of all three.',
     pad:'Press {LB} and {RB} to change rods. Take hold of all three.'},
    {id:'pass',name:'PASS',rods:['MID','ATT'],start:'MID',ball:{x:-4.9,z:0},lift:false,check:'pass',
-    kbm:'Hold [finesse] and tap [kick] to push the ball up to your attack.',
+    kbm:'Tap [kick] to push the ball up to your attack.',
     pad:'Hold {LT} and tap {A} to push the ball up to your attack.'},
    {id:'power',name:'POWER SHOT',rods:['ATT'],ball:{x:25.4,z:0},check:'charge',
-    kbm:'Hold [power] and [raise] to wind up, then kick with [kick] while the marker glows gold.',
+    kbm:'Hold [power] and [raise] to wind up, then kick with [kick] while the marker glows gold. [power] + [kick] alone is a hard shot.',
     pad:'Hold {RT} and {X} to wind up, then kick with {A} while the marker glows gold.'},
    {id:'pin',name:'PIN',rods:['ATT'],ball:{x:36,z:0,vx:-17},check:'pin',
     kbm:'A ball is coming. Hold [finesse] and [raise] to tilt your players and pin it.',
@@ -3170,8 +3337,8 @@ deadball:{
     kbm:'Hold [finesse] and tap [kick] to pass. Keep [finesse] held: control jumps to your attack, and its foot comes down on the ball.',
     pad:'Hold {LT} and tap {A} to pass. Keep {LT} held: control jumps to your attack, and its foot comes down on the ball.'},
    {id:'pinPass',name:'PIN PASS',rods:['MID','ATT'],start:'MID',ball:{x:6,z:0,vx:-17},lift:false,auto:true,centre:true,check:'pinPass',
-    kbm:'Pin the ball with [finesse] and [raise], then keep [finesse] held and press [kick] once. One kick from the pin is a pass: your attack takes it. Two quick kicks shoot.',
-    pad:'Pin the ball with {LT} and {X}, then keep {LT} held and press {A} once. One kick from the pin is a pass: your attack takes it. Two quick kicks shoot.'},
+    kbm:'Pin the ball with [finesse] and [raise], then keep [finesse] held and press [kick]. A kick from the pin is a pass: your attack takes it. Hold [power] as you kick to shoot.',
+    pad:'Pin the ball with {LT} and {X}, then keep {LT} held and press {A}. A kick from the pin is a pass: your attack takes it. Hold {RT} as you kick to shoot.'},
    {id:'tictac',name:'TIC-TAC',rods:['ATT'],ball:{x:21,z:9.25,zRod:true},row:true,centre:true,check:'tictac',
     kbm:'Hold [finesse] and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.',
     pad:'Hold {LT} and your feet turn square. Slide into the ball to tap it to the next man, then tap it back. Four touches in a row.'},
@@ -3286,7 +3453,7 @@ deadball:{
     hold:'DEF',rods:{show:['0|DEF']},
     goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-26,26],min:14}},limit:75,
     medals:{gold:18,silver:31,bronze:53}},
-   {id:'dPinShot',name:'PIN SHOT',cat:'DEF',set:'pin',blurb:'Pin the ball as it comes, then kick twice to shoot from the pin, the length of the table. Three goals.',
+   {id:'dPinShot',name:'PIN SHOT',cat:'DEF',set:'pin',blurb:'Pin the ball as it comes, then hold power and kick to shoot from the pin, the length of the table. Three goals.',
     seed:52329,table:'classic',
     ball:{type:'classic',x:-24,z:0},
     hold:'DEF',rods:{show:['0|DEF']},
@@ -3304,7 +3471,7 @@ deadball:{
     hold:'DEF',rods:{show:['0|DEF']},
     goal:{kind:'drill',move:'roll',n:3},limit:60,
     medals:{gold:15,silver:26,bronze:45}},
-   {id:'dRollShot',name:'ROLL AND FIRE',cat:'DEF',set:'walk',blurb:'Roll it to the other defender, pin it, kick twice to shoot the length of the table. Two goals, each off a roll.',
+   {id:'dRollShot',name:'ROLL AND FIRE',cat:'DEF',set:'walk',blurb:'Roll it to the other defender, pin it, hold power and kick to shoot the length of the table. Two goals, each off a roll.',
     seed:52399,table:'classic',
     ball:{type:'classic',x:-41.1,z:-6},
     hold:'DEF',rods:{show:['0|DEF']},
@@ -3348,7 +3515,7 @@ deadball:{
     hold:'MID',rods:{show:['0|MID']},
     goal:{kind:'drill',move:'place',n:4,hold:1,lane:{w:6,z:[-24,24],min:12}},limit:75,
     medals:{gold:20,silver:35,bronze:60}},
-   {id:'mPinShot',name:'PIN SHOT',cat:'MID',set:'pin',blurb:'Pin the ball as it comes, then kick twice to shoot from the pin, from halfway. Three goals.',
+   {id:'mPinShot',name:'PIN SHOT',cat:'MID',set:'pin',blurb:'Pin the ball as it comes, then hold power and kick to shoot from the pin, from halfway. Three goals.',
     seed:63329,table:'classic',
     ball:{type:'classic',x:6,z:0},
     hold:'MID',rods:{show:['0|MID']},
@@ -3366,7 +3533,7 @@ deadball:{
     hold:'MID',rods:{show:['0|MID']},
     goal:{kind:'drill',move:'roll',n:6},limit:60,
     medals:{gold:14,silver:24,bronze:41}},
-   {id:'mRollShot',name:'ROLL AND FIRE',cat:'MID',set:'walk',blurb:'Roll it from one midfielder to the next, pin it, kick twice to shoot. Two goals, each off a roll.',
+   {id:'mRollShot',name:'ROLL AND FIRE',cat:'MID',set:'walk',blurb:'Roll it from one midfielder to the next, pin it, hold power and kick to shoot. Two goals, each off a roll.',
     seed:63399,table:'classic',
     ball:{type:'classic',x:-11.1,z:-18.5},
     hold:'MID',rods:{show:['0|MID']},
@@ -3681,6 +3848,7 @@ const PHY=CONFIG.physics, KICK=CONFIG.kick, AIC=CONFIG.ai, CTRL=CONFIG.control,
 const RODDEFS=CONFIG.rods.defs, DIFFS=CONFIG.diffs, BALL_TYPES=CONFIG.ballTypes,
        PU_TYPES=CONFIG.puTypes, ROOMS=CONFIG.rooms, CUP=CONFIG.league.cup;
 const pCount=CONFIG.fx.particleCount;
+function goalFxOn(){const G=CONFIG.fx.goalFx;return!G||G.on!==false;}   // false = no goal blast (CONFIG.fx.goalFx)
 const ARENA=CONFIG.tables.arena.bowl;   // bowl shape params, read by arena.js
 
 // =========== Persisted player settings (localStorage) ===========
@@ -3713,6 +3881,8 @@ padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,
 padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
 // classic charge input: 'rt' (RT holds the wind-up), 'kick' (the kick button holds it, a tap fires on release) or 'both'
 padChargeBtn:'rt',
+// face buttons on a pinned ball (shots.pin.press.shoot 'power'): 'sq' = X / square passes, B / circle shoots; 'ci' = the other way round; 'off' = A and RT + A only
+padPinBtns:'sq',
 mouseSens:1,kbdSens:1,
 // rebound keyboard/mouse actions: action -> [codes], only for actions the player changed (js/binds.js)
 keyBinds:{},
@@ -3750,7 +3920,7 @@ const CFG_PLAYER=new Set([
 // control preferences sync (inversion, sensitivity, TC curve, charge button); padDeadzone doesn't (calibrated to a stick)
  'padSlideAxis','padAngleAxis','padSlideSens','padAngleSens','padSlideCurve',
  'padSlideInvert','padAngleInvert','padControlMode','padTCBase','padTCFine','padTCFast',
- 'padTCSwerve','padTCSpinInvert','padChargeBtn','mouseSens','kbdSens','mouseLock','keyBinds',
+ 'padTCSwerve','padTCSpinInvert','padChargeBtn','padPinBtns','mouseSens','kbdSens','mouseLock','keyBinds',
 'trials','daily','trnSpots','photoShots','photoPath','photoGroups','layoutPresets',  // progress + authored content
  'tutSeen','tutDone',                                            // the tutorial: offered once, and finished (an achievement reads tutDone)
  'pinHint',                                                      // an on-screen help preference, follows the person

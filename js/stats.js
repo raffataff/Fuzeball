@@ -69,6 +69,7 @@ function aimAssist(b,r,noPass){
  const cur=Math.atan2(v.z,v.x*dir),want=Math.atan2(tz-p.z,(tx-p.x)*dir);
  const th=assistTurn(r,cur,want,v.x*dir,!!pass)*dir;
  if(!th)return;
+ if(S.asl&&isUserRod(r))aslHit(r,pass?'pass':'aim',Math.abs(th)*57.3);   // js/assists.js
  const cs=Math.cos(th),sn=Math.sin(th),vx=v.x,vz=v.z;
  v.x=vx*cs-vz*sn;v.z=vx*sn+vz*cs;
 }
@@ -104,6 +105,7 @@ function wallAssist(b,r,noPass){
  const want=clamp(Math.atan2((tz-p.z)*sz,(tx-p.x)*dir),W.minAng,W.maxAng);
  const th=want-Math.atan2(w,u);
  if(th<=0)return;                                           // already leaving at least that far infield
+ if(S.asl&&isUserRod(r))aslHit(r,'wall',th*57.3);
  const cs=Math.cos(th),sn=Math.sin(th);
  v.x=(u*cs-w*sn)*dir;v.z=(u*sn+w*cs)*sz;
  if(dbgLogRod===r)dbgRod(r,'WALL','off the wall +'+(th*57.3).toFixed(0)+'° → '+(want*57.3).toFixed(0)+'° infield');

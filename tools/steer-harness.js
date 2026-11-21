@@ -1,8 +1,10 @@
 // steer harness. node tools/steer-harness.js
-// slices the real pass-steer helpers (steerHeading / steerSlide / steerV / steerReach, the free-pass run-up's freeBall / runV / freeReach / runPlan / runStart / runMate / runStep / runEnd, ai.js), passEval and pinPlay, and runs them against live CONFIG with the world stubbed
+// slices the real pass-steer helpers (steerHeading / steerSlide / steerV / steerReach, the free-pass run-up's freeBall / runV / runMass / runReach / freeReach / runPlan / runStart / runMate / runStep / runEnd, ai.js), passEval and pinPlay, and runs them against live CONFIG with the world stubbed
 // pins: the slide <-> heading table (round trip, sign, the end), what slide a rod can hold (top speed, vMax, the room it has left for steer.hold), how far off straight a pass from a pin reaches on each side,
 // which mates passEval offers once that is the limit, and what pinPlay commits (the slide toward him that leaves on the line to him, held for steer.hold; a standing pass with steer off);
-// the run-up: which balls it runs at, the room a run needs (back off, run up, meet the ball, carry on, brake), which man runs, and the steps (back off, run, fire when the man is predicted to be on the ball, give up when it is late / the ball got away / the mate slid off the heading); every mutation must break an assertion
+// the run-up: which balls it runs at, the room a run needs (back off, run up, meet the ball, carry on, brake), how far it reaches (the ball's mass, the assist, what a receiver holds), which man runs,
+// and the steps (back off, run, fire on the step whose predicted launch the pass assist puts on the mate, off the front of the boot; give up when it is late / the ball got away / the mate slid off the heading); every mutation must break an assertion
+// kickLaunch is stubbed: setLaunch(fn) hands runStep the launch a test wants (null = the plain stub)
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -12,8 +14,8 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
- lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
+ lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
+ fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
  pass:slice(AI,'function passEval(',NL+'function passPick('),
  flight:slice(AI,'function kickLine(',NL+'function kickShotPlan('),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
@@ -24,10 +26,10 @@ const stubs=[
  "function pinRelease(r){r.pinB=null;}",
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null});}",
  "function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return PICK;}",
- "function passFaceOK(){return true;}",
- "function kickLaunch(r,b,style,slide){const sv=r.slideV+clamp(slide-r.slideV,-5,5);return {x:b.m.position.x,z:b.m.position.z,heading:Math.atan2(sv,80),forward:80,slide,face:1};}",
+ slice(rd('js/rods.js'),'function passFaceOK(',NL+'// ball-control actions'),
+ "var LAUNCH=null; function kickLaunch(r,b,style,slide){if(LAUNCH)return LAUNCH(r,b,style,slide);const sv=r.slideV+clamp(slide-r.slideV,-5,5);return {x:b.m.position.x,z:b.m.position.z,heading:Math.atan2(sv,80),forward:80,slide,face:1};}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
- "const STC=CONFIG.stats; function assistAng(r,pass){return pass?AIC.dribble.pass.assist:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
+ "const STC=CONFIG.stats; function assistAng(r,pass){return pass?AIC.dribble.pass.assist:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
  slice(rd('js/stats.js'),'function assistTurn(',NL+'// the most aimAssist'),
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
@@ -40,7 +42,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.pass,g.flight,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,steerHeading:steerHeading,steerSlide:steerSlide,steerV:steerV,steerReach:steerReach,passEval:passEval,pinPlay:pinPlay,pinPlayStart:pinPlayStart,pinFire:pinFire,CAW:CAW,freeBall:freeBall,runV:runV,freeReach:freeReach,runPlan:runPlan,runStart:runStart,runStep:runStep,runEnd:runEnd,setPick:function(v){PICK=v;}};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,steerHeading:steerHeading,steerSlide:steerSlide,steerV:steerV,steerReach:steerReach,passEval:passEval,pinPlay:pinPlay,pinPlayStart:pinPlayStart,pinFire:pinFire,CAW:CAW,freeBall:freeBall,runV:runV,runMass:runMass,runReach:runReach,freeReach:freeReach,runPlan:runPlan,runStart:runStart,runStep:runStep,runEnd:runEnd,BALL_TYPES:BALL_TYPES,setPick:function(v){PICK=v;},setLaunch:function(f){LAUNCH=f;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -218,8 +220,23 @@ function suite(X){
   ok('a short rod can only run as fast as its travel allows, and that run fits',v1>0&&v1<top&&feas(small,0,1,v1),v1);
   ok('…and one step faster would not',!feas(small,0,1,v1+FR.vStep));
   ok('with a ball near the +z end, a run to -z would have to back off past the end, and one to +z has little room after it',X.runV(small,1,5,-1)===0&&X.runV(small,1,5,1)>0&&X.runV(small,1,5,1)<X.runV(small,1,0,1),X.runV(small,1,5,-1)+' / '+X.runV(small,1,5,1));
-  ok('a rod that ends in 18 units reaches as far as its best man runs at the ball',near(X.freeReach(r,0,1),Math.max(FR.standing,X.steerHeading(top))));
-  ok('…and never less than the pass it makes standing',X.freeReach(small,6,1)===FR.standing);}
+  const RT=FR.reach,as=X.AIC.dribble.pass.assist,last=RT[RT.length-1];
+  ok('the reach table starts at the lightest ball and only falls with mass',RT.every((p,i)=>i===0||(p[0]>RT[i-1][0]&&p[1]<RT[i-1][1])));
+  ok('every measured mass reads back as its heading plus the pass assist',RT.every(p=>near(X.runReach(r,p[0]),p[1]+as)));
+  ok('…linear between two measured masses',near(X.runReach(r,(RT[1][0]+RT[2][0])/2),(RT[1][1]+RT[2][1])/2+as));
+  ok('…a ball lighter than the lightest reaches the first point, a heavier than the heaviest the last',near(X.runReach(r,RT[0][0]/2),RT[0][1]+as)&&near(X.runReach(r,last[0]*2),last[1]+as));
+  ok('a rod with room reaches what its swing turns the ball by: a cannonball ('+(X.freeReach(r,0,1,10)*57.3).toFixed(0)+' deg) less than a classic one',near(X.freeReach(r,0,1,10),X.runReach(r,10))&&X.freeReach(r,0,1,10)<X.freeReach(r,0,1,2));
+  ok('…and never past what a receiver holds, however light the ball',X.runReach(r,0.9)>FR.thMax&&X.freeReach(r,0,1,0.9)===FR.thMax);
+  ok('a short rod that can still run reaches as far as a long one: the slide times the contact, it does not turn the ball',v1>0&&near(X.freeReach(small,0,1,10),X.freeReach(r,0,1,10)));
+  ok('…and with no man that has the room, only the pass it makes standing',X.runV(small,1,6,1)===0&&X.freeReach(small,6,1,2)===FR.standing);}
+ // ---- the ball a free pass is planned off ----------------------------------------------------------------------------
+ {fw();X.S.balls.length=0;
+  ok('with no ball lying there a free pass is planned on a classic ball',X.runMass(-34.1,0)===X.BALL_TYPES.classic.mass);
+  X.S.balls.push({scored:false,t:{mass:10},m:{position:{x:-10,y:X.BALL_R,z:5}}},{scored:false,t:{mass:0.9},m:{position:{x:-34.1,y:X.BALL_R,z:0}}});
+  ok('…else on the ball lying at that spot, not another on the table',X.runMass(-34.1,0)===0.9&&X.runMass(-10,5)===10);
+  X.S.balls[1].scored=true;
+  ok('…and never on one already scored',X.runMass(-34.1,0)===10);
+  X.S.balls.length=0;}
  {const r=fw();
   const pl=X.runPlan(r,0,0.476);
   ok('a pass 27 deg off straight is run by the man on the ball, at the slide that leaves on that line',!!pl&&pl.mi===1&&pl.s===1&&near(pl.v,X.steerSlide(0.476),1e-6),pl&&pl.v);
@@ -251,40 +268,58 @@ function suite(X){
  const startRun=(opt)=>{const r=fw(opt);r.act=null;const best=view(X,3.4,0),mate={x:-22.5,baseZ:[-9,0,6,12],offset:0,removedUntil:[],team:0};
   const pk={rod:mate,man:2,x:-22.5,z:6,clr:4,onward:3,th:Math.atan2(6,-22.5-(-34.1))};
   X.rods.push(mate);X.runStart(r,best,pk);return {r,best,mate,pk};};
+ const wantTh=Math.atan2(6,-22.5+34.1),dxM=-22.5+34.1,asP=X.AIC.dribble.pass.assist;   // the line from the ball to the mate's man (z 6)
+ const lnch=(h,o)=>()=>Object.assign({x:-34.1,z:0,heading:h,forward:150,face:1,w:10},o||{});   // a launch off the front of the boot leaving on heading h
  {const {r,best}=startRun();const os=r.rnV?-(r.rnV*FR.lead+r.rnV*r.rnV/1200+FR.back):0;
   const f0=X.runStep(r,best,D,dt);
   ok('it backs off first: the target is the start of the run and nothing is fired',f0===0&&r.act==='run'&&r.rnPh==='back'&&near(r.target,os,1e-6),r.target+' vs '+os);
-  r.offset=os;r.slideV=0;
+  r.offset=os;r.slideV=0;X.setLaunch(()=>null);
   const f1=X.runStep(r,best,D,dt);
-  ok('settled at the start, it runs: slides toward the mate, nothing fired while it is still short of the ball',f1===0&&r.rnPh==='run'&&r.target>r.offset&&X.KICKS.length===0);
-  r.slideV=r.rnV*FR.vTol-1;r.offset=-r.slideV*FR.lead+0.3;
-  ok('…and not before the slide has built up, even with the man predicted on the ball',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0);
-  r.slideV=r.rnV;r.offset=-r.rnV*FR.lead+0.3;
-  ok('…nor when the ball is rolling away from him by the time the boot arrives',X.runStep(r,view2(X,3.4,0,6),D,dt)===0&&X.KICKS.length===0);
+  ok('settled at the start, it runs: slides toward the mate, nothing fired while no contact is predicted',f1===0&&r.rnPh==='run'&&r.target>r.offset&&X.KICKS.length===0);
   r.offset=-r.rnV*FR.lead-1;r.slideV=r.rnV;
-  ok('…nor while it is still predicted to arrive after the swing is due (short of the ball)',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0);
-  r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;
+  X.setLaunch(lnch(wantTh,{face:X.AIC.strikeGate.faceDot-0.1}));
+  ok('a contact predicted on the side of the boot does not fire, even one leaving on the line (the pass assist skips a side clip)',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act==='run');
+  X.setLaunch(lnch(wantTh,{forward:X.AIC.dribble.pass.assistMinVX-1}));
+  ok('…nor one leaving too slowly for the pass assist to act',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act==='run');
+  X.setLaunch(lnch(wantTh-asP-0.15));
+  ok('a launch that would cross short of the mate waits (the boot square to the ball: it would leave near straight)',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act==='run');
+  X.setLaunch(lnch(wantTh+asP+0.15));
+  ok('…as does one that would cross past him (the boot\'s corner too far round the ball)',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act==='run');
+  X.setLaunch(lnch(Math.atan((6-FR.land-0.3)/dxM)-asP));
+  ok('…and one the pass assist brings to '+(FR.land+0.3).toFixed(1)+' short of him, outside free.land',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act==='run');
+  X.setLaunch(lnch(Math.atan((6-FR.land+0.2)/dxM)-asP));
   const n0=X.CAS.runFire,f2=X.runStep(r,best,D,dt);
-  ok('predicted on the ball by the time the boot arrives, at speed: the pass swing starts, aimed at the mate',f2===1&&X.KICKS.length===1&&X.KICKS[0].style==='pass'&&!!X.KICKS[0].aim&&X.KICKS[0].aim.z===6&&X.KICKS[0].aim.x===-22.5);
+  ok('a launch the pass assist brings to within free.land of him fires the pass swing, aimed at the mate',f2===1&&X.KICKS.length===1&&X.KICKS[0].style==='pass'&&!!X.KICKS[0].aim&&X.KICKS[0].aim.z===6&&X.KICKS[0].aim.x===-22.5);
   ok('…the slide is held through it, for catHold, toward the mate',r.catSw===true&&near(r.catSv,r.rnV,1e-6)&&r.catHold===ST.hold);
-  ok('…and counted',X.CAS.runFire===n0+1);}
- {const {r,best}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+FR.fireMax+0.5;r.slideV=r.rnV;
+  ok('…and counted',X.CAS.runFire===n0+1);
+  X.setLaunch(null);}
+ {const {r,best}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead-1;r.slideV=r.rnV*0.3;let seen=null;X.setLaunch((q,b,st,sl)=>{seen=sl;return lnch(wantTh)();});
+  ok('the launch decides, not the slide reached: one that lands on him fires while the slide is still building',X.runStep(r,best,D,dt)===1&&X.KICKS.length===1);
+  ok('…predicted with the slide the run holds through the swing, not the one it has reached',near(seen,r.rnS*r.rnV,1e-9),seen);
+  X.setLaunch(null);}
+ {const {r,best}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+FR.fireMax+0.5;r.slideV=r.rnV;X.setLaunch(()=>null);
   const n0=X.CAW['run:late']||0;
   ok('a fire that was missed (the man is past the ball) is given up, not made late',X.runStep(r,best,D,dt)===0&&r.act===null&&X.KICKS.length===0&&X.CAW['run:late']===n0+1);
-  ok('…with a cooldown before the next',r.rnCd>X.S.time);}
+  ok('…with a cooldown before the next',r.rnCd>X.S.time);
+  const q=startRun();q.r.rnPh='run';q.r.offset=-q.r.rnV*FR.lead+FR.fireMax+0.5;q.r.slideV=q.r.rnV;
+  ok('…but not where a ball rolling on with him keeps ahead of the man (the prediction reads its motion)',X.runStep(q.r,view2(X,3.4,0,1/FR.lead),D,dt)===0&&q.r.act==='run');
+  X.setLaunch(null);}
  {const {r,best}=startRun();const n0=X.CAW['run:gone']||0;
   const moving=view2(X,3.4,0,FR.maxBall*2+1);
   ok('a ball that gets away mid-run ends it',X.runStep(r,moving,D,dt)===0&&r.act===null&&X.CAW['run:gone']===n0+1);}
  {const {r,best}=startRun();const far=view(X,FR.relMax+1.5,0);
   ok('…as does one that rolls out of the swing\'s reach',X.runStep(r,far,D,dt)===0&&r.act===null);}
- {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;
+ {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;X.setLaunch(lnch(wantTh));
   mate.offset=8;const n0=X.CAW['run:mate']||0;
-  ok('the mate has slid off the heading the slide leaves on: no pass',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act===null&&X.CAW['run:mate']===n0+1);}
- {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;
+  ok('the mate has slid off the heading the run was planned on: no pass',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act===null&&X.CAW['run:mate']===n0+1);
+  X.setLaunch(null);}
+ {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;X.setLaunch(lnch(wantTh));
   X.rods.forEach(q=>{if(q.team===1)q.baseZ=[0,2,4];});
-  ok('his lane has shut: no pass',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act===null);}
- {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;mate.offset=1;
-  ok('he has moved a little, still on the heading and clear: it passes to where he stands now',X.runStep(r,best,D,dt)===1&&!!X.KICKS[0].aim&&X.KICKS[0].aim.z===7);}
+  ok('his lane has shut: no pass',X.runStep(r,best,D,dt)===0&&X.KICKS.length===0&&r.act===null);
+  X.setLaunch(null);}
+ {const {r,best,mate}=startRun();r.rnPh='run';r.offset=-r.rnV*FR.lead+0.3;r.slideV=r.rnV;mate.offset=1;X.setLaunch(lnch(Math.atan2(7,dxM)));
+  ok('he has moved a little, still on the heading and clear: it passes to where he stands now',X.runStep(r,best,D,dt)===1&&!!X.KICKS[0].aim&&X.KICKS[0].aim.z===7);
+  X.setLaunch(null);}
  {const {r,best}=startRun();r.rnPh='back';r.offset=0;r.maxOff=1;
   const n0=X.CAW['run:room']||0;
   ok('a start the rod cannot reach (the ball moved toward its end) ends the run for want of room',X.runStep(r,best,D,dt)===0&&r.act===null&&X.CAW['run:room']===n0+1);}
@@ -294,8 +329,14 @@ function suite(X){
  {const r=fw({mates:[9]});r.act=null;
   const p1=X.passEval(r,-34.1,0,'free');const th9=Math.atan2(9,-22.5+34.1);
   ok('a free pass 38 deg off is judged by what a run can do, not by the pin\'s reach',th9>X.steerReach(r,1)-1&&(p1===null||near(p1.th,th9,0.02)));
-  const q7=fw({mates:[7]}),q7s=fw({mates:[7],maxOff:6.2});
-  ok('a mate 33 deg off is offered to a rod that can run that far, and not to a short one that cannot',!!X.passEval(q7,-34.1,0,'free')&&X.passEval(q7s,-34.1,0,'free')===null);
+  const q7=fw({mates:[7]}),dx=-22.5+34.1,cannon={scored:false,t:{mass:10},m:{position:{x:-34.1,y:X.BALL_R,z:0}}};
+  ok('a mate 31 deg off is offered off a classic ball',!!X.passEval(q7,-34.1,0,'free'));
+  X.S.balls.push(cannon);
+  ok('…and not off a cannonball lying there, which the boot turns less',X.passEval(q7,-34.1,0,'free')===null);
+  X.S.balls.length=0;
+  const light=(th)=>{const q=fw({mates:[dx*Math.tan(th)]});X.S.balls.push(Object.assign({},cannon,{t:{mass:0.9}}));return X.passEval(q,-34.1,0,'free');};
+  ok('off the lightest ball a mate just inside what a receiver holds is offered, one just past it is not',!!light(FR.thMax-0.03)&&light(FR.thMax+0.03)===null);
+  X.S.balls.length=0;
   const near16=fw({mates:[7],off:16});
   ok('a rod parked near its +z end can still run at a ball at its centre man, which a pass from a pin could not (little room left)',!!X.passEval(near16,-34.1,0,'free')&&X.passEval(near16,-34.1,0,'pin')===null);
   const t0=fw({mates:[0]});
@@ -324,8 +365,8 @@ const MUT=[
  {n:'the room is read from the wrong end',part:'lane',from:'room=s>0?r.maxOff-r.offset:r.offset+r.maxOff;',to:'room=s>0?r.offset+r.maxOff:r.maxOff-r.offset;'},
  {n:'a rod with no room reaches nothing, not even its standing heading',part:'lane',from:'return Math.max(ST.standing,steerHeading(steerV(r,s)));',to:'return steerHeading(steerV(r,s));'},
  {n:'passEval looks at the +z side for every mate',part:'pass',from:'steerReach(r,th<0?-1:1)',to:'steerReach(r,1)'},
- {n:'passEval does not limit a pin pass to what the slide reaches without a launch',part:'pass',from:'if(!pinLaunch&&steer){if(Math.abs(th)>(mode===\'pin\'?steerReach(r,th<0?-1:1):freeReach(r,bz,th<0?-1:1)))continue;}',to:'if(!pinLaunch&&steer){}'},
- {n:'a free pass is judged as a pin pass (the pin\'s reach, not the run\'s)',part:'pass',from:':freeReach(r,bz,th<0?-1:1)',to:':steerReach(r,th<0?-1:1)'},
+ {n:'passEval does not limit a pin pass to what the slide reaches without a launch',part:'pass',from:'if(!pinLaunch&&steer){if(Math.abs(th)>(mode===\'pin\'?steerReach(r,th<0?-1:1):freeReach(r,bz,th<0?-1:1,fm)))continue;}',to:'if(!pinLaunch&&steer){}'},
+ {n:'a free pass is judged as a pin pass (the pin\'s reach, not the run\'s)',part:'pass',from:':freeReach(r,bz,th<0?-1:1,fm)',to:':steerReach(r,th<0?-1:1)'},
  {n:'a pin pass is judged against the cone as well',part:'pass',from:'else if(!pinLaunch&&cone&&Math.abs(th)>cone)continue;',to:'if(!pinLaunch&&cone&&Math.abs(th)>cone)continue;'},
  {n:'an own rod standing ready is not in the way',part:'lane',from:"if(r2.team===team&&r2.act!=='recv')continue;",to:'if(r2.team===team)continue;'},
  {n:'the target\'s own rod is in the way of the pass to it',part:'lane',from:'(r2.x-tx)*dir>=0)continue;',to:'(r2.x-tx)*dir>0)continue;'},
@@ -346,7 +387,18 @@ const MUT=[
  {n:'a run is thought possible with no room to back off',part:'lane',from:'if(Math.abs(os)<=r.maxOff&&Math.abs(oe)<=r.maxOff)return v;',to:'if(Math.abs(oe)<=r.maxOff)return v;'},
  {n:'…or none to carry on after the ball',part:'lane',from:'if(Math.abs(os)<=r.maxOff&&Math.abs(oe)<=r.maxOff)return v;',to:'if(Math.abs(os)<=r.maxOff)return v;'},
  {n:'the run-up ignores the speed the slide has to build',part:'lane',from:'const os=oc-s*(v*FR.lead+v*v/(2*a)+FR.back),oe=oc+s*(v*(ST.hold-FR.lead)+v*v/(2*a));',to:'const os=oc-s*(v*FR.lead+FR.back),oe=oc+s*(v*(ST.hold-FR.lead));'},
- {n:'a free pass reaches nothing standing',part:'lane',from:'return Math.max(FR.standing,steerHeading(v));',to:'return steerHeading(v);'},
+ {n:'a free pass reaches nothing standing',part:'lane',from:'return Math.max(FR.standing,v>0?Math.min(FR.thMax,runReach(r,m)):0);',to:'return v>0?Math.min(FR.thMax,runReach(r,m)):0;'},
+ {n:'a free pass still reads the pin\'s slide table',part:'lane',from:'v>0?Math.min(FR.thMax,runReach(r,m)):0',to:'Math.min(FR.thMax,steerHeading(v))'},
+ {n:'a rod with no man that has room reaches as far as one that has',part:'lane',from:'v>0?Math.min(FR.thMax,runReach(r,m)):0',to:'Math.min(FR.thMax,runReach(r,m))'},
+ {n:'a free pass is planned steeper than a receiver holds',part:'lane',from:'v>0?Math.min(FR.thMax,runReach(r,m)):0',to:'v>0?runReach(r,m):0'},
+ {n:'every ball reaches as far as the lightest',part:'lane',from:' return h+assistAng(r,true);',to:' return T[0][1]+assistAng(r,true);'},
+ {n:'the reach by mass is not interpolated (the nearest point above)',part:'lane',from:'h=T[i-1][1]+(T[i][1]-T[i-1][1])*(m-T[i-1][0])/(T[i][0]-T[i-1][0]);break;',to:'h=T[i][1];break;'},
+ {n:'the reach leaves out the pass assist',part:'lane',from:' return h+assistAng(r,true);',to:' return h;'},
+ {n:'a ball lighter than the table reads past its end',part:'lane',from:'if(m<=T[0][0])return T[0][1]+assistAng(r,true);',to:''},
+ {n:'the mass is always the classic ball\'s',part:'lane',from:'if(d<bd){bd=d;m=b.t.mass;}',to:'if(d<bd){bd=d;}'},
+ {n:'the mass is read off the first ball, not the one lying there',part:'lane',from:'if(d<bd){bd=d;m=b.t.mass;}',to:'if(bd===1e9){bd=d;m=b.t.mass;}'},
+ {n:'a scored ball is counted',part:'lane',from:'for(const b of S.balls){if(b.scored)continue;const p=b.m.position,d=',to:'for(const b of S.balls){const p=b.m.position,d='},
+ {n:'passEval plans every free pass on a classic ball',part:'pass',from:"fm=steer&&mode!=='pin'?runMass(bx,bz):0;",to:'fm=BALL_TYPES.classic.mass;'},
  {n:'the run is planned toward the wrong side',part:'lane',from:'const vm=runV(r,i,bz,s);if(vm<=0)continue;',to:'const vm=runV(r,i,bz,1);if(vm<=0)continue;'},
  {n:'the man with the longest back-off runs',part:'lane',from:'if(!best||cost<best.cost)best={mi:i,s,v,R,os,cost};',to:'if(!best||cost>best.cost)best={mi:i,s,v,R,os,cost};'},
  {n:'the run slides at its top speed, not the one the heading needs',part:'lane',from:'const v=steerSlide(Math.min(Math.abs(th),steerHeading(vm)));if(!v||v<FR.vMin)continue;',to:'const v=vm;'},
@@ -364,8 +416,13 @@ const MUT=[
  {n:'the run slides away from the mate',part:'catch',from:'r.target=r.offset+s*v*dt;\n const pred',to:'r.target=r.offset-s*v*dt;\n const pred'},
  {n:'the prediction forgets the slide',part:'catch',from:'(r.baseZ[mi]+r.offset+r.slideV*FR.lead)',to:'(r.baseZ[mi]+r.offset)'},
  {n:'the prediction forgets the ball is moving',part:'catch',from:'-(p.z+b.v.z*FR.lead))',to:'-p.z)'},
- {n:'the swing fires before the man is on the ball',part:'catch',from:'if(pred<0||s*r.slideV<FR.vTol*v)return 0;',to:'if(s*r.slideV<FR.vTol*v)return 0;'},
- {n:'…or before the slide has built up',part:'catch',from:'if(pred<0||s*r.slideV<FR.vTol*v)return 0;',to:'if(pred<0)return 0;'},
+ {n:'a contact on the side of the boot fires the pass',part:'catch',from:'||!passFaceOK(r,L.face*dir))return 0;',to:')return 0;'},
+ {n:'a launch too slow for the pass assist fires',part:'catch',from:'if(!L||L.forward<PS.assistMinVX||',to:'if(!L||'},
+ {n:'it fires wherever the launch would land',part:'catch',from:'if(Math.abs(kickLine(r,L,pk.x,pk.z,true)-pk.z)>FR.land)return 0;',to:''},
+ {n:'it waits for a launch that lands dead on him (free.land ignored)',part:'catch',from:'-pk.z)>FR.land)return 0;',to:'-pk.z)>0.05)return 0;'},
+ {n:'the landing is judged without the pass assist',part:'catch',from:'Math.abs(kickLine(r,L,pk.x,pk.z,true)-pk.z)',to:'Math.abs(L.z+(pk.x-L.x)*dir*Math.tan(L.heading)-pk.z)'},
+ {n:'the launch is predicted with the slide the rod has, not the one the run holds',part:'catch',from:"const L=kickLaunch(r,b,'pass',s*v);",to:"const L=kickLaunch(r,b,'pass',r.slideV);"},
+ {n:'it still waits for the slide to build up',part:'catch',from:"const L=kickLaunch(r,b,'pass',s*v);",to:"if(s*r.slideV<0.9*v)return 0;const L=kickLaunch(r,b,'pass',s*v);"},
  {n:'a fire that was missed is never given up',part:'catch',from:"if(pred>FR.fireMax){runEnd(r,'late');return 0;}",to:''},
  {n:'a mate who has slid off the heading is passed to',part:'catch',from:'if(Math.abs(th-r.rnTh)>FR.thTol)continue;',to:''},
  {n:'a mate whose lane has shut is passed to',part:'catch',from:'if(lineClr(laneObs(r.team,p.x,m.x),p.x,p.z,m.x,m.z)<PS.minClear)continue;',to:''},

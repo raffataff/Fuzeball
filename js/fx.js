@@ -175,20 +175,23 @@ function rodHoleGoal(scorer,team){
  rhGoalCol.set(scorer.own?G.own:(team===0?cfg.redColor:cfg.blueColor));
 }
 function goalFx(team,b,scorer){
- const col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor);
- const pos=b.m.position.clone();pos.y+=1.5;
- if(vfxLive()){
-  vfxGoal(team,pos);
-  flash(team===0?cfg.redColor:cfg.blueColor,CONFIG.fx.vfx.flash,0.45);Au.goal();
- }else{
-  const gold=new THREE.Color(0xffe995),white=new THREE.Color(0xffffff);
-  burst(pos,col,white,220,78);      // main explosion
-  burstRing(pos,col,white,120,60);   // horizontal ring blast
-  burstUp(pos,col,gold,90,70);       // upward fountain with gold
-  burst(pos,gold,white,60,50);       // gold sparkle
-  flash();S.shake=1.5;Au.goal();
-  const gi=team===0?1:0;
-  goalLights[gi].color.copy(col);goalLights[gi].intensity=9.6;
+ const G=CONFIG.fx.goalFx,gi=team===0?1:0,col=new THREE.Color(team===0?cfg.redColor:cfg.blueColor),gl=goalLights[gi],live=vfxLive();
+ if(goalFxOn()){   // the blast
+  const pos=b.m.position.clone();pos.y+=1.5;
+  if(live){vfxGoal(team,pos);flash(team===0?cfg.redColor:cfg.blueColor,CONFIG.fx.vfx.flash,0.45);}
+  else{
+   const gold=new THREE.Color(0xffe995),white=new THREE.Color(0xffffff);
+   burst(pos,col,white,220,78);      // main explosion
+   burstRing(pos,col,white,120,60);   // horizontal ring blast
+   burstUp(pos,col,gold,90,70);       // upward fountain with gold
+   burst(pos,gold,white,60,50);       // gold sparkle
+   flash();S.shake=1.5;
+  }
+ }
+ if(G.sound!==false||goalFxOn())Au.goal();
+ // the goal lights (vfxGoal already flashed them)
+ if(gl&&(G.lights!==false||goalFxOn())&&!(live&&goalFxOn())){gl.color.copy(col);
+  if(live){const L=CONFIG.fx.vfx.goal.light;vfxLight(gl,false,0,0,0,0,0,L.goal,0.15,L.decay,0);}else gl.intensity=9.6;
  }
  ledGoalTeam=team;ledGoalT=MATCH.goalHold;
  rodHoleGoal(scorer,team);   // …and the scorer's own rod-hole ring, on the same clock
@@ -379,6 +382,8 @@ function fxUpdate(rdt){
  }
  pinMarkUpdate(rdt);
  bigGoalUpdate(rdt);
+ if(typeof netBallUpdate==='function')netBallUpdate(rdt);   // before the cloth: a pressing ball sets its dent this frame
+ if(typeof wedgeNetUpdate==='function')wedgeNetUpdate(rdt);
 }
 // big-goal widen: goalFrames[i].scale.z is the lerped mouth multiplier per goal (1 = right/+x, S.eff[0]; 0 = left/-x, S.eff[1]); the procedural net rides it
 // a table GLB's baked frame and end-walls follow the same multiplier (frames scale about the goal line, end-walls pin the outer edge and slide the inner); arrays are empty with no such meshes
@@ -394,7 +399,7 @@ function bigGoalUpdate(rdt){
   for(let k=0;k<wall.length;k++){const w=wall[k],ni=w.inner+w.sgn*F.goalHalf*(m-1),a=(w.outer-ni)/(w.outer-w.inner);
    w.o.scale.z=a;w.o.position.z=w.outer-a*w.outer;}                 // inner edge to goalHalf*mult, outer edge pinned
   // net taper: counter-scale each panel's local z toward the back so the world width eases from m at the mouth to backM at the rear; only while open, +1 restore frame on settle
-  const nets=g.userData.net;if(nets){
+  const nets=g.userData.net;if(nets&&!g.userData.wedge?.active){
    const active=Math.abs(m-1)>1e-4;
    if(active||g.userData.netDirty){const backM=1+(m-1)*PHY.bigGoalBack,GD=F.goalDepth;
     for(let n=0;n<nets.length;n++){const nm=nets[n],b=nm.userData.base,ar=nm.geometry.attributes.position.array;

@@ -119,7 +119,7 @@ function removeBall(b){ballHeatSet(b.m,0);   // hand the shared material back co
  // only the generated-sphere fallback owns its geo/mat; GLB-clone balls share the cached template
  if(b.owned)b.m.traverse(c=>{if(c.isMesh){c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();}});
  const i=S.balls.indexOf(b);if(i>=0)S.balls.splice(i,1);}
-function clearBalls(){while(S.balls.length)removeBall(S.balls[0]);}
+function clearBalls(){while(S.balls.length)removeBall(S.balls[0]);if(typeof netBallReset==='function')netBallReset();}
 function pickType(){
  if(!cfg.special)return 'classic';
  let tot=0;for(const k in BALL_TYPES)tot+=BALL_TYPES[k].w;

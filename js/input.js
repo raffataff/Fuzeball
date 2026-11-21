@@ -14,8 +14,8 @@ function bindPress(code){
   if(a==='music'){if(dev==='mouse')musicCycle();continue;}
   if(a==='retry'){if(dev==='mouse'&&S.trial&&typeof trialRestart==='function')trialRestart();continue;}
   if(!r)continue;
-  // kick: shots.js decides plain swing, pass (finesse) or release of a wind-up (power)
-  if(a==='kick'){shotKickEdge(r,shotKbmAxis(s));r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
+  // kick: shots.js decides plain pass, shot (power), finesse pin or release of a wind-up
+  if(a==='kick'){shotKickEdge(r,shotKbmAxis(s),null,true);r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
   // raise: the press is latched for shots.js (s.rzEdge) so a sub-frame tap still poses the pin
   else if(a==='raise'){r.raise=true;rodRaiseRelease(r);s.rzEdge=true;}   // your hand on it ends any inherited raise
   else if(a==='rodPrev')seatStep(s,-1);
@@ -73,6 +73,7 @@ addEventListener('keydown',e=>{
  if(e.code==='KeyL'&&S.phase!=='menu'&&dbgOn){cycleKickLog();return;}
  if(e.code==='KeyF'&&S.phase!=='menu'){toggleFreeRoam();return;}
  if(e.code==='F3'){togglePerf();return;}   // frame profiler overlay (js/perf.js) — works on the menu too, so a menu-side sag is measurable
+ if(e.code==='F9'&&typeof aslToggle==='function'){aslToggle();return;}   // the assist ledger (js/assists.js)
  if(S.freeRoam)return;
  if(S.phase!=='play'&&S.phase!=='count')return;
  if(!S.seats.length)return;                       // nobody playing (AI showdown / spectate)
@@ -102,6 +103,7 @@ cvs.addEventListener('mousemove',e=>{
  const dy=e.movementY||0;   // relative, works locked or not
  // a fixed span per screen-height on every rod; frozen for a beat after an auto hand-over (js/seats.js)
  if(dy&&seatSlideOK(ms))r.target=clamp(r.target+(dy/innerHeight)*CTRL.mouseSpan*CTRL.mouseSens*cfg.mouseSens,-r.maxOff,r.maxOff);
+ else if(dy&&S.asl)aslHit(r,'slideFreeze');
 });
 // mouse buttons are bindings (Mouse0 left, 1 middle, 2 right, 3 back, 4 forward) held in keys['Mouse<n>'], cleared on the window mouseup
 cvs.addEventListener('mousedown',e=>{
@@ -136,7 +138,8 @@ function userControlUpdate(dt){
  // slide off the bindings per seat: bindHeld only counts inputs on a device this seat owns
  for(const s of S.seats){
   const r=seatRod(s);
-  if(!r||!seatSlideOK(s))continue;
+  if(!r)continue;
+  if(!seatSlideOK(s)){if(S.asl&&(bindHeld('slideUp',s)||bindHeld('slideDown',s)))aslHit(r,'slideFreeze');continue;}
   let dz=0;
   if(bindHeld('slideUp',s))dz-=1;
   if(bindHeld('slideDown',s))dz+=1;
@@ -161,12 +164,13 @@ function userControlUpdate(dt){
      rodInputRelease(s.rods[s.ctrl]);clearRodAI(s.rods[bi]);s.ctrl=bi;
      seatStickSwitch(s);                           // a stick already deflected carries over, or re-centres before it drives the new rod (js/seats.js)
      s.slideArm=S.time+(CTRL.handover?CTRL.handover.settle||0:0);  // …and the swipe in flight doesn't come with it
+     if(S.asl)aslHit(s.rods[bi],'autoSwitch',null,zok?'ZONE':'NEAREST');
      updateChips();
     }
    });
   }
  // inherited raise: a handed-over rod keeps the AI's lift (clearRodAI) and drops it by the benched-rod rule; release only
- S.seats.forEach(s=>{const r=seatRod(s);if(r&&r.raiseKeep&&!rodHoldRaise(r))r.raiseKeep=false;});
+ S.seats.forEach(s=>{const r=seatRod(s);if(r&&r.raiseKeep){if(S.asl)aslHit(r,'raiseKeep');if(!rodHoldRaise(r))r.raiseKeep=false;}});
 }
 // ---- gamepad (Steam controller) ----
 // standard-layout pad on the same controls, polled once per frame, edge-detected via gpPrev
@@ -249,6 +253,7 @@ function padSeatUpdate(dt,gp,s,just){
  if(mag>DZ){u=Math.pow(Math.min(1,(mag-DZ)/(1-DZ)),cfg.padSlideCurve)*(cfg.padSlideAxis==='lx'?lx:ly)/mag;if(cfg.padSlideInvert)u=-u;}
  if(gpDown(gp,12))u-=1;if(gpDown(gp,13))u+=1;
  if(u&&seatSlideOK(s))slideBy(r,s,u*cfg.padSlideSens*slideMult/s.tcMult,dt);   // frozen for a beat after an auto hand-over (js/seats.js)
+ else if(u&&S.asl)aslHit(r,'slideFreeze');
  // angle: absolute tilt, stick position = target angle ('ry' = right stick up/down, 'rx' = left/right); forward eases to strike, back to raised, centre = feet down
  // sd is the same signed value for shots.js: -1 fully back .. +1 fully forward
  let rs=(cfg.padAngleAxis==='rx'?gp.axes[2]:gp.axes[3])||0,sd=0;
@@ -274,16 +279,18 @@ function padSeatUpdate(dt,gp,s,just){
  else if(r.tcSpin)r.tcSpin=0;
  // shots: read the trigger axis and charge source into this seat's pad record; the step runs once per seat after all pads
  const P=shotsOn()?shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd):null;
+ if(S.asl&&P&&P.deep&&P.lt<-SHOTC.pass.modAt)aslHit(r,'ltLatch');   // LT relaxed past the pass depth, still read as full
  // A: kick (RT is the alternate kick only while shots are off); with a wind-up live the kick button is a second release
  // pressed while LT is still on its way down it waits a moment for the trigger (shotChordWait), so LT and A pressed together are the pass; a rod switch drops a waiting press
  if(just[0]&&shotKickPress(TC)){s.kickW=0;s.kickR=r;}
  if(s.kickW>=0){
   if(s.kickR!==r)s.kickW=-1;
   else if(shotChordWait(P,s.kickW))s.kickW+=dt;
-  else{s.kickW=-1;shotKickEdge(r,P?P.m:0);}
+  else{const w=s.kickW;s.kickW=-1;if(S.asl&&w>0)aslHit(r,'chord',w*1000);shotKickEdge(r,P?P.m:0);}
  }
  if(!TC&&just[7]&&!shotsOn())shotKickEdge(r,0);
- if(just[1])toggleSweetGuide(s);                     // ○ (B) — sweet-spot guide, on THIS seat's rod
+ const pinB=shotPinBtns(r,just);                     // X / B on a pinned ball: pass and shoot (cfg.padPinBtns)
+ if(just[1]&&!pinB)toggleSweetGuide(s);             // ○ (B) — sweet-spot guide, on THIS seat's rod
  if(just[3])cycleCam(1);                             // Y
  if(just[4]||just[14])seatStep(s,-1);                // LB / d-pad ← (skips rods another seat holds)
  if(just[5]||just[15])seatStep(s,1);                 // RB / d-pad →

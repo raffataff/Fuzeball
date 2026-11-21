@@ -18,7 +18,7 @@
  // ---- input: the buttons on keys, the slide as a mouse ----
  const key=a=>bindList(a).find(c=>bindDev(c)==='kbd');
  const set=(code,on)=>{if(!code||!!keys[code]===on)return;keys[code]=on;if(on)bindPress(code);else bindRelease(code);};
- const I={fin:on=>set(key('finesse'),on),kick:on=>set(key('kick'),on),raise:on=>set(key('raise'),on),
+ const I={fin:on=>set(key('finesse'),on),kick:on=>set(key('kick'),on),raise:on=>set(key('raise'),on),power:on=>set(key('power'),on),
   off(){for(const a of ['finesse','kick','raise','slideUp','slideDown','power'])set(key(a),false);}};
  // the mouse: the slide target moves toward o at no more than v (u/s) this frame; null = the hand is still
  function slideTo(r,o,v){o=clamp(o,-r.maxOff,r.maxOff);const d=clamp(o-r.target,-v*DT,v*DT);if(Math.abs(d)>1e-6)r.target+=d;}
@@ -123,26 +123,26 @@
   roll(r,b,B,D){rollBot(r,b,B,D);},
   // pin shot: the back pin takes the served ball, the man carries it beside the keeper, the kick fires from the pin
   pinShot(r,b,B,D){
-   if(B.st==='shot'){shotTwice(B);return;}
+   if(B.st==='shot'){shotKeys(B);return;}
    I.raise(true);I.fin(true);
    if(r.pinB===b){aimShot(r,b,B);return;}
    const a=arrive(r,b,-3.6),m=bestMan(r,a.z);if(m)slideTo(r,m.o,60);
   },
   // roll and fire: a roll first, then the pin it reached carries it beside the keeper and shoots
   rollShot(r,b,B,D){
-   if(B.st==='shot'){shotTwice(B);return;}
+   if(B.st==='shot'){shotKeys(B);return;}
    if(D.pin&&D.pin.roll&&r.pinB===b){I.raise(true);I.fin(true);aimShot(r,b,B);return;}
    rollBot(r,b,B,D);
   }
  };
- // two quick kicks: the pin shot (one is the pin pass on a rod that has one, shots.pin.press)
- function shotTwice(B){const t=B.f-B.kf;if(t===3||t>12)I.kick(false);else if(t===6)I.kick(true);}
+ // the pin shot's keys once lined up: power down, the kick 6 frames on (a pin keeps the last four steps' slide, pinRelease), as the second of two quick kicks was ('double')
+ function shotKeys(B){const t=B.f-B.kf;if(CONFIG.shots.pin.press.shoot==='power'){if(t===6)I.kick(true);else if(t>=9){I.kick(false);I.power(false);}return;}if(t===3||t>12)I.kick(false);else if(t===6)I.kick(true);}
  // carry the pinned ball to a lane beside the keeper (±aim, or as near as this man reaches), stop, kick
  function aimShot(r,b,B){
   const p=b.m.position,m=nearMan(r,p.z),dz=p.z-mz(r,m),lo=r.baseZ[m]-r.maxOff+dz,hi=r.baseZ[m]+r.maxOff+dz;
   const s=p.z>=0?1:-1,c=[s*B.o.aim,-s*B.o.aim].map(z=>clamp(z,lo,hi)).sort((x,y)=>Math.abs(Math.abs(x)-B.o.aim)-Math.abs(Math.abs(y)-B.o.aim))[0];
   slideTo(r,r.offset+(c-p.z),30);
-  if(Math.abs(c-p.z)<0.4&&Math.abs(r.vz)<2){I.kick(true);B.st='shot';B.kf=B.f;}
+  if(Math.abs(c-p.z)<0.4&&Math.abs(r.vz)<2){if(CONFIG.shots.pin.press.shoot==='power')I.power(true);else I.kick(true);B.st='shot';B.kf=B.f;}
  }
  // the ball to z (or onto man `to`): pinned, carried, lifted off and handed on along the row; raise held throughout, finesse down pins
  function walkTo(r,b,B,z,to){

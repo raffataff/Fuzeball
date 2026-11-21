@@ -13,8 +13,8 @@ const stubs=[
 "var S={time:0,phase:'play',freeRoam:false,userTeam:0,seats:[]};",
 "var MULT=1;function rodSpeedMult(){return MULT;}function holdCfg(r){return r.H||null;}function teamDiff(){return 'pro';}",
 "function seatRod(s){return s.rod;}function seatSlideOK(s){return S.time>=(s.slideArm||0);}",
-"var KICKS=[];function shotKickEdge(r,m){KICKS.push({r:r,m:m});}",
-"function toggleSweetGuide(){}function cycleCam(){}function seatStep(){}function rodRaiseRelease(){}function tcSwerveFromAxes(){return 0;}",
+"var KICKS=[];function shotKickEdge(r,m,pw){KICKS.push({r:r,m:m,pw:pw});}",
+"var GUIDES=0;function toggleSweetGuide(){GUIDES++;}function cycleCam(){}function seatStep(){}function rodRaiseRelease(){}function tcSwerveFromAxes(){return 0;}",
 "function shotTrackMult(){return 1;}",
 // the back guard: a backward turn is held at BL (null = clear); BLC = the `own` flag of every ask
 "var BL=null,BLC=[];function backLimit(r,aT,rate,own){BLC.push(!!own);return (BL!=null&&(aT-r.angle)*r.kickDir<0)?Math.max(aT,BL):aT;}"
@@ -34,6 +34,8 @@ function boot(F){
   slice(F.sh,'function shotInNew(){','\n'),
   slice(F.sh,'// one pad read into o;','function shotKbmAxis('),
   slice(F.sh,'function shotKickPress(TC){','// live charge for the readouts'),
+  slice(F.sh,'function shotPinPow(){','\n'),
+  slice(F.sh,'function shotPinBtns(r,just){','// where the pin pass crosses'),
   slice(F.in,'function slideBy(','function userControlUpdate('),
   slice(F.in,'function gpDown(gp,i){','\n'),
   slice(F.in,'function padSeatUpdate(','function toggleFreeRoam('),
@@ -45,7 +47,7 @@ function boot(F){
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,real,sim,
   ';globalThis.X={S:S,cfg:cfg,C:CONFIG,KICK:KICK,SHOT:SHOT,CTRL:CTRL,KICKS:KICKS,padSeatUpdate:padSeatUpdate,slideBy:slideBy,shotPadRead:shotPadRead,shotInNew:shotInNew,simStep:simStep,'+
-  'angStep:angStep,seatStickSwitch:seatStickSwitch,mult:function(v){MULT=v;},guard:function(v){BL=v;BLC.length=0;},guardAsks:function(){return BLC.slice();}};'].join(NL),ctx);
+  'angStep:angStep,seatStickSwitch:seatStickSwitch,guides:function(){return GUIDES;},mult:function(v){MULT=v;},guard:function(v){BL=v;BLC.length=0;},guardAsks:function(){return BLC.slice();}};'].join(NL),ctx);
  if(!ctx.X||!ctx.X.S)throw new Error('export line did not run');
  return ctx.X;
 }
@@ -138,6 +140,16 @@ function suite(X,quiet){
   ok(X.KICKS.length===1&&X.KICKS[0].m<=K.modAt,'A after LT went deep and relaxed is still the pass');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad());frame(X,s,pad({lt:raw(0.15),btn:[0]}),{0:true});s.rod=rod();frame(X,s,pad({lt:1,btn:[0]}));
   ok(X.KICKS.length===0,'a waiting press is dropped when the rod changes under it');}
+ /* 6. the face buttons on a pinned ball (cfg.padPinBtns, shots.pin.press.shoot 'power'): one passes, the other shoots; B is the guide with nothing pinned */
+ {X.KICKS.length=0;const r=rod({pinB:{}}),s=seat(r),g0=X.guides();cfg.padPinBtns='sq';X.C.shots.pin.press.shoot='power';
+  frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===1&&X.KICKS[0].pw===false,'square passes: X on a pinned ball is the pass');
+  frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===2&&X.KICKS[1].pw===true&&X.guides()===g0,'...B the shot, and the guide is left alone');
+  cfg.padPinBtns='ci';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===3&&X.KICKS[2].pw===false,'circle passes: B is the pass');
+  frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===4&&X.KICKS[3].pw===true,'...X the shot');
+  cfg.padPinBtns='off';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+1,'face buttons off: B is the guide, nothing fires');
+  cfg.padPinBtns='sq';r.pinB=null;frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+2,'nothing pinned: B is the guide');
+  r.pinB={};r.kickT=0.1;frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===4,'a swing in flight: no second fire');r.kickT=-1;
+  X.C.shots.pin.press.shoot='double';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+3,'shoot \'double\': the face buttons are what they always were');X.C.shots.pin.press.shoot='power';}
 
  if(!quiet){console.log('assertions: '+pass+' passed, '+fail+' failed');for(const f of fails)console.log('  FAIL  '+f);}
  return fail;
@@ -168,7 +180,13 @@ const muts=[
  ['ro','const to=r.padCarry?backLimit(r,r.padAngleTarget,rate,true):r.padAngleTarget;','const to=r.padAngleTarget;','a carried lift is not guarded'],
  ['ro','if(Math.abs(r.padAngleTarget-a)<0.02)r.padCarry=false;','','the carry never hands the stick back'],
  ['in','r.padCarry=r.padAngleOn&&!mv;','r.padCarry=r.padAngleOn;','a flick at the switch is eased'],
- ['in',' else if(r.padCarry&&(!r.padAngleOn||mv))r.padCarry=false;\n','\n','a flick during the carry is eased']
+ ['in',' else if(r.padCarry&&(!r.padAngleOn||mv))r.padCarry=false;\n','\n','a flick during the carry is eased'],
+ ['sh',"const ps=just[c==='ci'?1:2],sh=just[c==='ci'?2:1];",'const ps=just[2],sh=just[1];','the circle-pass layout is ignored'],
+ ['sh',"if(c==='off'||",'if(','face buttons off still fire'],
+ ['sh','||!shotPinPow()||!r.pinB','||!r.pinB','the face buttons fire under the double press'],
+ ['sh','||!r.pinB||r.kickT>=0)return false;','||r.kickT>=0)return false;','the face buttons fire with nothing pinned'],
+ ['sh','shotKickEdge(r,0,!!sh);','shotKickEdge(r,0);','the shoot button passes'],
+ ['in','if(just[1]&&!pinB)toggleSweetGuide(s);','if(just[1])toggleSweetGuide(s);','B on a pinned ball toggles the guide too']
 ];
 let caught=0;
 for(const [file,find,repl,name] of muts){

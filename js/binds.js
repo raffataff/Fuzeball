@@ -54,7 +54,7 @@ function bindHintRods(sw,mouse){
  const fwd=pin&&CONFIG.shots.pin.fwd.on&&bindCap('kick');
  const sw2=sw?pair('rodPrev','rodNext'):'',sl=(pair('slideUp','slideDown')+(mouse?' [MOUSE]':'')).trim();
  return {sw:sw2?sw2+' switch rod':'',slide:sl?sl+' slide':'',
-  act:bindJoin([bindHint('kick','kick',2),bindHint('raise','raise',2)]),
+  act:bindJoin([bindHint('kick','pass',2),bindCap('power')&&bindCap('kick')?bindCap('power')+' + '+bindCap('kick')+' shot':'',bindHint('raise','raise',2)]),
   // needRaise: power is half the wind-up, so the hint names both keys; the pin is finesse + raise, the forward pin finesse + kick (shots.js shotPinInput)
   mod:sh?bindJoin([CONFIG.shots.charge.needRaise
     ?(bindCap('power')&&bindCap('raise')?bindCap('power')+' + '+bindCap('raise')+' wind up':'')

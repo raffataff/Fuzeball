@@ -1,7 +1,7 @@
 // Covered-kick soak: which AI kicks fire into a covered lane (every kind), and what kept a catch from taking the ball instead.
 //      node tools/page-run.js tools/plainkick-soak.js "pkSoak({seeds:24,secs:120,diff:'pro'})"
 //      pkSoak({seeds,secs,seed0,diff,set:{'ai.catch.front.maxClose':60}})   // set: CONFIG paths overridden for the run, restored after
-// kinds: plain (the canKick path), dribble (its release), pinShot, snake, ttStrike, pinPass / kickPass / runPass / dribPass
+// kinds: plain (the canKick path), dribble (its release), runShot (catch.steer.shot), pinShot, snake, ttStrike, pinPass / kickPass / runPass / dribPass
 // covered = pinPlay's own test (pinOutlet < catch.lineClear, straight on); a pass: the lane to its aim point under dribble.pass.minClear; ce = how the rod's last catch ended (within 1.5 s)
 // next = the first rod other than the kicker to touch the ball within 2.5 s: opp / own / none; row = it was the opposing row straight ahead
 'use strict';
@@ -25,7 +25,7 @@
  if(!window.__pk_ce0)window.__pk_ce0=catchEnd;
  window.catchEnd=function(r,cd,why){r.__ce={why:why||'-',t:S.time};return __pk_ce0.apply(this,arguments);};
  function kindOf(r,style){
-  if(!style)return r.act==='dribble'?'dribble':'plain';
+  if(!style)return r.act==='dribble'?'dribble':r.act==='run'?'runShot':'plain';
   if(style==='snake')return 'snake';
   if(style==='trapShot')return r.ttOn?'ttStrike':r.pinB?'pinShot':'trapShot';
   if(style==='pass')return r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass';
@@ -64,7 +64,7 @@
   const keep=[cfg.diffRed,cfg.diffBlue],olds=[];
   if(o.diff){cfg.diffRed=o.diff;cfg.diffBlue=o.diff;}
   if(o.set)for(const k in o.set)olds.push([k,setPath(k,o.set[k])]);
-  T={all:[],open:[],m:0,goals:0,whistles:0,dead:0,pins:0,pinShots:0,passes:0,last:[null,null],gl:{},db:{}};
+  T={all:[],open:[],m:0,goals:0,whistles:0,dead:0,pins:0,pinShots:0,passes:0,last:[null,null],gl:{},db:{},gt:[0,0]};
   const wh=Au.whistle;Au.whistle=function(){T.whistles++;};
   // whistles = dead balls + balls out of play; a dead ball is labelled by the nearest rod with it in kick reach: its role, and whether the gate had it shut (deadzone = no rod in reach)
   const rb=window.redropBall;window.redropBall=function(b){
@@ -81,7 +81,7 @@
      if(S.phase!=='play'){S.phase='count';serve();}
      if(!S.balls[0])break;
      aiUpdate(FIX);userControlUpdate(FIX);deadBallUpdate(FIX);
-     for(const tm of [0,1])if(S.score[tm]>scT[tm]){const k=T.last[tm],g=k?k.kind+(k.out<0?':under0':':clear'):'none';T.gl[g]=(T.gl[g]||0)+1;}   // a goal, by the scoring team's last kick
+     for(const tm of [0,1])if(S.score[tm]>scT[tm]){T.gt[tm]+=S.score[tm]-scT[tm];const k=T.last[tm],g=k?k.kind+(k.out<0?':under0':':clear'):'none';T.gl[g]=(T.gl[g]||0)+1;}   // a goal, by the scoring team's last kick
      scT=[S.score[0],S.score[1]];
      updateRods(FIX);physics(FIX);S.time+=FIX;
      for(const q of S.balls)q.cur.copy(q.m.position);
@@ -91,7 +91,7 @@
    }
   }finally{Au.whistle=wh;window.redropBall=rb;cfg.diffRed=keep[0];cfg.diffBlue=keep[1];for(const [k,v] of olds.reverse())setPath(k,v);}
   const A=T.all,m=Math.max(1,T.m),pm=x=>+(x/m).toFixed(2);
-  const R={diff:o.diff||cfg.diffRed,matches:T.m,wallS:+((performance.now()-t0)/1000).toFixed(1),goals:pm(T.goals),whistles:pm(T.whistles),dead:pm(T.dead),pins:pm(T.pins),pinShots:pm(T.pinShots),catchPasses:pm(T.passes),kinds:{}};
+  const R={diff:o.diff||cfg.diffRed,matches:T.m,wallS:+((performance.now()-t0)/1000).toFixed(1),goals:pm(T.goals),goalsTeam:[pm(T.gt[0]),pm(T.gt[1])],whistles:pm(T.whistles),dead:pm(T.dead),pins:pm(T.pins),pinShots:pm(T.pinShots),catchPasses:pm(T.passes),kinds:{}};
   for(const kd of [...new Set(A.map(k=>k.kind))]){
    const L=A.filter(k=>k.kind===kd),cov=L.filter(k=>k.cov),opn=L.filter(k=>!k.cov);
    R.kinds[kd]={perMatch:pm(L.length),covered:pm(cov.length),nextOpp:{covered:share(cov,k=>k.next==='opp'),open:share(opn,k=>k.next==='opp')},rowAhead:{covered:share(cov,k=>k.row),open:share(opn,k=>k.row)}};

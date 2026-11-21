@@ -12,8 +12,8 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
- lane:slice(AI,'function laneObs(team,bx,tx,v0){',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(team,bx,bz,sl,v0){',NL+'// how good is the way forward from'),
+ lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
+ fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -22,7 +22,7 @@ const stubs=[
  "function kickRod(r,style){r.kickT=0;r.act=null;KICKS.push(style);} function strikeOn(r){GATEROOM=r.target-r.offset;return STRIKE;} function sweepClips(){return false;} function passPick(){return null;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} function retrieveMan(r,bz){return {i:1,o:0};} function retrievePhase(r,ph){r.retPh=ph;}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function stAgil(){return 1;} function stGrip(){return GRIP;} function teamDiff(){return DIFF;}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function stAgil(){return 1;} function stGrip(){return GRIP;} function teamDiff(){return DIFF;}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
@@ -388,7 +388,7 @@ function suite(X){
   X.setOut(()=>5);const f3=tmk();ok('...a shot that is open where the ball lies is still taken',X.pinPlay(f3.r,f3.b,HT,dt,true)===1);
   X.setOut(()=>-5);const f4=tmk();ok('...retrieve is never offered it (no tap passed)',X.pinPlay(f4.r,f4.b,HT,dt)!==4);
   const f5=tmk({over:{angle:0.4}});ok('...a forward leg is offered it (it lets go by turning up)',X.pinPlay(f5.r,f5.b,HT,dt,true)===4);
-  const f6=tmk();ok('...not before the catch has settled',X.pinPlay(f6.r,f6.b,CA.settleT-0.05,dt,true)!==4);
+  const f6=tmk();ok('...not before the catch has settled',X.pinPlay(f6.r,f6.b,(CA.byDiff.pro?.settleT??CA.settleT)-0.05,dt,true)!==4);
   T.first=false;X.setOut((r,bx,bz)=>bz>8?5:-5);const f7=tmk();ok('...switched off, the carry goes first',X.pinPlay(f7.r,f7.b,HT,dt,true)!==4);
   T.first=true;
   // starting under a forward leg: the leg turns up and the pin lets go, then the man steps off
@@ -669,7 +669,7 @@ const MUT=[
  {n:'the slope is ignored',part:'catch',from:'d=Math.min(d,Math.abs(bz+sl*rx-o.z));',to:'d=Math.min(d,Math.abs(bz-o.z));'},
  {n:'the ball is not allowed for',part:'catch',from:'return d-AIC.gapAim.blockR;\n}\n// man f brakes',to:'return d;\n}\n// man f brakes'},
  {n:'no row ahead is a shut lane',part:'catch',from:'if(rx===1e9)return 1e3;\n for(const o of obs)if(!o.own&&',to:'if(rx===1e9)return -1e3;\n for(const o of obs)if(!o.own&&'},
- {n:'a rod standing ready is not marked as the own one',part:'catch',from:'z:r2.baseZ[i]+r2.offset+dz,own:r2.team===team});',to:'z:r2.baseZ[i]+r2.offset+dz,own:false});'},
+ {n:'a rod standing ready is not marked as the own one',part:'catch',from:'z:r2.baseZ[i]+q.offset+dz,own:r2.team===team});',to:'z:r2.baseZ[i]+q.offset+dz,own:false});'},
 
  // the slides
  {n:'a rod can slide faster than its top speed',part:'catch',from:'if(w>top)continue;a.push(w);',to:'a.push(w);'},
@@ -720,15 +720,15 @@ const MUT=[
  {n:'ending any other way leaves the tic-tac marked',part:'catch',from:' if(r.ttOn){r.ttOn=false;r.ttPh=null;r.ttCd=S.time+AIC.catch.tictac.cd;}',to:''},
  {n:'the tic-tac is routed after the others',part:'catch',from:" if(r.catPh==='tictac'){ttStep(r,best,D);return;}\n if(r.catPh==='tap')",to:" if(r.catPh==='tap')"},
  // the rows
- {n:'an own rod standing ready is not an obstacle',part:'catch',from:"if(r2.team===team&&r2.act!=='recv')continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const tt=",to:"if(r2.team===team)continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const tt="},
- {n:'an own rod is an obstacle',part:'catch',from:"if(r2.team===team&&r2.act!=='recv')continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const tt=",to:"if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const tt="},
- {n:'a row behind the ball blocks',part:'catch',from:'if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const tt=',to:'if((r2.x-tx)*dir>=0)continue;\n  const tt='},
- {n:'the rows are read where they stand',part:'catch',from:'dz=clamp(r2.target+(r2.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-r2.offset,-m,m);',to:'dz=0;'},
- {n:'the rows are read where they are heading at once, however far',part:'catch',from:'dz=clamp(r2.target+(r2.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-r2.offset,-m,m);',to:'dz=r2.target+(r2.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-r2.offset;'},
- {n:'the target is not carried on',part:'catch',from:'dz=clamp(r2.target+(r2.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-r2.offset,-m,m);',to:'dz=clamp(r2.target-r2.offset,-m,m);'},
- {n:'the rows are read by their slide, not their target',part:'catch',from:'dz=clamp(r2.target+(r2.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-r2.offset,-m,m);',to:'dz=clamp(r2.vz*tt,-m,m);'},
- {n:'a man gone is an obstacle',part:'catch',from:'for(let i=0;i<r2.baseZ.length;i++){if(r2.removedUntil[i]&&r2.removedUntil[i]>S.time)continue;obs.push({x:r2.x,z:r2.baseZ[i]+r2.offset+dz,own:r2.team===team});}',to:'for(let i=0;i<r2.baseZ.length;i++){obs.push({x:r2.x,z:r2.baseZ[i]+r2.offset+dz,own:r2.team===team});}'},
- {n:'the rows are read at the instant the ball is struck, not as it flies on',part:'catch',from:'const tt=t+(r2.x-bx)*dir/AIC.catch.shotV,',to:'const tt=t,'},
+ {n:'an own rod standing ready is not an obstacle',part:'catch',from:"if(r2.team===team&&r2.act!=='recv')continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt=",to:"if(r2.team===team)continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt="},
+ {n:'an own rod is an obstacle',part:'catch',from:"if(r2.team===team&&r2.act!=='recv')continue;\n  if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt=",to:"if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt="},
+ {n:'a row behind the ball blocks',part:'catch',from:'if((r2.x-bx)*dir<=GA.minAhead||(r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt=',to:'if((r2.x-tx)*dir>=0)continue;\n  const q=rodSeen(r2,team),tt='},
+ {n:'the rows are read where they stand',part:'catch',from:'dz=clamp(q.target+(q.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-q.offset,-m,m);',to:'dz=0;'},
+ {n:'the rows are read where they are heading at once, however far',part:'catch',from:'dz=clamp(q.target+(q.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-q.offset,-m,m);',to:'dz=q.target+(q.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-q.offset;'},
+ {n:'the target is not carried on',part:'catch',from:'dz=clamp(q.target+(q.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-q.offset,-m,m);',to:'dz=clamp(q.target-q.offset,-m,m);'},
+ {n:'the rows are read by their slide, not their target',part:'catch',from:'dz=clamp(q.target+(q.tgV||0)*AIC.catch.tictac.strike.tgtLead*tt-q.offset,-m,m);',to:'dz=clamp(q.vz*tt,-m,m);'},
+ {n:'a man gone is an obstacle',part:'catch',from:'for(let i=0;i<r2.baseZ.length;i++){if(r2.removedUntil[i]&&r2.removedUntil[i]>S.time)continue;obs.push({x:r2.x,z:r2.baseZ[i]+q.offset+dz,own:r2.team===team});}',to:'for(let i=0;i<r2.baseZ.length;i++){obs.push({x:r2.x,z:r2.baseZ[i]+q.offset+dz,own:r2.team===team});}'},
+ {n:'the rows are read at the instant the ball is struck, not as it flies on',part:'catch',from:'const q=rodSeen(r2,team),tt=t+(r2.x-bx)*dir/AIC.catch.shotV,',to:'const q=rodSeen(r2,team),tt=t,'},
  // the plan
  {n:'the plan forgets the man is braking',part:'catch',from:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+offset,zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;'},
  {n:'the plan forgets the ramp',part:'catch',from:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*Math.abs(w)/(2*A)+w*ST.settle;',to:'z0=r.baseZ[f]+offset+v0*Math.abs(v0)/(2*A),zc=z0+w*ST.settle;'},

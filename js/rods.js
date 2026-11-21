@@ -83,14 +83,14 @@ function kickRod(r, style, aimAt, curve){
 }
 function resetRodRotation(){
  for(const r of rods){
-  r.angle=0;r.prevAngle=0;
+  r.angle=0;r.prevAngle=0;r.rvW=0;   // the other team's delayed look starts afresh (ai.js rodView)
    r.kickT=-1;r.kickStyle=null;r.raise=false;r.raiseKeep=false;r.heldFwd=false;r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;r.kickA0=0;r.tcSpin=0;
    r.padAngleOn=false;r.padAngleTarget=0;r.padCarry=false;r.kickHold=false;r.exStk=false;   // a stick angle, held kick or stick-swing latch left on a rod outranks the rest-drop; they die with the rally
   shotReset(r);                                    // charge/arming/tremble die with the rally (js/shots.js)
   r.act=null;r.actT=0;r.trapMan=-1;r.trapDir=0;r.trapZ0=0;r.trapA=null;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
   r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
-  r.catPh=null;r.catMan=-1;r.catCd=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.unPh=null;r.unT=-9;r.unCd=0;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;r.puPh=null;r.puB=false;
+  r.catPh=null;r.catMan=-1;r.catCd=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.unPh=null;r.unT=-9;r.unCd=0;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;r.puPh=null;r.puB=false;r.kwT0=0;r.kwS=-9;r.tgF=0;r.rnShot=false;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
  }
@@ -107,6 +107,24 @@ function snakeStep(r,dt){
  if(a>Math.PI)a-=2*Math.PI;
  r.angle=a*r.kickDir;
  if((r.angle-r.prevAngle)*r.kickDir<-Math.PI)r.prevAngle-=2*Math.PI*r.kickDir;
+}
+// --- AI slide (CONFIG.ai.slide) ---
+// accel-capped; braking onto a target and following a moving one, a speed command (target = offset + v·dt) driven as given
+function aiSlide(r,ms,cvS,dt){
+ const SL=AIC.slide,aR=AIC.slideAccel*cvS*(pushBurst(r)?AIC.catch.push.play.acc:1)*stAgil(r),acc=aR*dt;   // spd stat scales direction-change agility (+ stamina fade)
+ const SR=SL.strike,srel=(r.aiBX-r.x)*r.kickDir;
+ const brk=(Array.isArray(SL.brake)?SL.brake[r.team]:SL.brake)&&SL.roles.indexOf(r.role)>=0&&SL.diffs.indexOf(teamDiff(r.team))>=0&&!(r.act!=='run'&&SR.roles.indexOf(r.role)>=0&&srel>SR.rel[0]&&srel<SR.rel[1]);   // a striker with the ball in reach keeps the old run: its overshoot is the shot's slide
+ const d=r.target-r.offset,tgD=(r.target-(r.tgP==null?r.target:r.tgP))/dt;
+ const cmd=brk&&Math.abs(d)<=ms*dt+1e-6&&Math.abs(tgD-r.slideV)<=SL.cmdTol;   // target = offset + v·dt (a run, a cushion, a stop): a slide speed asked for, not a place to stop at
+ r.tgF=cmd?0:lerp(r.tgF||0,Math.abs(tgD)>ms?0:tgD,Math.min(1,dt*SL.ffLerp));   // the target's own motion; a jump faster than the rod slides is a new target, not motion
+ const forwardCarry=r.pinB&&r.catPh==='hold'&&r.pcFwdDir&&r.pcTz!=null;
+ const hitSetup=r.catPh==='hit'&&(r.hPh==='clear'||r.hPh==='aim');
+ const oldB=(r.clOn&&AIC.calm.brake)||(r.act==='catch'&&(forwardCarry||hitSetup));
+ const braking=brk?!(r.catSw&&r.kickT>=0)&&(!cmd||oldB):oldB;   // a planned strike slide is driven as given
+ const tv=brk&&!cmd?clamp(r.tgF,-ms,ms):0;
+ const want=clamp(braking?tv+Math.sign(d)*Math.min(Math.abs(d)/dt,Math.sqrt(2*aR*Math.abs(d))):d/dt,-ms,ms);
+ r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
+ r.offset=clamp(r.offset+r.slideV*dt,-r.maxOff,r.maxOff);
 }
 function updateRods(dt){
  if(dt<=0)return;
@@ -132,7 +150,7 @@ function updateRods(dt){
      // r.kickHold = the player holding kick (js/input.js): a tap plays as before, only a button still down at KICK.hold (0.25s) freezes the swing; a block, not a free power shot
      const holdF=(uf||r.kickHold||(r.evadeHold>0&&!r.evadeSpent))&&T>=KS.hold;
      r.heldFwd=holdF;
-     if(holdF){a=KS.strikeA;r.kickT=KS.hold;}
+     if(holdF){a=KS.strikeA;r.kickT=KS.hold;if(S.asl&&uf&&!r.kickHold&&seatOf(r))aslHit(r,'heldOut');}   // a player's swing kept out over a ball they did not hold
      else if(T<KS.windup)a=kA0+(KS.windupA-kA0)*(T/KS.windup);
      else if(T<KS.strike)a=rampA0+(KS.strikeA-rampA0)*((T-KS.windup)/(KS.strike-KS.windup));
      else if(T<KS.hold)a=KS.strikeA;
@@ -157,7 +175,7 @@ function updateRods(dt){
    // an angle carried over a switch (input.js r.padCarry): held short of a ball a backward turn would sweep, and turned at most handover.stickW, so the switch itself is never a swing
    const to=r.padCarry?backLimit(r,r.padAngleTarget,rate,true):r.padAngleTarget;
    let a=(KICK.padAngleLerp>0||trk!==1)?lerp(r.angle,to,Math.min(1,rate*dt)):to;
-   if(r.padCarry){const W=CTRL.handover.stickW*dt;a=r.angle+clamp(a-r.angle,-W,W);if(Math.abs(r.padAngleTarget-a)<0.02)r.padCarry=false;}
+   if(r.padCarry){const W=CTRL.handover.stickW*dt;a=r.angle+clamp(a-r.angle,-W,W);if(Math.abs(r.padAngleTarget-a)<0.02)r.padCarry=false;if(S.asl)aslHit(r,'stickCarry');}
    r.angle=a;
   }
   // THE PIN POSE (shots.js shotPinInput): finesse + raise, or finesse + kick for the forward pin; below the stick, above the raise; r.pinA is sweep-capped (not the forward one)
@@ -172,28 +190,21 @@ function updateRods(dt){
    r.angle=lerp(r.angle,r.pinA,Math.min(1,rate*dt));
   }
   // a human's forward pin let go with a ball under the leg: up and forward off it, down only once it is clear (shots.js shotFwdHold); with kick still held it stays up (r.fwdRz)
-  else if(r.fwdRz||(r.fwdOut&&shotFwdHold(r))){r.heldFwd=false;r.angle=lerp(r.angle,AIC.catch.recv.lift.angle*r.kickDir,Math.min(1,SHOT.pin.fwd.lerp*dt));}
+  else if(r.fwdRz||(r.fwdOut&&shotFwdHold(r))){r.heldFwd=false;r.angle=lerp(r.angle,AIC.catch.recv.lift.angle*r.kickDir,Math.min(1,SHOT.pin.fwd.lerp*dt));if(S.asl)aslHit(r,r.fwdRz?'fwdRaise':'liftOff');}
   // finesse held, leg down: the foot squared onto a ball beside a man (shots.js shotSquare)
   else if(r.sqA!=null){r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,r.sqA,SHOT.square.lerp,true),Math.min(1,SHOT.square.lerp*dt));}
   else if(r.raise){r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,KICK.raiseA*r.kickDir,KICK.raiseLerp,r.fwdOut),Math.min(1,KICK.raiseLerp*dt));}
   else{r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,0,KICK.dropLerp,r.fwdOut),Math.min(1,KICK.dropLerp*dt));}   // a forward pose coming back to rest is a back-lift: held short of a ball it would sweep (a human's too, from the forward pin: r.fwdOut)
    const uSeat=seatOf(r);
+   if(S.asl&&uSeat&&r.bgT===S.time)aslHit(r,'guard');   // backLimit held the player's leg short of a ball this step
    const cvS=coverSlide(r,uSeat);                     // a keeper / DEF covering the goal (ai.js)
    const ms=rodSlideMax(r,uSeat,cvS),slow=rodSlow;
   r.target=clamp(r.target,-r.maxOff,r.maxOff);
   const prevOff=r.offset;
   if(uSeat){                                          // human hand: instant/responsive, speed-capped only
    r.offset+=clamp(r.target-r.offset,-ms*dt,ms*dt);
-   if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
-  }else{                                              // AI hand: accel-capped so it can't reverse instantly
-   const aR=AIC.slideAccel*cvS*(pushBurst(r)?AIC.catch.push.play.acc:1)*stAgil(r),acc=aR*dt;   // spd stat scales direction-change agility (+ stamina fade)
-   const forwardCarry=r.pinB&&r.catPh==='hold'&&r.pcFwdDir&&r.pcTz!=null;
-   const hitSetup=r.catPh==='hit'&&(r.hPh==='clear'||r.hPh==='aim');
-   const braking=(r.clOn&&AIC.calm.brake)||(r.act==='catch'&&(forwardCarry||hitSetup));
-   const d=r.target-r.offset,want=clamp(braking?Math.sign(d)*Math.min(Math.abs(d)/dt,Math.sqrt(2*aR*Math.abs(d))):d/dt,-ms,ms);
-   r.slideV=clamp(want,r.slideV-acc,r.slideV+acc);
-   r.offset=clamp(r.offset+r.slideV*dt,-r.maxOff,r.maxOff);
-  }
+   if(slow&&SHOT.hold.lead!=null){const t0=r.target;r.target=clamp(t0,r.offset-ms*SHOT.hold.lead,r.offset+ms*SHOT.hold.lead);if(r.stlW===t0)r.stlW=r.target;if(S.asl&&Math.abs(r.target-t0)>1e-3)aslHit(r,'lead');}   // held or pinned, the slide is slower than the hand: the target must not run on ahead of the man (a settle's own target stays the settle's)
+  }else aiSlide(r,ms,cvS,dt);                       // AI hand: accel-capped so it can't reverse instantly
   if(!uSeat&&slideBlocked(r,prevOff,r.offset)){r.offset=prevOff;r.slideV=0;}   // ai.js backGuard: never walk a boot into a ball that is behind it
   msSlide(r,Math.abs(r.offset-prevOff));              // matchstats.js: rod work done, in table units
   r.slideV=(r.offset-prevOff)/dt;                     // keep slideV in sync across control handoff
@@ -240,14 +251,14 @@ function updateRods(dt){
  }
 }
 // a rod's top slide speed (u/s): a seat's hand with its Total Control step, or the difficulty's; the stats and frost; slowed while it carries a ball (input.js slideBy scales a full key or stick to it)
-// rodSlow: it is carrying (a pin, the grip, a snake), set by every call (a module field, so it doesn't allocate)
+// rodSlow: the slide is slowed by a carry (a pin, a grip under carry 1, a snake), set by every call (a module field, so it doesn't allocate)
 let rodSlow=false;
 function rodSlideMax(r,uSeat,cvS){
  let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*cvS*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
- // carrying a held ball is a shuffle, not a slide (the boot only drags the ball as fast as holdGrip transfers velocity); holdCfg is null mid-swing
- // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry; a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
+ // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry; holdCfg is null mid-swing
+ // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
  const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),snk=r.kickStyle==='snake'&&!r.kickHit,pb=uSeat?0:pushBurst(r);
- rodSlow=!!(r.pinB||H||snk);
+ rodSlow=!!(r.pinB||snk||(H&&H.carryMult<1));
  if(pb)ms*=pb;                                     // the AI's push play bursts with the ball (ai.js)
  else if(r.pinB||snk)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;   // a snake slides as the pin did until it strikes, so the man stays with the ball it let go
  return ms;

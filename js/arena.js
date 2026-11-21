@@ -270,6 +270,7 @@ function applySkin(id){
  const custom=active&&skinHasFrame[id]&&skinHasFrame[id][sk];
  const hideNet=!!(active&&T.skins&&T.skins[sk]&&T.skins[sk].hideGoalNet);
  goalFrames.forEach(gf=>{if(!gf.userData)return;
+  if(typeof selectGoalNet==='function')selectGoalNet(gf,id==='classic'&&!hideNet,active);
   if(gf.userData.front)gf.userData.front.visible=!custom;
   // Nets are cosmetic; a skin can expose its own dark goal cavity at rest.
   gf.userData.hideNetAtRest=hideNet;

@@ -144,7 +144,8 @@ function shLineMode(id){const P=CONFIG.pitches[id],L=P&&P.lines;return SHC.lines
 function shLineU(){
  const L=SH.ln;if(L.U)return L.U;
  L.black=new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);L.black.needsUpdate=true;
- L.U={shLine:{value:L.black},shIdle:{value:0},shFlood:{value:new THREE.Vector4(0,-99,1,1)},shFloodC:{value:new THREE.Color(0,0,0)},
+ L.U={shLine:{value:L.black},shIdle:{value:0},shTint:{value:0},shHalo:{value:new THREE.Vector2(0,0)},
+  shFlood:{value:new THREE.Vector4(0,-99,1,1)},shFloodC:{value:new THREE.Color(0,0,0)},
   shPulse:{value:new THREE.Vector4(-99,1,0,0)},shPulseC:{value:new THREE.Color(0,0,0)}};
  return L.U;
 }
@@ -157,13 +158,21 @@ function showPitchPatch(m){
   for(const k in U)sh.uniforms[k]=U[k];
   const v=shRep(sh.vertexShader,'#include <common>','#include <common>\nvarying vec3 shWp;varying vec2 shUv;','lines common');
   sh.vertexShader=shRep(v,'#include <begin_vertex>','#include <begin_vertex>\nshWp=(modelMatrix*vec4(transformed,1.)).xyz;shUv=uv;','lines begin_vertex');
-  const f=shRep(sh.fragmentShader,'#include <common>','#include <common>\nuniform sampler2D shLine;uniform vec4 shFlood,shPulse;uniform vec3 shFloodC,shPulseC;uniform float shIdle;varying vec3 shWp;varying vec2 shUv;','lines common');
+  const f=shRep(sh.fragmentShader,'#include <common>','#include <common>\nuniform sampler2D shLine;uniform vec4 shFlood,shPulse;uniform vec3 shFloodC,shPulseC;uniform vec2 shHalo;uniform float shIdle,shTint;varying vec3 shWp;varying vec2 shUv;','lines common');
   sh.fragmentShader=shRep(f,'#include <emissivemap_fragment>',`#include <emissivemap_fragment>
  float shL=texture2D(shLine,shUv).r;
- if(shL>0.004){
-  float shS=abs(shWp.x-shFlood.x),shK=clamp((shFlood.y-shS)/shFlood.z,0.,1.)*exp(-max(shFlood.y-shS-shFlood.z,0.)/shFlood.w);
+ vec2 shO=exp2(shHalo.x)*.6/vec2(textureSize(shLine,0));   // four taps of a blurred mip = the spill round each line (one tap shows the mip's blocks)
+ float shH=max(.25*(texture2D(shLine,shUv+shO,shHalo.x).r+texture2D(shLine,shUv-shO,shHalo.x).r+texture2D(shLine,shUv+vec2(shO.x,-shO.y),shHalo.x).r+texture2D(shLine,shUv-vec2(shO.x,-shO.y),shHalo.x).r)-shL,0.)*shHalo.y;
+ if(shL+shH>0.004){
+  float shS=abs(shWp.x-shFlood.x),shF=clamp((shFlood.y-shS)/shFlood.z,0.,1.),shK=shF*exp(-max(shFlood.y-shS-shFlood.z,0.)/shFlood.w);
   float shR=length(shWp.xz)-shPulse.x;
-  totalEmissiveRadiance+=shL*(diffuseColor.rgb*shIdle+shFloodC*shK+shPulseC*exp(-shR*shR/(shPulse.y*shPulse.y)));
+  vec3 shC=diffuseColor.rgb;
+  #ifdef USE_MAP
+  vec3 shB=texture2D(map,vMapUv,shHalo.x).rgb;shC=mix(shB/max(max(shB.r,shB.g),max(shB.b,.04)),shC,clamp(shL*2.,0.,1.));
+  #endif
+  vec3 shHue=shFloodC/max(max(shFloodC.r,shFloodC.g),max(shFloodC.b,1e-4));
+  diffuseColor.rgb=mix(diffuseColor.rgb,shHue*max(diffuseColor.r,max(diffuseColor.g,diffuseColor.b)),shL*shF*shTint);   // lines behind the front hold the scorer's colour until shTint fades
+  totalEmissiveRadiance+=(shL+shH)*(shC*shIdle+shFloodC*shK+shPulseC*exp(-shR*shR/(shPulse.y*shPulse.y)));
  }`,'lines emissive');
  };
  m.customProgramCacheKey=()=>'shLines';
@@ -182,12 +191,15 @@ function shLinesTick(){
    if(typeof renderDirty==='function')renderDirty();
   },undefined,()=>console.warn('pitch lines: no mask for '+id+' ('+LC.dir+id+'.png)'));
  }
- U.shIdle.value=md==='glow'?LC.glow:0;
+ const BR=LC.breathe;
+ U.shIdle.value=md==='glow'?LC.glow*(1+BR.amp*Math.sin(SH.t*2*Math.PI/BR.T)):0;
+ U.shHalo.value.set(LC.halo.lod,md==='off'?0:LC.halo.k);
  const FL=LC.flood,PL=LC.pulse,g=SH.goal,ga=g?SH.t-g.t:99,ka=SH.t-SH.kick;
  if(md!=='off'&&ga<FL.T){const e=1-ga/FL.T;
   U.shFlood.value.set((g.team===0?1:-1)*F.L/2,ga*FL.speed,FL.width,FL.tail);
   U.shFloodC.value.copy(kitLin(teamCol(g.team))).multiplyScalar(FL.gain*e*e);
- }else U.shFloodC.value.setRGB(0,0,0);
+  U.shTint.value=FL.tint*Math.min(1,e*2);
+ }else{U.shFloodC.value.setRGB(0,0,0);U.shTint.value=0;}
  if(md!=='off'&&ka<PL.T){U.shPulse.value.set(10+ka*PL.speed,PL.width,0,0);U.shPulseC.value.set(PL.col).multiplyScalar(PL.gain*(1-ka/PL.T));}
  else U.shPulseC.value.setRGB(0,0,0);
 }
