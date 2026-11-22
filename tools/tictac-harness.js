@@ -13,7 +13,7 @@ const parts={
  cap:slice(PH,'function capSpeed(b,r,sweet,in2){',NL+'function collideRod('),
  pin:slice(PH,'function pinUpdate(){','function hitFresh('),
  rods:[slice(RO,'function styleCfg(',NL+'function kickStyleCfg'),slice(RO,'function kickStyleCfg(r){',NL+'function passFaceOK('),slice(RO,'function holdCfg(r){',NL+'function kickRod(')].join(NL),
- shots:[slice(SH,'function shotsOn(){',NL+'function shotTrigD('),slice(SH,'function shotHoldUpdate(r,lt){',NL+'const SHOT_CURVE_KEYS')].join(NL),
+ shots:[slice(SH,'function shotsOn(){',NL+'function shotTrigD('),slice(SH,'function shotHoldUpdate(r,lt){',NL+'// --- what the charge is worth ---')].join(NL),
  stats:[slice(ST,'function stHit(r){',NL),slice(ST,'function stGrip(r){',NL),slice(ST,'function stCapFrac(r){',NL)].join(NL)
 };
 const stubs=[
@@ -48,7 +48,7 @@ function mkRod(X,baseZ,over){
   angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
   kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,
   pinOn:false,pinPose:false,pinA:null,pinB:null,
-  hold:{on:false,holdRest:K.rest,holdGrip:K.grip,carryMult:1,sideRest:K.sideRest},stats:null},over||{});
+  hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:K.grip,carryMult:1,sideRest:K.sideRest},stats:null},over||{});
 }
 function mkBall(X,x,z,vx,vz,type){return {m:{position:X.V(x,X.CONFIG.physics.ballR,z)},v:X.V(vx||0,0,vz||0),t:X.BALL_TYPES[type||'classic'],spin:0,didSplit:false,scored:false};}
 // one sim frame: the rod's pose walks to (off, ang) across the substeps, the ball rolls with floor friction and meets the rod every substep (what physics.js does)
@@ -145,7 +145,7 @@ function pingPong(X){
 
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
- const K=X.KICK,KS=K.sideRest,KRest=K.rest,HC=X.CONFIG.shots.hold,PIN=X.SHOT.pin;
+ const K=X.KICK,KS=K.sideRest,SK=X.CONFIG.swings.shoot,KRest=K.rest,HC=X.CONFIG.shots.hold,PIN=X.SHOT.pin;
  const at=(sr,f)=>{K.sideRest=sr;try{return f();}finally{K.sideRest=KS;}};
  const near=(a,b,t)=>Math.abs(a-b)<=t;
 
@@ -164,9 +164,9 @@ function suite(X){
  ok('the FRONT touch is untouched (a pass into a down man still dies)',f1===f0&&Math.abs(f1)<3,'vx '+f1.toFixed(2)+' vs '+f0.toFixed(2));
  ok('a tap is no stronger: a man sliding into a loose ball hands it the same speed',near(at(0,()=>slideAt(X,80,0)),slideAt(X,80,0),1e-9),slideAt(X,80,0).toFixed(1)+' u/s');
  ok('a man chasing a ball that is already leaving pushes it as before',near(at(0,()=>slideAt(X,80,10,{chase:true})),slideAt(X,80,10,{chase:true}),1e-9));
- const kw=(K.powFrom+K.powTo)/2,sw=sideHit(X,25,{rod:{kickT:kw}});
- ok('a swing inside its power window still bounces at sideRest when that is over its own restitution',KS<=K.restPower||near(sw,KS*25,0.05*25),sw.toFixed(1));
- const swLo=at(K.restPower/2,()=>sideHit(X,25,{rod:{kickT:kw}}));
+ const kw=(SK.powFrom+SK.powTo)/2,sw=sideHit(X,25,{rod:{kickT:kw}});
+ ok('a swing inside its power window still bounces at sideRest when that is over its own restitution',KS<=SK.restPower||near(sw,KS*25,0.05*25),sw.toFixed(1));
+ const swLo=at(SK.restPower/2,()=>sideHit(X,25,{rod:{kickT:kw}}));
  ok('...with sideRest under it, the swing\'s own restitution (the side bounce stays out)',near(swLo,at(0,()=>sideHit(X,25,{rod:{kickT:kw}})),1e-9),swLo.toFixed(1));
  const rt=retreatHit(X,40,20);
  ok('a man sliding away with the ball (the cushion) bounces only what it closes at, not the ball\'s whole speed',rt>0&&rt<1.5*20,rt.toFixed(1)+' against him, closing at 20');
@@ -179,7 +179,7 @@ function suite(X){
  ok('at the very start of the squeeze it is exactly the free bounce (no step)',near(sideHit(X,45,{hold:HC.from+1e-9}),o45,1e-6),sideHit(X,45,{hold:HC.from+1e-9}).toFixed(2)+' vs '+o45.toFixed(2));
  const half=sideHit(X,45,{hold:(HC.from+1)/2});
  ok('half a squeeze is in between',half>sideHit(X,45,{hold:1})&&half<o45,half.toFixed(1));
- ok('the AI\'s dribble and trap holds stay dead',sideHit(X,45,{rod:{act:'dribble'}})<0.05*45&&sideHit(X,45,{rod:{act:'trap'}})<0.05*45);
+ ok('the AI\'s dribble and retrieve holds stay dead',sideHit(X,45,{rod:{act:'dribble'}})<0.05*45&&sideHit(X,45,{rod:{act:'retrieve',retPh:'pin'}})<0.05*45);
 
  // ---- the moves ----
  const tapAlone=slideAt(X,80,0);

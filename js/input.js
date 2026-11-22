@@ -14,8 +14,8 @@ function bindPress(code){
   if(a==='music'){if(dev==='mouse')musicCycle();continue;}
   if(a==='retry'){if(dev==='mouse'&&S.trial&&typeof trialRestart==='function')trialRestart();continue;}
   if(!r)continue;
-  // kick: shots.js decides plain pass, shot (power), finesse pin or release of a wind-up
-  if(a==='kick'){shotKickEdge(r,shotKbmAxis(s),null,true);r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
+  // kick: shots.js decides pass, shot (power), finesse pin or release of a wind-up
+  if(a==='kick'){shotKickEdge(r,shotKbmAxis(s));r.kickHold=true;}   // held = the boot stays out at full stretch (js/rods.js)
   // raise: the press is latched for shots.js (s.rzEdge) so a sub-frame tap still poses the pin
   else if(a==='raise'){r.raise=true;rodRaiseRelease(r);s.rzEdge=true;}   // your hand on it ends any inherited raise
   else if(a==='rodPrev')seatStep(s,-1);
@@ -266,7 +266,7 @@ function padSeatUpdate(dt,gp,s,just){
   let d=(Math.abs(rs)-DZ)/(1-DZ)*Math.sign(rs);      // 0 at deadzone edge → ±1 at full deflection
   d=clamp(-d*cfg.padAngleSens,-1,1);                 // sens scales reach; sign keeps the old push direction
   sd=d;
-  r.padAngleTarget=(d>=0?d*KICK.strikeA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
+  r.padAngleTarget=(d>=0?d*KICK.stickA:-d*KICK.raiseA)*r.kickDir; // +push→forward, −push→raised; ×kickDir per team
   r.padAngleOn=true;
   rodRaiseRelease(r);                                // the stick is driving the angle now — inherited raise done
  }else{r.padAngleTarget=0;r.padAngleOn=false;}
@@ -281,14 +281,14 @@ function padSeatUpdate(dt,gp,s,just){
  const P=shotsOn()?shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd):null;
  if(S.asl&&P&&P.deep&&P.lt<-SHOTC.pass.modAt)aslHit(r,'ltLatch');   // LT relaxed past the pass depth, still read as full
  // A: kick (RT is the alternate kick only while shots are off); with a wind-up live the kick button is a second release
- // pressed while LT is still on its way down it waits a moment for the trigger (shotChordWait), so LT and A pressed together are the pass; a rod switch drops a waiting press
+ // pressed while a trigger is still on its way down it waits a moment for it (shotChordWait), so LT and A together are the forward pin, RT and A the shot; a rod switch drops a waiting press
  if(just[0]&&shotKickPress(TC)){s.kickW=0;s.kickR=r;}
  if(s.kickW>=0){
   if(s.kickR!==r)s.kickW=-1;
   else if(shotChordWait(P,s.kickW))s.kickW+=dt;
   else{const w=s.kickW;s.kickW=-1;if(S.asl&&w>0)aslHit(r,'chord',w*1000);shotKickEdge(r,P?P.m:0);}
  }
- if(!TC&&just[7]&&!shotsOn())shotKickEdge(r,0);
+ if(!TC&&just[7]&&!shotsOn())shotKickEdge(r,0,true);  // shots off: RT is the shoot button
  const pinB=shotPinBtns(r,just);                     // X / B on a pinned ball: pass and shoot (cfg.padPinBtns)
  if(just[1]&&!pinB)toggleSweetGuide(s);             // ○ (B) — sweet-spot guide, on THIS seat's rod
  if(just[3])cycleCam(1);                             // Y

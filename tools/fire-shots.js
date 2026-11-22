@@ -46,7 +46,7 @@
    info.push({ph,f,calls:renderer.info.render.calls,tris:renderer.info.render.triangles,x:bb?+bb.m.position.x.toFixed(1):null,speed:bb?+bb.v.length().toFixed(1):null});};
   for(let f=1;f<=o.rest;f++){t+=1000/60;loop(t);if(o.restAt.indexOf(f)>=0)snap(f,'rest');}
   if(o.vel){b.v.set(o.vel[0],o.vel[1],o.vel[2]);o.kick=true;}   // launched by hand instead of the boot (a pass-speed ball)
-  else if(o.kick)kickRod(r,null);
+  else if(o.kick)kickRod(r,'shoot');
   if(o.kick){
    const last=Math.max.apply(null,o.at.concat([0]));
    for(let f=1;f<=last;f++){t+=1000/60;loop(t);if(o.at.indexOf(f)>=0)snap(f,'kick');}

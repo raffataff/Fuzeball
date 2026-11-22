@@ -25,7 +25,7 @@ function boot(SHOTS,FX,HUDJS){
  const real=[
   slice(SHOTS,'function shotsOn(){','\n'),
   slice(SHOTS,'function shotPinPow(){','\n'),
-  slice(SHOTS,'function shotPinBall(s){','const SHOT_CURVE_KEYS'),
+  slice(SHOTS,'function shotPinBall(s){','// --- what the charge is worth ---'),
   slice(FX,'function pinMarkUpdate(rdt){','function spawnTrail('),
   slice(HUDJS,'const hC=','\n'),
   slice(HUDJS,'function hudTok(src){','const HUD_GLYPH'),

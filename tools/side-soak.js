@@ -40,7 +40,7 @@
   const rel=(b.m.position.x-r.x)*dir,sp=b.v.length();
   // the FIRST thing that happened decides it: a later pin after a wall rebound is another story
   const kT=fire?fire.t:1e9,pT=pinT==null?1e9:pinT;let out;
-  if(pT<kT)out=fire&&fire.style==='trapShot'?'pin>shot':fire&&fire.style==='pass'?'pin>pass':'pin';
+  if(pT<kT)out=fire&&fire.style==='pinShot'?'pin>shot':fire&&fire.style==='pass'?'pin>pass':'pin';
   else if(kT<1e9)out='kick';
   else if(rev)out='bounce';
   else if(sp<2)out='stop';

@@ -66,7 +66,7 @@ function inFootRange(r,b,back){
 }
 // --- foot-box geometry ---
 // distance from a ball to man i's foot box at angle a, same transform as collideRod
-const _fb={nx:0,ny:0,cwx:0,cwy:0};
+const _fb={nx:0,ny:0,cwx:0,cwy:0},_fbA=[0,0];
 function footBoxDist(r,a,i,px,py,pz,foff){
  const dir=r.kickDir,sa=Math.sin(a),ca=Math.cos(a);
  const offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*dir;
@@ -74,7 +74,7 @@ function footBoxDist(r,a,i,px,py,pz,foff){
  const bcx=fx+offx*sa+offy*ca,bcy=fy-offx*ca+offy*sa,fz=r.baseZ[i]+(foff===undefined?r.offset:foff);
  const dxw=px-bcx,dyw=py-bcy,dzw=pz-fz;
  const lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa,lz=dzw;                       // world → box-local
- const clx=clamp(lx,-FOOT_BOX.x,FOOT_BOX.x),cly=clamp(ly,-FOOT_BOX.y,FOOT_BOX.y),clz=clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
+ const c=footClamp(lx,ly,dir||1,_fbA),clx=c[0],cly=c[1],clz=clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
  const cdx=lx-clx,cdy=ly-cly,cdz=lz-clz;
  const d=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz);
  if(d<1e-4){_fb.nx=dir;_fb.ny=0;}else{_fb.nx=(cdx*sa+cdy*ca)/d;_fb.ny=(-cdx*ca+cdy*sa)/d;}
@@ -82,10 +82,10 @@ function footBoxDist(r,a,i,px,py,pz,foff){
  _fb.cwx=bcx+clx*sa+cly*ca;_fb.cwy=bcy-clx*ca+cly*sa;
  return d;
 }
-// --- trap sweep guard ---
+// --- sweep guard ---
 // would rotating from a0 to a1 shove the ball toward our own goal?
 function sweepClips(r,b,a0,a1){
- const SW=AIC.trap.sweep;
+ const SW=AIC.sweep;
  if(!SW||!SW.on||a0===a1)return false;
  const n=Math.max(2,SW.samples|0),dir=r.kickDir,reach=BALL_R*FOOT_BOX_REACH+SW.pad;
  const p0=b.m.position,step=SW.sweepT/(n-1);
@@ -112,15 +112,15 @@ function legBack(r,b,a1){
  for(let a=r.angle*dir;a>a1;a-=0.15)if(sweepClips(r,b,a*dir,Math.max(a1,a-0.15)*dir))return true;
  return false;
 }
-// a swing from a leg posed forward of its curve's first target sets off backward, through a ball lying under the leg (KS: the curve, default KICK)
+// a swing from a leg posed forward sets off, or drops back, through a ball lying under it (KS: the curve, default swings.shoot): refused past its first target or ai.swingFromA
 function kickBack(r,b,KS){
- KS=KS||KICK;const t=KS.windup>0?KS.windupA:KS.strikeA,a=r.angle*r.kickDir,bb=b.real||b;
+ KS=KS||SWINGS.shoot;const t=Math.min(KS.windup>0?KS.windupA:KS.strikeA,AIC.swingFromA),a=r.angle*r.kickDir,bb=b.real||b;
  if(a<=AIC.catch.recv.fwdMin||a<=t)return false;
  if(legBack(r,bb,t))return true;
  for(let x=a;x>t;x-=0.1)if(footHolds(r,bb,x*r.kickDir))return true;   // a swing that quick knocks back a ball it only clips at the side, too
  return false;
 }
-// is the ball in reach of a live foot at angle a? (else the trap grabs thin air)
+// is the ball in reach of a live foot at angle a?
 function footHolds(r,b,a){
  const p=b.m.position,reach=BALL_R*FOOT_BOX_REACH;
  for(let i=0;i<r.baseZ.length;i++){
@@ -180,34 +180,19 @@ function strikeProbe(r,b,style,ks){
 function strikeOn(r,bv,style,ks){
  const SG=AIC.strikeGate;
  if(!SG||!SG.on)return true;
- if(SG.styles.indexOf(style||'kick')<0)return true;
+ if(SG.styles.indexOf(style||'pass')<0)return true;
  const b=(SG.useReal&&bv&&bv.real)?bv.real:bv;
  if(!b||b.scored)return false;
  if(b.v.length()>SG.maxBallSpeed){                    // too quick to be PLACED by a soft, aimed swing
-  if(dbgLogRod===r)dbgRod(r,'GATE:'+(style||'kick').toUpperCase(),'refused — ball at '+b.v.length().toFixed(0)+'u/s > maxBallSpeed '+SG.maxBallSpeed);
+  if(dbgLogRod===r)dbgRod(r,'GATE:'+(style||'pass').toUpperCase(),'refused — ball at '+b.v.length().toFixed(0)+'u/s > maxBallSpeed '+SG.maxBallSpeed);
   return false;
  }
  const c=strikeProbe(r,b,style,ks);
- if(!c.ok&&dbgLogRod===r)dbgRod(r,'GATE:'+(style||'kick').toUpperCase(),
+ if(!c.ok&&dbgLogRod===r)dbgRod(r,'GATE:'+(style||'pass').toUpperCase(),
   'refused — d='+c.d.toFixed(2)+'/'+(BALL_R*FOOT_BOX_REACH+SG.pad).toFixed(2)
   +' face='+c.face.toFixed(2)+'/'+SG.faceDot+' dz='+c.dz.toFixed(2)
   +'/'+((FOOT_BOX.z+BALL_R*FOOT_BOX_REACH)*SG.zFrac).toFixed(2)+' at t='+c.t.toFixed(3)+' man='+c.man);
  return c.ok;
-}
-// --- per-ball trap angle ---
-// deepest tilt whose sweep is clean, null if the ball is out of reach
-function trapAngle(r,b,a0,aT){
- const SW=AIC.trap.sweep,n=Math.max(1,SW.clampSteps|0);
- if(!SW.on)return footHolds(r,b,aT)?aT:null;           // guard off = old fixed-target behaviour
- let best=null;
- for(let s=0;s<=n;s++){
-  const a=a0+(aT-a0)*(s/n);
-  if(sweepClips(r,b,a0,a))break;                       // first clipping depth ends the walk
-  best=a;
- }
- if(best===null)return null;
- if(Math.abs(best-a0)>1e-6&&Math.abs(best-aT)>1e-6&&SW.floor>0&&Math.abs(best-a0)<SW.floor)best=a0;
- return footHolds(r,b,best)?best:null;
 }
 // --- back guard (CONFIG.ai.backGuard) ---
 // last word on an AI rod's back-lift and slide; BGS tallies feed tools/backswing-soak.js
@@ -262,7 +247,7 @@ function backLimit(r,aT,rate,own){
 // would sliding o0 to o1 shove a ball behind the boot? (contact, or the lane while lifted)
 function slideBlocked(r,o0,o1){
  const G=AIC.backGuard;
- if(!G||!G.on||!G.slide||o1===o0||r.kickT>=0||r.pinB||r.act==='catch'||r.act==='trap'||r.act==='dribble'||(r.act==='retrieve'&&r.retPh==='pin')||(r.force&&r.role!=='GK')||seatOf(r))return false;
+ if(!G||!G.on||!G.slide||o1===o0||r.kickT>=0||r.pinB||r.act==='catch'||r.act==='dribble'||(r.act==='retrieve'&&r.retPh==='pin')||(r.force&&r.role!=='GK')||seatOf(r))return false;
  const dir=r.kickDir,reach=BALL_R*FOOT_BOX_REACH+G.pad,zr=FOOT_BOX.z+reach;
  for(const b of S.balls){
   if(b.scored)continue;
@@ -422,7 +407,7 @@ function clearOffset(r,bz,cz,prefer){
  }
  return best;
 }
-// z of the live foot nearest bz (where the ball is actually trapped)
+// z of the live foot nearest bz (where the ball is actually held)
 function nearestFootZ(r,bz){
  let fz=null;
  for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const z=r.baseZ[i]+r.offset;if(fz===null||Math.abs(bz-z)<Math.abs(bz-fz))fz=z;}
@@ -557,7 +542,7 @@ function aimCone(r,pass){
  return K.shot==null?0:assistAng(r,false)+K.shot;
 }
 // --- pass steer (CONFIG.ai.catch.steer) ---
-// the heading (rad) the soft pass swing leaves a ball on for a slide of v u/s (linear between the measured points); the sign follows v
+// the heading (rad) a sweep of steer.at leaves a ball on for a slide of v u/s (linear between the measured points); the sign follows v
 function steerHeading(v){
  const T=AIC.catch.steer.slide,a=Math.abs(v);
  let h=T[T.length-1][1];
@@ -571,13 +556,15 @@ function steerSlide(h){
  for(let i=1;i<T.length;i++)if(a<=T[i][1])return T[i-1][0]+(T[i][0]-T[i-1][0])*(a-T[i-1][1])/(T[i][1]-T[i-1][1]);
  return T[T.length-1][0];
 }
+// the heading the pin pass leaves on for a slide of v: the table at its own sweep (the boot's speed goes as 1/strike, the slide's share is the same)
+function pinSteer(v){return Math.atan(Math.tan(steerHeading(v))*SWINGS.pinPass.strike/AIC.catch.steer.at);}
 // the slide a pass from rod r can hold toward side s (+1 / -1): its top speed, steer.vMax, and what the room left to its end lets it hold for steer.hold
 function steerV(r,s){
  const ST=AIC.catch.steer,room=s>0?r.maxOff-r.offset:r.offset+r.maxOff;
  return Math.max(0,Math.min(ST.vMax,DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r),room/ST.hold));
 }
 // how far off straight (rad) a pass from a pin can leave toward side s
-function steerReach(r,s){const ST=AIC.catch.steer;return Math.max(ST.standing,steerHeading(steerV(r,s)));}
+function steerReach(r,s){const ST=AIC.catch.steer;return Math.max(ST.standing,pinSteer(steerV(r,s)));}
 // --- run-up for a free pass (CONFIG.ai.catch.steer.free) ---
 // a ball a free pass can run at: slow, ahead of the rod by more than the foot's side reaches
 function freeBall(r,best){
@@ -777,6 +764,7 @@ function kickLaunch(r,view,style,slide,curve){
     const sweet=SW.on&&Math.abs(dz)<FOOT_BOX.z*SW.zFrac&&rel>SW.xMin&&rel<SW.xMax;
     const sideSpeed=Math.abs(nz)>=KICK.sideDot&&KICK.sideRest>rest?Math.min(0,Math.max(vx*nx+vy*ny+vz*nz,vn)):0;
     let impulse=-(1+rest)*(vn-sideSpeed)/b.t.mass*stHit(r);
+    impulse*=KS.pow??1;                                    // the swing's own trim, as the first contact takes it
     if(w*dir>0&&S.eff[r.team].boost>S.time)impulse*=KICK.boostHitMult;
     if(sweet)impulse*=1+SW.strBase+SW.strAcc*stAccFrac(r)+(r.aiIQ?SW.iqBonus:0);
     const carry=nx*dir<-KICK.rearDot?sv*KICK.rearCarry:sv;
@@ -828,13 +816,11 @@ function kickShotPlan(r,b){
  }
  return out;
 }
-// the power axis a plain kick swings at (CONFIG.ai.power); 0 = the plain KICK curve
-function aiPowM(r){const P=AIC.power;return P&&byTeam(P.on,r.team)&&P.roles.indexOf(r.role)>=0&&!r.force?(P.m[teamDiff(r.team)]||0):0;}
 function kickSlidePlan(r,b,slide){
- const m=aiPowM(r),launch=kickLaunch(r,b,null,slide,m?shotBlend(m):null);
+ const launch=kickLaunch(r,b,'shoot',slide);
  if(!launch)return null;
  const on0=r.shotOn,ctl0=r.shotCtl;
- if(m){r.shotOn=true;r.shotCtl=clamp(shotAxisCtl(m),0,1);}   // the aim assist the power swing will have
+ r.shotOn=true;r.shotCtl=SWINGS.shoot.ctl;                          // the aim assist the shot will have
  const {x,z}=launch,goalX=r.kickDir*F.L/2,dx=Math.abs(goalX-x);
  const obs=laneObs(r.team,x,goalX,AIC.catch.shotV),span=F.goalHalf*AIC.aimGoalZ,LL=AIC.laneLook;
  const shoot=r.role==='ATT',aim=r.aimEv&&AIC.gapAim.gap;
@@ -857,7 +843,7 @@ function kickSlidePlan(r,b,slide){
 
 function loosePassPlan(r,view,minScore){
  const b=view.real||view,p=b.m.position,P=AIC.dribble.pass;
- if(!P.on||!P.roles.includes(r.role)||kickBack(r,view,AIC.passShot))return null;
+ if(!P.on||!P.roles.includes(r.role)||kickBack(r,view,SWINGS.pass))return null;
  if(b.v.length()<=AIC.strikeGate.maxBallSpeed){
   const launch=kickLaunch(r,b,'pass',r.slideV);
   if(launch&&passFaceOK(r,launch.face*r.kickDir)&&launch.forward>=P.assistMinVX){
@@ -874,11 +860,10 @@ function loosePassPlan(r,view,minScore){
 
 function plannedKick(r,style,aim,launch,ev){
  if(ev)r.aimEv=ev;
- const m=style?0:aiPowM(r),cv=m?shotBlend(m):null;
- if(m)shotArm(r,m,-1);                                              // a plain kick is the power shot (CONFIG.ai.power)
- kickRod(r,style,aim,cv);
+ const KS=styleCfg(style);
+ kickRod(r,style,aim);
  r.clOn=false;
- r.catSw=true;r.catSv=launch.slide;r.catHold=(cv||styleCfg(style)).powTo;
+ r.catSw=true;r.catSv=launch.slide;r.catHold=Math.max(KS.strike,KS.powTo);   // the slide holds until the boot has swept through: both swings outlast their power window
  r.catAim=ev;
  r.target=r.offset+launch.slide/SIM.hz;
 }
@@ -910,7 +895,7 @@ function snakeRoom(r,z,dir){
 function pushOutlet(r,bx,bz,sv,obs,goalX){
  if(r.pcSn){
   const SN=AIC.catch.snake;
-  if(sv&&snakeRoom(r,bz,Math.sign(sv))<Math.abs(sv)*SHOT.snake.spin)return -1e9;
+  if(sv&&snakeRoom(r,bz,Math.sign(sv))<Math.abs(sv)*SWINGS.snake.spin)return -1e9;
   const z=bz+SN.drift*sv,tz=z+Math.abs(goalX-bx)*SN.k*sv;
   const span=r.role==='ATT'?F.goalHalf*AIC.aimGoalZ:F.W/2-BALL_R;
   return Math.min(lineClr(obs,bx,z,goalX,tz,SN.follow*sv),span-Math.abs(tz));
@@ -983,7 +968,7 @@ function pushBurst(r){return (r.puPh==='burst'&&r.pinB)||(r.puB&&r.kickT>=0)?AIC
 // a ball held under a forward leg is shot with the snake (CONFIG.ai.catch.snake): the role, the depth it is held at, and a draw once a hold
 function snakeHold(r,b){
  const SN=AIC.catch.snake;
- if(!SN||!SN.on||!SHOT.snake||!SHOT.snake.on||SN.roles.indexOf(r.role)<0||b.pinDx<SN.relMin||b.pinDx>SN.relMax)return false;
+ if(!SN||!SN.on||!SHOT.snake||!SHOT.snake.on||SN.roles.indexOf(r.role)<0||b.pinDx<SHOT.pin.fwdBack||b.pinDx>SHOT.pin.fwdFront)return false;
  if(r.pcSnD==null){const u=SN.use[teamDiff(r.team)];r.pcSnD=u==null||u>=1||rngAi(r.idx)()<u;}
  return r.pcSnD;
 }
@@ -1006,7 +991,7 @@ function pinTarget(r,b,obs,goalX,fwd=false){
   if(snake){
    if(move<CA.arrive)continue;
    const side=Math.sign(z-p.z);
-   const speed=Math.max(0,Math.min(cv*CA.recv.carry,snakeRoom(r,z,side)/SHOT.snake.spin));
+   const speed=Math.max(0,Math.min(cv*CA.recv.carry,snakeRoom(r,z,side)/SWINGS.snake.spin));
    const still=pushOutlet(r,p.x,z,0,obs,goalX);
    oo=SN.brake?still:Math.max(still,pushOutlet(r,p.x,z,side*speed,obs,goalX));
   }else{
@@ -1083,7 +1068,7 @@ function pinPlay(r,best,t,dt,tap){
  if(t<catchT(r,'settleT'))return 0;
  const mull=fwd&&t<RV.settleT&&!r.force;                            // a forward pin is carried a while before anything is played: the AI is looking for a lane
  const late=t>=catchT(r,'holdT')||r.force,LT=CA.late,work=late&&!r.force&&!!(LT&&byTeam(LT.moves,r.team));   // work: a late hold plays a move, whatever the draws
- const obs=sn?laneObsAt(r.team,p.x,goalX,SN.shotV,SHOT.snake.spin):laneObs(r.team,p.x,goalX,CA.pinShotV);
+ const obs=sn?laneObsAt(r.team,p.x,goalX,SN.shotV,SWINGS.snake.spin):laneObs(r.team,p.x,goalX,CA.pinShotV);
  const still=Math.abs(sv)<=CA.fireV,planted=still||(fwd&&!late&&RV.fwdBrake);
  const sl=sn?SN.k*sv:planted?0:pushSlope(r,sv);
  const now=!sn&&planted?pinOutlet(r,p.x,p.z,obs,goalX,0):pushOutlet(r,p.x,p.z,sv,obs,goalX);
@@ -1092,7 +1077,7 @@ function pinPlay(r,best,t,dt,tap){
  if(r.puPh&&fwd&&!sn){r.puPh=null;CAS.puMiss++;}                    // the ball slipped out of the snake's reach mid-pull
  if((!late||work)&&(!fwd||(sn&&!mull))&&(r.puPh||!open)&&puWant(r,b,work,fwd)){   // the pull owns the slide and the shot while it runs (from a forward hold: fired as the snake)
   if(!puStep(r,b,dt,now))return 0;
-  r.pcWhy=fwd?'snakePull':'pull';r.catSv=sv;r.catSl=sl;if(sn)r.catHold=SHOT.snake.spin+SHOT.snake.follow;CAS.puFire++;return 1;
+  r.pcWhy=fwd?'snakePull':'pull';r.catSv=sv;r.catSl=sl;if(sn)r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;CAS.puFire++;return 1;
  }
  if(sn&&sv&&!open&&pushOutlet(r,p.x,p.z,0,obs,goalX)>=clear)return 0;  // brake in an open lane before considering a tap
  if(fwd&&!open&&!late){
@@ -1143,7 +1128,7 @@ function pinPlay(r,best,t,dt,tap){
    if(r.catSv)CAS.steer++;
    r.catPk=pk;return 2;
   }
-  if(sn){r.catSv=sv;r.catSl=sl;r.catHold=SHOT.snake.spin+SHOT.snake.follow;}   // the snake carries the slide until it strikes, then the rod brakes
+  if(sn){r.catSv=sv;r.catSl=sl;r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;}   // the snake carries the slide until it strikes, then the rod brakes
   else if(sl){r.catSv=sv;r.catSl=sl;}
   return 1;
  }
@@ -1184,10 +1169,10 @@ function pinFire(r,best,D,v){
  else if(r.pcSn)snakeFire(r);
  else{
   if(r.catSv)r.target=r.offset+r.catSv*AIC.catch.push.lead;       // the strike gate has to see the slide carrying on through the swing
-  if(!strikeOn(r,best,'trapShot',pinSwing()))return -1;
+  if(!strikeOn(r,best,'pinShot',pinSwing()))return -1;
   r.catAim=pinAim(r,r.pinB,r.catSl||0);
   r.aimEv=r.catAim;
-  kickRod(r,'trapShot',null,pinSwing());
+  kickRod(r,'pinShot',null,pinSwing());
  }
  if(v===2)CAS.pass++;else if(r.pcSn)CAS.snake++;else CAS.shot++;
  CAW['fire:'+r.pcWhy]=(CAW['fire:'+r.pcWhy]||0)+1;
@@ -1196,13 +1181,12 @@ function pinFire(r,best,D,v){
  r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
  return 1;
 }
-// the snake from under a forward leg (shots.js shotSnakeFire, rods.js snakeStep): the ball let go with its slide, the man rolls over the top of the rod onto it from behind; it costs the player's stamina
+// the snake from under a forward leg (shots.js shotSnakeFire, rods.js snakeStep): the ball let go with its slide, the man rolls over the top of the rod onto it from behind; swings.snake, trims and all
 function snakeFire(r){
- const K=SHOT.snake;
  r.target=r.offset+r.catSv/SIM.hz;
  r.catAim=pinAim(r,r.pinB,r.catSl||0);r.aimEv=r.catAim;
- pinRelease(r,false,1);  // match the rod's slide until the rolling foot reaches the ball
- r.shotExert=K.exert;kickRod(r,'snake',null,K);r.shotExert=1;
+ pinRelease(r,false,SWINGS.snake.carry);
+ kickRod(r,'snake',null,SWINGS.snake);
 }
 const CAW={};   // why a catch ended
 // the run-up for a free pass (r.act='run'): back off to the far side of the ball, slide at it, fire on the step whose predicted launch (kickLaunch, the pass assist) crosses the mate: the boot's corner meeting the ball off-centre turns it, not the slide
@@ -1277,7 +1261,7 @@ function runStep(r,best,D,dt){
  if(r.rnShot){
   const P=kickSlidePlan(r,b,s*v);
   if(!P||P.ev.best.clr<Math.max(RG.clear,laneMin(r)))return 0;
-  plannedKick(r,null,null,P.launch,P.ev);
+  plannedKick(r,'shoot',null,P.launch,P.ev);
   r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
   CAS.runShotFire++;
   return 1;
@@ -1508,7 +1492,7 @@ function catchMan(r,za,tAr){
 function tapEval(r,b,obs,goalX,walk){
  const CA=AIC.catch,TP=CA.tap,p=b.m.position,mi=b.pinMan,zl=F.W/2-BALL_R-1;
  const fb=r.angle*r.kickDir>CA.recv.fwdMin?TP.fwd:null;              // a forward leg holds the ball further back and nearer the pivot
- if(!TP||!TP.on||TP.roles.indexOf(r.role)<0||(fb?(b.pinDx<fb.min||b.pinDx>fb.max):((b.pinDx<TP.relMin||b.pinDx>TP.relMax)&&!(TP.deep&&TP.deep.on&&b.pinDx>=TP.deep.min&&b.pinDx<=TP.deep.max))))return null;
+ if(!TP||!TP.on||TP.roles.indexOf(r.role)<0||(fb?(b.pinDx<fb.min||b.pinDx>SHOT.pin.fwdFront):((b.pinDx<TP.relMin||b.pinDx>TP.relMax)&&!(TP.deep&&TP.deep.on&&b.pinDx>=TP.deep.min&&b.pinDx<=TP.deep.max))))return null;
  if(walk&&(!CA.side.on||footAngle(b.pinDx,b.pinDx>CA.side.aheadMin)==null))return null;
  const here=walk?pinOutlet(r,p.x,p.z,obs,goalX,0):0;
  let best=null;
@@ -1557,7 +1541,7 @@ function hitAngle(rel){
  let best=0,bs=1e9;
  for(let a=-1.3;a<=1.3;a+=0.02){
   const sa=Math.sin(a),ca=Math.cos(a),fx=sa*ARM*FOOT_T,fy=ROD_H-ca*ARM*FOOT_T,bcx=fx+FOOT_BOX_OFF.x*sa+FOOT_BOX_OFF.y*ca,bcy=fy-FOOT_BOX_OFF.x*ca+FOOT_BOX_OFF.y*sa;
-  const dx=rel-bcx,dy=BALL_R-bcy,sc=Math.max(Math.abs(dx*sa-dy*ca)/FOOT_BOX.x,Math.abs(dx*ca+dy*sa)/FOOT_BOX.y);
+  const dx=rel-bcx,dy=BALL_R-bcy,lx=dx*sa-dy*ca,u=dx*ca+dy*sa,sc=Math.max(Math.abs(lx)/FOOT_BOX.x,Math.abs(u)/footHalfW(lx,u));
   if(sc<bs){bs=sc;best=a;}
  }
  return bs<=AIC.catch.hit.fit?best:null;
@@ -1747,7 +1731,7 @@ function sideStep(r,best){
  const SD=AIC.catch.side,CA=AIC.catch,TB=CA.tap.back,dir=r.kickDir,dt=1/SIM.hz,rb=best.real||best,p=rb.m.position,v=rb.v,rel=(p.x-r.x)*dir,sp=Math.abs(v.z),sg=r.catSg,deep=r.catDeep;
  const ahead=(r.baseZ[r.catMan]+r.offset-p.z)*sg;                // z left to roll before the man (negative = rolled past)
  const bv=v.z*sg,cl=bv-r.slideV*sg;                              // the ball's speed along the roll, and how fast it closes on the man
- const front=r.catFwd?(r.tapPend?CA.tap.fwd.max:SD.fwdFront):SD.front;
+ const front=r.catFwd?(r.tapPend?SHOT.pin.fwdFront:SD.fwdFront):SD.front;
  let why=null;
  if(rb.scored)why='scored';else if(p.y>AIC.lowY)why='lifted';else if(r.force)why='force';else if(r.catT>SD.abortT)why='time';
  else if(rel<(deep?CA.tap.deep.back:SHOT.pin.back)-1||rel>front+1||Math.abs(v.x)>SD.maxVX*2)why='off';
@@ -1855,7 +1839,7 @@ function catchPick(r,best){
  const TH=CA.recv.take.thru,rb=best.real||best,cr=-rb.v.x*dir;     // the real ball: the leg has to land on it, not on where the view thinks it is
  if(ph==='front'&&TH&&TH.on&&cr>=TH.minV&&cr<=TH.maxV&&Math.abs(rb.v.z)<=TH.maxVZ&&rb.m.position.y<AIC.lowY&&rel>=TH.near&&rel<=TH.far&&takeFwd(r,p.x,r.baseZ[m.i]+m.o)){r.catMan=m.i;r.catO=m.o;r.catFwd=true;return 'thru';}
  const TB=CA.recv.take.behind,fb=ph==='behind'&&TB&&TB.on&&takeFwd(r,r.x+dir*TB.stop,r.baseZ[m.i]+m.o);   // a ball from behind held in the receiving pose, as a pass is
- if(sweepClips(r,best,r.angle,(fb?CA.recv.angle:A.angle)*dir))return null;   // the pose itself must not shove the ball
+ if(sweepClips(r,best,r.angle,(fb?CA.recv.angle:ph==='front'?SHOT.pin.angle:A.angle)*dir))return null;   // the pose itself must not shove the ball
  r.catMan=m.i;r.catO=m.o;r.catFwd=fb;
  return ph;
 }
@@ -1878,7 +1862,7 @@ function thruStep(r,best){
 // phases (r.ftPh): clear (the man slides off the ball's z, the leg down so nothing sweeps it) -> up (the leg goes up and forward over it) -> over (the man slides onto its z) -> down (the leg comes down onto it and the pin catches it)
 function fetchPick(r,best,covered=false){
  const CA=AIC.catch,FE=CA.fetch,rb=best.real||best,p=rb.m.position,rel=(p.x-r.x)*r.kickDir,gx=r.kickDir>0?F.L/2:-F.L/2;
- if(!FE||!FE.on||FE.roles.indexOf(r.role)<0||(r.ftCd||0)>S.time||rel<FE.near||rel>FE.far||p.y>=AIC.lowY||rb.v.length()>FE.maxV)return false;
+ if(!FE||!FE.on||FE.roles.indexOf(r.role)<0||(r.ftCd||0)>S.time||rel<FE.near||rel>SHOT.pin.fwdFront||p.y>=AIC.lowY||rb.v.length()>FE.maxV)return false;
  if(!covered){
   if(pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,CA.shotV),gx,0)>=CA.lineClear)return false;
  }
@@ -1905,7 +1889,7 @@ function fetchStep(r,best){
  const rail=r.catPh==='rail',fwd=!rail||rel>0;
  let why=null;
  if(rb.scored)why='scored';else if(p.y>(rail?BALL_R+SHOT.pin.yTol:AIC.lowY))why='lifted';else if(r.force)why='force';else if(rb.v.length()>FE.bailV)why='moved';
- else if(!rail&&(rel<FE.near-1||rel>FE.far+1))why='off';else if(r.catT>FE.abortT)why='time';
+ else if(!rail&&(rel<FE.near-1||rel>SHOT.pin.fwdFront+1))why='off';else if(r.catT>FE.abortT)why='time';
  const mn=why?null:rail?wallPinPlan(r,rb):retrieveMan(r,bz);
  if(!why&&!mn)why='reach';
  if(why){catchEnd(r,CA.cd,'fetch:'+why);return;}
@@ -1962,7 +1946,7 @@ function aheadStep(r,best){
  let why=null;
  // Finish the step-off even under the dead-ball push: the boot must get behind the ball to swing.
  if(rb.scored)why='scored';else if(p.y>AIC.lowY)why='lifted';else if(r.ahT>FE.aheadT)why='time';
- else if(r.ahPh!=='rest'&&(rb.v.length()>FE.bailV||rel<FE.near-1||rel>FE.far+1))why='moved';
+ else if(r.ahPh!=='rest'&&(rb.v.length()>FE.bailV||rel<FE.near-1||rel>SHOT.pin.fwdFront+1))why='moved';
  const mn=why?null:retrieveMan(r,bz);
  if(!why&&!mn)why='reach';
  if(why){catchEnd(r,CA.cd,'ahead:'+why);return;}
@@ -2007,7 +1991,7 @@ function underStep(r,best){
  if(r.unPh==='up'){
   r.target=r.offset;
   if(r.angle*dir<RV.lift.angle-FE.upTol&&r.catT<FE.downT)return;
-  if(S.time-(r.unT||-9)>=U.retryT&&rel>=SHOT.pin.fwdBack&&rel<=FE.far&&footAngle(rel,true)!=null&&retrieveMan(r,bz)){
+  if(S.time-(r.unT||-9)>=U.retryT&&rel>=SHOT.pin.fwdBack&&rel<=SHOT.pin.fwdFront&&footAngle(rel,true)!=null&&retrieveMan(r,bz)){
    r.unT=S.time;r.unPh=null;r.catPh='fetch';r.ftPh='over';r.ftT=0;r.catT=0;CAS.underFetch++;fetchStep(r,best);return;
   }
   r.unPh='off';
@@ -2039,7 +2023,7 @@ function ttSlides(r){
 // the pair a ball at p (depth rel) is worked between, from each [man, side] that could knock it first: the one with the better lanes at the middle of the gap, null if none fits
 function ttPick(r,p,rel,cs,obs,goalX){
  const T=AIC.catch.tictac,ws=ttSlides(r);
- if(rel<T.relMin||rel>T.relMax||hitAngle(rel)==null)return null;
+ if(rel<SHOT.pin.back||rel>SHOT.pin.fwdFront||hitAngle(rel)==null)return null;
  let best=null;
  for(const c of cs){
   const mi=c[0],s=c[1],j=mi+s;
@@ -2069,7 +2053,7 @@ function ttLoose(r){
 function ttRoll(r,best){
  const T=AIC.catch.tictac,RL=T.roll,rb=best.real||best,p=rb.m.position,v=rb.v,rel=(p.x-r.x)*r.kickDir,sp=Math.abs(v.z),sg=v.z>0?1:-1,fz=FOOT_BOX.z+BALL_R+T.margin;
  if(!T.on||!RL||!RL.on||T.roles.indexOf(r.role)<0||r.force||(r.ttCd||0)>S.time||p.y>=AIC.lowY)return false;
- if(Math.abs(v.x)>AIC.catch.side.maxVX||sp<RL.minV||sp>RL.maxV||rel<T.relMin||rel>T.relMax||(RL.under&&footAngle(rel,rel>0)!=null))return false;   // under: only a ball no foot can come down on (else any the side catch left)
+ if(Math.abs(v.x)>AIC.catch.side.maxVX||sp<RL.minV||sp>RL.maxV||rel<SHOT.pin.back||rel>SHOT.pin.fwdFront||(RL.under&&footAngle(rel,rel>0)!=null))return false;   // under: only a ball no foot can come down on (else any the side catch left)
  const a=hitAngle(rel);
  if(a==null)return false;
  let lo=-1;
@@ -2207,10 +2191,10 @@ function ttStrike(r,rb,best,D,sp,sg){
  if(!r.ttGo||!fire)return;
  if(Math.abs(r.angle-sa)>ST.tolA){ttCatch(r,f,sg,'pose');return;}
  r.target=clamp(r.offset+w*CA.push.lead,-r.maxOff,r.maxOff);          // the gate has to see the slide go on
- if(!strikeOn(r,best,'trapShot')){r.target=clamp(r.offset+w*dt,-r.maxOff,r.maxOff);CAS.ttGate++;return;}
+ if(!strikeOn(r,best,'pinShot',pinSwing())){r.target=clamp(r.offset+w*dt,-r.maxOff,r.maxOff);CAS.ttGate++;return;}
  r.catSv=w;r.catHold=ST.hold;
  r.catAim={best:{tz:r.ttTz,clr:r.ttClr},lanes:[],goalX:gx,ox:p.x,oz:p.z};r.aimEv=r.catAim;
- kickRod(r,'trapShot');
+ kickRod(r,'pinShot',null,pinSwing());
  r.catSw=true;r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
  CAS.ttShot++;CAS.ttLat+=S.time-r.ttFound;CAS.ttGoLat+=S.time-r.ttGoT;
  if(r.ttSetup)CAS.ttSetupShot++;
@@ -2361,7 +2345,7 @@ function catchStep(r,best,D){
  if(m){r.catMan=m.i;r.catO=m.o;}                                   // re-aim as the ball's line firms up; no man can make it = stay on the last
  r.aiMan=r.catMan;
  r.target=clamp(r.catO,-r.maxOff,r.maxOff);
- if(tAr<=CA.poseT){r.pinOn=true;r.pinPose=true;r.pinFwd=!!r.catFwd&&CA.recv.angle>0;r.pinA=(r.catFwd?CA.recv.angle:A.angle)*dir;}else{r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinA=null;}
+ if(tAr<=CA.poseT){r.pinOn=true;r.pinPose=true;r.pinFwd=!!r.catFwd&&CA.recv.angle>0;r.pinA=(r.catFwd?CA.recv.angle:front?SHOT.pin.angle:A.angle)*dir;}else{r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinA=null;}
 }
 // the passive raise: one rod, one frame, no hand on it; shared by benched rods, AI-off rods in training/trials, and a rod just switched onto
 // only decides the angle (never r.target); returns the raise state it settled on
@@ -2846,7 +2830,7 @@ function coverZ(r,bzp,relFront,dt){
   const bp=best.m.position;
    const relReal=(bp.x-r.x)*dir;           // depth in the rod's delayed view
   const speed=best.v.length();
-  const approach=best.v.x*dir;            // >0 = ball closing on this rod's front face (read by clearLane/trap/evade)
+  const approach=best.v.x*dir;            // >0 = ball closing on this rod's front face (read by clearLane/evade)
   // x-distance from the ball to this rod's own goal line
   const ownGx=dir>0?-F.L/2:F.L/2;
   const goalDist=Math.abs(bp.x-ownGx);
@@ -2880,7 +2864,7 @@ function coverZ(r,bzp,relFront,dt){
     }
    }
   // --- lane-clear action (r.act='lane') ---
-  // make way for a teammate behind us about to hit the ball forward through our row; runs before safeRaise/trap/evade
+  // make way for a teammate behind us about to hit the ball forward through our row; runs before safeRaise/evade
   // slides out of the corridor, then lifts once the back-swing can't clip; releases at CL.release, a struck ball holds it open until CL.passed
   const CL=AIC.clearLane;
   if(r.act==='lane'){
@@ -2956,7 +2940,7 @@ function coverZ(r,bzp,relFront,dt){
    retrieveStep(r,best,D);retRan=true;
   }
   if(retRan)continue;
-  const TR=AIC.trap, SR=AIC.safeRaise;
+  const SR=AIC.safeRaise;
   // keeper gets a longer safe-raise window in front: the ball loiters further out for a keeper
   const srFront=SR.front+(r.role==='GK'?(SR.gkFront||0):0);
   const srIn=srGoingIn(r,best);
@@ -2974,91 +2958,9 @@ function coverZ(r,bzp,relFront,dt){
   }
   // lift depth follows the ball (deep behind, shallow in front); backLimit holds it short of a hit
   if(r.act==='safeRaise')r.srA=(relReal<SR.behindRel?SR.angleBehind:SR.angle)*r.kickDir;
-  // --- trap action (r.act='trap') ---
-  // a smart rod pins a slow ball, carries it sideways hunting a shooting lane, then scoops it (catch, carry, shoot off r.actT)
-  // owns r.target and r.aiMan; collideRod switches to the sticky hold contact; exits when the ball leaves, speeds up, lifts, nears our goal or times out
-  // z-gate: outfield needs an aligned man; the GK also commits up to gkReach beyond its slide band
-  const trapZ=r.role==='GK'?Math.abs(bp.z-clamp(bp.z,r.baseZ[0]-r.maxOff,r.baseZ[0]+r.maxOff))<TR.gkReach:dz<TR.alignZ;
-  // --- entry guards ---
-  // approach gated to [minApproach, maxApproach] (negative min so a still ball qualifies); no trap inside TR.ownGoalGuard, and a live trap aborts
-  // the catch tilts the foot back, so a ball behind the feet gets the big margin
-  const ogGuard=relReal<TR.behindSafe?TR.ownGoalBehind:TR.ownGoalGuard;
-  // defer to the dribble: the windows overlap and a settled ball is better served by it
-  // (dribEvT<=0 mirrors the dribble's scan cadence, so the deferral lasts one refusal)
-  const dribFirst=AIC.dribble.on&&AIC.dribble.roles.indexOf(r.role)>=0&&(r.dribCd||0)<=0&&(r.dribEvT||0)<=0
-                  &&relReal>AIC.dribble.back&&relReal<AIC.dribble.front&&dz<AIC.dribble.alignZ
-                  &&speed<AIC.dribble.maxSpeed&&goalDist>AIC.dribble.ownGoalGuard
-                  &&approach>AIC.dribble.minApproach&&approach<AIC.dribble.maxApproach;
-  if(r.act==='trap'){
-   r.actT+=dt;
-   // exit once the ball escapes the band, speeds up, lifts, nears our goal, or we held too long
-   // no footStuck abort here: entry already implies it and it killed every trap a frame in
-   if(relReal<=TR.back||relReal>=TR.front||speed>TR.maxSpeed||bp.y>AIC.lowY||goalDist<ogGuard||r.actT>TR.abortT){r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;}
-  }else if(TR.on&&r.aiIQ&&!r.act&&!dribFirst&&relReal>TR.back&&relReal<TR.front&&bp.y<AIC.lowY&&Math.abs(best.v.x)<TR.maxVX&&speed<TR.maxSpeed&&trapZ
-           &&approach>TR.minApproach&&approach<TR.maxApproach&&goalDist>ogGuard){
-   // sweep guard: the costliest gate, so it runs last
-   // would the rotation that starts the trap swing a boot through the ball? (world angles both sides)
-   const ta=trapAngle(r,best,r.angle,TR.angle*r.kickDir);
-   if(ta===null){
-    if(dbgLogRod===r)dbgRod(r,'TRAP-VETO','no clean catch angle: rel='+relReal.toFixed(1)+' dz='+dz.toFixed(2)+' a='+r.angle.toFixed(2)+'->'+(TR.angle*r.kickDir).toFixed(2));
-   }else{
-    // commit to the live man nearest the ball in z and remember where it was caught
-    let tm=-1,td=1e9;
-    for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;const d=Math.abs(bp.z-(r.baseZ[i]+r.offset));if(d<td){td=d;tm=i;}}
-    r.act='trap';r.actT=0;r.trapMan=tm;r.trapZ0=bp.z;r.trapDir=0;r.trapA=ta;  // not gated on r.raise — a slow ball at an aligned foot is caught directly, latched or not
-   }
-  }
-  if(r.act==='trap'){
-   r.raise=false;r.behindFlag=false;       // trap owns the angle (updateRods) — latch released
-   const tm=(r.trapMan>=0&&r.trapMan<r.baseZ.length&&manLive(r,r.trapMan))?r.trapMan:0;
-   // z-distance to the one man trapping (not dz, the nearest of any); past holdZ nothing is held
-   const tdz=Math.abs(bp.z-(r.baseZ[tm]+r.offset));
-   let shot=false;
-   if(r.actT>TR.settleT){
-    // --- carry ---
-    // sliding the rod dribbles the held ball while the boot touches it; contact lost ends the trap
-    // scoop if a lane is open, else commit to the side whose lanes probe better until one opens, slideMax runs out or holdT expires
-    if(tdz>TR.holdZ){                       // contact lost — not a trap any more
-     if(dbgLogRod===r)dbgRod(r,'TRAP-LOST','tdz='+tdz.toFixed(2)+' > holdZ '+TR.holdZ);
-     r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;
-    }else{
-     const ev=shotEval(r.team,bp.x,bp.z);r.aimEv=ev;     // also feeds the 'Shot Lanes' debug layer
-     if(!r.trapDir){
-      const pr=TR.slideMax*0.6;
-      const cl=(z)=>shotEval(r.team,bp.x,clamp(z,-F.W/2+BALL_R,F.W/2-BALL_R)).best.clr;
-      const up=cl(bp.z+pr),dn=cl(bp.z-pr);
-      r.trapDir=(up>=dn?1:-1);
-      if(Math.max(up,dn)<=ev.best.clr)r.trapDir=(bp.z>0?-1:1); // neither probe improves on standing still → drift toward centre, where lanes are widest
-     }
-     const timeUp=r.actT>TR.settleT+TR.holdT;
-     const open=ev.best.clr>=TR.lineClear;
-     // strikeOn has the last word: tdz only says the ball is in the boot's lane, not that the scoop will land
-     if((open||(timeUp&&!laneShut(r,best)))&&tdz<TR.alignZ&&r.kickT<0&&r.cd<=0&&strikeOn(r,best,'trapShot')){
-      if(dbgLogRod===r)dbgRod(r,'TRAPSHOT',(open?'lane open':'hold expired')+' clr='+ev.best.clr.toFixed(1)+' rel='+relReal.toFixed(1)+' tdz='+tdz.toFixed(2)+' carried='+(bp.z-r.trapZ0).toFixed(1));
-      kickRod(r,'trapShot');                // scoop shot with dedicated trap power window
-      r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
-      r.trapMan=-1;r.trapDir=0;r.trapA=null;shot=true;
-     }else if(timeUp){                      // held long enough but never squared up — give the ball back
-      r.act=null;r.trapMan=-1;r.trapDir=0;r.trapA=null;
-     }else{
-      // aim a short carryLead past the ball, not the far end of the budget (slideMax is cumulative from the catch)
-      const cz=clamp(bp.z+r.trapDir*TR.carryLead,r.trapZ0-TR.slideMax,r.trapZ0+TR.slideMax);
-      r.target=clamp(cz-r.baseZ[tm],-r.maxOff,r.maxOff);
-     }
-    }
-   }else{
-    r.target=clamp(bp.z-r.baseZ[tm],-r.maxOff,r.maxOff);  // CATCH: boot dead on the ball, no aim offset
-   }
-   if(r.act==='trap'&&!shot){
-    r.aiMan=tm;
-    if(dbgLogRod===r)dbgRod(r,'ACT:trap'+(r.actT>TR.settleT?'/carry':'/catch'),
-     'rel='+relReal.toFixed(1)+' tdz='+tdz.toFixed(2)+' spd='+speed.toFixed(0)+' t='+r.actT.toFixed(2)+' dir='+r.trapDir+' clr='+(r.aimEv?r.aimEv.best.clr.toFixed(1):'-'));
-    continue;                               // we own target + man for the whole trap — no re-aim, no kick gate
-   }
-  }
   // --- dribble action (r.act='dribble') ---
   // ball at the feet of a resting row with no way forward: slide it to a better line; updateRods is untouched (men stay down), only the contact and r.target/r.aiMan change
-  // released by the way forward opening, arriving, pressure or time, as an ordinary swing or a pass; outranks the trap (see dribFirst)
+  // released by the way forward opening, arriving, pressure or time, as an ordinary swing or a pass
   const DR=AIC.dribble;
   if(r.act==='dribble'){
    r.actT+=dt;
@@ -3117,7 +3019,7 @@ function coverZ(r,bzp,relFront,dt){
       +' out='+outNow.toFixed(1)+' moved='+(bp.z-r.dribZ0).toFixed(1)
        +(pk?' → '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1):''));
       if(pk)plannedKick(r,'pass',{x:pk.x,z:pk.z},pass.launch,shot?.ev??dev);
-       else plannedKick(r,null,null,shot.launch,shot.ev);
+       else plannedKick(r,'shoot',null,shot.launch,shot.ev);
      r.cd=D.cd*stCd(r)*aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]);
      r.dribMan=-1;r.dribCd=DR.cd;dshot=true;
     }
@@ -3135,10 +3037,10 @@ function coverZ(r,bzp,relFront,dt){
    }
   }
   // --- evade action (r.act='evade') ---
-  // a slow ball stuck behind a man (not trapping or lifting): slide the men away until it's out of foot range
+  // a slow ball stuck behind a man (not held or lifting): slide the men away until it's out of foot range
   // direction opposite the ball's z-drift, else its side; skips man-selection and kick
   const EV=AIC.evade;
-  // maxApproach is the mirror of the trap's minApproach: evade wants a settled ball, not one rolling in
+  // maxApproach: evade wants a settled ball, not one rolling in
   if(r.act==='evade'){
    r.actT+=dt;
    // separate success from giving up: only success earns the follow-through
@@ -3221,7 +3123,7 @@ function coverZ(r,bzp,relFront,dt){
     if(pk&&dbgLogRod===r)dbgRod(r,'PASS','→ '+pk.rod.role+' z='+pk.z.toFixed(1)+' pc='+pk.clr.toFixed(1)+' on='+pk.onward.toFixed(1)+' shotClr='+(r.aimEv?r.aimEv.best.clr.toFixed(1):'-'));
     if(pk||((force||!holdShot)&&!gkHold(r,bp,speed,dt))){
      if(pk)plannedKick(r,'pass',{x:pk.x,z:pk.z},pass.launch,r.aimEv);
-      else plannedKick(r,null,null,shot.launch,shot.ev);
+      else plannedKick(r,'shoot',null,shot.launch,shot.ev);
     r.gkWaitT=0;r.gkClearT=0;
     r.cd=D.cd*stCd(r)*(slow?aiR(r,AIC.cdSlow[0],AIC.cdSlow[1]):aiR(r,AIC.cdFast[0],AIC.cdFast[1])); // rea stat trims recovery
    }

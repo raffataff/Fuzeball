@@ -25,7 +25,7 @@ const stubs=[
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
  "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -163,7 +163,7 @@ const MUT=[
  {n:'the time window is ignored',from:'bd/sp<tMin||bd/sp>SD.tMax',to:'false'},
  {n:'catchPick never asks for a side catch',from:"if(sidePick(r,best))return 'side';",to:''},
  {n:'the pose goes on at once (no waiting for it to roll in)',from:'(r.catCush||cl<=SD.pinV)&&tA<=SD.dropT)',to:'(r.catCush||cl<=SD.pinV))'},
- {n:'the pose is the fixed pin angle, whatever the ball\'s depth',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;}',to:'r.pinFwd=r.catFwd;r.pinA=CA.front.angle*dir;}'},
+ {n:'the pose is the fixed pin angle, whatever the ball\'s depth',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;}',to:'r.pinFwd=r.catFwd;r.pinA=SHOT.pin.angle*dir;}'},
  {n:'the pose ignores how far the foot is to be held from the ball',from:'R=BALL_R*FOOT_BOX_REACH+AIC.catch.side.topGap,',to:'R=BALL_R*FOOT_BOX_REACH+AIC.catch.side.topGap+0.5,'},
  {n:'a quick ball is posed at though nothing slows it',from:'if(fa!=null&&(r.catCush||cl<=SD.pinV)&&tA',to:'if(fa!=null&&tA'},
  {n:'the step reads the delayed view',from:'rb=best.real||best',to:'rb=best'},

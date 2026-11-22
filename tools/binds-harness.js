@@ -18,19 +18,17 @@ function build(srcShots,srcBinds){
  const rec={kicks:[],fire:[],fed:0,rel:[]};
  const ctx={console,Math,Date,JSON,Object,Array,String,Number,Boolean,Map,Set,isNaN,isFinite,
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
-  kickRod(r,style,aimAt,curve){
-   if(r.kickT>=0)return;
-   r.kickT=0;r.kickStyle=style||null;r.kickCurve=curve||null;r.passTo=aimAt||null;
-   r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;
-   rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pow:r.shotPow,on:r.shotOn,ex:r.shotExert});
-  },
+  // kickRod is the real one (rods.js): its last call records the swing
+  recvArm(){},recvRelease(){},
+  stExertKick(r){r.banked=r.shotExert;},
+  msKick(r){rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pass:r.passTo,pow:r.shotPow,ctl:r.shotCtl,on:r.shotOn,ex:r.banked,a0:r.kickA0});},
   pinRelease(r,ext,k){rec.rel.push({ext:!!ext,k});r.pinB=null;},
   gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);},
   sweepClips(){return false;},
   passPick(){return null;},laneObs(){return [];},lineClr(){return 9;},manLive(){return true;},
   footAngle(rel,fwd){return fwd?0.97:-0.7;},   // ai.js: the angle that brings the foot down onto a ball (the forward pin assist reads it)
   hitAngle(rel){return Math.abs(rel)>9?null:(rel<0?-0.4:0.3);},   // ai.js: the angle that squares the foot's face onto a ball (shotSquare)
-  pinSwing(){return null;},                    // physics.js: the pin shot's curve (the kick record keeps whatever it is given)
+  pinSwing(p){return vm.runInContext(p?'SWINGS.pinPass':'SWINGS.pinShot',ctx);},   // physics.js: the pins' swings (kickRod arms their trims)
   stGrip(){return 0.08;},
   rods:[],
   Au:{chargeFeed(){rec.fed++;},chargeMark(){},chargeFire(k,s){rec.fire.push(k);},ui(){},beep(){}},
@@ -54,8 +52,11 @@ function build(srcShots,srcBinds){
  vm.runInContext(read('js/rng.js'),ctx,{filename:'rng.js'});
  vm.runInContext(AI_GEO,ctx,{filename:'ai.js'});
  vm.runInContext(srcShots,ctx,{filename:'shots.js'});
+ {const R=read('js/rods.js'),a=R.indexOf('function styleCfg('),b=R.indexOf('\nfunction passFaceOK('),c=R.indexOf('function kickRod('),d=R.indexOf('\nfunction resetRodRotation(');
+  if(a<0||b<a||c<0||d<c)throw new Error('rods.js slice miss: styleCfg / kickRod');
+  vm.runInContext(R.slice(a,R.indexOf('\n}',a)+2)+'\n'+R.slice(c,d),ctx,{filename:'rods.js'});}
  vm.runInContext(srcBinds,ctx,{filename:'binds.js'});
- vm.runInContext('globalThis.__c={CONFIG,SHOT,KICK,cfg,rngSeed,shotsOn,shotBlend,shotReset,shotInNew,shotPadRead,'+
+ vm.runInContext('globalThis.__c={CONFIG,SHOT,KICK,SWINGS,cfg,rngSeed,shotsOn,shotReset,shotInNew,shotPadRead,'+
   'shotSeatsUpdate,shotKickEdge,shotKbmAxis,shotCharge,shotPadAxis,shotFwdAngle,shotFwdHold,shotFwdLead,shotPinSeat,shotSnakeSeat,AIC,bindList,bindDev,bindIs,bindActs,bindHeld,bindLabel,'+
   'bindCap,bindHint,bindAdd,bindRemove,bindReset,bindSet,bindReserved};',ctx,{filename:'export.js'});
  ctx.__c.rngSeed(777);
@@ -65,7 +66,7 @@ function rod(over){
  const r={idx:0,x:22.5,team:0,role:'ATT',kickDir:1,angle:0,offset:0,maxOff:12,baseZ:[0],men:[{}],
   removedUntil:[],kickT:-1,kickStyle:null,kickCurve:null,passTo:null,kickHold:false,vz:0,pinOn:false,pinPose:false,pinFwd:false,pinA:null,pinB:null,fwdOut:false,
   raise:false,padAngleOn:false,padAngleTarget:0,
-  chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
+  chg:-1,chgRel:0,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
   chgBlock:0,chgEndT:null,chgEndBand:-1,chgEndK:0,
   shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1,
   hold:{on:false,holdRest:0,holdGrip:0,carryMult:1}};
@@ -173,7 +174,7 @@ function run(srcShots,srcBinds){
   ok(r.shotOn&&r.shotPow>1,'…armed while held');
   ok(rec.kicks.length===0,'nothing fires while it is held');
   C.shotKickEdge(r,C.shotKbmAxis(s));
-  ok(rec.kicks.length===1&&rec.kicks[0].on&&rec.kicks[0].style==='shot','KICK fires the charged shot');
+  ok(rec.kicks.length===1&&rec.kicks[0].on&&rec.kicks[0].style==='shoot','KICK fires the charged shot');
   ok(rec.fire.length===1,'…with the discharge sound');
   ok(r.chgEndT!=null&&r.chgEndBand===1,'…and a CLEAN verdict on the marker');
   frames(3);
@@ -199,7 +200,7 @@ function run(srcShots,srcBinds){
   keys[PW]=true;keys[RS]=true;frames(Math.round(tBand*60));
   keys[PW]=false;keys[RS]=false;frames(Math.ceil(CH.grace*60)+2);
   C.shotKickEdge(r,0);
-  ok(rec.kicks.length===1&&!rec.kicks[0].on,'past the grace, a kick is the ordinary swing');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pass'&&rec.kicks[0].pow===C.SWINGS.pass.pow,'past the grace, a kick is the pass');
  }
  reset();
  /* THE MERGE: an idle pad beside the keyboard must not release — or here, cancel — its wind-up. */
@@ -249,19 +250,25 @@ function run(srcShots,srcBinds){
   const r=rod(),s=solo(r);
   C.shotKickEdge(r,C.shotKbmAxis(s));
   const k=rec.kicks[0];
-  ok(k&&k.style===null&&k.curve===null&&!k.on,'a plain kick with nothing held is the old kick, byte for byte');
+  ok(k&&k.style==='pass'&&k.curve===null&&k.pow===C.SWINGS.pass.pow,'kick with nothing held is the pass');
  }
  reset();
  {
-  // POWER held alone colours a kick exactly as RT alone does: the hard curve, no charge.
+  // POWER held at the press is the shot, exactly as RT past powAt is
   const r=rod(),s=solo(r);
   keys[PW]=true;frames(10);
   C.shotKickEdge(r,C.shotKbmAxis(s));
-  const hard=C.shotBlend(1),k=rec.kicks[0];
-  ok(k&&k.curve&&Math.abs(k.curve.strike-hard.strike)<1e-9,'POWER + kick is the hard swing, like RT + A');
-  ok(k&&Math.abs(k.pow-C.SHOT.mod.hardPow)<1e-9,'…uncharged (pow '+(k&&k.pow)+')');
+  const k=rec.kicks[0];
+  ok(k&&k.style==='shoot'&&k.curve===null,'POWER + kick is the shot, like RT + A');
+  ok(k&&Math.abs(k.pow-C.SWINGS.shoot.pow)<1e-9,'…uncharged (pow '+(k&&k.pow)+')');
  }
  reset();
+ for(const [rt,want] of [[0,'pass'],[0.3,'pass'],[0.9,'shoot']]){
+  const r=rod(),s=solo(r);s.shotPad=C.shotInNew();C.shotPadRead(s.shotPad,pad(0,rt),false,0);
+  C.shotKickEdge(r,C.shotPadAxis(pad(0,rt,[0])));
+  ok(rec.kicks.length===1&&rec.kicks[0].style===want&&rec.kicks[0].curve===null,'a pad: A with RT at '+rt+' is the '+want+', nothing blended');
+  reset();
+ }
  {
   const r=rod(),s=solo(r);
   keys.ControlRight=true;
@@ -269,8 +276,7 @@ function run(srcShots,srcBinds){
   C.SHOT.pin.fwd.on=false;   // with the forward pin off the chord is the old one: a pass, or with no lane the soft touch
   C.shotKickEdge(r,C.shotKbmAxis(s));
   C.SHOT.pin.fwd.on=true;
-  const soft=C.shotBlend(-1);
-  ok(rec.kicks.length===1&&rec.kicks[0].curve&&Math.abs(rec.kicks[0].curve.strike-soft.strike)<1e-9,'finesse + kick with no lane is the soft touch (forward pin off)');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pass','finesse + kick is the pass (forward pin off)');
   keys[PW]=true;
   ok(C.shotKbmAxis(s)===0,'power + finesse cancel, like both triggers');
  }
@@ -433,14 +439,14 @@ function run(srcShots,srcBinds){
  {
   const r=rod(),s=solo(r);
   C.shotKickEdge(r,C.shotKbmAxis(s));
-  ok(rec.kicks.length===1&&rec.kicks[0].style===null&&!r.pinPose,'kick with no finesse is the plain swing, no pose');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pass'&&!r.pinPose,'kick with no finesse is the pass, no pose');
  }
  reset();
  {
   const r=rod(),s=solo(r);
   keys.ControlRight=true;keys[PW]=true;
   C.shotKickEdge(r,C.shotKbmAxis(s));
-  ok(rec.kicks.length===1&&!r.pinPose,'power + finesse cancel (axis 0): the plain kick, not the pose');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='shoot'&&!r.pinPose,'power outranks finesse: the shot, not the pose');
  }
  reset();
  {
@@ -456,7 +462,7 @@ function run(srcShots,srcBinds){
   // a trigger squeezed half-way is a soft touch, not the pose (the old pass rule's axis); fully down is the pose
   const r=rod(),s=solo(r),half=pad(0.3,0),full=pad(1,0);
   C.shotKickEdge(r,C.shotPadAxis(half));
-  ok(rec.kicks.length===1&&!r.pinPose,'LT half-squeezed + A is the soft swing');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pass'&&!r.pinPose,'LT half-squeezed + A is the pass');
   r.kickT=-1;rec.kicks.length=0;
   C.shotKickEdge(r,C.shotPadAxis(full));
   ok(rec.kicks.length===0&&r.pinPose&&r.pinFwd,'LT down + A poses the forward pin');
@@ -475,7 +481,7 @@ function run(srcShots,srcBinds){
   const r=rod({pinB:{scored:false},pinPose:true,pinFwd:false}),s=solo(r);
   keys.ControlRight=true;
   C.shotKickEdge(r,C.shotKbmAxis(s));
-  ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','a ball on the back pin: kick is the pin shot');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','a ball on the back pin: kick is the pin shot');
   rec.kicks.length=0;
   const f=rod({pinB:{scored:false},pinPose:true,pinFwd:true});
   C.shotKickEdge(f,C.shotKbmAxis(s));
@@ -531,7 +537,7 @@ function run(srcShots,srcBinds){
   r.angle=0;
   put(3.5,0.2,FE.bailV+3);ok(C.shotFwdAngle(r)===W.angle,'a ball rolling away quicker than bailV is not lying there: the pose angle');
   put(FE.near-0.5,0.2);ok(C.shotFwdAngle(r)===W.angle,'a ball nearer than the fetch window: the pose angle');
-  put(FE.far+0.5,0.2);ok(C.shotFwdAngle(r)===W.angle,'...and one at rest beyond it');
+  put(C.SHOT.pin.fwdFront+0.5,0.2);ok(C.shotFwdAngle(r)===W.angle,'...and one at rest beyond it');
   put(3.5,5.5);r.vz=40;ok(C.shotFwdAngle(r)===up,'a man the slide has on the ball in a moment counts: the leg is up before he arrives');
   r.vz=0;put(3.5,4.6);ok(C.shotFwdAngle(r)===up,'a ball past his clearance but inside settle.z is seen (the settle draws him on)');
   W.assist=false;put(3.5,0.2);ok(C.shotFwdAngle(r)===W.angle,'assist off: always the pose angle');
@@ -660,7 +666,7 @@ function run(srcShots,srcBinds){
   ok(!s.rcvAsk&&!r.fwdR&&!r.pinPose,'kick up: no ask, the pose and its receive are over');
   keys.ControlRight=false;frames(1);put(40,0);
   // the stick receive (recv.stick): finesse and the right stick pushed forward receive a ball from behind whatever the depth, over a forward pose too
-  {const KA=C.KICK.strikeA,st0=R.stick;
+  {const KA=C.CONFIG.kick.stickA,st0=R.stick;
    reset();r=rod({target:0});s=solo(r);keys.ControlRight=true;frames(2);
    r.padAngleOn=true;r.padAngleTarget=KA*r.kickDir;put(-20,6,40);frames(1);
    ok(r.pinMag===0.7*r.kickDir&&r.fwdR,'finesse and the stick full forward, a ball coming from behind: the receiving pose, not the stick\'s angle');
@@ -731,11 +737,13 @@ function run(srcShots,srcBinds){
    ok(rec.kicks.length===0&&r.pinB&&r.pinFwd,'one kick press with a ball under the forward leg is no shot: the ball stays held');
    frames(step);C.shotKickEdge(r,C.shotKbmAxis(s));
    const k=rec.kicks[0];
-   ok(rec.kicks.length===1&&k.style==='snake'&&k.curve===K,'a second press within snake.dbl is the snake, on its own curve');
-   ok(k&&k.on&&k.pow===K.pow&&k.ex===K.exert,'...armed as a shot, charging snake.exert of stamina');
-   ok(K.exert>C.SHOT.mod.hardExert,'...more than a full-power swing ('+K.exert+' against '+C.SHOT.mod.hardExert+')');
-   ok(rec.rel.length===1&&rec.rel[0].k===K.carry&&!rec.rel[0].ext,'...the ball is let go keeping snake.carry of the slide');
-   ok(!r.pinPose&&!r.pinFwd&&!r.fwdOut,'...the forward pose and its guard are off: the swing has the leg');}
+   ok(rec.kicks.length===1&&k.style==='snake'&&k.curve===C.SWINGS.snake,'a second press within snake.dbl is the snake, on its own curve');
+   const SW=C.SWINGS.snake;
+   ok(k&&k.on&&k.pow===SW.pow&&k.ctl===SW.ctl&&k.ex===SW.exert,'...armed off swings.snake, charging its exert of stamina');
+   ok(SW.exert>C.SWINGS.shoot.exert,'...more than a shot ('+SW.exert+' against '+C.SWINGS.shoot.exert+')');
+   ok(rec.rel.length===1&&rec.rel[0].k===C.SWINGS.snake.carry&&!rec.rel[0].ext,'...the ball is let go keeping swings.snake.carry of the slide');
+   ok(!r.pinPose&&!r.pinFwd&&!r.fwdOut,'...the forward pose and its guard are off: the swing has the leg');
+   r.kickT=0.05;C.shotReset(r);ok(r.shotOn&&r.kickCurve===SW,'...a rod switch mid-turn leaves it the snake, armed');}
   reset();
   {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);
    C.shotKickEdge(r,-1);frames(Math.ceil(K.dbl*60)+3);C.shotKickEdge(r,-1);
@@ -755,7 +763,7 @@ function run(srcShots,srcBinds){
   reset();
   {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);r.pinFwd=false;r.pinPose=true;frames(1);
    C.shotKickEdge(r,-1);
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','the ATT (no rod ahead, not in shots.pin.press.roles): on the back pin one press is still the pin shot');}
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','the ATT (no rod ahead, not in shots.pin.press.roles): on the back pin one press is still the pin shot');}
   reset();
   {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);K.on=false;
    C.shotKickEdge(r,-1);frames(2);C.shotKickEdge(r,-1);K.on=true;
@@ -776,13 +784,13 @@ function run(srcShots,srcBinds){
    r.shotOn=true;r.shotPow=1.3;frames(wait);
    const k=rec.kicks[0],cv=k&&k.curve;
    ok(rec.kicks.length===1&&k.style==='pass','...no second press within press.dbl: the pin pass');
-   ok(!!k&&!k.on&&k.pow===1,'...a plain swing, no shot trim left armed');
-   ok(!!cv&&cv.windup===0&&cv.strike===D.swing.strike&&cv.drop===C.AIC.passShot.drop,'...the pin pass curve (passShot, no wind-up) at press.swing\'s pace');
+   ok(!!k&&k.on&&k.pow===C.CONFIG.swings.pinPass.pow,'...armed with the pin pass\'s own trim, none left from a shot');
+   ok(!!cv&&cv.windup===0&&cv===C.CONFIG.swings.pinPass,'...on swings.pinPass, no wind-up');
    ok(!!cv&&cv.strike<=cv.hold&&cv.hold<cv.drop&&cv.powFrom<cv.powTo,'...its keyframes still in order');}
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);
    C.shotKickEdge(r,-1);frames(Math.max(1,Math.floor(D.dbl*60)-3));C.shotKickEdge(r,-1);
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','a second press within press.dbl: the pin shot, at once');
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','a second press within press.dbl: the pin shot, at once');
    frames(wait);ok(rec.kicks.length===1,'...and no pass after it');}
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);
@@ -796,7 +804,7 @@ function run(srcShots,srcBinds){
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);D.on=false;
    C.shotKickEdge(r,-1);D.on=true;
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','press.on false: one press is the pin shot again');}
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','press.on false: one press is the pin shot again');}
   reset();
   {let r=mid(),s=solo(r),t=null;S.lastTouch=0;keys.ControlRight=true;frames(2);back(r);frames(1);
    C.shotKickEdge(r,-1);for(let i=0;i<wait&&t==null;i++){frames(1);if(rec.kicks.length)t=s.rcvT||0;}
@@ -826,22 +834,22 @@ function run(srcShots,srcBinds){
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);keys[PW]=true;
    C.shotKickEdge(r,C.shotKbmAxis(s));
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','...with power held: the pin shot ('+PW+')');
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','...with power held: the pin shot ('+PW+')');
    frames(20);ok(rec.kicks.length===1,'...and no pass after it');}
   reset();
   {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);C.shotKickEdge(r,-1);
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','the ATT (nothing ahead to pass to): a kick alone on the back pin is the pin shot');}
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','the ATT (nothing ahead to pass to): a kick alone on the back pin is the pin shot');}
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);C.shotKickEdge(r,0,true);
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','a press that says power is held (the pad\'s shoot button): the pin shot');}
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','a press that says power is held (the pad\'s shoot button): the pin shot');}
   reset();
   {const r=mid(),s=solo(r);keys.ControlRight=true;keys[PW]=true;frames(2);back(r);frames(1);C.shotKickEdge(r,0,false);
    ok(rec.kicks.length===1&&rec.kicks[0].style==='pass','...one that says it is not (the pass button): the pass, power key or no');}
   reset();
-  {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);s.shotPad=C.shotInNew();s.shotPad.live=true;s.shotPad.pw=D.powAt+0.05;C.shotKickEdge(r,-1);
-   ok(rec.kicks.length===1&&rec.kicks[0].style==='trapShot','a pad\'s RT past press.powAt is power held');}
+  {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);s.shotPad=C.shotInNew();s.shotPad.live=true;s.shotPad.pw=C.SHOT.mod.powAt+0.05;C.shotKickEdge(r,-1);
+   ok(rec.kicks.length===1&&rec.kicks[0].style==='pinShot','a pad\'s RT past mod.powAt is power held');}
   reset();
-  {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);s.shotPad=C.shotInNew();s.shotPad.live=true;s.shotPad.pw=D.powAt-0.05;C.shotKickEdge(r,-1);
+  {const r=mid(),s=solo(r);keys.ControlRight=true;frames(2);back(r);frames(1);s.shotPad=C.shotInNew();s.shotPad.live=true;s.shotPad.pw=C.SHOT.mod.powAt-0.05;C.shotKickEdge(r,-1);
    ok(rec.kicks.length===1&&rec.kicks[0].style==='pass','...short of it is not');}
   reset();
   {const r=rod(),s=solo(r);keys.ControlRight=true;frames(2);held(r);frames(1);
@@ -1013,7 +1021,7 @@ mutate('shots','   r.chgRel=k;r.chgGrace=C.grace;r.chg=-1;\n   shotDisarm(r);','
 mutate('shots',' if(k<0&&r.chgGrace>0&&r.chgRel>0&&r.kickT<0){',' if(false){','a kick a frame late loses the wind-up');
 mutate('shots','const own=r.chgSrc?shotSrcDepth(I,r.chgSrc):0;','const own=0;','another source can steal a live wind-up');
 mutate('shots','s.kbmFin=fn?Math.min(1,(s.kbmFin||0)+dt/Math.max(1e-3,K.holdRamp)):0;','s.kbmFin=fn?1:0;','the keyboard grip steps straight to full');
-mutate('shots','  shotVerdict(r,k);\n  shotFire(r,(r.chgMod!=null?r.chgMod:m),k);','  shotFire(r,(r.chgMod!=null?r.chgMod:m),k);','a kick-released charge leaves no verdict');
+mutate('shots','  shotVerdict(r,k);\n  shotFire(r,true,k);','  shotFire(r,true,k);','a kick-released charge leaves no verdict');
 mutate('shots','if(s.shotRod&&s.shotRod!==r){shotReset(s.shotRod);rodInputRelease(s.shotRod);}','','a dropped rod keeps its wind-up');
 mutate('shots','I.lt=Math.max(pl?P.lt:0,s.kbmFin);','I.lt=pl?P.lt:0;','finesse never grips');
 mutate('binds','for(let i=0;i<l.length;i++)if(keys[l[i]]&&seatForDev(bindDev(l[i]))===s)return true;','for(let i=0;i<l.length;i++)if(keys[l[i]])return true;','a held input drives every seat, whoever owns the device');
@@ -1032,8 +1040,8 @@ mutate('shots','  else if(!r.pinFwd){if(shotPinPassOn(r)&&','  else if(true){if(
 mutate('shots','if(!r.pinFwd){if(!p&&shotPinPassOn(r))shotPinPass(r);else shotPinFire(r);}','if(!r.pinFwd){if(shotPinPassOn(r))shotPinPass(r);else shotPinFire(r);}','power + kick on the back pin still passes');
 mutate('shots','if(!r.pinFwd){if(!p&&shotPinPassOn(r))shotPinPass(r);else shotPinFire(r);}','if(!r.pinFwd){if(!p&&shotPinPassOn(r))r.ppT=S.time;else shotPinFire(r);}','a kick on the back pin still waits for a second press');
 mutate('shots','else if(p&&shotSnakeOn())shotSnakeFire(r);','else if(shotSnakeOn())shotSnakeFire(r);','a kick alone under the forward leg snakes');
-mutate('shots','const p=pw!=null?!!pw:shotPowHeld(r);','const p=shotPowHeld(r);','a pad face button\'s pass or shoot is ignored');
-mutate('shots','||!!(P&&P.live&&P.pw>=SHOTC.pin.press.powAt)','','the pad\'s RT is not power for the pin shot');
+mutate('shots','p=pw!=null?!!pw:shotPowHeld(r);','p=shotPowHeld(r);','a pad face button\'s pass or shoot is ignored');
+mutate('shots','||!!(P&&P.live&&P.pw>=SHOTC.mod.powAt)','','the pad\'s RT is not power for the pin shot');
 mutate('shots','if(C.on&&r.kickT<0&&!(r.pinB&&shotPinPow())){','if(C.on&&r.kickT<0){','power + raise on a pinned ball winds up and drops it');
 mutate('shots','if(shotPinPassOn(r)&&!(S.time-r.ppT<=SHOTC.pin.press.dbl))r.ppT=S.time;else shotPinFire(r);','shotPinFire(r);','one press on the back pin shoots at once');
 mutate('shots','if(shotPinPassOn(r)&&!(S.time-r.ppT<=SHOTC.pin.press.dbl))r.ppT=S.time;','if(shotPinPassOn(r))r.ppT=S.time;','a second press only restarts the wait');
@@ -1043,10 +1051,10 @@ mutate('shots','if(!r.pinB||r.pinFwd||r.kickT>=0)r.ppT=-1e9;else if','if(false)r
 mutate('shots',' r.pinOn=(fin||pp)&&r.chg<0&&r.kickT<0;',' r.pinOn=fin&&r.chg<0&&r.kickT<0;','letting finesse go while the pass waits drops the ball');
 mutate('shots','return !!(r&&D&&D.on&&D.roles.indexOf(r.role)>=0);','return !!(r&&D&&D.on);','the ATT passes on one press too');
 mutate('shots','return !!(r&&D&&D.on&&D.roles.indexOf(r.role)>=0);','return !!(r&&D&&D.roles.indexOf(r.role)>=0);','press.on is ignored');
-mutate('shots',' shotDisarm(r);\n r.pinPose=false;\n kickRod(r,\'pass\'',' r.pinPose=false;\n kickRod(r,\'pass\'','the pass keeps a shot trim left armed');
-mutate('shots',"kickRod(r,'pass',shotPinPassAim(r),","kickRod(r,'trapShot',shotPinPassAim(r),",'the pass swings as the pin shot');
-mutate('shots',"Object.assign(PIN_PP,AIC.passShot,SHOTC.pin.pass,D.swing)","pinSwing(true)",'the pass ignores press.swing');
-mutate('shots',"Object.assign(PIN_PP,AIC.passShot,SHOTC.pin.pass,D.swing)","Object.assign(PIN_PP,AIC.passShot,D.swing)",'the pass keeps passShot\'s wind-up');
+mutate('shots','r.shotPow=(SW?SW.pow:1)*(k>=0','r.shotPow=(r.shotOn?r.shotPow:SW?SW.pow:1)*(k>=0','the pass keeps a shot trim left armed');
+mutate('shots',"kickRod(r,'pass',shotPinPassAim(r),","kickRod(r,'pinShot',shotPinPassAim(r),",'the pass swings as the pin shot');
+mutate('shots',"shotPinPassAim(r),pinSwing(true))","shotPinPassAim(r),pinSwing())",'the pass swings the pin shot\'s curve');
+mutate('shots',"shotPinPassAim(r),pinSwing(true))","shotPinPassAim(r),SWINGS.pass)",'the pass winds up as the loose-ball pass');
 mutate('shots',"kickRod(r,'pass',shotPinPassAim(r),","kickRod(r,'pass',null,",'the pass is aimed at nobody');
 mutate('shots','if(o.team===r.team&&d>0&&d<qd){qd=d;q=o;}','if(d>0&&d<qd){qd=d;q=o;}','the pass is aimed at the other team');
 mutate('shots','if(o.team===r.team&&d>0&&d<qd){qd=d;q=o;}','if(o.team===r.team&&d>0){qd=d;q=o;}','the pass is aimed past the next rod');
@@ -1056,8 +1064,8 @@ mutate('shots','r.snPT=-1e9;r.ppT=-1e9;r.ppS=-1e9;r.stkRT=0;','r.snPT=-1e9;r.stk
 mutate('shots','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);','  else if(shotSnakeOn())shotSnakeFire(r);','one press under the forward leg is the snake');
 mutate('shots','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);','  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl*4)shotSnakeFire(r);','the double press window is ignored');
 mutate('shots',' if(!r.pinB||!r.pinFwd)r.snPT=-1e9;',' ','a press on a ball since let go still counts');
-mutate('shots','r.shotExert=K.exert;','r.shotExert=1;','the snake costs a plain swing stamina');
-mutate('shots',' pinRelease(r,false,K.carry);',' pinRelease(r);','the ball is let go with the roll carryOut');
+mutate('shots',"kickRod(r,'snake',null,SN);","kickRod(r,'snake',null,Object.assign({},SN,{exert:1}));",'the snake costs a plain swing stamina');
+mutate('shots',' pinRelease(r,false,SN.carry);',' pinRelease(r);','the ball is let go with the roll carryOut');
 mutate('shots',' r.pinPose=false;r.pinFwd=false;r.fwdOut=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;',' r.pinPose=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;','the forward flag outlives the snake');
 mutate('shots','function shotSnakeOn(){const K=SHOTC.snake;return !!(K&&K.on);}','function shotSnakeOn(){const K=SHOTC.snake;return !!K;}','snake.on false is ignored');
 mutate('shots','if(shotPinBall(S.seats[i])&&seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}','if(shotPinBall(S.seats[i]))return S.seats[i];return null;}','the snake plate shows over a back pin');
@@ -1121,8 +1129,8 @@ mutate('shots',' if(!W||!W.on||typeof footAngle',' if(!W||typeof footAngle','rol
 mutate('shots'," h.fa=(h.fa0!=null&&h.dz<=A.align&&Math.abs(r.vz)<=A.slideV)?h.fa0:null;"," h.fa=(h.fa0!=null&&h.dz<=A.align)?h.fa0:null;","the leg is lowered while the rod slides fast");
 mutate('shots'," h.fa=(h.fa0!=null&&h.dz<=A.align&&Math.abs(r.vz)<=A.slideV)?h.fa0:null;"," h.fa=h.fa0;","the leg is lowered beside the ball, not over it");
 mutate('shots'," h.over=h.fa0!=null&&(r.angle*r.kickDir-h.fa0)*g>=-A.overTol;"," h.over=h.fa0!=null;","a leg below the ball's top counts as over it");
-mutate('shots'," const h=g<0?shotFwdBall(r,P.back,A.near,A.v):shotFwdBall(r,FE.near,FE.far,FE.bailV,shotFwdZ());"," const h=g<0?shotFwdBall(r,P.back,A.near,99):shotFwdBall(r,FE.near,FE.far,FE.bailV,shotFwdZ());","a rolling ball is treated as lying behind");
-mutate('shots'," const h=g<0?shotFwdBall(r,P.back,A.near,A.v):shotFwdBall(r,FE.near,FE.far,FE.bailV,shotFwdZ());"," const h=g<0?shotFwdBall(r,P.back-3,0,A.v):shotFwdBall(r,FE.near,FE.far,FE.bailV,shotFwdZ());","the back window is ignored");
+mutate('shots'," const h=g<0?shotFwdBall(r,P.back,A.near,A.v):shotFwdBall(r,FE.near,P.fwdFront,FE.bailV,shotFwdZ());"," const h=g<0?shotFwdBall(r,P.back,A.near,99):shotFwdBall(r,FE.near,P.fwdFront,FE.bailV,shotFwdZ());","a rolling ball is treated as lying behind");
+mutate('shots'," const h=g<0?shotFwdBall(r,P.back,A.near,A.v):shotFwdBall(r,FE.near,P.fwdFront,FE.bailV,shotFwdZ());"," const h=g<0?shotFwdBall(r,P.back-3,0,A.v):shotFwdBall(r,FE.near,P.fwdFront,FE.bailV,shotFwdZ());","the back window is ignored");
 mutate('shots'," r.pinMag=(r.pinOn&&(!r.pinPose||(r.pinFwd&&!r.pinB)))?shotStickPin(r):null;"," r.pinMag=null;","the stick never settles a pin");
 mutate('shots'," r.pinMag=(r.pinOn&&(!r.pinPose||(r.pinFwd&&!r.pinB)))?shotStickPin(r):null;"," r.pinMag=shotStickPin(r);","the stick settle outlives finesse");
 mutate('shots'," return (h&&h.fa!=null&&h.over&&(s-h.fa)*g>=-K.win)?h.fa*r.kickDir:null;"," return (h&&h.fa!=null&&h.over)?h.fa*r.kickDir:null;","a stick pushed well past the catch is still held at it");
@@ -1142,7 +1150,8 @@ mutate('shots',"   if(dz<lane)return keep;","   if(dz<lane)continue;","a ball in
 mutate('shots',"   if(rel>=Q.back&&rel<=Q.front&&dz<=best){best=dz;rel0=rel;}","   if(dz<=best){best=dz;rel0=rel;}","the square reaches a ball the foot cannot");
 mutate('shots'," let best=Q.zMax,rel0=null;"," let best=1e9,rel0=null;","the square turns for a ball anywhere along the row");
 mutate('shots'," if(!Q||!Q.on||typeof hitAngle!=='function')return null;"," if(typeof hitAngle!=='function')return null;","square.on false is ignored");
-mutate('shots',' if(shotPinFwdPress(r,m))return;',' ','finesse + kick is the swing again');
+mutate('shots',' shotFire(r,p||k>=0,k);',' shotFire(r,k>=0,k);','power + kick off the pin passes');
+mutate('shots',' if(!p&&shotsOn()&&shotPinFwdPress(r,m))return;',' ','finesse + kick is the swing again');
 mutate('shots',' if(r.pinOn&&r.pinPose&&!r.pinB&&!P.latch&&!stk){',' if(false){','the pose is latched again (the old rule)');
 mutate('shots',' if(r.pinOn&&r.pinPose&&!r.pinB&&!P.latch&&!stk){',' if(r.pinOn&&r.pinPose&&!P.latch&&!stk){','letting the raise go drops a pinned ball\'s pose');
 mutate('shots',' if(r.pinOn&&r.pinPose&&!r.pinB&&!P.latch&&!stk){',' if(r.pinOn&&r.pinPose&&!r.pinB&&!stk){','pin.latch true is ignored');
@@ -1169,8 +1178,8 @@ mutate('shots',' _fwr.b=null;_fwr.r=r;\n if(!R||!R.on)return null;',' _fwr.b=nul
 mutate('shots','  const R=A.recv;r.target+=clamp(_fwr.o-r.target,-R.v*dt,R.v*dt);r.stlW=r.target;','  r.stlW=r.target;','the man is not drawn onto the line');
 mutate('shots','  if(mv)return;\n  const R=A.recv;','  const R=A.recv;','the receive pulls a man the player is sliding');
 mutate('shots',' if(r.fwdR&&_fwr.b&&_fwr.r===r){',' if(false){','the receive waits for the settle\'s stillness and its ball');
-mutate('shots',' if(R&&R.on&&R.stick>0&&s>=R.stick*KICK.strikeA){',' if(false){','the stick never receives');
-mutate('shots','s>=R.stick*KICK.strikeA','s>0','any forward stick receives');
+mutate('shots',' if(R&&R.on&&R.stick>0&&s>=R.stick*KICK.stickA){',' if(false){','the stick never receives');
+mutate('shots','s>=R.stick*KICK.stickA','s>0','any forward stick receives');
 mutate('shots','  if((r.stkRT||0)>S.time)return to*r.kickDir;\n','\n','the stick receive lets go the moment the ball stops');
 mutate('shots','if(shotFwdRecv(r)){r.fwdR=true;r.stkRT=S.time+RV.rest;','if(shotFwdRecv(r)){r.stkRT=S.time+RV.rest;','the stick receive draws nobody onto the line');
 mutate('shots',' r.pinMag=(r.pinOn&&(!r.pinPose||(r.pinFwd&&!r.pinB)))?shotStickPin(r):null;',' r.pinMag=(r.pinOn&&!r.pinPose)?shotStickPin(r):null;','a stick held over LT + A outranks its receive');

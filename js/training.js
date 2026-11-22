@@ -203,7 +203,7 @@ function buildTrnPanel(){
 function trainingHint(){
  const H=bindHintRods(false,true);
  return [['[T] panel · [P] freeze · [O] step · [G] place ball',H.act,bindJoin([H.mod,bindHint('camera','camera'),'[C] debug'])].filter(Boolean).join('\n'),
-  '{START} pause · {Y} camera\n{A} kick · {X} raise · {LB} {RB} switch rod'];
+  '{START} pause · {Y} camera\n{A} pass · {RT}+{A} shot · {X} raise · {LB} {RB} switch rod'];
 }
 // called by startMatch('training') after the normal reset: skips the countdown, drops a ball and takes over the phase; re-entrant (pause > Restart), keeping the last panel setup
 function trainingEnter(){
@@ -266,7 +266,7 @@ function trainingTick(){
  el.textContent=b?('ball  x '+b.cur.x.toFixed(1)+' · z '+b.cur.z.toFixed(1)+' · '+b.v.length().toFixed(0)+' u/s'+(TRN.freeze?'  · FROZEN':'')):'no ball';
  trnAngTick();
 }
-// held-rod angle: ANG is the world rotation, SWING the same angle rod-local (divided by kickDir), matching CONFIG.kick's windupA / raiseA / trap.angle
+// held-rod angle: ANG is the world rotation, SWING the same angle rod-local (divided by kickDir), matching swings.*.windupA / kick.raiseA
 // both are the SIM angle, so an ω spike (~80 vs a swing's 21.8) is a jump, not a sweep; shows the human's rod, or the kick-logged rod (L) when all are AI
 function trnAngTick(){
  if(!trnAngT)return;

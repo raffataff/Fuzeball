@@ -260,6 +260,12 @@ function applyEmissiveStrength(root){
   });
  });
 }
+// effect GLBs: transmission becomes opacity (userData.fxOp); one transmissive mesh makes three re-render every opaque object into an untone-mapped target, a fresh program each, mid-match
+function fxNoGlass(root){
+ root.traverse(o=>{const ms=o.material;if(!ms)return;
+  (Array.isArray(ms)?ms:[ms]).forEach(m=>{if(!(m&&m.transmission>0))return;
+   m.userData.fxOp=1-m.transmission;m.transmission=0;m.transparent=true;m.opacity=m.userData.fxOp;m.needsUpdate=true;});});
+}
 // transfer a room GLB's baked lights; world matrices are forced up to date first (d0 is a world distance)
 function applyRoomLights(room,R){
  const D=(CONFIG.render&&CONFIG.render.roomLight)||{};
@@ -532,13 +538,13 @@ function loadExplosionModels(onReady){
   const done=()=>{if(--left<=0)onReady();};
   if(ballSrc){
    newGLTF().load(ballSrc,
-    gltf=>{applyEmissiveStrength(gltf.scene);ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    gltf=>{applyEmissiveStrength(gltf.scene);fxNoGlass(gltf.scene);ballExplosionTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('cannonball explosion GLB missing ('+ballSrc+')');done();});
   }
   if(swirlSrc){
    newGLTF().load(swirlSrc,
-    gltf=>{applyEmissiveStrength(gltf.scene);respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
+    gltf=>{applyEmissiveStrength(gltf.scene);fxNoGlass(gltf.scene);respawnSwirlTemplate={scene:gltf.scene,clips:gltf.animations};done();},
     undefined,
     ()=>{console.warn('respawn swirl GLB missing ('+swirlSrc+')');done();});
   }
@@ -551,7 +557,7 @@ function ensureExplosionModel(id,cb){
   if(!m||!m.explosionSrc){if(cb)cb();return;}                       // figurine has no shatter GLB — keeps original instant-vanish
   explosionLoading[id]=true;
   newGLTF().load(m.explosionSrc,
-   gltf=>{delete explosionLoading[id];applyEmissiveStrength(gltf.scene);
+   gltf=>{delete explosionLoading[id];applyEmissiveStrength(gltf.scene);fxNoGlass(gltf.scene);
     explosionTemplates[id]={scene:gltf.scene,clips:gltf.animations};
     if(typeof warmFractureTemplate==='function')warmFractureTemplate(explosionTemplates[id]); // precompile now, off the game loop
     if(cb)cb();},

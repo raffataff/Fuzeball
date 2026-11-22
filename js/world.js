@@ -694,7 +694,7 @@ function makePlayer(team){
    return g;
   }
   const g=playerModel[team].clone(true);
-  g.scale.setScalar(activeModel(team).scale*tmScale(team));
+  g.scale.setScalar(activeModel(team).scale);   // the sizer's fit; the Customize scale is menu-only
   g.traverse(child=>{
    if(!child.isMesh)return;
    const name=child.material.name.toLowerCase();
@@ -727,11 +727,11 @@ function buildRods(){
      offset:0,target:0,slideV:0,angle:0,prevAngle:0,prevOffset:0,angVel:0,vz:0,
      kickT:-1,kickStyle:null,kickCurve:null,kickDir:d.team===0?1:-1,raise:false,raiseKeep:false,kickHold:false,padAngleTarget:0,padAngleOn:false,tcSpin:0,cd:0,exert:0,aiMan:-1,
      // player shot verbs (js/shots.js): chg = charge 0..1 (-1 = idle), chgA = wind-up angle, shotOn/Pow/Ctl = what the next contact is worth (all physics reads), trem is display-only
-     chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
+     chg:-1,chgRel:0,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
      shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1,
-     // the player's hold, in the shape holdCfg's consumers read (CONFIG.ai.trap/.dribble); mutated in place
+     // the player's hold, in the shape holdCfg's consumers read (CONFIG.ai.retrieve.hold / .dribble); mutated in place
      hold:{on:false,holdRest:KICK.rest,holdGrip:KICK.grip,carryMult:1,sideRest:KICK.sideRest},
-    behindFlag:false,act:null,actT:0,trapMan:-1,trapDir:0,trapZ0:0,trapA:null,laneDir:0,laneCd:0,
+    behindFlag:false,act:null,actT:0,laneDir:0,laneCd:0,
      dribMan:-1,dribZ:0,dribZ0:0,dribCd:0,dribEvT:0,passTo:null,passEv:null,passEvT:0,
      aiErr:0,aiErrT:0,aiErrTarget:0,aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiTZ:null,aiTVZ:0,aiGoalZ:0,
      // match stats (js/matchstats.js): msSw = one-attempt-per-swing latch, msB/msBFor = stat bucket cached against its S.stats

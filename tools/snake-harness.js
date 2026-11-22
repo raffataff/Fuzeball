@@ -1,5 +1,5 @@
 // snake harness. node tools/snake-harness.js
-// the SNAKE (CONFIG.shots.snake): the man rolls over the top of the rod from the forward pin and strikes the ball from behind
+// the SNAKE (CONFIG.shots.snake, swings.snake): the man rolls over the top of the rod from the forward pin and strikes the ball from behind
 // slices the real snakeStep / kickStyleCfg (rods.js), snakeLoft / capSpeed (physics.js) and lerpAng (core.js) and runs them on live CONFIG with plain-object rods and balls
 // pins the turn (one wrap, continuous for angVel and the substeps, a full turn plus the follow-through, back at rest), the low launch and the speed ceiling; the trigger is binds-harness's (section 8b)
 // every mutation at the bottom must break an assertion; a drifted anchor throws
@@ -32,7 +32,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Object,Array,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}},document:{getElementById:()=>null}};
  ctx.globalThis=ctx;
  vm.runInNewContext([g.core,rd('js/config.js'),stubs,g.style,g.step,g.cap,g.loft,
-  ';globalThis.X={K:CONFIG.shots.snake,P:CONFIG.shots.pin,KICK:KICK,BT:BALL_TYPES,S:S,snakeStep:snakeStep,snakeLoft:snakeLoft,capSpeed:capSpeed,lerpAng:lerpAng,disarmed:function(){return DISARMED;}};'].join(NL),ctx);
+  ';globalThis.X={K:CONFIG.swings.snake,P:CONFIG.shots.pin,KICK:KICK,BT:BALL_TYPES,S:S,snakeStep:snakeStep,snakeLoft:snakeLoft,capSpeed:capSpeed,lerpAng:lerpAng,disarmed:function(){return DISARMED;}};'].join(NL),ctx);
  if(!ctx.X||!ctx.X.K)throw new Error('export line did not run');
  return ctx.X;
 }
@@ -113,8 +113,8 @@ const MUTS=[
  {part:'step',from:'if((r.angle-r.prevAngle)*r.kickDir<-Math.PI)r.prevAngle-=2*Math.PI*r.kickDir;',to:'',name:'the wrap is not carried into prevAngle (angVel spikes)'},
  {part:'step',from:' if(a>Math.PI)a-=2*Math.PI;',to:'',name:'the angle runs past π'},
  {part:'step',from:'a1=2*Math.PI+KS.strikeA',to:'a1=Math.PI+KS.strikeA',name:'half a turn'},
- {part:'step',from:' else if(T<t2)a=a1+(2*Math.PI-a1)*((T-t1)/KS.back);',to:' else if(T<t2)a=a1;',name:'the leg never eases back'},
- {part:'step',from:'else{a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;shotDisarm(r);}',to:'else{a=0;r.kickT=-1;r.kickCurve=null;shotDisarm(r);}',name:'the style outlives the swing'},
+ {part:'step',from:'if(T<t1+KS.back)return a1+(2*Math.PI-a1)*((T-t1)/KS.back);',to:'if(T<t1+KS.back)return a1;',name:'the leg never eases back'},
+ {part:'step',from:'if(a==null){a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;shotDisarm(r);}',to:'if(a==null){a=0;r.kickT=-1;r.kickCurve=null;shotDisarm(r);}',name:'the style outlives the swing'},
  {part:'step',from:' r.heldFwd=false;',to:'',name:'a held kick can freeze the snake'},
  {part:'step',from:'Math.pow(T/KS.spin,KS.ease)',to:'Math.pow(T/KS.spin,KS.ease*3)',name:'the spin arrives at a scoop'},
  {part:'loft',from:'v.y=sp*Math.sin(L);',to:'v.y=0;',name:'the loft flattens the ball and loses speed'},

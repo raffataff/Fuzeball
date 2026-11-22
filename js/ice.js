@@ -281,7 +281,7 @@ function iceChunksClear(){
 // --- build ---
 // refit a team's blocks when its figurine (or its scale, or the model arriving) changes; returns true when it did
 function iceFitTeam(t){
- const am=activeModel(t),s=am.scale*tmScale(t),my=iceManY(t),key=am.id+'|'+s.toFixed(3)+'|'+my.toFixed(3)+'|'+(playerModel[t]?1:0);
+ const am=activeModel(t),s=am.scale,my=iceManY(t),key=am.id+'|'+s.toFixed(3)+'|'+my.toFixed(3)+'|'+(playerModel[t]?1:0);
  if(ICE.key[t]===key)return false;
  ICE.key[t]=key;
  const P=IC.fit,pts=playerModel[t]?iceScan(playerModel[t],s):[],F=pts.length>=9?iceBands(pts,P.bands):iceDefault(P.bands),old=ICE.geo[t],rings=iceRings(F,P,t);

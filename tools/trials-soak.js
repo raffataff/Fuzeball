@@ -96,7 +96,7 @@
   ttShot(r,b,B,D){
    const p=b.m.position,vz=b.v.z;
    if(B.f<10){I.fin(true);return;}
-   if(B.st==='kick'){if(B.f-B.kf>20){I.kick(false);I.raise(false);B.st=null;}return;}
+   if(B.st==='kick'){if(B.f-B.kf>20){I.kick(false);I.power(false);I.raise(false);B.st=null;}return;}
    if(D.ch>=D.g.rally&&Math.abs(vz)>=8&&!B.st){
     const g=gapOf(r,p.z);
     if(g>=0){const M=vz>0?g+1:g,d=Math.abs(p.z-mz(r,M));if(d>FACE()+1.5){B.st='aim';B.m=M;}}
@@ -104,7 +104,7 @@
    if(B.st==='aim'){
     I.fin(false);I.raise(true);
     const d=(mz(r,B.m)-p.z)*Math.sign(vz);
-    if(d<=Math.abs(vz)*B.o.lead){I.kick(true);B.st='kick';B.kf=B.f;}
+    if(d<=Math.abs(vz)*B.o.lead){I.power(true);I.kick(true);B.st='kick';B.kf=B.f;}
     else if(Math.abs(vz)<3||d<-2){B.st=null;I.raise(false);}
     return;
    }

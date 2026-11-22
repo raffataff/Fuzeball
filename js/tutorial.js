@@ -73,7 +73,7 @@ function tutArm(){
 // the bottom hint speaks to the chosen device only (hud.js draws whichever of the two it's given); rebuilt every frame off the bindings, handed over only when it changed (hudHint restarts the fade)
 function tutHint(){
  let k=null,p=null;
- if(TUT.kind==='pad')p='{START} pause · {LB} {RB} switch rod\n{A} kick · {X} raise · {LT} touch · {RT}+{X} wind up\n{LT}+{X} pin · {LT}+{A} forward pin';
+ if(TUT.kind==='pad')p='{START} pause · {LB} {RB} switch rod\n{A} pass · {RT}+{A} shot · {X} raise · {LT} touch · {RT}+{X} wind up\n{LT}+{X} pin · {LT}+{A} forward pin';
  else{const H=bindHintRods(true,true);k=[bindJoin(['[ESC] pause',H.sw,H.slide]),H.act,H.mod].filter(Boolean).join('\n');}
  if(k===TUT.hintK&&p===TUT.hintP)return;
  TUT.hintK=k;TUT.hintP=p;
@@ -144,7 +144,7 @@ function tutCheck(L,r,s){
   // a released wind-up stamped in the sweet band (shots.js shotVerdict), whose swing actually went
   case 'charge':return !!(r&&r.chgEndT!=null&&r.chgEndT>TUT.chgT&&r.chgEndBand===1&&r.kickT>=0);
   case 'pin':return !!(r&&r.pinB);
-  case 'pinShot':return !!(r&&r.kickT>=0&&r.kickStyle==='trapShot'&&r.kickHit);
+  case 'pinShot':return !!(r&&r.kickT>=0&&r.kickStyle==='pinShot'&&r.kickHit);
   case 'fwdPin':return !!(r&&r.pinB&&r.pinFwd);
   // the rod passed to holds it on the pin: it can only have got there from the passer
   case 'recv':{const q=tutTo(L);return !!(q&&q.pinB);}

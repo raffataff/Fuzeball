@@ -22,7 +22,7 @@ const stubs=[
  "function pinRelease(r){r.pinB=null;}",
  "function rodInputRelease(){} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';} function isUserRod(r){return !!r.human;}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){

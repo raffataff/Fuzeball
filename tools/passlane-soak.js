@@ -1,6 +1,6 @@
 // Pass-lane soak: why AI passes get cut out. Every AI pass (and the dribble release): exit speed and heading against the aim; the first opposing touch: was the lane shut when the ball left, or did the man slide into it, how far, in how long.
 //      node tools/page-run.js tools/passlane-soak.js "plSoak({seeds:24,secs:120,diff:'pro'})"
-//      plSoak({seeds,secs,seed0,diff,set:{'ai.passShot.strike':0.06}})   // set: CONFIG paths overridden for the run, restored after
+//      plSoak({seeds,secs,seed0,diff,set:{'swings.pass.strike':0.06}})   // set: CONFIG paths overridden for the run, restored after
 //      plReach({v})   // the run-up's reach by ball mass (CONFIG.ai.catch.steer.free.reach): the steepest launch off the front of the boot kickLaunch predicts at the slowest run, the least over relMin..relMax
 // gap = how far the cutting man's foot was off the ball's line when it left (foot half-width + ball radius taken off): <= 0 = he was already in the lane; byTh = exit heading (rad) -> passes, share the own team took next
 'use strict';
@@ -10,7 +10,7 @@
  if(!window.__pl_kr0)window.__pl_kr0=kickRod;
  if(!window.__pl_mc0)window.__pl_mc0=momContact;
  let T=null;
- const kindOf=(r,style)=>style==='pass'?(r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass'):(!style&&r.act==='dribble')?'dribble':null;
+ const kindOf=(r,style)=>style==='pass'?(r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass'):(style==='shoot'&&r.act==='dribble')?'dribble':null;
  const lineZ=(e,x)=>e.z0+e.vz/e.vx*(x-e.x0);
  const reach=()=>FOOT_BOX.z+BALL_R;
  function rowGap(o,e,offs){let g=1e9,gi=-1;const z=lineZ(e,o.x),off=offs.get(o);for(let i=0;i<o.baseZ.length;i++){if(!manLive(o,i))continue;const d=Math.abs(z-(o.baseZ[i]+off))-reach();if(d<g){g=d;gi=i;}}return {g,i:gi};}

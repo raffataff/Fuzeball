@@ -26,7 +26,7 @@ function boHash(n){const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floo
 function boostTouch(b,r,hold){
  if(b.pw>0&&(b.pwRod!==r||(r.pwAt||0)<=S.time))b.pw=0;   // a touch by anyone but the swing that threw it ends the comet
  if(!BO.on||hold||!(S.eff[r.team].boost>S.time))return;
- if(!boostSwing(r))return;   // only a contact the boost powered (physics.js): a strike, not a trap, pin, tap, slide or bounce
+ if(!boostSwing(r))return;   // only a contact the boost powered (physics.js): a strike, not a pin, tap, slide or bounce
  const w=(r.pwAt||0)-S.time;
  if(w>0&&w<=BO.gap)return;                                // one a swing (a stamp left from the last match is further out than the gap)
  const v=b.v,sp=Math.hypot(v.x,v.y,v.z);

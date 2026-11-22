@@ -172,7 +172,7 @@ vm.runInContext(`
  assert.ok(defence.carry > 8 && defence.reversals === 0, JSON.stringify(defence));
  const midfield = play({role: 'MID', diff: 'rookie', track: true});
  assert.ok(midfield.carry > 8 && midfield.reversals === 0, JSON.stringify(midfield));
- assert.equal(midfield.kick, 'trapShot', JSON.stringify(midfield));
+ assert.equal(midfield.kick, 'pinShot', JSON.stringify(midfield));
  const open = play({edge: 0, covered: false});
  assert.equal(open.kick, 'snake', JSON.stringify(open));
  console.log('13 forward pin scenarios passed');

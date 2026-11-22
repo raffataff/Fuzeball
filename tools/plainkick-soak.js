@@ -25,9 +25,9 @@
  if(!window.__pk_ce0)window.__pk_ce0=catchEnd;
  window.catchEnd=function(r,cd,why){r.__ce={why:why||'-',t:S.time};return __pk_ce0.apply(this,arguments);};
  function kindOf(r,style){
-  if(!style)return r.act==='dribble'?'dribble':r.act==='run'?'runShot':'plain';
+  if(style==='shoot')return r.act==='dribble'?'dribble':r.act==='run'?'runShot':'plain';
   if(style==='snake')return 'snake';
-  if(style==='trapShot')return r.ttOn?'ttStrike':r.pinB?'pinShot':'trapShot';
+  if(style==='pinShot')return r.ttOn?'ttStrike':r.pinB?'pinShot':'pinShot';
   if(style==='pass')return r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass';
   return style;
  }
@@ -42,13 +42,13 @@
     let dz=1e9;for(let i=0;i<r.baseZ.length;i++){if(!manLive(r,i))continue;dz=Math.min(dz,Math.abs(p.z-(r.baseZ[i]+r.offset)));}
     const ogd=Math.abs(p.x-(dir>0?-F.L/2:F.L/2));
     const why=r.force?'force':r.act==='dribble'?'dribble':r.role==='GK'?'gk':ogd<=CA.ownGoalGuard?'owngoal':(r.catCd||0)>0?'catCd':
-     (rel>=FE.near&&rel<=FE.far&&spd<=FE.maxV&&(r.ftCd||0)>S.time)?'ftCd':
-     (rel>=FE.near&&rel<=FE.far&&spd<=FE.maxV)?'fetchband':
+     (rel>=FE.near&&rel<=SHOT.pin.fwdFront&&spd<=FE.maxV&&(r.ftCd||0)>S.time)?'ftCd':
+     (rel>=FE.near&&rel<=SHOT.pin.fwdFront&&spd<=FE.maxV)?'fetchband':
      (rel>CA.front.near&&-vf>=CA.front.minClose&&-vf<=CA.front.maxClose)?'frontband':
      (-vf>CA.front.maxClose)?'fastIn':'other';
     const k={rod:r,t:S.time,team:r.team,role:r.role,kind,pcWhy:(kind==='pinShot'||kind==='snake'||kind==='pinPass')?r.pcWhy:'-',ce,dir:vf<-2?'in':vf>2?'out':'still',iq:!!r.aiIQ,cov,out:+out.toFixed(2),rel:+rel.toFixed(2),spd:+spd.toFixed(1),vf:+vf.toFixed(1),vz:+v.z.toFixed(1),y:+p.y.toFixed(2),dz:+dz.toFixed(2),
      why,cd:+(r.catCd||0).toFixed(2),ahead:rowAhead(r.team,p.x),next:null,nextRole:null,row:false,nextT:null,
-     spdB:bin(spd,[3,15,35],['<3','3-15','15-35','35+']),relB:bin(rel,[2,FE.near,FE.far],['<2','2-'+FE.near,FE.near+'-'+FE.far,'>'+FE.far])};
+     spdB:bin(spd,[3,15,35],['<3','3-15','15-35','35+']),relB:bin(rel,[2,FE.near,SHOT.pin.fwdFront],['<2','2-'+FE.near,FE.near+'-'+SHOT.pin.fwdFront,'>'+SHOT.pin.fwdFront])};
     k.pass=typeof laneShut!=='function'?'-':r.role==='GK'?'gk':r.force?'force':laneShut(r,b)?'view':'gate';   // why an under-0 kick got through: the keeper, the dead-ball push, the delayed view (shut on the real ball), or the gate itself
     T.all.push(k);T.open.push(k);T.last[r.team]=k;
    }

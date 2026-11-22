@@ -148,8 +148,8 @@ function lightAudit(){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,trapZone:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgTrapZone=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
+let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
+let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
@@ -288,7 +288,6 @@ function buildAIPanel(){
    {key:'redropZones',label:'Redrop Zones',col:'#ff5c5c'},
    {key:'dropSweep',label:'Drop Sweep',col:'#ff5c8a'},
    {key:'footRange',label:'Foot Range',col:'#eaeaea'},
-   {key:'trapZone',label:'Trap Zone',col:'#c77dff'},
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
     {key:'makeWay',label:'Make Way',col:'#ffa1f0'},
@@ -341,25 +340,22 @@ const dbgPinDials=[
  {g:'shots.pin',o:()=>SHOT.pin,k:'front',l:'Reach ahead of rod',min:0,max:4,st:.1,
   t:'How far IN FRONT of the rod a ball can be. The normal back-tilted leg sits behind the rod, so you only notice this on a leg leaning forward, like the receiving pose.'},
  {g:'shots.pin',o:()=>SHOT.pin,k:'angle',l:'Pin angle',min:-1.4,max:-.5,st:.01,
-  t:'How far back the leg tilts in the pin pose. Further back (more negative) = a ball rolling under the rod stops further back, under the boot. Too upright and it stops against the shin, which is not a pin.'},
+  t:'How far back the leg tilts in the pin pose, yours and the AI\'s. Further back (more negative) = a ball rolling under the rod stops further back, under the boot. Too upright and it stops against the shin, which is not a pin.'},
  {h:'FRONT PIN  (foot pressed down on top of the ball)',g:'shots.pin',o:()=>SHOT.pin,k:'fwdBack',l:'Nearest ball',min:-6,max:6,st:.1,
   t:'The nearest ball to the rod the front pin will hold (0 = level with the rod, + = ahead of it). Raise it to stop the foot taking balls right under the man. Nothing nearer than about 1 can be held from above anyway.'},
  {g:'shots.pin',o:()=>SHOT.pin,k:'fwdFront',l:'Furthest ball',min:2,max:8,st:.1,
-  t:'The furthest ball ahead of the rod the front pin will hold. Past about 5 the man is stretched out flat, which looks silly. Lower = shorter reach.'},
+  t:'The furthest ball ahead of the rod the front pin will hold. Past about 5 the man is stretched out flat, which looks silly. Lower = shorter reach for the loose ball routine and the AI snake too.'},
  {h:'BOTH PINS',g:'shots.pin',o:()=>SHOT.pin,k:'down',l:'Foot on top',min:.3,max:1,st:.01,
   t:'How much the boot must be ON TOP of the ball rather than beside it. 1 = dead on top, 0.75 = within about 40 degrees. Lower = a ball against the shin or the side of the foot gets held.'},
  {g:'shots.pin',o:()=>SHOT.pin,k:'touch',l:'Contact slack',min:0,max:.5,st:.01,
   t:'How close the boot must be to count as touching. Keep it small: it only covers rounding, a resting ball already sits exactly against the boot.'},
  {h:'LOOSE BALL ROUTINE  (lift the leg, slide over, press down)',g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'near',l:'Starts at',min:0,max:6,st:.1,
-  t:'A loose ball lying at least this far ahead of the rod sets the routine off (the AI, and the player\'s finesse + kick). Nearer than this the boot already touches it. The white strip on the pitch. Keep it at or above Nearest ball.'},
- {g:'ai.catch.fetch',o:()=>AIC.catch.fetch,k:'far',l:'Gives up at',min:2,max:8,st:.1,
-  t:'...and no further than this. Past it the man would be stretched out flat, so the ball is left alone. Keep it at or under Furthest ball, or the AI goes for balls the foot cannot hold.'}
+  t:'A loose ball lying at least this far ahead of the rod sets the routine off (the AI, and the player\'s finesse + kick). Nearer than this the boot already touches it. The white strip on the pitch runs from here to Furthest ball. Keep it at or above Nearest ball.'}
 ];
 // combinations that look fine on the plates and break play
 function dbgPinWarn(){
  const P=SHOT.pin,FE=AIC.catch.fetch,w=[];
  if(FE.near<P.fwdBack-.05)w.push('Starts at is nearer than Nearest ball: the AI goes for balls the foot cannot hold.');
- if(FE.far>P.fwdFront+.05)w.push('Gives up at is past Furthest ball: the AI goes for balls the foot cannot hold.');
  return w;
 }
 // physics.js's own `posed` test: is this rod's leg at the angle a pin can catch from
@@ -739,21 +735,19 @@ function buildDebug(){
  const reachM=new THREE.MeshBasicMaterial({color:0xff8c3a,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false});
  for(const r of rods)for(const bz of r.baseZ){
   const cap=new THREE.Group();cap.position.set(0,0,bz);
-  const cyl=new THREE.Mesh(dbgUnitCyl,manM);cyl.scale.set(PRAD,ARM,PRAD);cyl.position.y=-ARM/2;cap.add(cyl);
+  const LL=ARM*footLegT(),cyl=new THREE.Mesh(dbgUnitCyl,manM);cyl.scale.set(PRAD,LL,PRAD);cyl.position.y=-LL/2;cap.add(cyl);
   const top=new THREE.Mesh(dbgUnitSph,manM);top.scale.setScalar(PRAD);cap.add(top);
-  const foot=new THREE.Mesh(dbgUnitSph,manM);foot.scale.setScalar(PRAD);foot.position.y=-ARM;cap.add(foot);
+  const foot=new THREE.Mesh(dbgUnitSph,manM);foot.scale.setScalar(PRAD);foot.position.y=-LL;cap.add(foot);
   if(HD){
    const hc=new THREE.Mesh(dbgUnitCyl,manM);hc.scale.set(HD.r,HD.len,HD.r);hc.position.y=HD.len/2;cap.add(hc);
    for(const y of [0,HD.len]){const hs=new THREE.Mesh(dbgUnitSph,manM);hs.scale.setScalar(HD.r);hs.position.y=y;cap.add(hs);}
   }
   cap.visible=false;r.pivot.add(cap);dbgCaps.push(cap);
-   // foot box: collision proxy (oriented box, half-extents from config)
-    const footBox=new THREE.Mesh(dbgUnitBox,footBM);
-    footBox.scale.set(FOOT_BOX.y*2,FOOT_BOX.x*2,FOOT_BOX.z*2);
+   // foot box: collision proxy (the trapezium section, footGeo)
+    const footBox=new THREE.Mesh(keep(footGeo(r.kickDir,0)),footBM);
     footBox.visible=false;dbgAIGroup.add(footBox);dbgFootS.push({mesh:footBox,rod:r,manIdx:r.baseZ.indexOf(bz)});
      // foot reach: box inflated by ball reach distance in each dimension
-    const reachBox=new THREE.Mesh(dbgUnitBox,reachM);
-    reachBox.scale.set((FOOT_BOX.y+rch)*2,(FOOT_BOX.x+rch)*2,(FOOT_BOX.z+rch)*2);
+    const reachBox=new THREE.Mesh(keep(footGeo(r.kickDir,rch)),reachM);
     reachBox.visible=false;dbgAIGroup.add(reachBox);dbgFootReach.push({mesh:reachBox,rod:r,manIdx:r.baseZ.indexOf(bz)});
  }
   // ball collision spheres (radius BALL_R), positioned each frame.
@@ -835,16 +829,6 @@ function buildDebug(){
  for(const r of rods)for(let i=0;i<r.baseZ.length;i++){
   const m=new THREE.Mesh(frGeo,frDim);m.visible=false;dbgAIGroup.add(m);
   dbgFootRange.push({mesh:m,rod:r,manIdx:i,matDim:frDim,matHot:frHot});
- }
-
- // trapZone: box behind the rod (trap.back..front); hot purple while r.act==='trap'
- const tzDim=dbgMat(0xc77dff,.15),tzHot=dbgMat(0xc77dff,.5);
- const tzW=AIC.trap.front-AIC.trap.back;
- for(const r of rods){
-  const dir=r.team===0?1:-1;
-  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=plate(tzDim,tzW,0.05,zMax-zMin||0.1,r.x+(AIC.trap.back+AIC.trap.front)/2*dir,0.04,(zMin+zMax)/2);
-  dbgTrapZone.push({mesh:m,rod:r,matDim:tzDim,matHot:tzHot});
  }
 
  // safeRaise: box behind the rod (safeRaise.back..front); hot lime while r.act==='safeRaise'
@@ -1056,7 +1040,7 @@ function disposeDebug(){
  dbgUnitBox=dbgUnitSph=dbgUnitCyl=null;dbgGeo=[];
  dbgCaps=[];dbgBalls=[];dbgFootS=[];dbgContourRings=[];
  dbgAIGKPad=[];dbgAIRaise=[];dbgAIOverFoot=[];dbgAIUnderFoot=[];dbgAIInFront=[];
- dbgDropSweep=[];dbgFootRange=[];dbgTrapZone=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
+ dbgDropSweep=[];dbgFootRange=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
  dbgMakeWay=[];dbgDribble=[];dbgDeadzones=[];dbgShotLanes=[];
  dbgAIManRings=[];dbgAITargetDots=[];dbgFootReach=[];dbgAlignRings=[];dbgAIServe=[];dbgAIRedrop=[];
  dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;dbgPins=[];
@@ -1102,13 +1086,6 @@ function updateAIVis(){
     s.group.position.set(r.x+szCxOff*dir,0,fz);
     s.group.children[0].material=r.aimSweet===s.manIdx?s.matHot:s.matDim;
    }
-
-  // trapZone: static boxes; hot purple while that rod is actively trapping
-  for(const tz of dbgTrapZone){
-   const vis=on&&dbgAIOpts.trapZone;
-   tz.mesh.visible=vis;if(!vis)continue;
-   tz.mesh.material=tz.rod.act==='trap'?tz.matHot:tz.matDim;
-  }
 
   // safeRaise: static boxes; hot lime while that rod is actively safe-raising
   for(const sr of dbgSafeRaise){
@@ -1260,7 +1237,7 @@ function updateAIVis(){
     const live=!!r.pinOn&&dbgPosed(r)&&!!r.pinFwd===fwd,s=live?(dbgPinSpan(r.angle*dir,fwd,sp)?sp:null):dbgPinNom[fwd?1:0];
     e.fp.visible=!!s;
     if(s){e.fp.scale.set(s[1]-s[0],0.04,FOOT_BOX.z*2);e.fp.position.set(r.x+(s[0]+s[1])/2*dir,0.085,mz);e.fp.material=live?k.arm:k.fp;}
-    if(e.ft){e.ft.scale.set(Math.max(.05,FE.far-FE.near),0.04,0.8);e.ft.position.set(r.x+(FE.near+FE.far)/2*dir,0.115,mz);}
+    if(e.ft){e.ft.scale.set(Math.max(.05,P.fwdFront-FE.near),0.04,0.8);e.ft.position.set(r.x+(FE.near+P.fwdFront)/2*dir,0.115,mz);}
    }}
 
   // sweetSpot flash: a disc blooms at the foot when a sweet kick landed this frame

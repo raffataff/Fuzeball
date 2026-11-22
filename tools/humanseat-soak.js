@@ -31,7 +31,7 @@
       if(S.time-last>o.every&&rel>0.3&&rel<4&&md<1.2&&b.m.position.y<AIC.lowY&&u.role!=='GK'){
        const pk=shotPassPick(u,b.m.position.x,b.m.position.z);last=S.time;
        if(pk){kickRod(u,'pass',{x:pk.x,z:pk.z});T.humanPass++;const mate=pk.rod;watch.push({mate,t:S.time,armed:(mate.rvUntil||0)>S.time,recv:false,pinned:false});if((mate.rvUntil||0)>S.time)T.armed++;}
-       else{kickRod(u,null);T.humanKick++;}
+       else{kickRod(u,'pass');T.humanKick++;}
       }
      }
      if(i%2===0)shotSeatsUpdate(2*FIX);   // main.js runs the shot step once a frame, before the fixed steps: it is what drops a pose the AI left on a rod the seat took

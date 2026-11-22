@@ -11,7 +11,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const AI=rd('js/ai.js'),PHYS=rd('js/physics.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
- geo:slice(AI,'const _fb={nx:0,ny:0,cwx:0,cwy:0};',NL+'// --- strike gate ---'),
+ geo:slice(AI,'const _fb={nx:0,ny:0,cwx:0,cwy:0},',NL+'// --- strike gate ---'),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
  fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
  ret:slice(AI,'function retrieveMan(',NL+'function retrievePhase('),
@@ -39,7 +39,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.geo,g.lane,g.fwd,g.ret,g.clr,g.lz,g.phys,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,KICK:KICK,F:F,BALL_R:BALL_R,FOOT_BOX:FOOT_BOX,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,kickBack:kickBack,legBack:legBack,underPick:underPick,underStep:underStep,catchStep:catchStep,catchEnd:catchEnd,footAngle:footAngle,inLaneZ:inLaneZ};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SWINGS:SWINGS,KICK:KICK,F:F,BALL_R:BALL_R,FOOT_BOX:FOOT_BOX,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,kickBack:kickBack,legBack:legBack,underPick:underPick,underStep:underStep,catchStep:catchStep,catchEnd:catchEnd,footAngle:footAngle,inLaneZ:inLaneZ};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -58,18 +58,18 @@ function ball(X,r,rel,z,vx,vz,y){const b={scored:false,pinR:null,m:{position:X.V
 
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
- const CA=X.AIC.catch,U=CA.under,FE=CA.fetch,RV=CA.recv,P=X.SHOT.pin,PS=X.AIC.passShot;
+ const CA=X.AIC.catch,U=CA.under,FE=CA.fetch,RV=CA.recv,P=X.SHOT.pin,PS=X.SWINGS.pass;
  // ---- the swing guard ----
  {const r=world(X),b=ball(X,r,2.95,0);
   ok('a plain swing from the receive pose sets off back through the ball the leg stopped',X.kickBack(r,b)===true);
   const r2=world(X),b2=ball(X,r2,2.95,1.6);ok('...and through one the leg stopped off the man\'s line',X.kickBack(r2,b2)===true);
   const r3=world(X,{a:0}),b3=ball(X,r3,2.95,0);ok('...not from rest: the swing goes forward',X.kickBack(r3,b3)===false);
-  const r4=world(X,{a:0.6}),b4=ball(X,r4,1.5,0);ok('...nor from a leg short of the strike angle, for the plain kick; the pass (its wind-up goes back) is',X.kickBack(r4,b4)===false&&X.kickBack(r4,b4,PS)===true);
+  const r4=world(X,{a:0.6}),b4=ball(X,r4,1.5,0);ok('...nor from a leg short of ai.swingFromA, pass or shot; a curve with a wind-up (it goes back) is',X.kickBack(r4,b4)===false&&X.kickBack(r4,b4,PS)===false&&X.kickBack(r4,b4,Object.assign({},PS,{windup:0.08,windupA:-0.35}))===true);
   const r5=world(X),b5=ball(X,r5,2.95,6);ok('...nor with the ball clear of every man',X.kickBack(r5,b5)===false);
   const r6=world(X),b6=ball(X,r6,12,0);ok('...nor with the ball far out ahead',X.kickBack(r6,b6)===false);
   const r7=world(X,{blue:true}),b7=ball(X,r7,2.95,0);ok('...the blue rod, mirrored, the same',X.kickBack(r7,b7)===true);
   const r8=world(X,{a:0.1}),b8=ball(X,r8,-1.0,0);ok('a pass from a leg barely off rest is not guarded (its wind-up is the curve\'s own business)',X.kickBack(r8,b8,PS)===false);
-  const r9=world(X,{a:1.15}),b9=ball(X,r9,6.0,1.6);ok('a swing from a leg raised forward that only clips a ball beside the toe is refused too (that quick, the clip knocks it back)',X.kickBack(r9,b9)===true&&X.legBack(r9,b9,X.KICK.strikeA)===false);
+  const r9=world(X,{a:1.15}),b9=ball(X,r9,6.0,1.6);ok('a swing from a leg raised forward that only clips a ball beside the toe is refused too (that quick, the clip knocks it back)',X.kickBack(r9,b9)===true&&X.legBack(r9,b9,X.AIC.swingFromA)===false);
   for(const blue of [false,true]){const q=world(X,{blue,a:0.5}),bq=ball(X,q,-4,0);ok('turning a leg back to rest does not reach a ball lying behind the heel'+(blue?' (blue)':''),X.legBack(q,bq,0)===false);}}
  // ---- which balls are taken ----
  {const r=world(X),b=ball(X,r,2.95,1.6);
@@ -118,7 +118,7 @@ let bad=0;for(const t of base){if(!t.ok)bad++;console.log((t.ok?'  ok    ':'  FA
 console.log('  '+(base.length-bad)+' passed, '+bad+' failed');
 const MUT=[
  {n:'the swing guard reads the world angle',part:'geo',from:'a=r.angle*r.kickDir,bb=b.real||b;',to:'a=r.angle,bb=b.real||b;'},
- {n:'the pass curve\'s wind-up is not counted',part:'geo',from:'t=KS.windup>0?KS.windupA:KS.strikeA',to:'t=KS.strikeA'},
+ {n:'the pass curve\'s wind-up is not counted',part:'geo',from:'t=Math.min(KS.windup>0?KS.windupA:KS.strikeA',to:'t=Math.min(KS.strikeA'},
  {n:'a leg barely off rest is guarded',part:'geo',from:'if(a<=AIC.catch.recv.fwdMin||a<=t)return false;',to:'if(a<=t)return false;'},
  {n:'a side clip is not counted',part:'geo',from:'for(let x=a;x>t;x-=0.1)if(footHolds(r,bb,x*r.kickDir))return true;',to:''},
  {n:'the guard never refuses',part:'geo',from:'if(legBack(r,bb,t))return true;',to:'return false;'},
@@ -134,7 +134,7 @@ const MUT=[
  {n:'the leg is not lifted first',part:'catch',from:'  if(r.angle*dir<RV.lift.angle-FE.upTol&&r.catT<FE.downT)return;\n  if(S.time-(r.unT',to:'  if(S.time-(r.unT'},
  {n:'the lift is waited for for ever',part:'catch',from:'  if(r.angle*dir<RV.lift.angle-FE.upTol&&r.catT<FE.downT)return;\n  if(S.time-(r.unT',to:'  if(r.angle*dir<RV.lift.angle-FE.upTol)return;\n  if(S.time-(r.unT'},
  {n:'a failed fetch is tried again at once',part:'catch',from:'if(S.time-(r.unT||-9)>=U.retryT&&rel',to:'if(rel'},
- {n:'a ball nearer than the pin reaches is fetched',part:'catch',from:'&&rel>=SHOT.pin.fwdBack&&rel<=FE.far&&footAngle',to:'&&rel<=FE.far&&footAngle'},
+ {n:'a ball nearer than the pin reaches is fetched',part:'catch',from:'&&rel>=SHOT.pin.fwdBack&&rel<=SHOT.pin.fwdFront&&footAngle',to:'&&rel<=SHOT.pin.fwdFront&&footAngle'},
  {n:'the try is not stamped',part:'catch',from:'r.unT=S.time;r.unPh=null;r.catPh=\'fetch\'',to:'r.unPh=null;r.catPh=\'fetch\''},
  {n:'fetch is handed the wrong phase',part:'catch',from:"r.catPh='fetch';r.ftPh='over';",to:"r.catPh='fetch';r.ftPh=null;"},
  {n:'the man does not step off',part:'catch',from:'if(o!=null){r.target=o;return;}}\n  r.unPh=\'down\'',to:'if(o!=null){return;}}\n  r.unPh=\'down\''},

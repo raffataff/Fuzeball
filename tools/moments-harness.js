@@ -339,7 +339,7 @@ group('momContact / momReset');
  const b=ball(20,BALL_R,3,60,0,0);
  ctx.momContact(b,Object.assign(rod(0,'ATT',0.2),{kickStyle:'snake'}));
  ok('a snake\'s swing marks its shot record',b.shot&&b.shot.snake===true,b.shot);
- ctx.momContact(b,Object.assign(rod(0,'ATT',0.05),{kickStyle:'trapShot'}));
+ ctx.momContact(b,Object.assign(rod(0,'ATT',0.05),{kickStyle:'pinShot'}));
  ok(' ...another swing does not',b.shot&&!b.shot.snake,b.shot);
  ctx.momContact(b,Object.assign(rod(0,'ATT',-1),{kickStyle:'snake'}));
  ok(' ...nor a touch with no swing in flight',!b.tc.snake,b.tc); }

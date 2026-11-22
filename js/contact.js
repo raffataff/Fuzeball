@@ -41,7 +41,8 @@ function contactUpdate(){
   const a=r.pivot.rotation.z,sa=Math.sin(a),ca=Math.cos(a),offy=FOOT_BOX_OFF.y*(r.kickDir||1);
   const fx=r.pivot.position.x+sa*ARM*FOOT_T,fy=ROD_H-ca*ARM*FOOT_T;
   const bcx=fx+FOOT_BOX_OFF.x*sa+offy*ca,bcy=fy-FOOT_BOX_OFF.x*ca+offy*sa;
-  const h=Math.max(0,bcy-FOOT_BOX.x*Math.abs(ca)-FOOT_BOX.y*Math.abs(sa)),k=ctFade(h,Fo.fade);
+  const q=footQuad(),s=r.kickDir||1;let lo=1e9;for(let i=0;i<8;i+=2)lo=Math.min(lo,-q[i]*ca+q[i+1]*s*sa);
+  const h=Math.max(0,bcy+lo),k=ctFade(h,Fo.fade);
   if(k<=0)continue;
   const gr=1+h*Fo.grow;
   for(const m of r.men){

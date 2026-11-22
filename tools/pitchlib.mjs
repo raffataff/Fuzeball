@@ -2,6 +2,7 @@
 // the pitch every GLB shares: 120 x 68, uv u = x, v = z, image top-left = (-60,-34), 2048 x 1160 (17 px per unit); noise, the markings (read off royal.jpeg so a generated pitch lines up with the painted ones) and a writer that copies pitch_royal.glb's box and node and swaps in our images; deterministic
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { prune } from '@gltf-transform/functions';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +71,7 @@ export async function writePitch(id, A, N, M, emissive) {
   const doc = await io.read(P('assets/pitches/pitch_royal.glb'));
   const root = doc.getRoot(), mat = root.listMaterials()[0];
   for (const t of root.listTextures()) t.dispose();
+  await flattenTop(doc);   // the royal box has sides and an underside that would repeat the markings
   const tex = (name, buf) => doc.createTexture(name).setImage(new Uint8Array(buf)).setMimeType('image/png');
   const tA = tex(id + '_pitch', albPng);
   mat.setName('field.' + id).setBaseColorTexture(tA).setEmissiveTexture(tA).setEmissiveFactor([emissive, emissive, emissive])
@@ -79,4 +81,38 @@ export async function writePitch(id, A, N, M, emissive) {
   for (const n of root.listNodes()) n.setName(id);
   await io.write(OUT_GLB, doc);
   console.log(id + ' pitch: wrote', path.relative(ROOT, OUT_GLB), 'and', path.relative(ROOT, OUT_JPG));
+}
+
+// ---- flat top: keep only the top face of a slab (sides and underside would show the texture again) -----
+export async function flattenTop(doc) {
+  for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) flattenPrim(doc, p);
+  await doc.transform(prune());
+}
+// Keep the top-face triangles of one primitive; returns the new vertex count.
+function flattenPrim(doc, prim) {
+  const pos = prim.getAttribute('POSITION').getArray();
+  const idx = prim.getIndices() ? prim.getIndices().getArray() : Array.from({ length: pos.length / 3 }, (_, i) => i);
+  let top = -Infinity;
+  for (let v = 1; v < pos.length; v += 3) top = Math.max(top, pos[v]);
+  const eps = 1e-4 * Math.max(1, Math.abs(top));
+  const keep = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    if ([a, b, c].every((i) => pos[i * 3 + 1] >= top - eps)) keep.push(a, b, c);
+  }
+  if (!keep.length) throw new Error('no top-face triangles');
+  // re-index onto the vertices the kept triangles use
+  const remap = new Map();
+  for (const i of keep) if (!remap.has(i)) remap.set(i, remap.size);
+  const used = [...remap.keys()];
+  for (const sem of prim.listSemantics()) {
+    const acc = prim.getAttribute(sem), src = acc.getArray(), n = acc.getElementSize();
+    const out = new (src.constructor)(used.length * n);
+    used.forEach((old, k) => { for (let c = 0; c < n; c++) out[k * n + c] = src[old * n + c]; });
+    const fresh = doc.createAccessor().setType(acc.getType()).setArray(out);
+    prim.setAttribute(sem, fresh);
+  }
+  const ix = new Uint32Array(keep.map((i) => remap.get(i)));
+  prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(ix));
+  return used.length;
 }

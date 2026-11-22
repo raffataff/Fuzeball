@@ -27,10 +27,10 @@ const stubs=[
  // the carry (catch-harness pins it) is stubbed to the plain rule: play it once settleT is up; pinFire asks the strike gate like the real one
  "var PLAY=null,SAWTAP=null,TAPPED=0; function tapStart(r){TAPPED++;r.catPh='tap';} function ttStart(r){r.catPh='hit';}",
  "function pinPlayStart(){} function pinPlay(r,best,t,dt,tap){SAWTAP=tap;if(t<AIC.retrieve.settleT)return 0;return PLAY!=null?PLAY:1;}",
- "function pinFire(r,best,D,v){if(r.kickT>=0)return 0;if(!strikeOn())return -1;kickRod(r,'trapShot');return 1;}",
+ "function pinFire(r,best,D,v){if(r.kickT>=0)return 0;if(!strikeOn())return -1;kickRod(r,'pinShot');return 1;}",
  slice(rd('js/physics.js'),'function footBoxD(',NL+'function pinSurfaceY('),
  'const CAS={retTap:0};',
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -81,7 +81,7 @@ function suite(X){
   ok('the boot is never raised while a man still overlaps the ball lane',o.tr.slice(0,Math.max(0,firstLift)).every(t=>t.ph==='side'||!t.raise)&&firstLift>0&&
    Math.abs(o.tr[firstLift].off+r.baseZ[0]-b.m.position.z)>=clearZ,'first lift at dz='+(firstLift>0?Math.abs(o.tr[firstLift].off-b.m.position.z).toFixed(2):'-'));
   ok('the slide to the ball starts only after the boot is over it',(()=>{const i=o.tr.findIndex(t=>t.ph==='over');return i>=0&&o.tr[i].ang<-0.5;})());   // a ball 1.5 behind is passed at ~-0.75: the boot is then behind it and every contact faces forward
-  ok('a pin takes and exactly one pin shot is played',X.KICKS.length===1&&X.KICKS[0]==='trapShot','kicks='+X.KICKS.join(','));
+  ok('a pin takes and exactly one pin shot is played',X.KICKS.length===1&&X.KICKS[0]==='pinShot','kicks='+X.KICKS.join(','));
   ok('the action winds up clean: act cleared, pin flags down',r.act===null&&!r.pinOn&&!r.pinPose&&r.pinA===null&&r.retCd>0);}
  // ---- direction ----------------------------------------------------------------------------------------------
  {const r=mkRod(X,{offset:3});const b=mkBall(X,-1.5,1.0);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
@@ -107,7 +107,7 @@ function suite(X){
   ok('the sole stops at the pin geometry while waiting for the ball to take',
      !!lastPose&&X.footUnder({...r,angle:lastPose.ang},b.m.position,r.baseZ[0]+lastPose.off));}
  {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'MID',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
-  ok('an outfield rod pins and shoots even when its IQ roll fails',o.tr.some(t=>t.pinB)&&X.KICKS[0]==='trapShot','phases='+o.phases.join('>'));}
+  ok('an outfield rod pins and shoots even when its IQ roll fails',o.tr.some(t=>t.pinB)&&X.KICKS[0]==='pinShot','phases='+o.phases.join('>'));}
  {const r=mkRod(X,{offset:0,role:'GK',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
   ok('…except the keeper, who always tries to pin',o.phases.includes('pin'),'phases='+o.phases.join('>'));}
  {const r=mkRod(X,{offset:0,retPh:'over',angle:X.KICK.raiseA,slideV:X.AIC.retrieve.slideV+1});const b=mkBall(X,-3,0);
@@ -139,7 +139,7 @@ function suite(X){
   ok('...and the carry was asked for a tap (retrieve shares it)',X.sawTap()===true);}
  {X.KICKS.length=0;X.setPlay(1);const n0=X.tapped(),r=mkRod(X,{offset:0,retPh:'pin',retMan:0,retHold:1});const b=mkBall(X,-3,0);r.pinB=b;r.pinOn=true;r.pinPose=true;r.pinA=-1;
   X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});X.setPlay(null);
-  ok('a shot is still a shot (and the tap is not taken)',X.KICKS.length===1&&X.KICKS[0]==='trapShot'&&X.tapped()===n0,'kicks '+X.KICKS.join(',')+' tapped '+X.tapped());}
+  ok('a shot is still a shot (and the tap is not taken)',X.KICKS.length===1&&X.KICKS[0]==='pinShot'&&X.tapped()===n0,'kicks '+X.KICKS.join(',')+' tapped '+X.tapped());}
  // ---- a re-seat from a forward pin (retFl): the leg stays up while the man steps clear ----
  {X.KICKS.length=0;X.setPlay(4);const r=mkRod(X,{retPh:'pin',retHold:1});const b=mkBall(X,-3,0);r.pinB=b;b.pinMan=0;
   X.retrieveStep(r,{m:b.m,v:b.v,real:b},{cd:1});X.setPlay(null);

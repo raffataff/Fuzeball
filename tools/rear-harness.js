@@ -15,7 +15,7 @@ const parts={
  kstyle:slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'function passFaceOK('),
  hold:slice(rd('js/rods.js'),'function holdCfg(r){',NL+'function kickRod('),
  shots:slice(rd('js/shots.js'),'function shotsOn(){',NL+'function shotTrigD('),
- upd:slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+'const SHOT_CURVE_KEYS'),
+ upd:slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+'// --- what the charge is worth ---'),
  hit:slice(rd('js/stats.js'),'function stHit(r){',NL),
  grip:slice(rd('js/stats.js'),'function stGrip(r){',NL),
  frac:slice(rd('js/stats.js'),'function stCapFrac(r){',NL)

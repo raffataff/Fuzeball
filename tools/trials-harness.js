@@ -758,7 +758,7 @@ function drillData(A,R,d){
   for(const z of sv.z)R.ok(reach(z),'DA-serve "'+id+'" a ball at z '+z+' is within a man\'s slide');
   const v=sv.v?sv.v[0]:0;
   if(v>0)R.ok(sv.rel[0]>DC.rowBand&&sv.rel[0]>0,'DA-roll "'+id+'" a rolled ball starts ahead of the row','rel='+sv.rel);
-  else R.ok(sv.rel[0]>=A.CONFIG.ai.catch.fetch.near&&sv.rel[1]<=A.CONFIG.ai.catch.fetch.far,'DA-lie "'+id+'" a ball lying ahead is inside the forward pin\'s reach','rel='+sv.rel);
+  else R.ok(sv.rel[0]>=A.CONFIG.ai.catch.fetch.near&&sv.rel[1]<=A.CONFIG.shots.pin.fwdFront,'DA-lie "'+id+'" a ball lying ahead is inside the forward pin\'s reach','rel='+sv.rel);
  }
  // lanes: inside the walls, a range the min can be drawn in, and every centre reachable (a pair's gap for a tic-tac, a man for a placement)
  if(g.lane){
@@ -918,7 +918,7 @@ function drillSuite(A,R){
  S.time=0;arm(A,'aPinShot');
  D=TRL.dr;tick(DRC.first+0.01);b=ball();
  att.pinB=b;tick(0.02);
- att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ att.pinB=null;att.kickT=0;att.kickStyle='pinShot';tick(0.02);att.kickT=-1;
  A.trialGoal(0,{mss:{rod:att,t:S.time}});
  R.eq(D.n,1,'DR52 a goal struck from the back pin counts');
  R.eq(TRL.serving,true,'DR53 ...and brings the next ball');
@@ -929,18 +929,18 @@ function drillSuite(A,R){
  R.eq(D.n,1,'DR55 a goal that did not come from the pin does not');
  R.eq(D.si,1,'DR56 ...and the same ball comes again');
  tick(DRC.gap+0.01);b=ball();
- att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='pinShot';tick(0.02);att.kickT=-1;
  const old=S.time;tick(DRC.swingT+0.1);
  A.trialGoal(0,{mss:{rod:att,t:S.time}});
  R.eq(D.n,1,'DR57 a goal from a later touch is not the pin shot\'s');
  tick(DRC.gap+0.01);b=ball();
- att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='pinShot';tick(0.02);att.kickT=-1;
  A.trialGoal(1,{mss:{rod:att,t:S.time}});
  R.eq(D.n,1,'DR58 a goal at your own end is not one');
  R.eq(TRL.serving,true,'DR58b ...but it does bring the ball back');
  const other=rods.find(r=>r.team===0&&r.role==='MID');
  tick(DRC.gap+0.01);b=ball();
- att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ att.pinB=b;tick(0.02);att.pinB=null;att.kickT=0;att.kickStyle='pinShot';tick(0.02);att.kickT=-1;
  A.trialGoal(0,{mss:{rod:other,t:S.time}});
  R.eq(D.n,1,'DR59 a goal another rod struck is not one');
  clean();
@@ -956,13 +956,13 @@ function drillSuite(A,R){
  clean();
  S.time=0;arm(A,'aRollShot');
  D=TRL.dr;b=ball();
- put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);att.kickT=0;att.kickStyle='trapShot';att.pinB=null;tick(0.02);att.kickT=-1;
+ put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);att.kickT=0;att.kickStyle='pinShot';att.pinB=null;tick(0.02);att.kickT=-1;
  A.trialGoal(0,{mss:{rod:att,t:S.time}});
  R.eq(D.n,0,'DR62 a pin shot no roll led to is not one');
  tick(DRC.gap+0.01);b=ball();
  put(b,att.x-3.6,-16,0,0);att.pinB=b;tick(0.02);att.pinB=null;tick(0.02);
  put(b,att.x-3.6,-10,0,12);tick(0.02);put(b,att.x-3.6,-1,0,10);att.pinB=b;tick(0.02);
- att.pinB=null;att.kickT=0;att.kickStyle='trapShot';tick(0.02);att.kickT=-1;
+ att.pinB=null;att.kickT=0;att.kickStyle='pinShot';tick(0.02);att.kickT=-1;
  A.trialGoal(0,{mss:{rod:att,t:S.time}});
  R.eq(D.n,1,'DR63 a pin shot from the pin a roll reached is');
  clean();

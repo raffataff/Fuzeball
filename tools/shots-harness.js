@@ -18,13 +18,10 @@ function build(srcShots){
  const ctx={console,Math,Date,JSON,Object,Array,String,Number,Boolean,Map,Set,isNaN,isFinite,
   localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
   // --- the four things shots.js talks to, all recording ---
-  kickRod(r,style,aimAt,curve){
-   if(r.kickT>=0)return;
-   r.kickT=0;r.kickStyle=style||null;r.kickCurve=curve||null;r.passTo=aimAt||null;
-   r.kickA0=r.angle/(r.kickDir||1);
-   r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;
-   rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pass:r.passTo,pow:r.shotPow,ctl:r.shotCtl,on:r.shotOn,a0:r.kickA0});
-  },
+  // kickRod is the real one (rods.js): its last call records the swing
+  seatOf(){return null;},recvArm(){},recvRelease(){},pinRelease(r){r.pinB=null;},
+  stExertKick(r){r.banked=r.shotExert;},
+  msKick(r){rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pass:r.passTo,pow:r.shotPow,ctl:r.shotCtl,on:r.shotOn,ex:r.banked,a0:r.kickA0});},
   gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);},
   sweepClips(){return ctx.__clip;},          // flipped per test
   // shotPassPick walks the real rods with ai.js's lane primitives, so the harness supplies those
@@ -47,11 +44,14 @@ function build(srcShots){
  vm.runInContext(read('js/config.js'),ctx,{filename:'config.js'});
  vm.runInContext(read('js/rng.js'),ctx,{filename:'rng.js'});
  vm.runInContext(srcShots,ctx,{filename:'shots.js'});
+ {const R=read('js/rods.js'),a=R.indexOf('function styleCfg('),b=R.indexOf('\nfunction passFaceOK('),c=R.indexOf('function kickRod('),d=R.indexOf('\nfunction resetRodRotation(');
+  if(a<0||b<a||c<0||d<c)throw new Error('rods.js slice miss: styleCfg / kickRod');
+  vm.runInContext(R.slice(a,R.indexOf('\n}',a)+2)+'\n'+R.slice(c,d),ctx,{filename:'rods.js'});}
  // Top-level const/let are LEXICAL, not context properties — ctx.SHOT reads back undefined and
  // every threshold silently becomes NaN, which looks exactly like passing tests. Hand them out.
- vm.runInContext('globalThis.__c={SHOT,KICK,AIC,cfg,PHY,RNG,rngSeed,'+
-  'shotsOn,shotTrigD,shotAxis,shotPadAxis,shotChord,shotAxisPow,shotAxisCtl,shotAxisTrack,shotAxisExert,'+
-  'shotBlend,SHOT_CURVE_KEYS,shotChgPow,shotChgCtl,shotChgBand,shotOver,shotArm,shotDisarm,shotConsume,'+
+ vm.runInContext('globalThis.__c={SHOT,KICK,SWINGS,AIC,cfg,PHY,RNG,rngSeed,'+
+  'shotsOn,shotTrigD,shotAxis,shotPadAxis,shotChord,shotAxisTrack,shotStickMod,shotChordWait,shotPadRead,shotInNew,'+
+  'shotChgPow,shotChgCtl,shotChgBand,shotOver,shotArm,shotDisarm,shotConsume,'+
   'shotReset,shotPullCap,shotPullAngle,shotTrackMult,shotPassTarget,shotFire,shotSpray,shotPadUpdate,'+
   'shotKickPress,shotCharge,shotChargeBand,shotChargeBlock,shotVerdict};',ctx,{filename:'export.js'});
  ctx.__c.rngSeed(12345);
@@ -63,7 +63,7 @@ function rod(over){
  const r={idx:0,x:22.5,team:0,role:'ATT',kickDir:1,angle:0,offset:0,maxOff:12,baseZ:[0],men:[{}],
   removedUntil:[],kickT:-1,kickStyle:null,kickCurve:null,passTo:null,passEv:null,passEvT:0,
   raise:false,padAngleOn:false,padAngleTarget:0,kickA0:0,
-  chg:-1,chgRel:0,chgMod:null,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
+  chg:-1,chgRel:0,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
  chgBlock:0,chgEndT:null,chgEndBand:-1,chgEndK:0,
   shotOn:false,shotPow:1,shotCtl:1,shotTrack:1,shotExert:1};
  return Object.assign(r,over||{});
@@ -80,41 +80,31 @@ const seat=()=>({team:0,devs:['pad*'],rods:[],ctrl:0,tcMult:1,padRaise:false,sho
 /* ---- the suite ---------------------------------------------------------------------------- */
 function run(src,label){
  pass=0;fail=0;fails.length=0;
- const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,K=C.KICK;
+ const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,SW=C.SWINGS;
  // this suite drives the charge machine through the single-trigger rule it was written against (RT alone winds up, letting go fires); the shipped rule (charge.needRaise) sits on the same machine and is asserted in tools/binds-harness.js
  CH.needRaise=false;
  const rec=ctx.__rec;
 
  /* ===== 1. THE DATA — an unplayable control scheme fails HERE, not in play ===== */
  ok(SH.on===true||SH.on===false,'shots.on is a boolean');
- for(const anc of ['soft','hard']){
-  const A=MD[anc];
-  // The EFFECTIVE curve, not the raw anchor — an anchor names only the keys it overrides, so
-  // reading A.windup straight off it is undefined and every comparison against it is silently false.
-  const E=C.shotBlend(anc==='soft'?-1:1);
-  for(const k of Object.keys(A))ok(K[k]!==undefined,'mod.'+anc+' key "'+k+'" exists in CONFIG.kick');
-  ok(E.strike>E.windup,'mod.'+anc+': strike after windup');
-  ok(E.hold>=E.strike,'mod.'+anc+': hold at or after strike');
-  ok(E.drop>E.hold,'mod.'+anc+': drop after hold');
-  // the anchors must not touch restitution or the power window (load-bearing): power is the arc, kickA0 to strikeA over a fixed window; opening the power window too would stack three channels and make a charged shot ten times a normal one
-  for(const k of ['rest','restPower','powFrom','powTo']){
-   ok(A[k]===undefined,'mod.'+anc+' leaves "'+k+'" alone — the arc is the power, not the restitution');
-   eq(E[k],K[k],'mod.'+anc+' blended: '+k+' still comes from CONFIG.kick');
-  }
+ ok(!SW.kick&&!SW.soft&&!SW.power,'there is no regular kick and nothing to blend: pass and shoot only');
+ for(const id of ['pass','shoot']){
+  const A=SW[id];
+  for(const k of ['windup','windupA','strike','strikeA','hold','drop','powFrom','powTo','rest','restPower','pow','ctl','exert'])
+   ok(Number.isFinite(A[k]),'swings.'+id+'.'+k+' is a number: the block is complete');
+  ok(A.strike>A.windup,'swings.'+id+': strike after windup');
+  ok(A.hold>=A.strike,'swings.'+id+': hold at or after strike');
+  ok(A.drop>A.hold,'swings.'+id+': drop after hold');
  }
- ok(MD.soft.strikeA<K.strikeA,'soft anchor swings shallower than a normal kick');
- ok(MD.hard.strikeA>K.strikeA,'hard anchor swings deeper than a normal kick');
- // RATE, not just angle — the thing that actually sets the hit. (strikeA-0)/(strike-windup).
  const rate=a=>a.strikeA/(a.strike-a.windup);
- ok(rate(C.shotBlend(-1))<rate(K),'soft anchor is a SLOWER swing than normal');
- ok(rate(C.shotBlend(1))>rate(K),'hard anchor is a FASTER swing than normal');
- ok(rate(C.shotBlend(1))/rate(K)<3,'…but not so fast the substep budget cannot follow it');
+ ok(rate(SW.shoot)>rate(SW.pass),'the shot is a FASTER swing than the pass');
+ ok(SW.shoot.pow>SW.pass.pow,'...and hits harder');
+ ok(SW.shoot.ctl<=SW.pass.ctl,'power costs control');
+ ok(SW.shoot.exert>=SW.pass.exert,'a shot never costs LESS stamina than a pass');
  ok(MD.dead>0&&MD.dead<0.5,'trigger deadzone is sane');
- ok(MD.softPow<1&&MD.hardPow>1,'axis power straddles 1');
- ok(MD.softCtl<=1&&MD.hardCtl<MD.softCtl,'power costs control');
+ ok(MD.powAt>MD.dead&&MD.powAt<1,'power is a depth a trigger reaches');
  ok(MD.softTrack<1&&MD.hardTrack>1,'axis stick-tracking straddles 1');
  ok(MD.directLerp>0,'directLerp is a usable rate for padAngleLerp 0');
- ok(MD.hardExert>=1,'a power swing never costs LESS stamina than a normal one');
  // The pass threshold has to be REACHABLE by a real trigger position and must not fire on a
  // neutral kick — LT alone bottoms the axis at exactly -1, so modAt must lie in [-1, 0).
  ok(SH.pass.modAt>=-1&&SH.pass.modAt<0,'pass threshold is reachable and never neutral');
@@ -138,7 +128,7 @@ function run(src,label){
  {const T=CH.sweetFrom/CH.rate,settled=1-Math.exp(-CH.pullLerp*T);
   ok(settled>0.95,'the wind-up is '+(settled*100).toFixed(1)+'% settled by the time the sweet band opens');}
  ok(CH.pullA<0,'the wind-up is a BACK angle');
- ok(Math.abs(CH.pullA)<=Math.abs(K.raiseA),'the wind-up is never deeper than the rod raise');
+ ok(Math.abs(CH.pullA)<=Math.abs(C.KICK.raiseA),'the wind-up is never deeper than the rod raise');
  ok(CH.stickBack>0&&CH.stickBack<1,'Total Control pull-back threshold is inside stick travel');
  ok(CH.spray>=0&&CH.spray<0.6,'spray is a nudge, not a coin toss');
  ok(CH.trem.amp>0&&CH.trem.amp<0.2,'tremble is visible but not a swing');
@@ -173,24 +163,14 @@ function run(src,label){
  ok(!C.shotChord(MD.dead,MD.dead),'chord ignores a resting trigger at the deadzone');
  eq(C.shotPadAxis(pad(0,1)),1,'shotPadAxis reads a pad');
 
- /* ===== 3. THE CURVE BLEND ===== */
- ok(C.shotBlend(0)===null,'blend: neutral allocates nothing and falls back to CONFIG.kick');
- ok(C.shotBlend(0.0005)===null,'blend: a resting trigger is still neutral');
- const bs=C.shotBlend(-1),bh=C.shotBlend(1);
- for(const k of C.SHOT_CURVE_KEYS){
-  if(MD.soft[k]!=null)eq(bs[k],MD.soft[k],'blend -1 lands on the soft anchor: '+k);
-  if(MD.hard[k]!=null)eq(bh[k],MD.hard[k],'blend +1 lands on the hard anchor: '+k);
-  if(MD.soft[k]==null)eq(bs[k],K[k],'blend -1 keeps CONFIG.kick for an unlisted key: '+k);
- }
- const bm=C.shotBlend(-0.5);
- ok(bm.strikeA<K.strikeA&&bm.strikeA>MD.soft.strikeA,'blend: half finesse lands BETWEEN kick and the anchor');
- eq(bm.strikeA,(K.strikeA+MD.soft.strikeA)/2,'blend: the midpoint is the midpoint',1e-9);
- let ordered=true;
- for(let i=-20;i<=20;i++){const b=C.shotBlend(i/20);if(!b)continue;
-  if(!(b.strike>b.windup&&b.hold>=b.strike&&b.drop>b.hold))ordered=false;}
- ok(ordered,'blend: keyframes stay ordered across the whole axis (an out-of-order ramp skips a swing phase)');
- const kSnap=JSON.stringify(K);C.shotBlend(1);C.shotBlend(-1);
- ok(JSON.stringify(K)===kSnap,'blend never mutates CONFIG.kick');
+ /* ===== 3. THE PRESS WAITS FOR ITS TRIGGER ===== */
+ {const o=C.shotInNew(),rd=(lt,rt)=>C.shotPadRead(o,pad(lt,rt),false,0);
+  rd(0,0);rd(0,0.3);ok(C.shotChordWait(o,0),'A waits for an RT on its way down: pressed together they are the shot');
+  ok(!C.shotChordWait(o,SH.pass.chord),'...no longer than pass.chord');
+  rd(0,0.3);ok(!C.shotChordWait(o,0),'...nor for one resting short of powAt');
+  rd(0,0.9);ok(!C.shotChordWait(o,0),'...nor once it is there');
+  rd(0,0.2);ok(!C.shotChordWait(o,0),'...nor for one on its way up');
+  rd(0,0);ok(!C.shotChordWait(o,0),'A alone is the pass at once');}
 
  /* ===== 4. THE CHARGE CURVES ===== */
  eq(C.shotChgPow(0),CH.powMin,'charge power starts at powMin');
@@ -218,67 +198,66 @@ function run(src,label){
 
  /* ===== 5. ARMING ===== */
  {const r=rod();
-  C.shotArm(r,0,-1);
-  ok(r.shotOn&&r.shotPow===1&&r.shotCtl===1&&r.shotExert===1,'arm: a neutral swing is IDENTITY (pow/ctl/exert all 1)');
-  C.shotArm(r,1,CH.sweetFrom);
-  eq(r.shotPow,MD.hardPow*CH.powMax,'arm: axis and charge MULTIPLY');
-  eq(r.shotCtl,MD.hardCtl*1,'arm: control multiplies too');
-  eq(r.shotExert,MD.hardExert,'arm: a full power swing books full exertion');
-  C.shotArm(r,-1,-1);
-  eq(r.shotExert,1,'arm: a finesse swing costs no extra stamina');
+  C.shotArm(r,null,-1);
+  ok(r.shotOn&&r.shotPow===1&&r.shotCtl===1&&r.shotExert===1,'arm: with no swing it is IDENTITY (pow/ctl/exert all 1)');
+  C.shotArm(r,SW.shoot,CH.sweetFrom);
+  eq(r.shotPow,SW.shoot.pow*CH.powMax,'arm: swing and charge MULTIPLY');
+  eq(r.shotCtl,SW.shoot.ctl,'arm: control multiplies too');
+  eq(r.shotExert,SW.shoot.exert,'arm: a shot books its exertion');
+  C.shotArm(r,SW.pass,-1);
+  eq(r.shotExert,SW.pass.exert,'arm: a pass books its own');
+  eq(r.shotPow,SW.pass.pow,'arm: and its own trim');
   C.shotDisarm(r);
   ok(!r.shotOn&&r.shotPow===1&&r.shotCtl===1,'disarm clears everything physics reads');
-  C.shotArm(r,1,0.6);C.shotConsume(r);
+  C.shotArm(r,SW.shoot,0.6);C.shotConsume(r);
   ok(!r.shotOn,'ONE CONTACT SPENDS THE SHOT — a charge cannot apply twice');
-  r.chg=0.5;r.chgRel=0.9;r.chgSrc='rt';r.chgA=-1;r.trem=0.04;r.kickCurve={};r.shotTrack=2.6;C.shotArm(r,1,0.5);
+  r.chg=0.5;r.chgRel=0.9;r.chgSrc='rt';r.chgA=-1;r.trem=0.04;r.kickCurve={};r.shotTrack=2.6;C.shotArm(r,SW.shoot,0.5);
   C.shotReset(r);
   ok(r.chg===-1&&!r.chgSrc&&r.chgA===null&&r.trem===0&&!r.shotOn&&r.kickCurve===null&&r.shotTrack===1,
    'reset clears charge, arming, tremble, curve and tracking');
   // chgRel is unreachable-if-stale TODAY (a new wind-up zeroes it on entry), which is exactly why it
   // is pinned: shotReset claims to be a full teardown, and the next reader of that field will assume it.
+  const f=rod({kickT:0.01,kickStyle:'shoot'});C.shotArm(f,SW.shoot,-1);C.shotReset(f);
+  ok(f.shotOn&&f.shotPow===SW.shoot.pow,'a shot in flight keeps its trims when the seat lets the rod go');
+  for(const [st,cv] of [['pass',SW.pinPass],['snake',SW.snake]]){const g=rod({kickT:0.01,kickStyle:st,kickCurve:cv});C.shotArm(g,cv,-1);C.shotReset(g);
+   ok(g.kickCurve===cv&&g.shotOn&&g.shotPow===cv.pow,'...a pin pass or snake in flight keeps its own swing too: '+st);}
   eq(r.chgRel,0,'reset clears the BANKED charge too — the teardown is complete, not nearly complete');
  }
 
  /* ===== 6. FIRING ===== */
  {const r=rod();rec.kicks.length=0;ctx.__pass=null;
-  C.shotFire(r,0,-1);
-  const k=rec.kicks[0];
-  ok(k&&k.style===null&&k.curve===null&&k.on===false,
-   'A PLAIN KICK IS THE OLD KICK — no style, no curve, shotOn false');
+  C.shotFire(r,false,-1);
+  let k=rec.kicks[0];
+  ok(k&&k.style==='pass'&&k.curve===null&&k.pass===null,'A KICK IS THE PASS, with no mate ahead too (it leaves unaimed)');
+  eq(k.pow,SW.pass.pow,'...armed with the pass trim');
+  eq(k.ex,SW.pass.exert,'...and its stamina, booked before the swing is charged');
   r.kickT=-1;rec.kicks.length=0;
-  C.shotFire(r,1,-1);
-  ok(rec.kicks[0].style==='shot'&&rec.kicks[0].curve&&rec.kicks[0].on,'RT + kick fires a styled, armed swing');
-  eq(rec.kicks[0].curve.strikeA,MD.hard.strikeA,'…on the hard curve');
-  /* A real teammate 25 ahead, so shotPassPick walks live geometry rather than a canned answer —
+  C.shotFire(r,true,-1);
+  k=rec.kicks[0];
+  ok(k.style==='shoot'&&k.curve===null&&k.on,'POWER + KICK IS THE SHOT, on swings.shoot itself');
+  eq(k.pow,SW.shoot.pow,'...armed with the shot trim');
+  eq(k.ex,SW.shoot.exert,'...and its stamina');
+  const ai=rod({idx:2});rec.kicks.length=0;
+  ctx.kickRod(ai,'shoot',null);
+  eq(rec.kicks[0].pow,SW.shoot.pow,'an AI shot (a bare kickRod) is the very same swing');
+  /* A real teammate 25 ahead, so shotPassPick walks live geometry rather than a canned answer:
      the whole point of that function is WHICH receiver it refuses. */
   const mate=rod({idx:1,x:r.x+25,role:'ATT',baseZ:[0]});
   ctx.rods.length=0;ctx.rods.push(r,mate);
-  r.kickT=-1;rec.kicks.length=0;
-  C.shotFire(r,-1,-1);
-  ok(rec.kicks[0].style==='pass'&&rec.kicks[0].pass&&rec.kicks[0].pass.x===mate.x,
-   'DEEP FINESSE IS A PASS, at a teammate the ball can actually be turned toward');
-  ok(rec.kicks[0].curve===null,
-   'a pass carries NO blended curve — it swings on CONFIG.ai.passShot, the block the AI passes with');
-  r.kickT=-1;rec.kicks.length=0;
-  C.shotFire(r,SH.pass.modAt+0.01,-1);
-  ok(rec.kicks[0].style!=='pass','just short of the pass threshold is a soft kick, not a pass');
-  // the refusal: slide the teammate square of the ball and the bend needed passes what the assist can deliver, so the pass isn't offered (a plain soft touch)
+  const kick=shoot=>{r.kickT=-1;rec.kicks.length=0;C.shotFire(r,shoot,-1);return rec.kicks[0];};
+  k=kick(false);
+  ok(k.style==='pass'&&k.pass&&k.pass.x===mate.x,'the pass is aimed at a teammate the ball can actually be turned toward');
+  ok(kick(true).pass===null,'a shot is never aimed at a teammate');
+  // the refusal: slide the teammate square of the ball and the bend needed passes what the assist can deliver
   const P=C.AIC.dribble.pass,far=Math.tan(P.assist*SH.pass.bendMult)*25+4;
   mate.offset=far;
-  r.kickT=-1;rec.kicks.length=0;
-  C.shotFire(r,-1,-1);
-  ok(rec.kicks[0].style!=='pass',
-   'a receiver too far off-line is REFUSED — the assist could never turn the ball that far ('+far.toFixed(1)+'u square)');
-  mate.offset=0;
+  ok(kick(false).pass===null,'a receiver too far off-line is REFUSED ('+far.toFixed(1)+'u square)');
   // and one just inside the budget is still offered
   mate.offset=Math.tan(P.assist*SH.pass.bendMult)*25-1;
-  r.kickT=-1;rec.kicks.length=0;
-  C.shotFire(r,-1,-1);
-  ok(rec.kicks[0].style==='pass','…while one just inside the budget still is');
-  mate.offset=0;
-  r.kickT=-1;rec.kicks.length=0;ctx.__clr=0;      // every lane blocked
-  C.shotFire(r,-1,-1);
-  ok(rec.kicks[0].style!=='pass','no clear lane → a finesse kick, never a pass at nothing');
+  ok(!!kick(false).pass,'...while one just inside the budget still is');
+  mate.offset=0;ctx.__clr=0;                       // every lane blocked
+  k=kick(false);
+  ok(k.style==='pass'&&k.pass===null,'no clear lane: still the pass, aimed at nobody');
   ctx.__clr=null;ctx.rods.length=0;
  }
 
@@ -309,8 +288,7 @@ function run(src,label){
   ok(rec.kicks.length===1,'releasing RT fires exactly one swing');
   ok(rec.kicks[0].on&&rec.kicks[0].pow>1,'…and it carries the charge');
   // the axis is the one the wind-up was held at, not the live one on the release frame (RT is on its way up then, giving a neutral curve with no power trim)
-  ok(rec.kicks[0].curve&&Math.abs(rec.kicks[0].curve.strikeA-MD.hard.strikeA)<1e-9,
-   'a charge held on RT fires on the HARD curve, not the neutral one the release frame would read');
+  ok(rec.kicks[0].style==='shoot','a charge held on RT fires the shot, whatever the release frame reads');
   ok(rec.kicks[0].pow>C.shotChgPow(CH.sweetFrom)*1.0001,'…and carries the RT power trim as well as the charge');
   ok(r.chg===-1&&!r.chgSrc,'the wind-up is over');
   ok(deep<0,'wind-up angle stayed negative');
@@ -322,19 +300,19 @@ function run(src,label){
   ok(rec.kicks.length===1,'a flinch still fires a swing');
   // "Ordinary" means NO CHARGE, not no modifier: RT was held, so the power trim still applies —
   // that trigger means one thing whether or not you also charged with it.
-  eq(rec.kicks[0].pow,C.shotAxisPow(1),'…the ORDINARY one — a sub-minFire release is not a weak charge');
+  eq(rec.kicks[0].pow,SW.shoot.pow,'…the ORDINARY one — a sub-minFire release is not a weak charge');
  }
  {const r=rod(),s=seat();rec.kicks.length=0;C.cfg.padChargeBtn='rt';
   // THE KICK BUTTON IS A SECOND RELEASE for a classic wind-up. Without it, pressing it mid-charge
   // swung out of the wound-back angle with none of the charge applied and threw the wind-up away.
   let t=0;while(t<(CH.sweetFrom+CH.sweetTo)/2/CH.rate){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);t+=1/60;}
   const k=r.chg;
-  C.shotFire(r,C.shotPadAxis(pad(0,1)),C.shotCharge(r));
+  C.shotFire(r,true,C.shotCharge(r));
   ok(rec.kicks.length===1&&rec.kicks[0].on,'pressing the kick button mid-wind-up fires it');
-  eq(rec.kicks[0].pow,C.shotAxisPow(1)*C.shotChgPow(k),'…carrying the charge it had built');
+  eq(rec.kicks[0].pow,SW.shoot.pow*C.shotChgPow(k),'…carrying the charge it had built');
   ok(r.chg===-1&&!r.chgSrc,'…and the wind-up is spent, not left running');
   rec.kicks.length=0;C.shotConsume(r);          // pretend that swing has taken its contact
-  C.shotFire(r,1,0.6);
+  C.shotFire(r,true,0.6);
   ok(rec.kicks.length===0,'a swing already in flight cannot be re-fired');
   ok(!r.shotOn,'…NOR RE-ARMED — arming for a swing that never starts leaves the charge on the rod '+
    'for whatever contact happens to come next');
@@ -357,8 +335,8 @@ function run(src,label){
   C.shotPadUpdate(1/60,pad(0,0,[0]),s,r,false,0);
   ok(r.chgSrc==='kick','padChargeBtn=kick: the kick button holds the wind-up');
   C.shotPadUpdate(1/60,pad(0,0),s,r,false,0);
-  ok(rec.kicks.length===1&&rec.kicks[0].on===false,
-   'a press shorter than tapMax fires the ORDINARY swing, so a tap is still a tap');
+  ok(rec.kicks.length===1&&rec.kicks[0].style==='pass'&&rec.kicks[0].pow===SW.pass.pow,
+   'a press shorter than tapMax is the pass, so a tap is still a tap');
   C.cfg.padChargeBtn='rt';
  }
 
@@ -486,9 +464,9 @@ function run(src,label){
   eq(C.shotPadAxis(pad(0,1)),0,'shots off: the axis is flat');
   eq(C.shotTrackMult(rod({shotTrack:2.6})),1,'shots off: stick tracking is untouched');
   ok(C.shotKickPress(false)===true,'shots off: the kick button fires on press whatever cfg says');
-  rec.kicks.length=0;const r2=rod();C.shotFire(r2,1,0.8);
-  ok(rec.kicks[0].style===null&&rec.kicks[0].curve===null&&!r2.shotOn,
-   'shots off: shotFire is the plain kickRod(r) it replaced');
+  rec.kicks.length=0;const r2=rod();C.shotFire(r2,true,0.8);
+  ok(rec.kicks[0].style==='shoot'&&rec.kicks[0].curve===null&&rec.kicks[0].pow===SW.shoot.pow,
+   'shots off: still pass / shoot, with no wind-up on it');
   SH.on=wasOn;}
 
 
@@ -601,16 +579,18 @@ function mutate(find,repl,name){
 const MUTS=[
  mutate('function shotAxis(lt,rt){return clamp(rt-lt,-1,1);}',
         'function shotAxis(lt,rt){return clamp(rt+lt,-1,1);}','the chord does not cancel'),
- mutate('for(const k of SHOT_CURVE_KEYS){const base=KICK[k];out[k]=(anc[k]!=null)?lerp(base,anc[k],t):base;}',
-        'for(const k of SHOT_CURVE_KEYS){const base=KICK[k];out[k]=(anc[k]!=null)?anc[k]:base;}',
-        'the curve snaps to the anchor instead of blending'),
+ mutate('return (o.pw>o.pwl&&o.pw<SHOTC.mod.powAt)||','return ','A never waits for RT, so a chord passes'),
+ mutate("kickRod(r,shoot?'shoot':'pass',","kickRod(r,'pass',",'power + kick passes'),
+ mutate('on&&!shoot?shotPassTarget(r):null','on?shotPassTarget(r):null','a shot is aimed at a teammate'),
+ mutate("if(!(r.kickT>=0)){r.kickCurve=null;shotDisarm(r);}",'r.kickCurve=null;shotDisarm(r);','letting the rod go strips the shot in flight'),
+  mutate("if(!(r.kickT>=0)){r.kickCurve=null;shotDisarm(r);}",'r.kickCurve=null;if(!(r.kickT>=0))shotDisarm(r);','letting the rod go swaps the swing in flight for a pass'),
  mutate(' if(k<=s1||s1>=1)return C.powMax;\n return lerp(C.powMax,C.overPow,(k-s1)/(1-s1));',
         ' return C.powMax;','holding too long is free (no power falloff)'),
  mutate('  if(clip)break;\n  best=a;','  best=a;','the wind-up ignores sweepClips'),
  mutate(' if(C.on&&r.kickT<0){',' if(C.on){','a charge builds during the swing'),
- mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}\n shotDisarm(r);',
+ mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;}\n shotDisarm(r);',
         '','a charge applies to every contact, not one'),
- mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;r.chgMod=null;}',
+ mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;}',
         ' if(r.chgRel>0){shotVerdict(r,r.chgRel);}',
         'a banked Total Control charge survives the contact and re-arms itself'),
  mutate('shotVerdict(r,r.chgRel)','shotVerdict(r,r.chg)',
@@ -620,9 +600,9 @@ const MUTS=[
  mutate('if(shotChord(lt,rt)&&back>=SHOTC.charge.stickBack)o.stick=back;',
         'if((lt>0||rt>0)&&back>=SHOTC.charge.stickBack)o.stick=back;',
         'one trigger arms the Total Control charge'),
- mutate(' r.shotPow=shotAxisPow(m)*(k>=0?shotChgPow(k):1);',
-        ' r.shotPow=shotAxisPow(m);','arming ignores the charge'),
- mutate(' if(k>=0&&k<SHOTC.charge.minFire)k=-1;','','a flinch fires a weak charged shot instead of a normal swing'),
+ mutate(' r.shotPow=(SW?SW.pow:1)*(k>=0?shotChgPow(k):1);',
+        ' r.shotPow=(SW?SW.pow:1);','arming ignores the charge'),
+ mutate(' if(!on||fl)k=-1;',' if(!on)k=-1;','a flinch fires a weak charged shot instead of a normal swing'),
  mutate('   if(bend>maxBend)continue;','   if(false)continue;',
         'the player passes at a receiver the assist could never turn the ball toward'),
  mutate('ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1)',
@@ -636,16 +616,16 @@ const MUTS=[
  mutate(' r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));',
         ' r.chgEndBand=(k<C.minFire?0:shotChgBand(k));',
         'a blocked wind-up is stamped as a clean shot'),
- mutate('   shotFire(r,(r.chgMod!=null?r.chgMod:m),tap?-1:k);',
-        '   shotFire(r,m,tap?-1:k);','the release reads the axis at the release frame, not the one it was held at'),
- mutate(' if(r.kickT>=0)return;\n if(k>=0','\n if(k>=0','a swing already in flight can be re-armed'),
+ mutate('   shotFire(r,!tap||shotPowHeld(r),tap?-1:k);',
+        '   shotFire(r,shotPowHeld(r),tap?-1:k);','a let-go wind-up reads power at the release frame and passes'),
+ mutate(' if(r.kickT>=0)return;\n const on=',' if(r.kickT>=0)shotArm(r,SWINGS.shoot,k);\n const on=','a swing already in flight can be re-armed'),
  mutate('  const T=C.trem,ov=shotOver(r.chg);\n  r.trem=ov>0?T.amp*ov*Math.sin(r.chgHeld*T.hz):0;',
         '  const T=C.trem;\n  r.trem=T.amp*Math.sin(r.chgHeld*T.hz);','the rod trembles for the whole charge'),
- mutate('   r.shotPow=shotAxisPow(m)*lerp(1,shotChgPow(r.chgRel),f);',
-        '   r.shotPow=shotAxisPow(m)*shotChgPow(r.chg);',
+ mutate('   r.shotPow=(SW?SW.pow:1)*lerp(1,shotChgPow(r.chgRel),f);',
+        '   r.shotPow=(SW?SW.pow:1)*shotChgPow(r.chg);',
         'a let-go overcharge decays back through the band and regains power'),
- mutate(' r.chg=-1;r.chgRel=0;r.chgGrace=0;r.chgMod=null;r.chgSrc=null;',
-        ' r.chg=-1;r.chgGrace=0;r.chgMod=null;r.chgSrc=null;','shotReset leaves the banked charge behind'),
+ mutate(' r.chg=-1;r.chgRel=0;r.chgGrace=0;r.chgSrc=null;',
+        ' r.chg=-1;r.chgGrace=0;r.chgSrc=null;','shotReset leaves the banked charge behind'),
  mutate(' if(!shotsOn()||TC||!SHOTC.charge.on||SHOTC.charge.needRaise)return true;',
         ' return true;','the kick button always fires on press, so its charge can never release')
 ];

@@ -23,7 +23,7 @@ const stubs=[
  "function isUserRod(){return false;} function retrieveMan(r,bz){return {i:1,o:0};} function retrievePhase(r,ph){r.retPh=ph;}",
  "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){

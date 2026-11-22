@@ -2,9 +2,9 @@
 //      fetch('tools/pinshot-soak.js').then(r=>r.text()).then(eval)
 //      psSweep({})                                  // catch a ball at a spread of spots, fire the pin shot, tally the exit speed
 //      psScene({rel:0.9,dz:0.3,trace:1})            // one hand-placed shot with a line per sim step
-//      psTry({'ai.trapShot.windupA':-1.0},{})       // run a sweep with CONFIG values overridden, restored after
-// why: the pin shot's weight is a product of the swing curve (CONFIG.ai.trapShot), the pin trim (CONFIG.shots.pin.pow) and the speed ceiling (CONFIG.kick.cap); this fires the REAL pin on the real sim and reports what the ball leaves at
-// modes: 'human' fires shotPinFire (armed, aim-assisted); 'ai' fires the bare trapShot swing; 'kick' a plain tap kick, 'hard' a full-power-trigger kick and 'charge' a sweet-band charged kick, all through shotFire off a resting ball in the sweet strip (the yardsticks)
+//      psTry({'swings.pinShot.strikeA':0.4},{})       // run a sweep with CONFIG values overridden, restored after
+// why: the pin shot's weight is a product of the swing curve (CONFIG.swings.pinShot), its trim (CONFIG.swings.pinShot.pow) and the speed ceiling (CONFIG.kick.cap); this fires the REAL pin on the real sim and reports what the ball leaves at
+// modes: 'human' fires shotPinFire (armed, aim-assisted); 'ai' fires the bare pinShot swing; 'kick' a plain tap kick, 'hard' a full-power-trigger kick and 'charge' a sweet-band charged kick, all through shotFire off a resting ball in the sweet strip (the yardsticks)
 // exit = horizontal speed 0.12 s after first contact (before a wall or the second boot touch muddies it); lift = highest the ball rose; numbers are u/s, a classic ball's ceiling is its maxV (130)
 'use strict';
 (function(){
@@ -28,10 +28,10 @@
    R.rel=+((b.m.position.x-r.x)*dir).toFixed(2);R.dz=+(b.m.position.z-(mz+r.offset)).toFixed(2);
    for(let i=0;i<Math.round(o.settle*SIM.hz);i++)step();
    if(o.mode==='human')shotPinFire(r);
-   else{r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.pinPose=false;kickRod(r,'trapShot');}
+   else{r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.pinPose=false;kickRod(r,'pinShot');}
   }else{
    for(let i=0;i<Math.round(0.1*SIM.hz);i++)step();
-   shotFire(r,o.mode==='hard'?1:0,o.mode==='charge'?o.charge:-1);
+   shotFire(r,o.mode==='hard'||o.mode==='charge',o.mode==='charge'?o.charge:-1);
   }
   const N=Math.round(o.T*SIM.hz);let peak=0,tp=0,hit=-1,exit=null,lift=0,hd=null,L=[];
   for(let i=0;i<N;i++){
@@ -85,7 +85,7 @@
   }
   return out;
  }
- // run fn with CONFIG paths overridden ('ai.trapShot.windupA':-1) and put them back
+ // run fn with CONFIG paths overridden ('swings.pinShot.strikeA':0.4) and put them back
  function psWith(over,fn){
   const prev=[];
   for(const k of Object.keys(over)){
