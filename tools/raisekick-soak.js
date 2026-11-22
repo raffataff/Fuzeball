@@ -9,7 +9,7 @@
  let T=null;
  window.kickRod=function(r,style,aim,curve){
   if(T&&r.kickT<0&&!isUserRod(r)){
-   const kind=!style?(r.act==='dribble'?'dribble':'plain'):style==='pass'?(r.pinB?'pinPass':'kickPass'):style==='trapShot'?(r.pinB?'pinShot':'trapShot'):style;
+   const kind=style==='shoot'?(r.act==='dribble'?'dribble':'plain'):style==='pass'?(r.pinB?'pinPass':'kickPass'):style==='pinShot'?(r.pinB?'pinShot':'pinShot'):style;
    const a0=r.angle/(r.kickDir||1);
    T.all.push({kind,flag:!!r.raise,raised:a0<KICK.raiseA*0.5,a0,role:r.role});
   }

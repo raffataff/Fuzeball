@@ -36,8 +36,8 @@ function suite(X){
   ok('an AI kick banks one swing',near(a.exert,K.per));
   const h=rod({human:true});X.stExertKick(h);
   ok('...a human rod\'s the same (userDrain)',near(h.exert,K.per));
-  const p=rod({shotExert:X.CONFIG.shots.mod.hardExert});X.stExertKick(p);
-  ok('a full-power swing banks hardExert swings',near(p.exert,K.per*X.CONFIG.shots.mod.hardExert),p.exert);
+  const p=rod({shotExert:X.CONFIG.swings.shoot.exert});X.stExertKick(p);
+  ok('a shot banks swings.shoot.exert swings',near(p.exert,K.per*X.CONFIG.swings.shoot.exert),p.exert);
   const c=rod({exert:K.full*K.cap-0.5});X.stExertKick(c);X.stExertKick(c);
   ok('banked exertion stops at full x cap',near(c.exert,K.full*K.cap));}
  // ---- a pad stick swing ---------------------------------------------------------------------------------------------------------
@@ -54,8 +54,8 @@ function suite(X){
   ok('a stick turned forward slower than stickW is not a swing',near(s.exert,0),s.exert);
   const sw=rod({padAngleOn:true,human:true});stickSwing(X,sw,X.CONFIG.control.handover.stickW,20);
   ok('a rod switch turning the leg at handover.stickW is not a swing',near(sw.exert,0),sw.exert);
-  const tc=rod({padAngleOn:true,human:true,shotExert:X.CONFIG.shots.mod.hardExert});stickSwing(X,tc,K.stickW*3,6);
-  ok('a Total Control power strike banks its shotExert',near(tc.exert,K.per*X.CONFIG.shots.mod.hardExert),tc.exert);
+  const tc=rod({padAngleOn:true,human:true,shotExert:X.CONFIG.swings.shoot.exert});stickSwing(X,tc,K.stickW*3,6);
+  ok('a Total Control power strike banks its shotExert',near(tc.exert,K.per*X.CONFIG.swings.shoot.exert),tc.exert);
   const k=rod({padAngleOn:true,human:true,kickT:0.02});stickSwing(X,k,K.stickW*3,6);
   ok('a kickRod swing in flight is not charged again by the stick',near(k.exert,0),k.exert);
   const pm=rod({padAngleOn:true,human:true,pinMag:0.9});stickSwing(X,pm,K.stickW*3,6);

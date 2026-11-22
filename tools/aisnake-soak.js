@@ -42,7 +42,7 @@
   let fire=null,tz=null;
   if(o.mode==='fire'){
    const SN=AIC.catch.snake,sv=r.slideV;
-   r.pcSn=true;r.catSv=sv;r.catSl=SN.k*sv;r.catHold=SHOT.snake.spin+SHOT.snake.follow;r.pcWhy='scene';
+   r.pcSn=true;r.catSv=sv;r.catSl=SN.k*sv;r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;r.pcWhy='scene';
    pinFire(r,b,DIFFS[teamDiff(r.team)],1);catchEnd(r,AIC.catch.cd,'snake');
    fire={t:0,style:r.kickStyle,sv:+sv.toFixed(1)};tz=r.catAim&&r.catAim.best?+r.catAim.best.tz.toFixed(2):null;
   }
@@ -85,7 +85,7 @@
    for(const man of o.men)for(const dz of o.dzs)for(const R of o.Rs)for(const seed of o.seeds){
     const a=asScene({ri:5,man,R,dz,seed,keep:[7,6],diff:o.diff,T:o.T});
     if(a.out)continue;
-    t.n++;if(a.goal)t.goal++;const st=a.fire?(a.fire.style==='trapShot'?'pin':a.fire.style||'plain'):'none';t[st]=(t[st]||0)+1;if(a.fire&&a.vMax)t.v+=a.vMax;
+    t.n++;if(a.goal)t.goal++;const st=a.fire?(a.fire.style==='pinShot'?'pin':a.fire.style||'plain'):'none';t[st]=(t[st]||0)+1;if(a.fire&&a.vMax)t.v+=a.vMax;
     const k=a.blk||(a.goal?'goal':'none');t.blk[k]=(t.blk[k]||0)+1;
    }
   }finally{SN.on=on0;}
@@ -100,7 +100,7 @@
   const tally=k=>T.by[k]||(T.by[k]={n:0,goal:0,first:{},clr:[],sv:[],rel:[]});
   window.snakeFire=function(r){
    const b=r.pinB,SN=AIC.catch.snake,gx=r.kickDir>0?F.L/2:-F.L/2,p=b.m.position;
-   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObsAt(r.team,p.x,gx,SN.shotV,SHOT.snake.spin),gx);
+   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObsAt(r.team,p.x,gx,SN.shotV,SWINGS.snake.spin),gx);
    const q=tally(r.role);q.n++;q.clr.push(clr);q.sv.push(Math.abs(r.slideV));q.rel.push(b.pinDx);
    live.push({q,team:r.team,t:S.time,sc:S.score[r.team],first:null});
    return sf.apply(this,arguments);

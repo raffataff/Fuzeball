@@ -30,7 +30,7 @@ function boot(F){
  const real=[
   slice(F.sh,'const SHOTC=CONFIG.shots;','\n'),
   slice(F.sh,'function shotsOn(){','\n'),
-  slice(F.sh,'function shotTrigD(gp,i){','// --- what the axis is worth ---'),
+  slice(F.sh,'function shotTrigD(gp,i){','// --- power and tracking ---'),
   slice(F.sh,'function shotInNew(){','\n'),
   slice(F.sh,'// one pad read into o;','function shotKbmAxis('),
   slice(F.sh,'function shotKickPress(TC){','// live charge for the readouts'),
@@ -95,7 +95,7 @@ function suite(X,quiet){
  /* 3. the right stick after a switch: carried over (handover.stick), eased, guarded */
  const HO=X.CTRL.handover,cap=HO.stickW*FIX+1e-9;X.guard(null);
  {const s=seat(rod());for(let i=0;i<5;i++)frame(X,s,pad({ry:-1}));const r=rod();switchTo(X,s,r);for(let i=0;i<30;i++)frame(X,s,pad({ry:-1}));
-  ok(Math.abs(r.angle-KICK.strikeA)<0.02,'a stick held forward through a switch holds the new rod\'s leg forward too ('+r.angle.toFixed(2)+')');
+  ok(Math.abs(r.angle-X.C.kick.stickA)<0.02,'a stick held forward through a switch holds the new rod\'s leg forward too ('+r.angle.toFixed(2)+')');
   ok(s.maxStep<=cap,'...turned onto it no faster than handover.stickW: the switch is not a swing ('+(s.maxStep/FIX).toFixed(1)+' rad/s)');
   ok(!r.padCarry,'...and the stick has it outright once the leg is there');}
  {const s=seat(rod());for(let i=0;i<5;i++)frame(X,s,pad({ry:1}));const r=rod();X.guard(-0.3);switchTo(X,s,r);for(let i=0;i<30;i++)frame(X,s,pad({ry:1}));const asks=X.guardAsks();X.guard(null);
@@ -109,7 +109,7 @@ function suite(X,quiet){
  {const s=seat(rod());frame(X,s,pad({ry:1}));const r=rod();switchTo(X,s,r);frame(X,s,pad({ry:1}));
   ok(!r.padAngleOn,'stick off: a stick held back at a switch does not drive the new rod');
   frame(X,s,pad({ry:-1}));
-  ok(s.padAngleArm&&r.padAngleOn&&Math.abs(r.padAngleTarget-KICK.strikeA)<1e-9,'...flicked forward between two polls (no frame in the deadzone) it swings');}
+  ok(s.padAngleArm&&r.padAngleOn&&Math.abs(r.padAngleTarget-X.C.kick.stickA)<1e-9,'...flicked forward between two polls (no frame in the deadzone) it swings');}
  {const s=seat(rod());frame(X,s,pad({ry:-1}));const r=rod();switchTo(X,s,r);for(let i=0;i<10;i++)frame(X,s,pad({ry:-1}));
   ok(!r.padAngleOn,'...a stick held forward through a switch never snaps the new rod to the strike');
   frame(X,s,pad({ry:0}));frame(X,s,pad({ry:-1}));ok(r.padAngleOn,'...back to centre, it drives it again');}
@@ -172,7 +172,7 @@ const muts=[
  ['sh','o.m=o.deep?shotAxis(1,rt):o.mt;','o.m=o.mt;','LT is never latched'],
  ['sh','(!!o.deep&&lt>SHOTC.hold.from)','!!o.deep','the latch never lets go'],
  ['sh','&&o.lt>o.lw','','a still LT holds the press'],
- ['sh','&&w<C','','a rising LT holds the press for ever'],
+ ['sh','||w>=C','','a rising LT holds the press for ever'],
  ['ro','else if(H)ms*=H.carryMult;','','the grip does not slow the rod'],
  ['se','if(H&&H.stick){s.padCarry=true;s.carryRs=s.padRs||0;}else s.padAngleArm=false;','s.padAngleArm=false;','a switch never carries the stick'],
  ['se','if(H&&H.stick){s.padCarry=true;s.carryRs=s.padRs||0;}else s.padAngleArm=false;','s.padCarry=true;s.carryRs=s.padRs||0;','handover.stick off still carries it'],

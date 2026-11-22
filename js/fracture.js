@@ -3,6 +3,7 @@
 // swaps a destroyed figurine for a pre-baked explode GLB (models.js explosionTemplates, warmed ahead): a clone() + mixer.play(); no explosionSrc = it just vanishes
 // rods.js owns r.men[mi].visible; this file only manages the fracture meshes on top
 
+const fxOp=m=>m.userData.fxOp||1;   // the opacity models.js fxNoGlass gave a glass material
 // deep-clone a template: shares geometry and textures, clones materials so this instance fades independently
 function cloneFractureInstance(tpl){
   const g=tpl.scene.clone(true);
@@ -44,7 +45,7 @@ function spawnFracture(r,mi){
   if(!tpl){manObj.visible=false;return;}      // no explosion GLB for this figurine yet: vanish
   // position is the man's neutral (unswung) world pose: the GLB is baked from it and falls straight down; no sin/cos(r.angle) term or a raised rod threw debris up and back
   const wp=new THREE.Vector3(r.x,ROD_H+manY(r.team),r.offset+r.baseZ[mi]);
-  const s=activeModel(r.team).scale*tmScale(r.team);
+  const s=activeModel(r.team).scale;
   const ws=new THREE.Vector3(s,s,s);
   // rotation is only the static team-facing yaw (buildRods/rebuildRodMen), not the swing, or the debris falls sideways
   const wq=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),r.team===1?Math.PI:0);
@@ -65,7 +66,7 @@ function spawnFracture(r,mi){
   const mats=[];
   inst.traverse(c=>{
    if(!c.isMesh)return;
-   c.material.transparent=true;c.material.opacity=1;
+   c.material.transparent=true;c.material.opacity=fxOp(c.material);
    const name=(c.material.name||'').toLowerCase().replace(/\.\d+$/,'');
    if(teamParts.has(name))c.material.color.set(col);
    else if(hair&&hairParts.has(name))c.material.color.copy(hair);
@@ -90,7 +91,7 @@ function spawnBallFracture(pos){
   inst.position.copy(pos);inst.scale.set(s,s,s);
   scene.add(inst);
   const mats=[];
-  inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=1;mats.push(c.material);});
+  inst.traverse(c=>{if(!c.isMesh)return;c.material.transparent=true;c.material.opacity=fxOp(c.material);mats.push(c.material);});
   const mixer=new THREE.AnimationMixer(inst);
   // one clip PER shard (see spawnFracture) — play them all or only shard 0 moves.
   for(const clip of tpl.clips){const a=mixer.clipAction(clip);a.setLoop(THREE.LoopOnce);a.clampWhenFinished=true;a.play();}
@@ -108,7 +109,7 @@ function fractureUpdate(dt){
    if(f.light)f.light.intensity=Math.max(0,f.light.intensity-dt*14.5); // punchy flash that dies fast
    if(left<=CONFIG.cannonball.fractureFadeOut){
     const k=clamp(left/CONFIG.cannonball.fractureFadeOut,0,1);
-    for(const m of f.mats)m.opacity=k;
+    for(const m of f.mats)m.opacity=k*fxOp(m);
    }
    if(left<=0)disposeFracture(i);
   }
@@ -145,7 +146,7 @@ function spawnRespawnSwirl(r,mi,reform){
   inst.traverse(c=>{if(!c.isMesh)return;
    const ms=Array.isArray(c.material)?c.material:[c.material];
    for(const m of ms){
-    m.transparent=true;m.opacity=1;
+    m.transparent=true;m.opacity=fxOp(m);
     // '.001' suffixes come from glTF de-duping a material across shards: strip them so a name list matches
     if(tint&&(!only||only.has(String(m.name||'').toLowerCase().replace(/\.\d+$/,'')))){
      if(m.color)m.color.copy(col);
@@ -208,7 +209,7 @@ function respawnSwirlUpdate(dt){
      const left=f.until-S.time;                              // f.until = reform + tail
      // full opacity until `fade` seconds before the swirl's end, so the dim starts as the figurine fades in
      const k=left>=fade?1:clamp(left/fade,0,1);
-     for(const m of f.mats)m.opacity=k;
+     for(const m of f.mats)m.opacity=k*fxOp(m);
      if(f.light){f.light.position.z=z;f.light.intensity=lit*k;}
      if(left<=0)disposeSwirl(i);
    }
@@ -276,4 +277,7 @@ function warmMatchAssets(){
   warmFractureTemplate(ballExplosionTemplate);
   warmFractureTemplate(respawnSwirlTemplate);
   if(typeof warmFlush==='function')warmFlush();   // ...the shatters just queued
+  const glass=new Set();
+  scene.traverse(o=>{const ms=o.material;if(ms)(Array.isArray(ms)?ms:[ms]).forEach(m=>{if(m&&m.transmission>0)glass.add(m.name||o.name);});});
+  if(glass.size)console.warn('transmissive materials in the match (every opaque program recompiles for the transmission pass): '+[...glass].join(', '));
 }

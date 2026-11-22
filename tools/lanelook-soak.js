@@ -13,17 +13,17 @@
   const K=[],open=[];window.__ll=K;
   const kr=window.kickRod;
   window.kickRod=function(r,style){
-   const shot=style==null||style==='trapShot'||style==='snake';
+   const shot=style==='shoot'||style==='pinShot'||style==='snake';
    if(r.kickT<0&&!isUserRod(r)&&shot&&r.role!=='GK'){
     let b=null,bd=1e9;for(const q of S.balls){const d=Math.abs(q.m.position.x-r.x);if(d<bd){bd=d;b=q;}}
     const ev=r.catAim||r.aimEv;
     if(b&&ev&&ev.best){
      const p=b.m.position,dir=r.kickDir,gx=dir*F.L/2;
-     const kind=style==null?(r.act==='run'?'run':'plain'):r.pinB?(style==='snake'?'snake':'pin:'+(r.pcWhy||'-')):'tt';
+     const kind=style==='shoot'?(r.act==='run'?'run':'plain'):r.pinB?(style==='snake'?'snake':'pin:'+(r.pcWhy||'-')):'tt';
      const rows=[];
      for(const q of rods){if(q.team===r.team)continue;const ah=(q.x-p.x)*dir;if(ah<=AIC.gapAim.minAhead)continue;
       rows.push({q,x:q.x,ah,base:q.baseZ.filter((z,i)=>manLive(q,i)),off0:q.offset,vz0:q.vz||0,tg0:q.target,ms:DIFFS[teamDiff(q.team)].speed*rodSpeedMult(q),act:q.act||'-',role:q.role,done:false});}
-     K.push({rod:r,role:r.role,kind,style:style||'plain',t:S.time,lv:null,vx:0,bx:p.x,bz:p.z,tz:ev.best.tz,clr:ev.best.clr,dir,rows,b,end:null,touch:null,kick0:null});
+     K.push({rod:r,role:r.role,kind,style:style==='shoot'?'plain':style,t:S.time,lv:null,vx:0,bx:p.x,bz:p.z,tz:ev.best.tz,clr:ev.best.clr,dir,rows,b,end:null,touch:null,kick0:null});
      open.push(K[K.length-1]);
     }
    }

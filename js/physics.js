@@ -88,12 +88,13 @@ function pinUpdate(){
 function footBoxD(r,p,mz,dn){
  const sa=Math.sin(r.angle),ca=Math.cos(r.angle),fx=r.x+sa*ARM*FOOT_T,fy=ROD_H-ca*ARM*FOOT_T,offy=FOOT_BOX_OFF.y*r.kickDir;
  const bcx=fx+FOOT_BOX_OFF.x*sa+offy*ca,bcy=fy-FOOT_BOX_OFF.x*ca+offy*sa,dxw=p.x-bcx,dyw=p.y-bcy,lz=p.z-mz;
- const lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa;
- const cdx=lx-clamp(lx,-FOOT_BOX.x,FOOT_BOX.x),cdy=ly-clamp(ly,-FOOT_BOX.y,FOOT_BOX.y),cdz=lz-clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
+ const lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa,c=footClamp(lx,ly,r.kickDir||1,_fbC);
+ const cdx=lx-c[0],cdy=ly-c[1],cdz=lz-clamp(lz,-FOOT_BOX.z,FOOT_BOX.z);
  const d=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz);
  dn[0]=d>1e-4?(cdx*ca-cdy*sa)/d:0;dn[1]=Math.abs(cdz);
  return d;
 }
+const _fbC=[0,0];
 // the ball is under this man when the sole or its rail-side edge touches from above
 const PIN_DN=[0,0];
 // The rail supports an off-centre pin where the foot can still press from above.
@@ -132,9 +133,8 @@ function pinBallStep(b,h){
  b.pinVx=v.x;b.pinVz=v.z;b.pinPx=p.x;b.pinPz=p.z;
  return true;
 }
-// the swing played from the pin (shots.js shotPinFire, ai.js pinPlay / pinFire): the trapShot curve with shots.pin.swing over it, or for a pass the passShot curve with shots.pin.pass
-const PIN_SW={},PIN_PS={};
-function pinSwing(pass){return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);}
+// the swing from a pin, player and AI
+function pinSwing(pass){return pass?SWINGS.pinPass:SWINGS.pinShot;}
 // let go: ext = something else already moved it (keep that velocity), else it keeps carryOut (or k) of the slide; a player's rod's slide over the last four steps, since a mouse or pad moves it once a frame
 function pinRelease(r,ext,k){
  const b=r.pinB;r.pinB=null;
@@ -416,8 +416,8 @@ function capSpeed(b,r,sweet,in2){
  if(sp2<=lo*lo)return true;         // under the lowest knee any contact could have: skips the stat reads on passive touches
  let f=C.base+C.str*stCapFrac(r),mx=C.max;
  if(sweet)f+=C.sweet;
- if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the shot's own power trim: a finesse touch lowers the ceiling, a timed charge raises it
- if(r.kickStyle==='trapShot')f+=C.pin||0;   // the pin / trap shot: every contact of the swing, not just the first (which spends the trim)
+ if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the swing's own power trim: a pass lowers the ceiling, a shot or a timed charge raises it
+ if(r.kickStyle==='pinShot')f+=C.pin||0;   // the pin shot: every contact of the swing, not just the first (which spends the trim)
  if(r.kickStyle==='snake')f+=C.snake||0;
  // a charge beats the cap: raises the ceiling and the most any ceiling may be
  const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
@@ -441,14 +441,14 @@ function capSpeed(b,r,sweet,in2){
  if(h0>1e-6){v.x=v0.x*hs/h0;v.z=v0.z*hs/h0;}
  return false;
 }
-// a snake leaves low: its contact turns the ball's climb down to shots.snake.loft above the pitch, a rotation in the vertical plane (no energy)
+// a snake leaves low: its contact turns the ball's climb down to swings.snake.loft above the pitch, a rotation in the vertical plane (no energy)
 function snakeLoft(b){
- const L=SHOT.snake&&SHOT.snake.loft,v=b.v,h=Math.hypot(v.x,v.z);
+ const L=SWINGS.snake.loft,v=b.v,h=Math.hypot(v.x,v.z);
  if(L==null||h<1e-6||v.y<=h*Math.tan(L))return;
  const sp=Math.hypot(h,v.y),k=sp*Math.cos(L)/h;
  v.x*=k;v.z*=k;v.y=sp*Math.sin(L);
 }
-// boost powers only a strike: a kick or a player shot while the leg turns forward, or the pad stick swinging it faster than kick.boostSwingW; a trap, pin, tap, slide or bounce is an ordinary touch
+// boost powers only a strike: a kick or a player shot while the leg turns forward, or the pad stick swinging it faster than kick.boostSwingW; a pin, tap, slide or bounce is an ordinary touch
 function boostSwing(r){
  const w=r.angVel*r.kickDir;
  return w>0&&(r.kickT>=0||r.shotOn||(r.padAngleOn&&r.pinMag==null&&w>KICK.boostSwingW));
@@ -457,7 +457,7 @@ function collideRod(b,r,pushLeft=Infinity){
  if(r.trnHidden)return pushLeft;
  const p=b.m.position;
 // ---- foot box (priority) ----
-    const bx=FOOT_BOX.x,by=FOOT_BOX.y,bz=FOOT_BOX.z,offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*r.kickDir;
+    const bz=FOOT_BOX.z,offx=FOOT_BOX_OFF.x,offy=FOOT_BOX_OFF.y*r.kickDir;
     const reach=BALL_R*FOOT_BOX_REACH;
     const SW=KICK.sweetSpot;
    const footHit=new Set();
@@ -471,8 +471,7 @@ function collideRod(b,r,pushLeft=Infinity){
    // world → box-local
    const dxw=p.x-bcx,dyw=p.y-bcy,dzw=p.z-fz;
    let lx=dxw*sa-dyw*ca,ly=dxw*ca+dyw*sa,lz=dzw;
-   // clamp to box extents
-   const clx=clamp(lx,-bx,bx),cly=clamp(ly,-by,by),clz=clamp(lz,-bz,bz);
+   const fc=footClamp(lx,ly,r.kickDir),clx=fc[0],cly=fc[1],clz=clamp(lz,-bz,bz);
    const cdx=lx-clx,cdy=ly-cly,cdz=lz-clz;
    const d=Math.sqrt(cdx*cdx+cdy*cdy+cdz*cdz);
     if(d>reach)continue;
@@ -492,9 +491,9 @@ function collideRod(b,r,pushLeft=Infinity){
      const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
      const ks=kickStyleCfg(r);
      const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-     // hold contact: while ai.js has a trap or dribble live, the boot is a dead sticky surface (rest 0, big grip so b.v follows the contact point); no sweet bonus or aim-assist; holdCfg (rods.js) returns the block or null
+     // hold contact: while ai.js has a retrieve lowering or a dribble live, the boot is a dead sticky surface (rest 0, big grip so b.v follows the contact point); no sweet bonus or aim-assist; holdCfg (rods.js) returns the block or null
      const HLD=holdCfg(r),trapping=!!HLD;
-     const rest=trapping?HLD.holdRest:(pow?ks.restPower:ks.rest);
+     const rest=trapping?HLD.holdRest:(pow?ks.restPower:(r.kickT>=0?ks.rest:KICK.rest));
     // sweet spot: struck in the foot's narrow z-centre and a tight forward x band (dir-relative); lz = z offset from the foot, relR = how far ahead of the rod
     const relR=(p.x-r.x)*r.kickDir;
     const sweet=!trapping&&SW.on&&Math.abs(lz)<bz*SW.zFrac&&relR>SW.xMin&&relR<SW.xMax;
@@ -504,7 +503,7 @@ function collideRod(b,r,pushLeft=Infinity){
     let jm=-(1+rest)*(vn-sb)/b.t.mass;
     if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;
     jm*=stHit(r);
-    // player shot (js/shots.js): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
+    // an armed swing or wind-up (js/shots.js shotArm): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
     if(r.shotOn)jm*=r.shotPow;
     if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
@@ -548,6 +547,7 @@ function collideRod(b,r,pushLeft=Infinity){
   }
  // ---- leg capsule (pivot to foot) and head capsule (pivot up, physics.head): where the foot box missed ----
  const HD=PHY.head,RL=BALL_R+PRAD,RH=HD?BALL_R+HD.r:0,RM=Math.max(RL,RH);
+ const tLeg=footLegT();
  for(let i=0;i<r.baseZ.length;i++){
   if(footHit.has(i))continue;
   if(r.removedUntil[i]&&r.removedUntil[i]>S.time)continue;
@@ -556,7 +556,7 @@ function collideRod(b,r,pushLeft=Infinity){
   const sa=Math.sin(r.angle),ca=Math.cos(r.angle);
   const ax=r.x,ay=ROD_H;
   const dx=sa*ARM,dy=-ca*ARM;
-  const wx=p.x-ax,wy=p.y-ay,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,1);
+  const wx=p.x-ax,wy=p.y-ay,t=clamp((wx*dx+wy*dy)/(ARM*ARM),0,tLeg);
   let cx=ax+dx*t,cy=ay+dy*t,R=RL;
   const cz=pz;
   let nx=p.x-cx,ny=p.y-cy,nz=p.z-cz;
@@ -579,7 +579,7 @@ function collideRod(b,r,pushLeft=Infinity){
     const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
     const HLD=holdCfg(r),trapping=!!HLD;
     const dead=KICK.capDeadPosed&&(r.pinPose||r.pinOn);   // a posed rod's leg is the catch: dead and gripping, as the foot
-    const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));
+    const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?(r.kickT>=0?ks.rest:KICK.rest):KICK.capRest));
     const in2=b.v.x*b.v.x+b.v.y*b.v.y+b.v.z*b.v.z;   // speed ARRIVING, for the ceiling's floor (capSpeed)
     const V0=b.v0||(b.v0={x:0,y:0,z:0});V0.x=b.v.x;V0.y=b.v.y;V0.z=b.v.z;
     const sb=sideTake(b,nx,ny,nz,vn,rest,HLD);   // the ball's own approach into a side face, handed back after the grip (sideGive)

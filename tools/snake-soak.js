@@ -7,8 +7,8 @@
 //      snVsAI({diff})  // snake against pin shot from the ATT, the blue keeper and defender played by the AI: goals of shots fired
 //      snShots({...})  // frames of the spin from the side: node tools/page-run.js tools/snake-soak.js "snShots()" > out.json, then node tools/fx-shots-save.js out.json <dir> snake
 //      snCost()        // stamina: what one snake, one plain kick and one pin shot each bank on the rod
-//      snTune({sets:[{spin:0.3,ease:1}],cap:0.3})   // snGrid's rows for each set of CONFIG.shots.snake overrides (restored after)
-// a scene removes every other man from the table (keep = rods left on); set:{...} overrides CONFIG.shots.snake, cap overrides kick.cap.snake, for that scene only
+//      snTune({sets:[{spin:0.3,ease:1}],cap:0.3})   // snGrid's rows for each set of swings.snake / shots.snake overrides (restored after)
+// a scene removes every other man from the table (keep = rods left on); set:{...} overrides swings.snake / shots.snake by key, cap overrides kick.cap.snake, for that scene only
 'use strict';
 (function(){
  const FIX=1/SIM.hz;
@@ -46,9 +46,9 @@
  async function snShots(o){S.seedNext=1;startMatchNow('red');await new Promise(q=>setTimeout(q,3000));return snScene(Object.assign({ri:5,R:3.5,dz:0.01,man:1,shots:{at:[0,0.04,0.08,0.12,0.16,0.2,0.24,0.27,0.32,0.4]}},o||{}));}
  function snScene(o){
   const a0=cfg.auto,set=(o&&o.set)||{},cap=(o&&o.cap!=null)?o.cap:null,old={},cap0=KICK.cap.snake;cfg.auto=false;
-  for(const k in set){old[k]=SHOT.snake[k];SHOT.snake[k]=set[k];}
+  const at=k=>k in SWINGS.snake?SWINGS.snake:SHOT.snake;for(const k in set){old[k]=at(k)[k];at(k)[k]=set[k];}
   if(cap!=null)KICK.cap.snake=cap;
-  try{return run(o);}finally{cfg.auto=a0;for(const q of rods)q.hold0=null;for(const k in old)SHOT.snake[k]=old[k];KICK.cap.snake=cap0;}
+  try{return run(o);}finally{cfg.auto=a0;for(const q of rods)q.hold0=null;for(const k in old)at(k)[k]=old[k];KICK.cap.snake=cap0;}
  }
  // pin the ball forward the way a player does (fwdhuman-soak's catch), then the snake (mode 'snake'), the pin shot from the back pin ('pinshot', for the yardstick), or a plain kick at a ball at the feet ('plain')
  function run(o){

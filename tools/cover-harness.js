@@ -154,8 +154,8 @@ function suite(X){
   ok('…and that leaves less open than the defender stacked on it',withHold<stacked-2,'fit '+withHold.toFixed(1)+' stacked '+stacked.toFixed(1));}
  {const T=table(X);T.df.human=true;T.df.offset=-4;T.df.target=-4;call(X,T.gk,12,0);
   ok('a human defender is held the same way for the AI keeper',T.df.cvO===undefined&&T.gk.cvM===1);}
- {const T=table(X);T.gk.act='trap';T.gk.target=3;call(X,T.df,12,0);
-  ok('a mate in an action (trap, retrieve, dribble…) is held at its target, not re-planned',T.gk.cvO===undefined&&T.df.cvM===1);}
+ {const T=table(X);T.gk.act='dribble';T.gk.target=3;call(X,T.df,12,0);
+  ok('a mate in an action (retrieve, dribble…) is held at its target, not re-planned',T.gk.cvO===undefined&&T.df.cvM===1);}
  {const T=table(X);T.gk.trnHidden=true;const z=call(X,T.df,12,0);ok('a hidden rod (training) is no mate at all: the other rod gets no cover z and keeps the old line',z!==z&&T.df.cvM===0);}
  {const T=table(X);T.gk.benched=true;call(X,T.df,12,0);ok('a benched mate is held too',T.gk.cvO===undefined&&T.df.cvM===1);}
  {const T=table(X);T.gk.force=true;call(X,T.df,12,0);ok('a mate in the dead-ball push is held too',T.gk.cvO===undefined&&T.df.cvM===1);}

@@ -4,7 +4,7 @@
 //      gkKick({seeds:120,keep:12})              // plus the first 12 balls that bounced back / stalled at the DEF: pose, why its receiving ended (recvEnd), the contact, the steps around it
 // run from a terminal: node tools/page-run.js tools/gkkick-soak.js "gkKick({seeds:120,diff:'pro'})"
 // why: 'the DEF raises back across the keeper's kick' is a whole-match question (it needs the DEF standing ready, which only play produces); 120 matches a side tell a change apart from noise
-// tallies: kicks; byStyle: plain / pass(aimed) / trapShot; byPose: the DEF at the kick (fwd = leg over 0.2, raised, rest) / its action; holdN: steps the keeper held a plain kick (CONFIG.ai.dribble.pass.gk);
+// tallies: kicks; byStyle: plain / pass(aimed) / pinShot; byPose: the DEF at the kick (fwd = leg over 0.2, raised, rest) / its action; holdN: steps the keeper held a plain kick (CONFIG.ai.dribble.pass.gk);
 //   out: 'style|fwd or dn -> fate', fate = pinned (the DEF holds it) / through (past the DEF) / slowed / BOUNCED BACK (reversed at the DEF) / STALLED (stopped dead, not pinned) / lost to other team / other
 // the number to watch is BOUNCED BACK + STALLED, and 'through' for a keeper that should be passing
 'use strict';
@@ -22,7 +22,7 @@
    const before=r.kickT,res=kr.apply(this,arguments);
    if(r.role==='GK'&&before<0&&r.kickT>=0){
     const def=rods.find(q=>q.team===r.team&&q.role==='DEF'),dir=r.kickDir;
-    live.push({r,def,dir,t0:S.time,style:style||'plain',pass:!!(aimAt&&style==='pass'),tr:[],done:false,seed:o.cur,
+    live.push({r,def,dir,t0:S.time,style:(!style||style==='shoot')?'plain':style,pass:!!(aimAt&&style==='pass'),tr:[],done:false,seed:o.cur,
      pose:{ang:+(def.angle*dir).toFixed(2),act:def.act||'-',ready:!!def.rvReady,raise:!!def.raise}});
    }
    return res;

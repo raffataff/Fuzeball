@@ -29,7 +29,7 @@
   S.eff[r.team].boost=o.boost?S.time+30:0;
   const b=makeBall('classic');
   b.m.position.set(r.x+dir*o.dist,BALL_R,r.baseZ[o.man]+r.offset);b.v.set(0,0,0);syncBall(b);
-  kickRod(r,null);
+  kickRod(r,'shoot');
   const shots=[],info=[];
   const last=Math.max.apply(null,o.at);
   for(let f=1;f<=last;f++){

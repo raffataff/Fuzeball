@@ -101,7 +101,7 @@
   PAD=pad();s.padAngleArm=true;
   const DZ=cfg.padDeadzone,sens=cfg.padAngleSens,inv=cfg.padAngleInvert?-1:1;
   // the stick value that asks for rod-local angle a (back: negative)
-  const rsFor=a=>{const d=a<0?a/KICK.raiseA:-a/KICK.strikeA,u=Math.min(1,Math.abs(d)/sens);return inv*Math.sign(d)*(DZ+u*(1-DZ));};
+  const rsFor=a=>{const d=a<0?a/KICK.raiseA:-a/KICK.stickA,u=Math.min(1,Math.abs(d)/sens);return inv*Math.sign(d)*(DZ+u*(1-DZ));};
   const fa=footAngle(o.R,o.R>0),rng=(()=>{let x=o.seed*9301+49297;return()=>{x=(x*233280+49297)%2147483647;return x/2147483647;};})();
   const up=o.R<0?KICK.raiseA:AIC.catch.recv.lift.angle;
   PAD.buttons[6]={pressed:true,value:1};

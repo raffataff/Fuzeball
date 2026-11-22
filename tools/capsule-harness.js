@@ -85,7 +85,7 @@ function suite(X){
  for(const v of [20,60]){const o=leg(X,1.9,v);ok('the foot box still stops a '+v+' u/s ball dead',o.sp<1,'left at '+o.sp.toFixed(2));}
  {const o=leg(X,TOPC-0.5,60);ok('...up the shin to its top face (ball centre half a unit under it)',o.sp<1,'left at '+o.sp.toFixed(2));}
  {const o=leg(X,TOPC+P.ballR+0.1,60);ok('...and the leg takes over just past the reach of that top face',o.sp>20,'left at '+o.sp.toFixed(2));}
- {const o=leg(X,1.9,60),want=60*K.rest*(1-K.grip);ok("the foot box keeps the foot's own grip, not the leg's",near(o.sp,want,0.02),'left at '+o.sp.toFixed(3)+' want '+want.toFixed(3));}
+ {const o=leg(X,1.9,60),want=60*X.CONFIG.kick.rest*(1-K.grip);ok("the foot box keeps the foot's own grip, not the leg's",near(o.sp,want,0.02),'left at '+o.sp.toFixed(3)+' want '+want.toFixed(3));}
  // ---- a rod posed to receive or pin keeps its dead leg ---------------------------------------------------------
  {const o=leg(X,LEGY,60,{rod:{pinPose:true}});ok('pinPose: the leg stops the ball as before',o.sp<1,'left at '+o.sp.toFixed(2));}
  {const o=leg(X,LEGY,60,{rod:{pinOn:true}});ok('pinOn alone (the hold is live, the pose not latched) is the same',o.sp<1,'left at '+o.sp.toFixed(2));}
@@ -93,14 +93,14 @@ function suite(X){
  {const o=leg(X,LEGY,60,{rod:{pinPose:true}});ok('capDeadPosed off: a posed rod bounces it like any other leg',o.vx>20,'vx '+o.vx.toFixed(1));}
  K.capDeadPosed=true;
  // ---- the old behaviour is one setting away --------------------------------------------------------------------
- {const old=leg(X,LEGY,60,{rod:{pinPose:true}});K.capRest=K.rest;K.capGrip=K.grip;const o=leg(X,LEGY,60);
+ {const old=leg(X,LEGY,60,{rod:{pinPose:true}});K.capRest=X.CONFIG.kick.rest;K.capGrip=K.grip;const o=leg(X,LEGY,60);
   ok('capRest = rest and capGrip = grip give back the old dead leg exactly',near(o.vx,old.vx,1e-9)&&near(o.vz,old.vz,1e-9),'old '+old.vx.toFixed(3)+' now '+o.vx.toFixed(3));
   K.capRest=0.6;K.capGrip=0.1;}
  // ---- what the leg does not own --------------------------------------------------------------------------------
  {K.capRest=0;const a=swingInto(X);K.capRest=0.6;const b2=swingInto(X);
   ok('a swing inside the power window is untouched by capRest',near(a,b2,1e-9)&&a>1,'0: '+a.toFixed(2)+'  0.6: '+b2.toFixed(2));}
- {const trap={act:'trap'};K.capRest=0;const a=leg(X,LEGY,60,{rod:trap}).vx;K.capRest=0.6;const b2=leg(X,LEGY,60,{rod:trap}).vx;
-  ok("the AI's trap hold (holdRest / holdGrip) outranks capRest",near(a,b2,1e-9),'0: '+a.toFixed(3)+'  0.6: '+b2.toFixed(3));}
+ {const trap={act:'retrieve',retPh:'pin'};K.capRest=0;const a=leg(X,LEGY,60,{rod:trap}).vx;K.capRest=0.6;const b2=leg(X,LEGY,60,{rod:trap}).vx;
+  ok("the AI's retrieve hold (holdRest / holdGrip) outranks capRest",near(a,b2,1e-9),'0: '+a.toFixed(3)+'  0.6: '+b2.toFixed(3));}
  back();
  // ---- boost powers strikes, not touches ----------------------------------------------------------------------------
  {const E=X.S.eff[0],was=E.boost,on=()=>{E.boost=X.S.time+10;},off=()=>{E.boost=-1;};
@@ -133,7 +133,7 @@ const MUTS=[
  {n:'the pose flag alone decides',part:'col',from:'(r.pinPose||r.pinOn)',to:'r.pinPose'},
  {n:'the live pin alone decides',part:'col',from:'(r.pinPose||r.pinOn)',to:'r.pinOn'},
  {n:'the power window takes capRest',part:'col',from:'(pow?ks.restPower:(dead?ks.rest:KICK.capRest))',to:'(pow?KICK.capRest:(dead?ks.rest:KICK.capRest))'},
- {n:'a trap hold no longer outranks capRest',part:'col',from:'const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));',to:'const rest=(pow?ks.restPower:(dead?ks.rest:KICK.capRest));'},
+ {n:'a retrieve hold no longer outranks capRest',part:'col',from:'const rest=trapping?HLD.holdRest:(pow?ks.restPower:(dead?ks.rest:KICK.capRest));',to:'const rest=(pow?ks.restPower:(dead?ks.rest:KICK.capRest));'},
  {n:'the foot box takes capRest',part:'col',from:'(pow?ks.restPower:ks.rest);',to:'(pow?ks.restPower:KICK.capRest);'},
  {n:'the foot box takes capGrip',part:'col',from:'const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);',to:'const g=trapping?clamp(HLD.holdGrip,0,1):KICK.capGrip;'},
  {n:'boost powers every touch of the foot',part:'col',from:'if(S.eff[r.team].boost>S.time&&boostSwing(r))jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    // player shot',to:'if(S.eff[r.team].boost>S.time)jm*=KICK.boostHitMult;'+NL+'    jm*=stHit(r);'+NL+'    // player shot'},

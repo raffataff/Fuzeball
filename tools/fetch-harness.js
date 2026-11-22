@@ -79,7 +79,7 @@ function suite(X){
   const m=world(X,{role:'MID'});ok('...by a midfielder too',X.fetchPick(m,view(X,4,0))===true);
   const k=world(X,{role:'GK'});ok('...not by the keeper',X.fetchPick(k,view(X,4,0))===false);
   ok('not one the boot at rest already touches',X.fetchPick(world(X),view(X,FE.near-0.3,0))===false);
-  ok('...nor one too far to reach',X.fetchPick(world(X),view(X,FE.far+0.3,0))===false);
+  ok('...nor one too far to reach',X.fetchPick(world(X),view(X,P.fwdFront+0.3,0))===false);
   ok('...nor one that is rolling',X.fetchPick(world(X),view(X,4,0,FE.maxV+2,0))===false);
   ok('...nor one in the air',X.fetchPick(world(X),view(X,4,0,0,0,AIC_lowY(X)+0.5))===false);
   ok('...nor one a shot is open to (the kick takes it)',X.fetchPick(world(X,{defOff:-9,gkOff:-9}),view(X,4,-6))===true&&X.fetchPick(world(X,{defOff:10,gkOff:-20}),view(X,4,1))===false,'');
@@ -112,7 +112,7 @@ function suite(X){
  {const mk=(f)=>{const r=world(X),b=view(X,4,0);X.S.balls.push(b);r.catPh='fetch';r.ftPh='over';f(r,b);X.fetchStep(r,b);return r;};
   ok('the ball lifts: ended',mk((r,b)=>{b.m.position.y=AIC_lowY(X)+1;}).act===null&&X.CAW['fetch:lifted']>=1);
   ok('...speeds up: ended',mk((r,b)=>{b.v.set(FE.bailV+2,0,0);}).act===null&&X.CAW['fetch:moved']>=1);
-  ok('...rolls away or into the boot: ended',mk((r,b)=>{b.m.position.x=22.5+FE.far+3;}).act===null&&X.CAW['fetch:off']>=1);
+  ok('...rolls away or into the boot: ended',mk((r,b)=>{b.m.position.x=22.5+P.fwdFront+3;}).act===null&&X.CAW['fetch:off']>=1);
   ok('...the dead-ball push: ended',mk((r)=>{r.force=true;}).act===null&&X.CAW['fetch:force']>=1);
   ok('...too long: ended',mk((r)=>{r.catT=FE.abortT+1;}).act===null&&X.CAW['fetch:time']>=1);
   ok('...goes in the goal: ended',mk((r,b)=>{b.scored=true;}).act===null&&X.CAW['fetch:scored']>=1);
@@ -200,8 +200,8 @@ const MUT=[
  {n:'a forward leg holds a ball it only touches on the side',part:'phys',from:'&&PIN_DN[0]>=(PIN_DN[1]>0?P.wallDown:P.down)',to:''},
  {n:'a forward leg holds a ball it hovers over',part:'phys',from:'d<=BALL_R*FOOT_BOX_REACH+P.touch&&',to:'d<=BALL_R*FOOT_BOX_REACH+P.touch+0.6&&'},
  {n:'every role fetches',part:'catch',from:'FE.roles.indexOf(r.role)<0||',to:''},
- {n:'a ball at the boot is fetched',part:'catch',from:'rel<FE.near||rel>FE.far||',to:'rel>FE.far||'},
- {n:'a ball too far is fetched',part:'catch',from:'rel<FE.near||rel>FE.far||',to:'rel<FE.near||'},
+ {n:'a ball at the boot is fetched',part:'catch',from:'rel<FE.near||rel>SHOT.pin.fwdFront||',to:'rel>SHOT.pin.fwdFront||'},
+ {n:'a ball too far is fetched',part:'catch',from:'rel<FE.near||rel>SHOT.pin.fwdFront||',to:'rel<FE.near||'},
  {n:'a rolling ball is fetched',part:'catch',from:'||rb.v.length()>FE.maxV)return false;',to:')return false;'},
  {n:'a ball in the air is fetched',part:'catch',from:'p.y>=AIC.lowY||rb.v.length()>FE.maxV',to:'rb.v.length()>FE.maxV'},
  {n:'a ball a shot is open to is fetched',part:'catch',from:'if(pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,CA.shotV),gx,0)>=CA.lineClear)return false;',to:''},
@@ -218,7 +218,7 @@ const MUT=[
  {n:'the leg comes down at the wrong angle',part:'catch',from:'r.pinA=(fa==null?lift:fa)*dir;r.target=mn.o;',to:'r.pinA=RV.lift.angle*dir;r.target=mn.o;'},
  {n:'the leg that never takes it stays down for ever',part:'catch',from:"if(r.ftT>FE.downT||fa==null)catchEnd(r,CA.cd,'fetch:nopin');",to:''},
  {n:'a ball that moved is still waited for',part:'catch',from:"else if(rb.v.length()>FE.bailV)why='moved';",to:''},
- {n:'a ball that rolled out of range is still waited for',part:'catch',from:"else if(!rail&&(rel<FE.near-1||rel>FE.far+1))why='off';",to:''},
+ {n:'a ball that rolled out of range is still waited for',part:'catch',from:"else if(!rail&&(rel<FE.near-1||rel>SHOT.pin.fwdFront+1))why='off';",to:''},
  {n:'a fetch that never ends',part:'catch',from:"else if(r.catT>FE.abortT)why='time';",to:''},
  {n:'a lifted ball does not end it',part:'catch',from:"else if(p.y>(rail?BALL_R+SHOT.pin.yTol:AIC.lowY))why='lifted';else if(r.force)why='force';else if(rb.v",to:"else if(r.force)why='force';else if(rb.v"},
  {n:'the dead-ball push does not end it',part:'catch',from:"else if(r.force)why='force';else if(rb.v.length()>FE.bailV)",to:"else if(rb.v.length()>FE.bailV)"},
@@ -240,7 +240,7 @@ const MUT=[
  {n:'it ends before it is on the ball',part:'catch',from:'if(Math.abs(bz-(r.baseZ[mn.i]+r.offset))<=FE.alignZ){r.ftCd',to:'if(true){r.ftCd'},
  {n:'it fetches the ball again at once',part:'catch',from:"r.ftCd=S.time+FE.cd;catchEnd(r,CA.cd,'ahead:done');",to:"catchEnd(r,CA.cd,'ahead:done');"},
  {n:'a fetch ignores the lockout',part:'catch',from:'(r.ftCd||0)>S.time||',to:''},
- {n:'a ball that moved does not end it',part:'catch',from:"else if(r.ahPh!=='rest'&&(rb.v.length()>FE.bailV||rel<FE.near-1||rel>FE.far+1))why='moved';",to:''},
+ {n:'a ball that moved does not end it',part:'catch',from:"else if(r.ahPh!=='rest'&&(rb.v.length()>FE.bailV||rel<FE.near-1||rel>SHOT.pin.fwdFront+1))why='moved';",to:''},
  {n:'a carried ball counts as moved',part:'catch',from:"else if(r.ahPh!=='rest'&&(",to:"else if(("},
  {n:'a lifted ball does not end it (ahead)',part:'catch',from:"if(rb.scored)why='scored';else if(p.y>AIC.lowY)why='lifted';else if(r.ahT>FE.aheadT)why='time';",to:"if(rb.scored)why='scored';else if(r.ahT>FE.aheadT)why='time';"},
  {n:'the dead-ball push cuts off the re-seat',part:'catch',from:"else if(r.ahT>FE.aheadT)why='time';",to:"else if(r.force)why='force';else if(r.ahT>FE.aheadT)why='time';"},

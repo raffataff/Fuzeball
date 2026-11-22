@@ -13,6 +13,42 @@ function shRep(src,a,b,name){
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
 const byTeam=(v,t)=>Array.isArray(v)?v[t]:v;   // a CONFIG switch given as [red, blue] (duels), else the one value
 const lerpAng=(a,b,t)=>{let d=b-a;if(d>Math.PI)d-=2*Math.PI;else if(d<-Math.PI)d+=2*Math.PI;return a+d*t;};   // the short way round (a rod's angle wraps in a snake)
+// --- foot cross-section (CONFIG.physics.footBox + footTaper) ---
+// box-local corners (lx down the leg, u toward the toe): top heel, top toe, sole toe, sole heel
+const _fq=new Float64Array(8);
+function footQuad(){
+ const P=CONFIG.physics,B=P.footBox,T=P.footTaper&&P.footTaper.on?P.footTaper:null,q=_fq;
+ q[0]=-B.x;q[1]=-B.y+(T?T.topHeel:0);q[2]=-B.x;q[3]=B.y-(T?T.topToe:0);q[4]=B.x;q[5]=B.y-(T?T.toe:0);q[6]=B.x;q[7]=-B.y+(T?T.heel:0);
+ return q;
+}
+// half-width of the section at lx on the toe (u>=0) or heel side
+function footHalfW(lx,u){
+ const q=footQuad(),f=clamp((lx-q[0])/(q[4]-q[0]),0,1);
+ return u>=0?q[3]+(q[5]-q[3])*f:-(q[1]+(q[7]-q[1])*f);
+}
+// closest point of the section to (lx, ly); s = kickDir (ly is world-x-signed); o = [lx, ly] (default a shared scratch)
+const _fcO=[0,0];
+function footClamp(lx,ly,s,o){
+ o=o||_fcO;const q=footQuad(),u=ly*s,f=(lx-q[0])/(q[4]-q[0]);
+ if(f>=0&&f<=1&&u<=q[3]+(q[5]-q[3])*f&&u>=q[1]+(q[7]-q[1])*f){o[0]=lx;o[1]=ly;return o;}
+ let bd=1e18,cx=0,cu=0;
+ for(let i=0;i<8;i+=2){
+  const ax=q[i],au=q[i+1],j=(i+2)&7,ex=q[j]-ax,eu=q[j+1]-au,t=clamp(((lx-ax)*ex+(u-au)*eu)/(ex*ex+eu*eu),0,1),px=ax+ex*t,pu=au+eu*t,d=(lx-px)*(lx-px)+(u-pu)*(u-pu);
+  if(d<bd){bd=d;cx=px;cu=pu;}
+ }
+ o[0]=cx;o[1]=cu*s;return o;
+}
+// the leg capsule's length as a fraction of the arm: a tapered foot ends it at the box's top (else the shin pokes out past the heel face)
+function footLegT(){const P=CONFIG.physics;return P.footTaper&&P.footTaper.on?clamp((P.arm*P.footT+P.footBoxOff.x-P.footBox.x)/P.arm,0,1):1;}
+// the section as a mesh (rod-local: x toe-ward for s = kickDir, y up the leg), grown by pad (debug / sizer wireframes)
+function footGeo(s,pad){
+ const g=new THREE.BoxGeometry(1,1,1),a=g.attributes.position,q=footQuad(),B=CONFIG.physics.footBox;pad=pad||0;
+ for(let i=0;i<a.count;i++){
+  const x=a.getX(i),y=a.getY(i),top=y>0,toe=x*s>0,w=toe?(top?q[3]:q[5]):(top?q[1]:q[7]);
+  a.setXYZ(i,(w+(toe?pad:-pad))*s,(top?1:-1)*(B.x+pad),Math.sign(a.getZ(i))*(B.z+pad));
+ }
+ a.needsUpdate=true;g.computeVertexNormals();return g;
+}
 // ---- inline icon set ----
 // shared SVG marks for the menus (replacing OS colour emoji); they draw on `currentColor` and are sized by CSS (`.ico svg{width:...}`)
 const ICO={

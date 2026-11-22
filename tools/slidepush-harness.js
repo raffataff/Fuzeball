@@ -14,7 +14,7 @@ const real=[
  slice(rd('js/rods.js'),'function kickStyleCfg(r){',NL+'function passFaceOK('),
  slice(rd('js/rods.js'),'function holdCfg(r){',NL+'function kickRod('),
  slice(rd('js/shots.js'),'function shotsOn(){',NL+'function shotTrigD('),
- slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+'const SHOT_CURVE_KEYS'),
+ slice(rd('js/shots.js'),'function shotHoldUpdate(r,lt){',NL+'// --- what the charge is worth ---'),
  slice(rd('js/stats.js'),'function stHit(r){',NL),
  slice(rd('js/stats.js'),'function stGrip(r){',NL),
  slice(rd('js/stats.js'),'function stCapFrac(r){',NL),
@@ -56,7 +56,7 @@ function mkRod(over){                                   // one man at z=0, red, 
  const r={idx:0,x:0,team:0,role:'MID',baseZ:[0],removedUntil:[0],offset:0,maxOff:20,trnHidden:false,
   angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
   kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,
-  hold:{on:false,holdRest:K.rest,holdGrip:K.grip,carryMult:1},stats:null};
+  hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:K.grip,carryMult:1},stats:null};
  return Object.assign(r,over||{});
 }
 function mkBall(z,vz,type){                             // ball resting on the floor
@@ -146,7 +146,7 @@ console.log('   boot 80 u/s:  L2 off '+slideInto(80).ball.toFixed(1)+
 ok('below the engage threshold the hold is off',
  (()=>{const r=mkRod();X.shotHoldUpdate(r,H.from);return !r.hold.on;})());
 ok('at the threshold it is EXACTLY a normal contact',(()=>{const r=mkRod();X.shotHoldUpdate(r,H.from+1e-9);
- return near(r.hold.holdRest,K.rest,1e-6)&&near(r.hold.holdGrip,X.stGrip(r),1e-6)&&near(r.hold.carryMult,1,1e-6);})());
+ return near(r.hold.holdRest,X.CONFIG.kick.rest,1e-6)&&near(r.hold.holdGrip,X.stGrip(r),1e-6)&&near(r.hold.carryMult,1,1e-6);})());
 ok('at full squeeze it is the configured hold',(()=>{const r=mkRod();X.shotHoldUpdate(r,1);
  return near(r.hold.holdRest,H.rest,1e-9)&&near(r.hold.holdGrip,H.grip,1e-9)&&near(r.hold.carryMult,H.carry,1e-9);})());
 ok('and half depth sits between the two',(()=>{const r=mkRod();X.shotHoldUpdate(r,(H.from+1)/2);
@@ -178,8 +178,8 @@ ok('shots off = no hold at all',(()=>{const s=X.CONFIG.shots.on;X.CONFIG.shots.o
  const r=mkRod();X.shotHoldUpdate(r,1);X.CONFIG.shots.on=s;return !r.hold.on;})());
 ok('hold.on:false = no hold at all',(()=>{const s=H.on;H.on=false;
  const r=mkRod();X.shotHoldUpdate(r,1);H.on=s;return !r.hold.on;})());
-ok('the AI trap/dribble blocks still resolve through holdCfg',
- X.holdCfg(mkRod({act:'trap'}))===X.AIC.trap&&X.holdCfg(mkRod({act:'dribble'}))===X.AIC.dribble);
+ok('the AI retrieve/dribble blocks still resolve through holdCfg',
+ X.holdCfg(mkRod({act:'retrieve',retPh:'pin'}))===X.AIC.retrieve.hold&&X.holdCfg(mkRod({act:'dribble'}))===X.AIC.dribble);
 
 console.log(NL+'=== 7. ball type no longer swings the feel as wildly ===');
 const types=['classic','fire','cannon','golden'];

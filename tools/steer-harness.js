@@ -32,7 +32,7 @@ const stubs=[
  "const STC=CONFIG.stats; function assistAng(r,pass){return pass?AIC.dribble.pass.assist:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
  slice(rd('js/stats.js'),'function assistTurn(',NL+'// the most aimAssist'),
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -42,7 +42,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.pass,g.flight,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,steerHeading:steerHeading,steerSlide:steerSlide,steerV:steerV,steerReach:steerReach,passEval:passEval,pinPlay:pinPlay,pinPlayStart:pinPlayStart,pinFire:pinFire,CAW:CAW,freeBall:freeBall,runV:runV,runMass:runMass,runReach:runReach,freeReach:freeReach,runPlan:runPlan,runStart:runStart,runStep:runStep,runEnd:runEnd,BALL_TYPES:BALL_TYPES,setPick:function(v){PICK=v;},setLaunch:function(f){LAUNCH=f;}};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,steerHeading:steerHeading,steerSlide:steerSlide,steerV:steerV,pinSteer:pinSteer,SWINGS:SWINGS,steerReach:steerReach,passEval:passEval,pinPlay:pinPlay,pinPlayStart:pinPlayStart,pinFire:pinFire,CAW:CAW,freeBall:freeBall,runV:runV,runMass:runMass,runReach:runReach,freeReach:freeReach,runPlan:runPlan,runStart:runStart,runStep:runStep,runEnd:runEnd,BALL_TYPES:BALL_TYPES,setPick:function(v){PICK=v;},setLaunch:function(f){LAUNCH=f;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -64,7 +64,7 @@ function view(X,rel,z){const b={scored:false,m:{position:{x:-37.5+rel,y:X.BALL_R
 
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
- const CA=X.AIC.catch,ST=CA.steer,T=ST.slide,top=T[T.length-1];CA.recv.ready.on=false;   // these pass tests are not about the receiver's readiness
+ const CA=X.AIC.catch,ST=CA.steer,T=ST.slide,top=T[T.length-1];ST.at=X.SWINGS.pinPass.strike;CA.recv.ready.on=false;   // these pass tests are not about the receiver's readiness, nor the pin pass's pace (laid out on the table's own sweep)
  const near=(a,b,e)=>Math.abs(a-b)<=(e==null?1e-6:e);
  // ---- the table ------------------------------------------------------------------------------------------------
  ok('the table starts at no slide, no heading and only rises',T[0][0]===0&&T[0][1]===0&&T.every((p,i)=>i===0||(p[0]>T[i-1][0]&&p[1]>T[i-1][1])));
@@ -91,7 +91,10 @@ function suite(X){
   ok('a pass from a pin reaches at least its standing heading, even with no room',(r.offset=r.maxOff,X.steerReach(r,1)===ST.standing));
   r.offset=0;
   ok('with room it reaches as far as its slide turns the ball',near(X.steerReach(r,1),Math.max(ST.standing,X.steerHeading(X.steerV(r,1)))));
-  ok('…which is further than standing',X.steerReach(r,1)>ST.standing);}
+  ok('…which is further than standing',X.steerReach(r,1)>ST.standing);
+  const at=ST.at;ST.at=at/0.7;
+  ok('a pin pass quicker than the table turns less off the same slide',near(Math.tan(X.pinSteer(20)),Math.tan(X.steerHeading(20))*0.7));
+  ok('…and reaches no wider than that',near(X.steerReach(r,1),Math.max(ST.standing,X.pinSteer(X.steerV(r,1)))));ST.at=at;}
  // ---- the mates passEval offers ----------------------------------------------------------------------------------
  {const r=world(X,{mates:[-9,0,9,12]});const run=15.5;
   const reach=X.steerReach(r,1),th=(z)=>Math.atan2(z,run);
@@ -219,7 +222,7 @@ function suite(X){
   const small=fw({maxOff:6.2});const v1=X.runV(small,1,0,1);
   ok('a short rod can only run as fast as its travel allows, and that run fits',v1>0&&v1<top&&feas(small,0,1,v1),v1);
   ok('…and one step faster would not',!feas(small,0,1,v1+FR.vStep));
-  ok('with a ball near the +z end, a run to -z would have to back off past the end, and one to +z has little room after it',X.runV(small,1,5,-1)===0&&X.runV(small,1,5,1)>0&&X.runV(small,1,5,1)<X.runV(small,1,0,1),X.runV(small,1,5,-1)+' / '+X.runV(small,1,5,1));
+  ok('with a ball near the +z end, a run to -z would have to back off past the end, and one to +z has little room after it',X.runV(small,1,4.5,-1)===0&&X.runV(small,1,4.5,1)>0&&X.runV(small,1,4.5,1)<X.runV(small,1,0,1),X.runV(small,1,4.5,-1)+' / '+X.runV(small,1,4.5,1));
   const RT=FR.reach,as=X.AIC.dribble.pass.assist,last=RT[RT.length-1];
   ok('the reach table starts at the lightest ball and only falls with mass',RT.every((p,i)=>i===0||(p[0]>RT[i-1][0]&&p[1]<RT[i-1][1])));
   ok('every measured mass reads back as its heading plus the pass assist',RT.every(p=>near(X.runReach(r,p[0]),p[1]+as)));
@@ -247,7 +250,7 @@ function suite(X){
   ok('with a ball between two men it is the man with the shorter back-off that runs',!!nine&&nine.mi===1,nine&&nine.mi);
   const sm=fw({maxOff:6.2});
   ok('no man with room: no run',X.runPlan(sm,6,0.476)===null);
-  ok('a ball near the +z end of a short rod: no run to -z (it would have to back off past the end), a small one to +z',X.runPlan(sm,5,-0.2)===null&&!!X.runPlan(sm,5,0.15));
+  ok('a ball near the +z end of a short rod: no run to -z (it would have to back off past the end), a small one to +z',X.runPlan(sm,4.5,-0.2)===null&&!!X.runPlan(sm,4.5,0.15));
   r.offset=-6;
   ok('the man already part way into his run-up is the cheapest',X.runPlan(r,0,0.476).cost<X.runPlan(fw(),0,0.476).cost);}
  // ---- starting a run ---------------------------------------------------------------------------------------------
@@ -363,7 +366,8 @@ const MUT=[
  {n:'…or past vMax',part:'lane',from:'Math.min(ST.vMax,DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r),room/ST.hold)',to:'Math.min(DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r),room/ST.hold)'},
  {n:'…or its own top speed',part:'lane',from:'Math.min(ST.vMax,DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r),room/ST.hold)',to:'Math.min(ST.vMax,room/ST.hold)'},
  {n:'the room is read from the wrong end',part:'lane',from:'room=s>0?r.maxOff-r.offset:r.offset+r.maxOff;',to:'room=s>0?r.offset+r.maxOff:r.maxOff-r.offset;'},
- {n:'a rod with no room reaches nothing, not even its standing heading',part:'lane',from:'return Math.max(ST.standing,steerHeading(steerV(r,s)));',to:'return steerHeading(steerV(r,s));'},
+ {n:'a rod with no room reaches nothing, not even its standing heading',part:'lane',from:'return Math.max(ST.standing,pinSteer(steerV(r,s)));',to:'return pinSteer(steerV(r,s));'},
+ {n:'a pin pass is judged on the table as measured, whatever its sweep',part:'lane',from:'return Math.max(ST.standing,pinSteer(steerV(r,s)));',to:'return Math.max(ST.standing,steerHeading(steerV(r,s)));'},
  {n:'passEval looks at the +z side for every mate',part:'pass',from:'steerReach(r,th<0?-1:1)',to:'steerReach(r,1)'},
  {n:'passEval does not limit a pin pass to what the slide reaches without a launch',part:'pass',from:'if(!pinLaunch&&steer){if(Math.abs(th)>(mode===\'pin\'?steerReach(r,th<0?-1:1):freeReach(r,bz,th<0?-1:1,fm)))continue;}',to:'if(!pinLaunch&&steer){}'},
  {n:'a free pass is judged as a pin pass (the pin\'s reach, not the run\'s)',part:'pass',from:':freeReach(r,bz,th<0?-1:1,fm)',to:':steerReach(r,th<0?-1:1)'},

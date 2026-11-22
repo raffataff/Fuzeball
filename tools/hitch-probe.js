@@ -58,6 +58,7 @@
   await ev('big',()=>{S.eff[0].big=S.time+PWR.big;});
   await ev('cannon',()=>cannonExplodeFx(at));
   await ev('fracture',()=>{const r=rods.find(x=>x.team===1);spawnFracture(r,0);});
+  await ev('respawn',()=>{const r=rods.find(x=>x.team===0);r.removedUntil[0]=S.time+0.75;});   // the swirl, its light, then the man fading back in
   await ev('goal',()=>{const b=S.balls[0]||makeBall('classic');b.m.position.set(CONFIG.table.L/2+1,2,0);syncBall(b);b.cur.copy(b.m.position);onGoal(0,b);});
   await ev('replay',()=>replayStart());
   await ev('finale',()=>vfxFinale(0));

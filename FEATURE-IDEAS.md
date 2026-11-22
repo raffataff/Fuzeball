@@ -149,7 +149,7 @@ Proposal — **charge & release**:
 - **Sweet spot pays out properly**: a clean strike gets a visible shockwave ring, a distinct audio
   layer, and a real power bonus. Right now landing it is invisible.
 
-This gives the AI's existing `trapShot`/`passShot` styles human counterparts, and turns the
+This gives the AI's existing `pinShot`/`pass` styles human counterparts, and turns the
 already-built trap behaviour into something a player can *counter* rather than just watch.
 
 ### 2.2 Give the player passing — **CONTROLLER HALF BUILT 2026-08-22**
@@ -163,7 +163,7 @@ already-built trap behaviour into something a player can *counter* rather than j
 >
 > #### The original note
 
-`ai.js` has `passEval`, `passPick`, `passShot`, `dribble.pass`. Players have none of it. Add a pass
+`ai.js` has `passEval`, `passPick`, `swings.pass`, `dribble.pass`. Players have none of it. Add a pass
 input (a second button, or tap-vs-hold if buttons are tight) that plays a controlled ball to your own
 next rod, plus a **one-two bonus**: receive cleanly on the next rod within a window and the follow-up
 shot gets a power/aim boost.

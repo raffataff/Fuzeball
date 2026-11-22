@@ -162,8 +162,8 @@ function updateTCVis(){                                    // TC sliders + teste
  $('optChargeRow').classList.toggle('hidden',!off||!shots||nr);
  $('optChargeHint').classList.toggle('hidden',!shots);
  $('optChargeHint').innerHTML=off
-  ?(nr?'Hold <b>RT / R2</b> with <b>X</b> — or with the right stick pulled back — to wind up, then <b>A</b> or a forward flick of the stick shoots. RT alone only hardens the swing; letting go without kicking cancels the charge. A tapped kick is unchanged.'
-   :'<b>RT / R2</b> holds the wind-up and the kick button stays instant — nothing about a tapped kick changes. Moving the charge onto the kick button makes a tap fire on RELEASE, which costs you the length of your own tap before the ball is struck.')
+  ?(nr?'Hold <b>RT / R2</b> with <b>X</b> — or with the right stick pulled back — to wind up, then <b>A</b> or a forward flick of the stick shoots. <b>A</b> passes and <b>RT + A</b> shoots with no wind-up; letting go without kicking cancels the charge.'
+   :'<b>RT / R2</b> holds the wind-up and the kick button stays instant: a tap passes, with RT it shoots. Moving the charge onto the kick button makes a tap fire on RELEASE, which costs you the length of your own tap before the ball is struck.')
   :'In <b>Total Control</b> the wind-up is the right stick: pull back and hold <b>both triggers</b> to charge, flick forward to strike.';
 }
 function updateAxisLines(){                                   // highlight the bound axis on each well
@@ -173,8 +173,8 @@ function updateAxisLines(){                                   // highlight the b
  $('optLLbl').textContent='L · '+(cfg.padSlideAxis==='ly'?'↕':'↔')+' slide';
  $('optRLbl').textContent='R · '+(cfg.padAngleAxis==='ry'?'↕':'↔')+' angle'+(tc?' + '+(cfg.padAngleAxis==='ry'?'↔':'↕')+' swerve':'');
  // TC hint names the actual axes in play, so rebinding the angle axis re-labels the swerve line
- $('optTCHint').textContent='LT = precision steps + a softer swing · RT = fast steps + a harder one · BOTH, with the '
-  +'stick pulled back = charge · A = kick · X = raise · right stick '
+ $('optTCHint').textContent='LT = precision steps · RT = fast steps · BOTH, with the '
+  +'stick pulled back = charge · A = pass, with RT shoot · X = raise · right stick '
   +(cfg.padAngleAxis==='ry'?'↔':'↕')+' = swerve line (bends the ball on contact) · angle stays '
   +(cfg.padAngleAxis==='ry'?'↕':'↔')+'. Triggers are analog — half-squeeze, half effect.';
 }
@@ -214,7 +214,7 @@ function kbRender(){
  }).join('')
   +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
   +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&fl.length&&kl.length?fixed('Forward pin',bindLabel(fl[0])+' + '+bindLabel(kl[0])):'')
-  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&SHOT.snake&&SHOT.snake.on&&kl.length?fixed('Snake shot',bindLabel(kl[0])+' x2'):'')
+  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&SHOT.snake&&SHOT.snake.on&&kl.length?fixed('Snake shot',shotPinPow()?bindLabel(bindList('power')[0]||'')+' + '+bindLabel(kl[0]):bindLabel(kl[0])+' x2'):'')
   +fixed('Camera views','NUM 1-9')+fixed('Rod camera','NUM 0')
   +fixed('Pause','ESC');
 }

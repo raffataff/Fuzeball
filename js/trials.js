@@ -122,7 +122,7 @@ function trialStart(id){
 function trialHint(){
  const H=bindHintRods(true,true);
  return [[bindJoin([bindHint('retry','retry'),'[ESC] pause']),H.act,bindJoin([H.mod,H.sw])].filter(Boolean).join('\n'),
-  '{VIEW} retry · {START} pause\n{A} kick · {X} raise · {LB} {RB} switch rod'];
+  '{VIEW} retry · {START} pause\n{A} pass · {RT}+{A} shot · {X} raise · {LB} {RB} switch rod'];
 }
 // end of trainingEnter: a queued trial takes over the sandbox; true if it did (training.js skips its toast)
 function trialArm(){
@@ -220,7 +220,7 @@ function trialSpawnFor(i){
 function trialServe(){
  const s=trialSpawnFor(TRL.att);
  clearBalls();
- // every attempt opens from rest: clears swing latches, held-forward evades and trap state
+ // every attempt opens from rest: clears swing latches, held-forward evades and action state
  if(typeof resetRodRotation==='function')resetRodRotation();
  const b=trnSpawnBall(TRN.ballType,s.x,s.z);
  b.v.set(s.vx||0,s.vy||0,s.vz||0);
@@ -399,7 +399,7 @@ function drillTick(){
  if(!b){drillLose(D);return;}
  // the swing first: it reads the pin as it stood before this frame let go of it
  const k=r.kickT>=0;
- if(k&&!D.kick)D.sw={t:S.time,pin:!!(D.pin&&!D.pin.fwd&&r.kickStyle==='trapShot'),roll:!!(D.pin&&D.pin.roll),ch:D.ch,tT:D.tT};
+ if(k&&!D.kick)D.sw={t:S.time,pin:!!(D.pin&&!D.pin.fwd&&r.kickStyle==='pinShot'),roll:!!(D.pin&&D.pin.roll),ch:D.ch,tT:D.tT};
  D.kick=k;
  drillPins(D,r,b);
  const mv=D.mv;

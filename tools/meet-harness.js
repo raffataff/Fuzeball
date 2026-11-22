@@ -25,7 +25,7 @@ const stubs=[
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
  "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -154,7 +154,7 @@ const MUT=[
  {n:'the pose goes on at once',from:'if(fa!=null&&tA<=MT.dropT){r.pinOn=true',to:'if(fa!=null){r.pinOn=true'},
  {n:'the pose never goes on',from:'if(fa!=null&&tA<=MT.dropT){r.pinOn=true',to:'if(false){r.pinOn=true'},
  {n:'the pose time ignores the closing speed',from:'/Math.max(r.slideV*e-bu,1);',to:'/Math.max(1,1);'},
- {n:'the pose is the fixed pin angle, whatever the ball\'s depth',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;r.raise=false;}',to:'r.pinFwd=r.catFwd;r.pinA=CA.front.angle*dir;r.raise=false;}'},
+ {n:'the pose is the fixed pin angle, whatever the ball\'s depth',from:'r.pinFwd=r.catFwd;r.pinA=fa*dir;r.raise=false;}',to:'r.pinFwd=r.catFwd;r.pinA=SHOT.pin.angle*dir;r.raise=false;}'},
  {n:'the men are never lifted',from:'else catchUp(r);\n}\n// is this ball',to:'else{r.pinOn=false;r.pinPose=false;r.pinA=null;}\n}\n// is this ball'},
  {n:'the step reads the delayed view',from:'rb=best.real||best,p=rb.m.position,v=rb.v,rel=(p.x-r.x)*dir,m=r.catMan;',to:'rb=best,p=rb.m.position,v=rb.v,rel=(p.x-r.x)*dir,m=r.catMan;'},
  // the ends

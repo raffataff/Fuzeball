@@ -46,7 +46,7 @@
   const b=makeBall('classic');
   b.m.position.set(r.x+dir*o.dist,BALL_R,r.baseZ[o.man]+r.offset);b.v.set(0,0,0);syncBall(b);b.cur.copy(b.m.position);b.prev.copy(b.m.position);
   for(let f=0;f<4;f++){t+=1000/o.fps;loop(t);}
-  kickRod(r,null);
+  kickRod(r,'shoot');
   const shots=[],info=[],trace=[];
   for(let f=0;f<=o.frames;f++){
    t+=1000/o.fps;loop(t);

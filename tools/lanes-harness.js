@@ -28,7 +28,7 @@ const stubs=[
  "function rngAi(){return function(){return 0.99;};}",
  "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()
 ].join(NL);
 
 function boot(mut){
@@ -108,7 +108,7 @@ function suite(X){
  {const r=world(X,{role:'MID',maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);X.setPick({score:3,x:37.5,z:5,clr:4,onward:3,th:0.1,rod:{role:'ATT'}});
   ok('MID can still pass through a clear lane at holdT',X.pinPlay(r,best,late,dt)===2);X.setPick(null);}
  // ---- the snake past holdT ----
- {const SN=CA.snake,K0=JSON.stringify(SN);SN.use={rookie:1,pro:1,legend:1};SN.relMin=0;SN.relMax=9;
+ {const SN=CA.snake,K0=JSON.stringify(SN);SN.use={rookie:1,pro:1,legend:1};
   const r=world(X);r.angle=CA.recv.fwdMin+0.4;pinned(X,r,0,3.5);const best=view(X,3.5,0);
   const v=X.pinPlay(r,best,late,dt);
   ok('a snake hold with its lane shut is not fired at holdT',v===0&&r.pcSn===true,'v='+v+' sn='+r.pcSn);

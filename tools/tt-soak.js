@@ -19,7 +19,7 @@
  }
  // --- one man, one ball: the strike on its own ---
  window.ttStrikeScene=function(o){
-  o=Object.assign({ri:5,man:1,d:-0.72,u:25,sg:1,w:0,lead:0.5,tf:0.32,T:1.8,seed:1,diff:'pro',a:null,style:'trapShot',curve:null,trace:false,assist:true,tz:null},o||{});
+  o=Object.assign({ri:5,man:1,d:-0.72,u:25,sg:1,w:0,lead:0.5,tf:0.32,T:1.8,seed:1,diff:'pro',a:null,style:'pinShot',curve:null,trace:false,assist:true,tz:null},o||{});
   const d0=[cfg.diffRed,cfg.diffBlue],as0=[CONFIG.stats.assistBase,CONFIG.stats.assistMax];cfg.diffRed=cfg.diffBlue=o.diff;if(!o.assist){CONFIG.stats.assistBase=0;CONFIG.stats.assistMax=0;}
   const alone=r=>{for(const q of rods)if(q!==r)for(let i=0;i<q.baseZ.length;i++)q.removedUntil[i]=1e9;};
   try{
@@ -38,7 +38,7 @@
    for(let i=0;i<Math.round(o.T*SIM.hz);i++){
     const t=i/SIM.hz,p=b.m.position,gap=(zman()-p.z)*sg;
     if(aw&&(fired<0||r.kickT>=0))r.target=clamp(r.offset+sgn*aw*FIX,-r.maxOff,r.maxOff);else if(!aw)r.target=r.offset;
-    if(fired<0&&t>=o.tf){r.pinOn=false;if(o.tz!=null)r.aimEv={best:{tz:o.tz,clr:5},goalX:60};kickRod(r,o.style,null,o.curve?Object.assign({},AIC.trapShot,o.curve):undefined);fired=t;r.catSw=true;gap0=gap;}
+    if(fired<0&&t>=o.tf){r.pinOn=false;if(o.tz!=null)r.aimEv={best:{tz:o.tz,clr:5},goalX:60};kickRod(r,o.style,null,o.curve?Object.assign({},SWINGS.pinShot,o.curve):undefined);fired=t;r.catSw=true;gap0=gap;}
     updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(b.m.position);
     if(fired>=0&&!hit&&r.kickHit)hit={t:+(t-fired).toFixed(3),gap:+((zman()-p.z)*sg).toFixed(2),sv:+r.slideV.toFixed(1),cz:+p.z.toFixed(2)};
     if(o.trace&&i%6===0)L.push(`${t.toFixed(2)} kt=${r.kickT.toFixed(2)} off=${r.offset.toFixed(1)} sv=${r.slideV.toFixed(0)} ang=${(r.angle*dir).toFixed(2)} | ball rel=${((p.x-r.x)*dir).toFixed(2)} z=${p.z.toFixed(1)} v=${(b.v.x*dir).toFixed(1)},${b.v.y.toFixed(1)},${b.v.z.toFixed(1)}`);
@@ -106,9 +106,9 @@
   const v=AIC.catch.shotV;AIC.catch.shotV=DINKV;try{return __to0.apply(this,arguments);}finally{AIC.catch.shotV=v;}
  };
  window.kickRod=function(r,style,aim,curve){
-  if(T&&T.dink&&r.ttOn&&r.ttPh==='strike'&&r.kickT<0)curve=Object.assign({},AIC.trapShot,DINK);
+  if(T&&T.dink&&r.ttOn&&r.ttPh==='strike'&&r.kickT<0)curve=Object.assign({},SWINGS.pinShot,DINK);
   if(T&&r.kickT<0){
-   const tt=r.ttOn&&r.ttPh==='strike',k=tt?(r.ttW?'cut':'straight'):style==='trapShot'?'pin':style==='pass'?'pass':'plain';
+   const tt=r.ttOn&&r.ttPh==='strike',k=tt?(r.ttW?'cut':'straight'):style==='pinShot'?'pin':style==='pass'?'pass':'plain';
    T.sw.push({t:S.time,team:r.team,k,sc:S.score[r.team],clr:tt?r.ttClr:null,role:tt?r.role:null});
    T.n[k]=(T.n[k]||0)+1;
   }

@@ -46,18 +46,18 @@ function suite(X,quiet){
  let n;
  /* 1. what each mode's hint says */
  fresh(X);
- ok(/\[SPACE\] \[LMB\] kick/.test(kb(X))&&/\{A\} kick/.test(pd(X)),'a match: kick on both devices, off the bindings');
+ ok(/\[SPACE\] \[LMB\] pass/.test(kb(X))&&/\{A\} pass/.test(pd(X)),'a match: kick (the pass) on both devices, off the bindings');
  ok(/switch rod/.test(kb(X))&&/\{LB\} \{RB\} switch rod/.test(pd(X)),'a seat holding more than one rod is offered switching');
  fresh(X,[seat(['kbd','mouse'],1)]);ok(!/switch rod/.test(kb(X))&&X.HUD.hintSrcP===null,'one rod, no pad: no switching, no pad lines');
  fresh(X,[seat(['pad*'],2)]);ok(X.HUD.hintSrc===null&&/\{LS\} slide/.test(pd(X)),'a pad-only seat: pad lines only');
  fresh(X,[]);ok(/camera/.test(kb(X))&&pd(X)==='{Y} camera','spectating: the camera alone');
  fresh(X);X.cfg.padControlMode='total';ok(/\{LT\} fine/.test(X.matchHint()[1])&&!/\{LT\} fine/.test(pd(X)),'Total Control changes the pad line it would give');
- fresh(X);ok(/\[T\] panel/.test(X.trainingHint()[0])&&/\[SPACE\] \[LMB\] kick/.test(X.trainingHint()[0]),'the sandbox: its own keys and the rod clauses');
+ fresh(X);ok(/\[T\] panel/.test(X.trainingHint()[0])&&/\[SPACE\] \[LMB\] pass/.test(X.trainingHint()[0]),'the sandbox: its own keys and the rod clauses');
  ok(/\[R\] retry/.test(X.trialHint()[0])&&/\{VIEW\} retry/.test(X.trialHint()[1]),'a trial: retry first');
 
  /* 2. a rebind reaches every mode's hint once Options closes over the pause menu */
  fresh(X);X.bindSet('kick',['KeyX','Mouse1']);X.closeOptions();
- ok(/\[X\] \[MMB\] kick/.test(kb(X))&&!/SPACE/.test(kb(X)),'Kick Off: the new kick keys after Options closes');
+ ok(/\[X\] \[MMB\] pass/.test(kb(X))&&!/SPACE/.test(kb(X)),'Kick Off: the new kick keys after Options closes');
  ok(X.HUD.hintT===5,'...handed over afresh (the hint comes back at full strength)');
  fresh(X);X.cfg.padControlMode='total';X.closeOptions();ok(/\{LT\} fine/.test(pd(X)),'Kick Off: a pad mode change reaches the pad line');
  fresh(X);X.S.trn={};X.hudHint(...X.trainingHint());X.bindSet('raise',['KeyJ']);X.bindSet('finesse',['KeyZ']);X.bindSet('camera',['KeyN']);X.closeOptions();

@@ -49,7 +49,7 @@
    for(const q of S.balls){const d=Math.abs(q.m.position.x-r.x);if(d<bd){bd=d;b=q;}}
    if(b){
     const bx=b.m.position.x,bz=b.m.position.z,gx=dir>0?F.L/2:-F.L/2,ev=r.aimEv&&r.aimEv.best?r.aimEv:null;
-    const k=style==='trapShot'?'pin':style==='pass'?'pass':'plain',RX=aim?rods.find(q=>q.team===r.team&&Math.abs(q.x-aim.x)<0.5)||null:null;
+    const k=style==='pinShot'?'pin':style==='pass'?'pass':'plain',RX=aim?rods.find(q=>q.team===r.team&&Math.abs(q.x-aim.x)<0.5)||null:null;
     const tx=aim?aim.x:gx,tz=aim?aim.z:(ev?ev.best.tz:0);
     T.sw.push({rod:r,t:S.time,team:r.team,role:r.role,k,bx,bz,ev:!!ev,clr:ev?ev.best.clr:null,want:Math.atan2(tz-bz,(tx-bx)*dir)*DEG,n:0,back:0,h:null,h0:null,sp:0,lz:null,opp:null,ft:null,fr:null,bvx:b.v.x*dir,bvz:b.v.z,sv:0,rsv:r.slideV,
      csv:r.catSv||0,rv:r.act==='run'?r.rnS*r.rnV:0,rth:r.act==='run'?r.rnTh:0,rx:RX,rxa:RX?RX.angle*RX.kickDir:null,rxact:RX?(RX.act||'-'):null,org:r.pinB?'pin':(r.act||'free'),rel:(bx-r.x)*dir,dz:nearestZ(r,bz),ang:r.angle*dir,pinv:r.pinB?b.v.z:null});
@@ -113,7 +113,7 @@
       T.sc=S.score[0]+S.score[1];T.scT=[S.score[0],S.score[1]];
      }
      if(o.rest)restPose(o.rest);
-     if(o.plant)for(const r of rods)if(r.kickT>=0&&r.kickStyle!=='trapShot'&&!r.catSw&&!isUserRod(r))r.target=r.offset;   // experiment: a swing brakes the slide from its first step (no waiting)
+     if(o.plant)for(const r of rods)if(r.kickT>=0&&r.kickStyle!=='pinShot'&&!r.catSw&&!isUserRod(r))r.target=r.offset;   // experiment: a swing brakes the slide from its first step (no waiting)
      updateRods(FIX);physics(FIX);S.time+=FIX;
      for(const q of S.balls)q.cur.copy(q.m.position);
      if(i%6===0)for(const d of rods){
@@ -182,7 +182,7 @@
   LAST=null;let fired=false,vzAt=0,steps=0;
   try{
    for(let i=0;i<Math.round((o.T+0.5)*SIM.hz);i++){
-    if(!fired&&(o.speed===0||(sg>0?r.offset>=o.at:r.offset<=o.at))){__ka_kr0(r,o.style==='pass'?'pass':null,o.aim||null,null);fired=true;vzAt=r.vz;if(o.speed===0)r.target=r.offset;}
+    if(!fired&&(o.speed===0||(sg>0?r.offset>=o.at:r.offset<=o.at))){__ka_kr0(r,o.style==='pass'?'pass':'shoot',o.aim||null,null);fired=true;vzAt=r.vz;if(o.speed===0)r.target=r.offset;}
     if(o.speed===0)r.target=r.offset;
     updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(q.m.position);steps++;
     if(fired&&r.kickT<0&&steps>5)break;
@@ -241,7 +241,7 @@
   try{
    for(let i=0;i<Math.round((o.hold+o.T+0.3)*SIM.hz);i++){
     const t=i/SIM.hz;
-    if(!fired&&t>=o.hold){vzRel=r.pinB?r.pinB.v.z:0;__ka_kr0(r,o.style==='pass'?'pass':null,o.aim||null,null);fired=true;tFire=t;}
+    if(!fired&&t>=o.hold){vzRel=r.pinB?r.pinB.v.z:0;__ka_kr0(r,o.style==='pass'?'pass':'shoot',o.aim||null,null);fired=true;tFire=t;}
     r.target=r.offset+(fired?sv:cv)*FIX;
     updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(q.m.position);
     if(fired&&r.kickT<0&&t>tFire+0.1)break;
@@ -279,7 +279,7 @@
   try{
    for(let i=0;i<Math.round((o.T+o.hold+0.4)*SIM.hz);i++){
     const t=i/SIM.hz,w=r.baseZ[mi]+r.offset-b.m.position.z;
-    if(!fired&&(o.Tc!=null?(w+r.slideV*o.Tc>=o.p0):w>=o.w0)&&r.slideV>=o.vTol*o.v){moved=Math.abs(b.m.position.z-z0)+Math.abs(b.m.position.x-(r.x+o.rel*dir));__ka_kr0(r,o.style==='pass'?'pass':null,o.aim||null,null);fired=true;tFire=t;svFire=r.slideV;wFire=w;}
+    if(!fired&&(o.Tc!=null?(w+r.slideV*o.Tc>=o.p0):w>=o.w0)&&r.slideV>=o.vTol*o.v){moved=Math.abs(b.m.position.z-z0)+Math.abs(b.m.position.x-(r.x+o.rel*dir));__ka_kr0(r,o.style==='pass'?'pass':'shoot',o.aim||null,null);fired=true;tFire=t;svFire=r.slideV;wFire=w;}
     r.target=r.offset+(fired&&t-tFire>=o.hold?0:o.v)*FIX;
     updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(q.m.position);
     if(fired&&r.kickT<0&&t>tFire+0.1)break;

@@ -22,14 +22,14 @@ const stubs=[
  "function deadLeft(){return Infinity;}",
  "var KICKS=[],RELEASED=0,RELK,STRIKE=true,SWEEP=false,PICK=null,PASSED=0;",
  "function pinRelease(r,ext,k){r.pinB=null;RELEASED++;RELK=k;}",
- "function kickRod(r,style,aim,curve){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null,curve:curve||null,ex:r.shotExert,relK:RELK});}",
+ "function kickRod(r,style,aim,curve){r.kickT=0;r.act=null;KICKS.push({style:style,aim:aim||null,curve:curve||null,ex:curve&&curve.exert,relK:RELK});}",
  "var SEEN=null; function strikeOn(r){SEEN=r?r.target-r.offset:null;return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){PASSED++;return PICK;} function pinPassPlan(){PASSED++;return STRIKE?PICK:null;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
  "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return DIFFS_T;}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -39,7 +39,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,DIFFS:DIFFS,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,laneObs:laneObs,pushSlope:pushSlope,pushOutlet:pushOutlet,puWant:puWant,puStep:puStep,pushBurst:pushBurst,pinTarget:pinTarget,pinPlayStart:pinPlayStart,pinPlay:pinPlay,pinFire:pinFire,'+
+  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SWINGS:SWINGS,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,DIFFS:DIFFS,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,laneObs:laneObs,pushSlope:pushSlope,pushOutlet:pushOutlet,puWant:puWant,puStep:puStep,pushBurst:pushBurst,pinTarget:pinTarget,pinPlayStart:pinPlayStart,pinPlay:pinPlay,pinFire:pinFire,'+
   'catchEnd:catchEnd,catchPick:catchPick,catchStep:catchStep,tapStart:tapStart,tapStep:tapStep,setTapEval:function(f){tapEval=f;},setRng:function(v){RNGV=v;},setDiff:function(v){DIFFS_T=v;},takeFwd:takeFwd,sidePick:sidePick,meetPick:meetPick,sideStep:sideStep,sideAngle:sideAngle,footAngle:footAngle,footBoxD:footBoxD,thruStep:thruStep,catchUp:catchUp,tapEval:tapEval,released:function(){return RELEASED;},setStrike:function(v){STRIKE=v;},setSweep:function(v){SWEEP=v;},setPick:function(v){PICK=v;},passed:function(){return PASSED;},seen:function(){return SEEN;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -175,7 +175,7 @@ function suite(X){
   ok('two z\'s as good as each other: it keeps the one it is heading for (no dithering)',r.pcTz===4.5,'pcTz='+r.pcTz);}
  // ---- pinFire ------------------------------------------------------------------------------------------------------
  {const r=world(X);pinned(X,r,0);const best=view(X,-0.5,0);
-  ok('shoot: a trapShot swing, the rod stands still through it (catSw), cooldown set',X.pinFire(r,best,D,1)===1&&X.KICKS.length===1&&X.KICKS[0].style==='trapShot'&&r.catSw===true&&r.cd>0);}
+  ok('shoot: a pinShot swing, the rod stands still through it (catSw), cooldown set',X.pinFire(r,best,D,1)===1&&X.KICKS.length===1&&X.KICKS[0].style==='pinShot'&&r.catSw===true&&r.cd>0);}
  {const r=world(X);const best=view(X,-0.5,0);r.catSv=20;r.catSl=CA.push.k*20;r.pinB={m:{position:{x:22,y:X.BALL_R,z:2}},v:{x:0,y:0,z:0},pinMan:1,pinDz:0,scored:false};
   ok('a push: the strike gate is told the slide carries on through the swing, and the aim point sits on the line it leaves on',X.pinFire(r,best,D,1)===1&&Math.abs(X.seen()-20*CA.push.lead)<1e-9&&Math.abs(r.aimEv.best.tz-(2+CA.push.drift*20+(X.F.L/2-22)*CA.push.k*20))<1e-9&&r.catSw,'seen='+X.seen());}
  {const r=world(X);const best=view(X,-0.5,0);r.pinB={m:{position:{x:22,y:X.BALL_R,z:2}},v:{x:0,y:0,z:0},pinMan:1,pinDz:0,scored:false};
@@ -211,7 +211,7 @@ function suite(X){
   X.catchStep(r,view(X,20,0,-20,0),D);
   ok('a ball a second out: slide to it, the leg stays down (no pose yet)',r.act==='catch'&&!r.pinOn&&!r.pinPose&&r.pinA===null);
   X.catchStep(r,view(X,6,0,-20,0),D);
-  ok('inside poseT the leg tilts to the pin angle, ahead of the ball',r.pinOn&&r.pinPose&&Math.abs(r.pinA-CA.front.angle)<1e-9,'pinA='+r.pinA);}
+  ok('inside poseT the leg tilts to the pin angle, ahead of the ball',r.pinOn&&r.pinPose&&Math.abs(r.pinA-X.SHOT.pin.angle)<1e-9,'pinA='+r.pinA);}
  {const r=world(X);r.catPh='behind';X.catchStep(r,view(X,-5,0,25,0),D);
   ok('behind: the boot comes straight down for it',r.pinOn&&r.pinPose&&Math.abs(r.pinA-CA.behind.angle)<1e-9);}
  {const r=world(X);r.catPh='front';X.catchStep(r,view(X,6,0,-20,0),D);const o0=r.target;
@@ -245,7 +245,7 @@ function suite(X){
   X.catchStep(r,best,D);
   ok('caught in front: the action turns to holding, the pose frozen where it caught',r.act==='catch'&&r.catPh==='hold'&&r.pinOn&&r.pinPose&&r.pinA===r.angle);
   let steps=0;while(r.act==='catch'&&steps++<200)X.catchStep(r,best,D);
-  ok('…carries/plays it, ends with a pin shot, pin flags down, cooldown set',X.KICKS.length===1&&X.KICKS[0].style==='trapShot'&&r.act===null&&!r.pinOn&&r.catCd>0&&r.catSw);}
+  ok('…carries/plays it, ends with a pin shot, pin flags down, cooldown set',X.KICKS.length===1&&X.KICKS[0].style==='pinShot'&&r.act===null&&!r.pinOn&&r.catCd>0&&r.catSw);}
  {const r=world(X);r.catPh='front';r.angle=CA.recv.fwdMin+0.25;pinned(X,r,-6);const best=view(X,-0.5,-6);const n0=X.CAS.reseat;
   X.catchStep(r,best,D);let steps=0;while(r.act==='catch'&&steps++<200)X.catchStep(r,best,D);
   ok('a ball held under a forward leg (the receiving pose) is not played with a swing: no kick, the pin let go',X.KICKS.length===0&&r.pinB===null&&X.released()>=1);
@@ -510,7 +510,7 @@ function suite(X){
   CA.recv.ready.on=false;}
  {const r=world(X);r.catPh='front';r.angle=CA.recv.fwdMin-0.05;pinned(X,r,-6);const best=view(X,-0.5,-6);const n0=X.CAS.reseat;
   X.catchStep(r,best,D);let steps=0;while(r.act==='catch'&&steps++<200)X.catchStep(r,best,D);
-  ok('…but a leg tilted forward less than that (or back, the front pin) plays as before: the pin shot',X.KICKS.length===1&&X.KICKS[0].style==='trapShot'&&X.CAS.reseat===n0);}
+  ok('…but a leg tilted forward less than that (or back, the front pin) plays as before: the pin shot',X.KICKS.length===1&&X.KICKS[0].style==='pinShot'&&X.CAS.reseat===n0);}
  {const r=world(X);r.catPh='behind';pinned(X,r,0);
   X.catchStep(r,view(X,-3.4,0),D);
   ok('caught behind: let go so retrieve can take the ball',r.act===null&&r.pinB===null&&!r.pinOn&&r.catCd===0);}
@@ -522,11 +522,11 @@ function suite(X){
    const b=pinned(X,r,z);b.pinDx=rel;b.m.position.x=r.x+rel;r.pcEv=1e9;r.pcTz=null;r.tapPk=null;return r;};
   const reseated=(r,z,rel)=>{const s0=X.CAS.reseat;let n=0;while(X.CAS.reseat===s0&&!X.KICKS.length&&n++<100)X.catchStep(r,view(X,rel,z),D);return X.KICKS.length===0&&X.CAS.reseat===s0+1;};   // a pass waits a moment for its receiver first
   X.setRng(0.1);CA.tictac.first=false;
-  {const r=hold(3.5,-6),n0=X.CAS.snake,s0=X.CAS.reseat,e0=X.CAW.snake||0;X.catchStep(r,view(X,3.5,-6),D);const k=X.KICKS[0]||{};
+  {const r=hold(3.5,-6),n0=X.CAS.snake,s0=X.CAS.reseat,e0=X.CAW.snake||0,c0=X.SWINGS.snake.carry;X.SWINGS.snake.carry=0.5;X.catchStep(r,view(X,3.5,-6),D);X.SWINGS.snake.carry=c0;const k=X.KICKS[0]||{};
    ok('a shot from a ball held under a forward leg is the snake: one swing, no re-seat, counted, the catch ended as one',X.KICKS.length===1&&k.style==='snake'&&X.CAS.snake===n0+1&&X.CAS.reseat===s0&&(X.CAW.snake||0)===e0+1&&r.act===null,'kicks='+JSON.stringify(X.KICKS));
-   ok('…the snake uses the player curve and stamina cost, and releases at the rod’s full slide speed',k.curve===X.SHOT.snake&&k.relK===1&&k.ex===X.SHOT.snake.exert&&r.shotExert===1,'relK='+k.relK+' ex='+k.ex);
-   ok('…aimed where it was judged, the slide held through the spin then braked',!!r.catAim&&r.aimEv===r.catAim&&r.catAim.best.tz===-6&&r.catSw&&r.catHold===X.SHOT.snake.spin+X.SHOT.snake.follow,'tz='+(r.catAim&&r.catAim.best.tz));}
-  for(const rel of [SN.relMin-0.2,SN.relMax+0.2])ok('a ball held nearer or further than the snake reaches ('+rel.toFixed(1)+') is re-seated as before',reseated(hold(rel,-6),-6,rel));
+   ok('…the snake uses the player curve and stamina cost, and lets go at swings.snake.carry of the slide',k.curve===X.SWINGS.snake&&k.relK===0.5&&k.ex===X.SWINGS.snake.exert,'relK='+k.relK+' ex='+k.ex);
+   ok('…aimed where it was judged, the slide held through the spin then braked',!!r.catAim&&r.aimEv===r.catAim&&r.catAim.best.tz===-6&&r.catSw&&r.catHold===X.SWINGS.snake.spin+X.SWINGS.snake.follow,'tz='+(r.catAim&&r.catAim.best.tz));}
+  for(const rel of [X.SHOT.pin.fwdBack-0.2,X.SHOT.pin.fwdFront+0.2])ok('a ball held nearer or further than the snake reaches ('+rel.toFixed(1)+') is re-seated as before',reseated(hold(rel,-6),-6,rel));
   {SN.on=false;const ok1=reseated(hold(3.5,-6),-6,3.5);SN.on=true;ok('switched off, a forward hold re-seats as before',ok1);}
   {SN.roles=['ATT'];const r=hold(3.5,-6,{role:'MID'});X.pinPlay(r,view(X,3.5,-6),1,dt);const a=r.pcSn;r.role='ATT';X.pinPlayStart(r);X.pinPlay(r,view(X,3.5,-6),1,dt);SN.roles=JSON.parse(K0).roles;
    ok('only the roles listed snake',a===false&&r.pcSn===true);}
@@ -704,7 +704,7 @@ const MUT=[
  {n:'…and a holder waiting for its receiver goes on to carry the ball (the slide reads as a push lane next frame)',part:'catch',from:'CAS.rdyWait++;return 0;}',to:'CAS.rdyWait++;}'},
  {n:'…the wait is never counted',part:'catch',from:'if((r.pcRdy=(r.pcRdy||0)+dt)<CA.recv.ready.wait){if(',to:'if(((r.pcRdy=0)+dt)<CA.recv.ready.wait){if('},
  {n:'a holder does not get its mates ready',part:'catch',from:'if(pk&&(!open||v===2))recvReady(r,pk.cands);',to:''},
- {n:'the pin shot fires without asking the strike gate',part:'catch',from:'if(!strikeOn(r,best,\'trapShot\',pinSwing()))return -1;',to:''},
+ {n:'the pin shot fires without asking the strike gate',part:'catch',from:'if(!strikeOn(r,best,\'pinShot\',pinSwing()))return -1;',to:''},
  {n:'the rod is not held still through the swing',part:'catch',from:' r.catSw=true;',to:' r.catSw=false;'},
  {n:'a swing already running is started again',part:'catch',from:' if(r.kickT>=0)return 0;\n if(v===2)',to:' if(v===2)'},
  {n:'a ball too fast to hold is still caught (front)',part:'catch',from:'c<A.minClose||c>(tune?.frontMaxClose??A.maxClose))return fetchPick(r,best)?\'fetch\':null;\n  tAr=rel/c;',to:'c<A.minClose)return fetchPick(r,best)?\'fetch\':null;\n  tAr=rel/c;'},
@@ -715,7 +715,7 @@ const MUT=[
  {n:'a ball no man can reach is caught',part:'catch',from:'if(e>CA.zTol||Math.abs(o-r.offset)>sp*tAr+CA.zTol)continue;',to:''},
  {n:'the man is picked for where the ball is, not where it will be',part:'catch',from:'catchMan(r,clamp(p.z+v.z*tAr,-zl,zl),tAr)',to:'catchMan(r,clamp(p.z,-zl,zl),tAr)'},
  {n:'the leg tilts the moment the catch is chosen',part:'catch',from:'if(tAr<=CA.poseT){',to:'if(true){'},
- {n:'the front pose is the behind pose',part:'catch',from:'const front=r.catPh===\'front\',A=front?CA.front:CA.behind;',to:'const front=r.catPh===\'front\',A=CA.behind;'},
+ {n:'the front pose is the behind pose',part:'catch',from:'front?SHOT.pin.angle:A.angle)*dir;}',to:'CA.behind.angle)*dir;}'},
  {n:'a ball that has gone past is still waited for (front)',part:'catch',from:'if(rel<SHOT.pin.back-1)why=\'past\';',to:'if(false)why=\'past\';'},
  {n:'a ball running off is still waited for',part:'catch',from:'else if(vf>1&&rel>A.near)why=\'away\';',to:''},
  {n:'a ball that stopped short is still waited for',part:'catch',from:'else if(sp<CA.restV&&rel>SHOT.pin.front+0.3)why=\'stopped\';',to:''},
@@ -731,7 +731,7 @@ const MUT=[
  {n:'the dead-ball push does not end a catch',part:'catch',from:'else if(r.force)why=\'force\';',to:''},
  {n:'a caught ball behind the rod is carried instead of handed to retrieve',part:'catch',from:'if(r.catPh===\'behind\'&&!r.catFwd){CAS.hand++;catchEnd(r,0,\'handed\');return;}',to:''},
  {n:'a ball knocked out of the pin keeps the catch alive',part:'catch',from:'if(r.catPh===\'hold\'){CAS.lost++;catchEnd(r,CA.cd,\'knocked\');return;}',to:''},
- {n:'the pose is not frozen once caught',part:'catch',from:'r.pinOn=true;r.pinPose=true;r.pinA=r.angle;                     // frozen where it caught',to:'r.pinOn=true;r.pinPose=true;r.pinA=CA.front.angle*dir;'},
+ {n:'the pose is not frozen once caught',part:'catch',from:'r.pinOn=true;r.pinPose=true;r.pinA=r.angle;                     // frozen where it caught',to:'r.pinOn=true;r.pinPose=true;r.pinA=SHOT.pin.angle*dir;'},
  {n:'ending leaves the pin held',part:'catch',from:' if(r.pinB)pinRelease(r);\n r.pinOn=false;',to:' r.pinOn=false;'},
  {n:'ending leaves the pin flags up',part:'catch',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.ftPh=null;r.puPh=null;r.unPh=null;\n r.act=null;r.catPh=null;',to:' r.puPh=null;r.unPh=null;\n r.act=null;r.catPh=null;'},
  {n:'ending sets no cooldown',part:'catch',from:'r.catCd=cd||0;',to:'r.catCd=0;'},
@@ -834,9 +834,9 @@ const MUT=[
  {n:"a let-through that is pinned is not counted",part:'catch',from:"if(r.catPh==='thru')CAS.thruOk++;",to:""},
  {n:"the AI never snakes",part:'catch',from:"const sn=r.pcSn=fwd&&snakeHold(r,b),SN=CA.snake;",to:"const sn=r.pcSn=false,SN=CA.snake;"},
  {n:"a leg tilted back snakes too",part:'catch',from:"r.pcSn=fwd&&snakeHold(r,b)",to:"r.pcSn=snakeHold(r,b)"},
- {n:"the snake reaches every depth",part:'catch',from:"||b.pinDx<SN.relMin||b.pinDx>SN.relMax",to:""},
- {n:"...too near",part:'catch',from:"||b.pinDx<SN.relMin",to:""},
- {n:"...too far",part:'catch',from:"||b.pinDx>SN.relMax",to:""},
+ {n:"the snake reaches every depth",part:'catch',from:"||b.pinDx<SHOT.pin.fwdBack||b.pinDx>SHOT.pin.fwdFront",to:""},
+ {n:"...too near",part:'catch',from:"||b.pinDx<SHOT.pin.fwdBack",to:""},
+ {n:"...too far",part:'catch',from:"||b.pinDx>SHOT.pin.fwdFront",to:""},
  {n:"the snake switch is ignored",part:'catch',from:"if(!SN||!SN.on||!SHOT.snake",to:"if(!SN||!SHOT.snake"},
  {n:"every role snakes",part:'catch',from:"||SN.roles.indexOf(r.role)<0",to:""},
  {n:"the snake share is drawn every frame",part:'catch',from:"if(r.pcSnD==null){",to:"{"},
@@ -847,19 +847,18 @@ const MUT=[
  {n:"a snake hold ignores the effect of the slide",part:'catch',from:"const z=bz+SN.drift*sv,tz=z+Math.abs(goalX-bx)*SN.k*sv;",to:"const z=bz,tz=z;"},
  {n:"a creeping snake is judged standing",part:'catch',from:"now=(still&&!sn)?",to:"now=still?"},
  {n:"the snake lane margin is the pin shot one",part:'catch',from:"const clear=sn?(late?SN.lateClear:SN.clear):CA.lineClear;",to:"const clear=CA.lineClear;"},
- {n:"the snake ignores the defenders' movement during the wind-up",part:'catch',from:"laneObsAt(r.team,p.x,goalX,SN.shotV,SHOT.snake.spin)",to:"laneObs(r.team,p.x,goalX,SN.shotV)"},
+ {n:"the snake ignores the defenders' movement during the wind-up",part:'catch',from:"laneObsAt(r.team,p.x,goalX,SN.shotV,SWINGS.snake.spin)",to:"laneObs(r.team,p.x,goalX,SN.shotV)"},
  {n:"the defenders have no time to follow the sliding ball",part:'catch',from:"lineClr(obs,bx,z,goalX,tz,SN.follow*sv)",to:"lineClr(obs,bx,z,goalX,tz)"},
  {n:"the snake carry does not brake in an open standing lane",part:'catch',from:"if(sn&&sv&&!open&&pushOutlet(r,p.x,p.z,0,obs,goalX)>=SN.clear)return 0;",to:""},
- {n:"the slide is not carried into the snake",part:'catch',from:"if(sn){r.catSv=sv;r.catSl=sl;r.catHold=SHOT.snake.spin+SHOT.snake.follow;}",to:"if(sn){}"},
- {n:"the snake never brakes after its strike",part:'catch',from:"r.catHold=SHOT.snake.spin+SHOT.snake.follow;}",to:"}"},
+ {n:"the slide is not carried into the snake",part:'catch',from:"if(sn){r.catSv=sv;r.catSl=sl;r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;}",to:"if(sn){}"},
+ {n:"the snake never brakes after its strike",part:'catch',from:"r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;}",to:"}"},
  {n:"the snake slope is the push one",part:'catch',from:"sl=sn?SN.k*sv:still?0:pushSlope(r,sv)",to:"sl=still?0:pushSlope(r,sv)"},
  {n:"a snake shot is fired as the pin shot",part:'catch',from:"else if(r.pcSn)snakeFire(r);",to:""},
  {n:"the snake is counted as a pin shot",part:'catch',from:"else if(r.pcSn)CAS.snake++;else CAS.shot++;",to:"else CAS.shot++;"},
- {n:"the ball is released more slowly than the sliding rod",part:'catch',from:"pinRelease(r,false,1);",to:"pinRelease(r,false,K.carry);"},
- {n:"the snake costs a plain swing",part:'catch',from:"r.shotExert=K.exert;kickRod",to:"kickRod"},
- {n:"the snake leaves its stamina on the rod",part:'catch',from:"kickRod(r,'snake',null,K);r.shotExert=1;",to:"kickRod(r,'snake',null,K);"},
+ {n:"the AI keeps its own carry",part:'catch',from:"pinRelease(r,false,SWINGS.snake.carry);",to:"pinRelease(r,false,1);"},
+ {n:"the snake costs a plain swing",part:'catch',from:"kickRod(r,'snake',null,SWINGS.snake);",to:"kickRod(r,'snake',null,Object.assign({},SWINGS.snake,{exert:1}));"},
  {n:"the snake swing is the plain curve",part:'catch',from:"kickRod(r,'snake',null,K);",to:"kickRod(r,'snake',null,null);"},
- {n:"the snake is not aimed",part:'catch',from:"r.catAim=pinAim(r,r.pinB,r.catSl||0);r.aimEv=r.catAim;\n pinRelease(r,false,1);",to:"pinRelease(r,false,1);"},
+ {n:"the snake is not aimed",part:'catch',from:"r.catAim=pinAim(r,r.pinB,r.catSl||0);r.aimEv=r.catAim;\n pinRelease(r,false,SWINGS.snake.carry);",to:"pinRelease(r,false,SWINGS.snake.carry);"},
  {n:"the snake aims with the push drift",part:'catch',from:"dr=r.pcSn?AIC.catch.snake.drift:AIC.catch.push.drift",to:"dr=AIC.catch.push.drift"},
  {n:"a snake hold re-seats its shot",part:'catch',from:"&&!(v===1&&r.pcSn)){reseat(r);return;}",to:"){reseat(r);return;}"},
  {n:"a snake hold swings its pass",part:'catch',from:"&&!(v===1&&r.pcSn)){reseat",to:"&&!r.pcSn){reseat"},

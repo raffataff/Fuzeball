@@ -14,7 +14,7 @@ const ASL_DEFS=[
  ['square','SQUARE','pin'],['lead','LEAD','pin'],['guard','GUARD','pin'],['heldOut','HELD OUT','pin'],['mates','MATES READY','pin'],
  ['stickCarry','STICK CARRY','pad'],['ltLatch','LT LATCH','pad'],['chord','A WAITS','pad','ms'],
  ['autoSwitch','AUTO','sw'],['gkHold','GK HELD','sw'],['slideFreeze','SLIDE FROZEN','sw'],['raiseKeep','KEPT RAISE','sw'],
- ['kSwing','SWING','kick'],['kShot','SHOT','kick'],['kCharge','CHARGED','kick'],['kGrace','LATE RELEASE','kick'],['kFlinch','FLINCH','kick'],['kPass','PASS','kick'],
+ ['kShot','SHOT','kick'],['kCharge','CHARGED','kick'],['kGrace','LATE RELEASE','kick'],['kFlinch','FLINCH','kick'],['kPass','PASS','kick'],
  ['kPinPass','PIN PASS','kick','ms'],['kPinShot','PIN SHOT','kick'],['kFwdPin','FWD PIN','kick'],['kStroke','STROKE','kick'],['kSnake','SNAKE','kick']
 ].map(a=>({id:a[0],tag:a[1],g:a[2],u:a[3]||''}));
 const ASL_BY={};for(const d of ASL_DEFS)ASL_BY[d.id]=d;

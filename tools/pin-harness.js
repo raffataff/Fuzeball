@@ -11,7 +11,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 
 const stubs=[
 "var ARENA_ON=false;var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;function isUserRod(r){return !!r.user;}",
-"var KICKS=[];function kickRod(r,style,aim,curve){if(r.kickT>=0)return;if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:curve||null});}",
+"var KICKS=[];function kickRod(r,style,aim,curve,k){if(r.kickT>=0)return;kickArm(r,style,curve,k);if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:curve||null});}",
 "var CAP=null;function shotPullCap(r,a0,a1){return CAP==null?a1:CAP;}",
 "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
 ].join(NL);
@@ -19,13 +19,17 @@ const stubs=[
 let pass=0,fail=0;const fails=[];
 function ok(c,msg){if(c)pass++;else{fail++;fails.push(msg);}}
 
-function boot(PHYS,SHOTS){
+function boot(PHYS,SHOTS,RODS){
+ RODS=RODS||rd('js/rods.js');
  const real=[slice(PHYS,'function pinUpdate(){','function hitFresh('),
-  slice(SHOTS,'function shotPinInput(r,I,dt){','const SHOT_CURVE_KEYS')].join(NL);
+  slice(RODS,'function styleCfg(','// the curve in play'),
+  'function kickArm(r,style,curve,k){'+slice(RODS,' const SW=curve||styleCfg(style);',' r.raise=false;r.raiseKeep=false;r.kickHold=false;')+'}',
+  slice(SHOTS,'function shotArm(r,SW,k){','// what a charge is worth against'),
+  slice(SHOTS,'function shotPinInput(r,I,dt){','// --- what the charge is worth ---')].join(NL);
  const ctx={console,Math,JSON,Object,Array,Set,Map,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,real,
-  ';globalThis.X={AIC:AIC,P:CONFIG.shots.pin,H:CONFIG.shots.hold,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,F:F,S:S,rods:rods,KICKS:KICKS,V:V,footBoxD:footBoxD,footUnder:footUnder,FOOT_BOX:FOOT_BOX,'+
+  ';globalThis.X={AIC:AIC,SWINGS:SWINGS,P:CONFIG.shots.pin,H:CONFIG.shots.hold,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,F:F,S:S,rods:rods,KICKS:KICKS,V:V,footBoxD:footBoxD,footUnder:footUnder,FOOT_BOX:FOOT_BOX,'+
   'setCap:function(v){CAP=v;},pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
   'shotPinInput:shotPinInput,shotPinFire:shotPinFire};'].join(NL),ctx);
  if(!ctx.X||!ctx.X.P)throw new Error('export line did not run');
@@ -159,10 +163,10 @@ function suite(X,quiet){
  /* 5. the pin shot */
  X.KICKS.length=0;pinned();X.shotPinFire(r);
  const k=X.KICKS[0];
- ok(k&&k.style==='trapShot','a kick from the pin swings the trap-shot curve');
- ok(k&&k.on&&k.pow===P.pow,'…armed with the pin shot\'s power');
- ok(r.shotCtl===P.ctl,'…and its control');
- ok(k&&k.curve&&k.curve.strike===P.swing.strike&&k.curve.powTo===P.swing.powTo&&k.curve.strikeA===P.swing.strikeA,'…on the pin swing: the trapShot curve with shots.pin.swing over it');
+ ok(k&&k.style==='pinShot','a kick from the pin swings the pin-shot curve');
+ ok(k&&k.on&&k.pow===X.SWINGS.pinShot.pow,'…armed with the pin shot\'s power');
+ ok(r.shotCtl===X.SWINGS.pinShot.ctl,'…and its control');
+ ok(k&&k.curve===X.SWINGS.pinShot,'…on the pin swing: swings.pinShot');
  ok(!r.pinB&&!b.pinR,'…and the swing lets the ball go so it can strike it');
  ok(!r.pinPose,'…and the pose ends');
 
@@ -190,7 +194,7 @@ const muts=[
  ['physics','    if(!footUnder(r,p,mz))continue;\n','','any ball in the window is caught'],
  ['physics','&&PIN_DN[0]>=(PIN_DN[1]>0?P.wallDown:P.down)','','a shin or the side of the foot holds a ball'],
  ['physics','if(Math.abs(p.z-mz)>pinSideReach(p))return false;','','a ball under the edge of the boot, past the foot, is held'],
- ['physics','return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot,SHOT.pin.swing);','return pass?Object.assign(PIN_PS,AIC.passShot,SHOT.pin.pass):Object.assign(PIN_SW,AIC.trapShot);','the pin shot swings the plain trapShot curve'],
+ ['physics','return pass?SWINGS.pinPass:SWINGS.pinShot;','return pass?SWINGS.pinPass:SWINGS.pass;','the pin shot swings the pass curve'],
  ['physics','d<=BALL_R*FOOT_BOX_REACH+P.touch&&','d<=BALL_R*FOOT_BOX_REACH+P.touch+0.6&&','the foot holds a ball it is only near'],
  ['physics','dn[0]=d>1e-4?(cdx*ca-cdy*sa)/d:0;','dn[0]=d>1e-4?(cdx*ca+cdy*sa)/d:0;','down is measured the wrong way round'],
  ['physics','b.pinDz=p.z-mz;','b.pinDz=0;','a held ball is pulled onto the man\'s centre'],
@@ -207,18 +211,18 @@ const muts=[
  ['shots',' const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from,pp=',' const fin=I.lt>SHOTC.hold.from,pp=','the pin waits for the finesse grip to ease in'],
  ['shots',' if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}',' if(!r.pinOn){r.pinFwd=false;}','the pose outlives the finesse'],
  ['shots',' else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}',' else r.pinPose=!!I.rz;','the pose drops the moment raise comes up'],
- ['shots',' kickRod(r,\'trapShot\',null,pinSwing());',' kickRod(r,null,null,pinSwing());','the pin shot is a plain kick'],
- ['shots',' kickRod(r,\'trapShot\',null,pinSwing());',' kickRod(r,\'trapShot\');','the pin shot is not given the pin swing'],
- ['shots',' r.shotOn=true;r.shotPow=P.pow;r.shotCtl=P.ctl;r.shotExert=1;',' ','the pin shot is unarmed']
+ ['shots',' kickRod(r,\'pinShot\',null,pinSwing());',' kickRod(r,null,null,pinSwing());','the pin shot is a plain kick'],
+ ['shots',' kickRod(r,\'pinShot\',null,pinSwing());',' kickRod(r,\'pinShot\');','the pin shot is not given the pin swing'],
+ ['rods',' if(SW.pow!=null)shotArm(r,SW,k??-1);',' if(!curve)shotArm(r,SW,k??-1);','the pin shot is unarmed']
 ];
 let caught=0;
 for(const [file,find,repl,name] of muts){
- const src=file==='physics'?PHYS:SHOTS;
+ const src=file==='physics'?PHYS:file==='rods'?rd('js/rods.js'):SHOTS;
  if(src.indexOf(find)<0){console.log('  BROKEN  '+name+' — anchor not found');continue;}
  const m=src.replace(find,repl);
  if(m===src){console.log('  BROKEN  '+name+' — no-op');continue;}
  pass=0;fail=0;fails.length=0;
- let f;try{f=suite(boot(file==='physics'?m:PHYS,file==='shots'?m:SHOTS),true);}catch(e){f=1;}
+ let f;try{f=suite(boot(file==='physics'?m:PHYS,file==='shots'?m:SHOTS,file==='rods'?m:null),true);}catch(e){f=1;}
  if(f>0){caught++;console.log('  caught  ('+f+' assertions)  '+name);}
  else console.log('  SURVIVED  '+name);
 }

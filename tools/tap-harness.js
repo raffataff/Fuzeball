@@ -25,7 +25,7 @@ const stubs=[
  "function isUserRod(){return false;} var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
  "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('const PIN_SW={}'),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
+ (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -250,8 +250,8 @@ const MUT=[
  {n:'a run is never given up on',from:'||r.catT>TP.abortT){catchEnd(r,CA.cd,!b',to:'){catchEnd(r,CA.cd,!b'},
  {n:"a forward leg has no band of its own",from:"const fb=r.angle*r.kickDir>CA.recv.fwdMin?TP.fwd:null;",to:"const fb=null;"},
  {n:"...every pin has the forward one",from:"const fb=r.angle*r.kickDir>CA.recv.fwdMin?TP.fwd:null;",to:"const fb=TP.fwd;"},
- {n:"the forward band has no near edge",from:"(fb?(b.pinDx<fb.min||b.pinDx>fb.max):",to:"(fb?(b.pinDx<fb.min):"},
- {n:"the forward band has no deep edge",from:"(fb?(b.pinDx<fb.min||b.pinDx>fb.max):",to:"(fb?(b.pinDx>fb.max):"}
+ {n:"the forward band has no near edge",from:"(fb?(b.pinDx<fb.min||b.pinDx>SHOT.pin.fwdFront):",to:"(fb?(b.pinDx<fb.min):"},
+ {n:"the forward band has no deep edge",from:"(fb?(b.pinDx<fb.min||b.pinDx>SHOT.pin.fwdFront):",to:"(fb?(b.pinDx>SHOT.pin.fwdFront):"}
 ];
 let missed=0;
 for(const m of MUT){

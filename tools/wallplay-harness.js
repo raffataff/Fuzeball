@@ -144,7 +144,7 @@ function strikes(X){
   return {idx:0,x:team?7.5:-7.5,team,role:'MID',baseZ,removedUntil:[0,0,0,0,0],offset:side*mo,maxOff:mo,trnHidden:false,
    angle:0.05*dir,angVel:17.3*dir,vz:0,kickT:0.008,kickStyle:null,kickCurve:null,kickDir:dir,cd:0,aiIQ:false,aimSweet:-1,
    kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,aimEv:null,act:null,
-   hold:{on:false,holdRest:X.KICK.rest,holdGrip:X.KICK.grip,carryMult:1},stats:null};};
+   hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:X.KICK.grip,carryMult:1},stats:null};};
  const strike=(team,side)=>{
   for(let rel=6;rel>0.5;rel-=0.05){
    const r=rodFor(team,side),dir=r.kickDir;

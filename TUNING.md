@@ -16,13 +16,12 @@ Change one of these and check the others.
 
 | Constraint | Why |
 |---|---|
-| Every action `abortT` < `deadball.stallT` (4.6) | A stuck ball must be whistled and re-dropped rather than held forever. Applies to `ai.trap.abortT`, `ai.dribble.abortT`, `ai.safeRaise.abortT`, `ai.evade.abortT`, `ai.clearLane.abortT`. |
-| `ai.trap.settleT + ai.trap.holdT` < `ai.trap.abortT` and < `stallT` | Otherwise the dead-ball timer whistles a ball the AI is deliberately holding. |
+| Every action `abortT` < `deadball.stallT` (4.6) | A stuck ball must be whistled and re-dropped rather than held forever. Applies to `ai.dribble.abortT`, `ai.safeRaise.abortT`, `ai.evade.abortT`, `ai.clearLane.abortT`. |
 | Largest `diffs.*.reactDelay` × ~1.5 < `ai.reactMax` | `reactMax` sizes the per-ball history ring (`ceil(reactMax × sim.hz)+1` steps). The ×1.5 covers the slow-reaction/fatigue floor in `stReact`. Rookie: .25 × 1.5 ≈ .375. |
 | `seats.tint` length ≥ `seats.perTeam` | The last entry repeats, so a short list makes the last two players on a side render identically. |
 | `league.cup.drawSize + 1` must be a power of two, and `rounds` must be log2 of it | The bracket is a real tree (`cupSeedOrder` / `cupNextRound`); a 6- or 12-team field pairs off into undefined. 7+1 = 8 with 3 rounds; the next legal size up is 15 + 4 rounds. |
 | `ai.dribble.pressX` > ~12 | See *Dribble → pressX* below. Anything smaller makes the test permanently false. |
-| Carry/aim leads < the boot's true z reach (≈3.25) | `footBox.z` 1.35 + `BALL_R` × `footBoxReach` 1.9. Applies to `trap.carryLead`, `trap.holdZ`, `dribble.carryLead`, `dribble.holdZ`, `dribble.alignZ`. Past it the boot isn't touching the ball. |
+| Carry/aim leads < the boot's true z reach (≈3.25) | `footBox.z` 1.35 + `BALL_R` × `footBoxReach` 1.9. Applies to `dribble.carryLead`, `dribble.holdZ`, `dribble.alignZ`. Past it the boot isn't touching the ball. |
 | `deadball.redrop.zones[].from` must tile −L/2..L/2 with no gaps | An x covered by nothing falls back to a random zone pick. The outer two run past the goal lines so a ball leaving behind a goal still resolves. |
 
 ---
@@ -162,7 +161,17 @@ per-second rates.
 
 ---
 
-## `kick` — how hard a contact hits
+## `kick` and `swings` — how hard a contact hits
+
+`swings` holds every swing: `pass`, `shoot`, `pinPass`, `pinShot` and `snake`, each one the
+player's and the AI's. Each is complete, so changing one moves no other, and nothing blends between them.
+Off the pin kick alone is `pass` and power + kick is `shoot`; on a pin they are `pinPass` and
+`pinShot`; power + kick on a forward pin is `snake`. The AI uses the same five. `pow` (hit and speed ceiling), `ctl` (aim help and spray)
+and `exert` (stamina) are in each of those blocks. `snake.carry` is the share of the slide the ball keeps as the snake
+lets it go (1 = it stays with the man), and `snake.loft` the steepest it may leave the pitch (rad;
+null = no limit). `pinPass.strike` is the pin pass's pace and
+its angle off a slide; the aim of both player and AI follows it. `kick` holds what all contacts share: `kick.rest` is the bounce
+of a touch with no swing on, `kick.stickA` the angle of a fully pushed right stick.
 
 `physics.js collideRod` applies, along the contact normal:
 
@@ -218,7 +227,7 @@ for free: a low-error rod centres the ball better, so it lands in this zone more
 ## `ai` — actions
 
 The AI actions are mutually exclusive states on `r.act`. Priority order when several
-could fire: **`clearLane` → `trap` → `dribble` → `safeRaise` → `evade`**. Each has a
+could fire: **`clearLane` → `dribble` → `safeRaise` → `evade`**. Each has a
 debug layer in the AI panel (press C).
 
 ### `underFootFront` / `underFootBack`
@@ -257,114 +266,30 @@ shared `underFootFront` / `underFootBack` / `clearMargin` (which still feed
 `vz` must be > 0. At 0, a resting ball's noise-level `v.z` decides the sign every frame,
 making the "committed" direction a per-frame coin flip.
 
-### `trap`
+### `sweep`: the knock-back guard
 
-A slow ball at or behind the men is pinned under the boot instead of swung at. The rod
-eases to a shallow angle so the foot box sits at ball height, `collideRod` switches to a
-dead + sticky contact (`holdRest` / `holdGrip`) so the ball stops and travels with the
-foot, then the rod carries it sideways hunting an open lane (`shotEval`) before scooping
-it away with the `trapShot` curve.
+Turning a leg drags the foot box through space, and a ball standing in that arc is struck
+along the contact normal. `sweepClips()` (ai.js) walks the swept arc and refuses only a
+contact that would send the ball toward our own goal. The AI's poses and back guard use
+it, and so does the player's charge pull-back.
 
-Three phases, all driven off `r.actT`:
-
-| Phase | Window | Behaviour |
-|---|---|---|
-| CATCH | `0 .. settleT` | Kill the ball; man-selection keeps the boot on it |
-| CARRY | `settleT .. +holdT` | Slide toward the z that opens a shooting lane |
-| SHOOT | lane open, or `holdT` up | `kickRod(r,'trapShot')` |
-
-Only rods whose `iq` roll passed attempt it; everyone else keeps the raise latch.
-
-**`angle` geometry.** Rod-local (× `kickDir`), same convention as `raiseA`. It must put
-the foot box at ball height or the ball rolls underneath and the trap does nothing
-visible. The box centre sits at
-`y ≈ ROD_H − cos(a)·ARM + sin/cos(footBoxOff)`, which is ~1.9 (ball centre) near
-a ≈ −0.25 and climbs to ~3.7 by a ≈ −0.9 — a foot hovering a whole ball-diameter over
-the ball. That is why −0.9 never held anything: the only contact it could make was a
-downward one that shoved the ball into the floor and squirted it forward.
-
-- Shallower (→ 0): flatter boot, bigger pin window, less able to stop a fast ball.
-- Deeper (→ −0.5): more of a scoop lip behind the ball, but starts lifting off the floor.
-
-**`back` / `front` catch window** (dir-relative x off the rod) must span from behind the
-men through the feet — a trap that releases before the ball reaches the boot is a block,
-not a trap. `front` deliberately overlaps `overFoot`; the kick gate is `!r.act`-gated so
-the normal swing can't steal a ball we're holding.
-
-**`holdGrip` (0.55).** The carry. At 0.55 the ball tracks the rod's slide closely enough
-to be dribbled sideways. Toward 1 it's welded to the boot and reads as cheating; below
-~0.25 the rod slides away and leaves the ball behind.
-
-**`minApproach` (−2.5).** Negative on purpose: a still ball, or one drifting gently
-goalward, is exactly what should be trapped. A positive value (it was 6) required a
-briskly rolling ball, so the one case that actually wants a trap — a slow or dead ball
-sitting in range — could never enter it, and `evade` picked it up and slid away instead.
-Only a ball genuinely running away toward our own goal is refused; there's nothing to
-pin it against.
-
-**Own-goal guard (directional).** The catch tilts the foot *backward* (`angle` is
-negative, so the boot ends up ~`sin(|angle|)·ARM` ≈ 3u behind the rod, on the own-goal
-side) and resolves the ball along the foot→ball normal with `holdRest` 0 / `holdGrip`.
-
-- When the ball is **behind** the feet, that normal points goalward, so the catch shoves
-  the ball into our own net. This is the keeper own-goal: a ball at rel −3.5, i.e.
-  between keeper and net.
-- When the ball is **in front**, the catch tilts away from it and the normal points
-  upfield — safe even hard by our own goal.
-
-Hence two margins. `ownGoalBehind` 16: the GK sits ~7.5u from its line, so at 16 the
-keeper never traps a ball behind it (correct — that catch can only go into the net),
-while the DEF at ~22.5u out still can. Lower it toward `ownGoalGuard` to let the keeper
-trap behind again, at own-goal risk.
-
-**`gkReach`** *replaces* the `alignZ` test for the keeper, so keep it small. At 20 the
-GK traps balls it isn't remotely lined up with.
-
-**`sweep` — the knock-back guard.** Entering a trap does not freeze the rod: `rods.js`
-eases `r.angle` toward `angle`, and that rotation drags an oriented box through space. A
-ball standing in that arc is struck along the contact normal and, with `holdGrip` 0.55
-lerping the boot's velocity into it, dragged as well — so when the normal points at our
-net, the catch *is* a backward kick.
-
-`footStuck` / `inFootRange` can't do this job: it's a static rectangle whose back depth
-(`footRangeBack` 7.0) is deeper than the whole catch window (`back` −5.8), so
-`!footStuck` on entry refuses 100% of traps. The sweep test walks the *actual* swept arc
-instead and refuses only contacts whose impulse is goalward (`sweepClips()` in `ai.js`).
-
-Effect on feel: the usable catch band tightens from `back` −5.8 to roughly the boot's
-resting reach (rel ≈ −2.5), because a ball further back can't be reached without the
-boot travelling through it first. Refused balls fall through to `evade`.
-
-- `samples` 7: the box is ~2.9u wide in x and the arc sweeps ~5.8u, so 7 steps leave no
-  gap wider than the box itself. 5 is coarse, 9 is thorough.
+- `samples`: more leaves smaller gaps along the arc.
 - `pad`: **raise this first** if a knock-back still slips through.
-- `clampSteps` 10: the catch targets the *deepest* tilt on the way to `angle` whose
-  sweep stays clean, rather than always committing to `angle`. 10 steps over a 0.5 rad
-  arc = 0.05 rad granularity.
-- `pushDot` 0 refuses any rearward component (strictest, costs the most legitimate
-  traps); 0.5 refuses only near head-on shoves.
+- `clampSteps`: the steps in which the charge pull-back looks for its deepest clean angle.
+- `pushDot`: 0 refuses any rearward push; 0.5 refuses only near head-on shoves.
 
-### `trapShot` and `passShot` — rate, not duration
+### The pin shot and the passes: rate, not duration
 
-`strike` is the **end time** of the ramp, so the forward sweep lasts
-`(strike − windup)` seconds and covers `(strikeA − windupA)` radians. The number that
-matters is the ratio.
+`swings.pinShot` is the one pin shot: the player's, the AI's and the AI's tic-tac strike.
 
-| Curve | Sweep | Rate |
-|---|---|---|
-| Normal `kick` | — | ~21.8 rad/s |
-| `trapShot` | 2.35 rad over 0.10s | ~23.5 rad/s |
-| `passShot` | 1.2 rad over 0.12s | ~10 rad/s |
+`strike` is the **end time** of the ramp. With no wind-up the sweep runs from the angle the
+leg is posed at to `strikeA`, in `strike` seconds, and the rate is what matters: too fast
+and the foot passes through the ball between steps, too high a `strikeA` and it scoops
+the ball up. If you retune, move `strike` and `strikeA` together.
 
-`trapShot` was once 0.16/0.2 with `windupA` −1.0 — 2.85 rad in 0.04s ≈ **71 rad/s**. The
-foot crossed ~7u per sim step, i.e. straight through the ball (the same tunnelling the
-`kickA0` fix removed), and dragged the trapped ball ~3.7u backward during the windup
-before striking it. If you retune, raise `strikeA` and `strike` **together** and keep
-the rate near 21.8.
-
-`passShot` is deliberately half-rate: a pass only travels ~15 units to the next row, and
-a full-power strike arrives faster than the receiving rod can react and just rebounds
-off it — which is the problem passing exists to solve.
+`swings.pass` is a slow push (~8.3 rad/s). Its power window closes at `powTo` 0.02 s and the boot
+reaches a ball more than ~3.8 ahead after that, so such a ball gets `rest`, not `restPower`.
+If longer-reach passes are weak, raise `powTo` (0.07 covers the whole reach) before `pow`.
 
 ### `dribble`
 
@@ -378,20 +303,17 @@ made play read as a pinball table:
   ever chose where to aim *from where the ball already is* — nothing asked "would I have
   a better line if the ball were somewhere else?".
 
-**This is not a trap**, and the difference is the whole design:
+**This is not a pin**, and the difference is the whole design:
 
-- **No angle.** The trap rotates the rod to a pin posture. The dribble touches nothing in
+- **No angle.** A pin rotates the rod to its posture. The dribble touches nothing in
   `updateRods` — the rod stays at the ordinary rest angle, men down. A ball at a resting
-  boot is also the one thing the trap could never hold (its pin angle sits the box too
-  high and shoves the ball away), which is why this is its own action rather than a
-  wider trap window.
-- **The contact is a nudge, not a pin:** `holdGrip` 0.30 against the trap's 0.55 and the
+  boot is out of a pin's reach, which is why this is its own action.
+- **The contact is a nudge, not a pin:** `dribble.holdGrip` drags it, against the
   passive touch's ~0.08. The ball is dragged along with visible slip.
 - **It ends with an ordinary kick or a pass, not a scoop.** The ball is already in the
   normal strike zone with the men down.
 
-**Control window derivation** (at the rest angle a = 0, the posture this action uses —
-contrast `trap.back`/`front`, derived at its −0.5 pin):
+**Control window derivation** (at the rest angle a = 0, the posture this action uses):
 
 ```
 foot base    fy = ROD_H − ARM = 1.20,   fx = 0 off the rod
@@ -437,7 +359,7 @@ This is the direct fix for the back-and-forth ping-pong.
 Instead of shooting a covered shot, give it to a teammate rod ahead who has a better one.
 Scored per live man of each rod ahead: the lane from the ball *to* him (`clear` — can the
 pass even get there) plus the shot he'd have on receiving it (`onward`), minus distance.
-Executed as a soft `passShot` with aim-assist bent at the receiver instead of the goal
+Executed as a soft `swings.pass` with aim-assist bent at the receiver instead of the goal
 (`aimAssist` in `stats.js`).
 
 `roles` is deliberately **wider** than the dribble roles — a defender passing forward
@@ -454,7 +376,7 @@ the shot gate of 20 would skip it entirely.
 
 ### `safeRaise`
 
-Decoupled from `trap`, with its own thresholds. A slow, sideways ball loiters in the
+It has its own thresholds. A slow, sideways ball loiters in the
 x-band behind the rod but isn't far enough back to trip the `raiseBehind` latch, so the
 rod would otherwise sit *down* behind it. If raising won't clip the ball (it's not
 `inFootRange` — it sits in a z-gap between feet) the rod eases to `angle` while
@@ -492,8 +414,7 @@ more, **never 0** (noise-level `v.z` on a resting ball would pick the sign).
 
 `maxApproach`: evade is for a ball *parked* against a foot. A ball rolling in from behind
 is about to be strikeable, and sliding away from it both wastes the block and drags the
-man off the strike line mid-swing. Mirror of `trap.minApproach` — trap wants a closing
-ball, evade wants a still one.
+man off the strike line mid-swing.
 
 `raiseAfter`: on a *successful* clear (not a bail), latch the raise. The lift swings the
 foot behind the ball in x, so the following drop sweeps forward through it and knocks it
@@ -515,7 +436,7 @@ defence slides onto its z (man-selection tracks the ball wherever it is), then e
 lowers into the strike or parks a half-lifted boot in the kick path via `safeRaise` —
 whose band, rel −5.8..0.45, *is* that gap.
 
-So this action runs first and outranks `safeRaise` / `trap` / `evade`; all three want to
+So this action runs first and outranks `safeRaise` / `evade`; both want to
 play a ball that isn't ours to play. Two moves, in order:
 
 1. **Slide** the men off the ball's z-lane (minimum-travel escape via `clearOffset`,
@@ -584,9 +505,9 @@ curve and the live ball, accounting for the rod's slide. The tuned contact
 requires reach, a forward-facing part of the foot and lateral alignment.
 
 Press C then L to trace a rod. A normal kick can log `no-live-contact`.
-`GATE:PASS` and `GATE:TRAPSHOT` log the failed measurement.
+`GATE:PASS` and `GATE:PINSHOT` log the failed measurement.
 
-- `samples` 9 ≈ 15ms apart on a pass swing. This runs only when a pass or trap shot is
+- `samples` 9 ≈ 15ms apart on a pass swing. This runs only when a pass or pin shot is
   already being considered — a handful of times a second at most — so buy the
   resolution. Coarse sampling has to be paid for with a bigger `pad`, and `pad` is what
   lets near-misses through.
@@ -706,7 +627,7 @@ OFF/DEF rating mix — light, since decisions sweeten a build rather than carryi
 `offMix` / `defMix` are the ATT-vs-MID and GK-vs-DEF shares.
 
 **`spend`.** AI upgrade-spend weights per role, giving AI teams position-flavoured builds.
-`iq` is weighted toward playmaking rods, where trap and wait-for-sweet-spot pay off most.
+`iq` is weighted toward playmaking rods, where wait-for-sweet-spot pays off most.
 
 ### `league.cup`
 

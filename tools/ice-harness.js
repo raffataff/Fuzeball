@@ -406,14 +406,16 @@ function suite(X){
 
  /* 14. a different figurine, a different scale */
  reset(X);
- const old=X.ICE.geo[1].slice(),oldTop=X.ICE.fit[1].top;
- X.playerModel[1]=figure(X,fakeMan(2.4));X.cfg.blueScale=1.25;
+ const mb=X.cfg.modelBlue,am1=X.CONFIG.playerModel.models.find(m=>m.id!==X.activeModel(0).id);   // blue on its own figurine, so a rescale leaves red alone
+ X.cfg.modelBlue=am1.id;X.playerModel[1]=figure(X,fakeMan(2.4));X.iceUpdate(0.016);
+ const old=X.ICE.geo[1].slice(),oldTop=X.ICE.fit[1].top,s1=am1.scale;
+ am1.scale=s1*1.25;
  X.iceUpdate(0.016);
  ok(X.ICE.geo[1].every((g,i)=>g!==old[i])&&old.every(g=>g.disposed),'a new scale refits team 1 and frees the old shapes');
  ok(X.ICE.fit[1].top>oldTop*1.2,'the block is as tall as the bigger figurine ('+X.ICE.fit[1].top.toFixed(2)+' vs '+oldTop.toFixed(2)+')');
  ok(X.rods.filter(r=>r.team===1).every(r=>r.ice.every(it=>it.front.geometry===X.ICE.geo[1][it.v]&&it.back.geometry===it.front.geometry)),'every man of team 1 hangs the new shape');
  ok(X.rods.filter(r=>r.team===0).every(r=>r.ice.every(it=>X.ICE.geo[0].indexOf(it.front.geometry)>=0)),'team 0 is left alone');
- X.cfg.blueScale=1;
+ am1.scale=s1;X.cfg.modelBlue=mb;
 
  /* 15. chunks thrown at the walls */
  reset(X);
@@ -470,7 +472,7 @@ const MUT=[
  ["Au.play('ice_form');",'','no form sound'],
  ["if(fx)Au.play('ice_break');",'','no break sound'],
  ['iceMake(iceTris(rings,t*31+v*7+1,P))','iceMake(iceTris(rings,t*31+1,P))','every shape is the same'],
- ["s.toFixed(3)+'|'","'x|'",'a rescale is not noticed'],
+ ["s.toFixed(3)+'|'+my.toFixed(3)+'|'","'x|'",'a rescale is not noticed'],   // a rodY man's height follows its scale, so both go
  ['if(left>T.left+0.5)T.pulse=1;','','a second pickup is silent'],
  ['return typeof vfxLive===\'function\'&&vfxLive()&&cfg.particles;','return typeof vfxLive===\'function\'&&vfxLive();','particles off still spawns'],
  ['if(T.glint<=0){T.glint=IC.glint.every*rand(0.6,1.5);iceGlint(t);}','','no glints'],

@@ -90,7 +90,7 @@ function matchHint(){
  const trg=cfg.padControlMode==='total'?' · {LT} fine · {RT} fast':shotsOn()?(SHOT.charge.needRaise?' · {RT}+{X} wind up':' · {RT} power')+' · {LT} touch'+(SHOT.pin&&SHOT.pin.on?' · {LT}+{X} pin'+(SHOT.pin.fwd.on?' · {LT}+{A} forward pin':''):''):'';
  const H=bindHintRods(sw,S.seats.some(s=>s.devs.indexOf('mouse')>=0));
  return [!S.seats.length?bindHint('camera','camera'):kb?[bindJoin([H.sw,H.slide,bindHint('camera','camera')]),H.act,H.mod].filter(Boolean).join('\n'):null,
-  !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} kick · {X} raise'+trg:null];
+  !S.seats.length?'{Y} camera':pd?(sw?'{LB} {RB} switch rod · ':'')+'{LS} slide · {RS} tilt\n{A} pass · {RT}+{A} shot · {X} raise'+(trg?'\n'+trg.slice(3):''):null];   // the triggers' own line: the verbs fill one
 }
 // Options closed over the pause menu: a rebind or a pad mode change reaches the hint without a restart; handed over only when it changed (hudHint restarts the fade)
 function hintRefresh(){

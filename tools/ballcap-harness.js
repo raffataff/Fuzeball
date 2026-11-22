@@ -103,10 +103,10 @@ for(const str of [0,5,10]){
  ok(!(flat.over>0),'C2: a strike with no charge at all never gets an allowance');
 }
 
-/* ---- C3 · the pin / trap shot keeps its ceiling for the WHOLE swing --------------------------- */
+/* ---- C3 · the pin shot keeps its ceiling for the WHOLE swing --------------------------- */
 {
  // the boot meets the ball ~40 times in one swing and the shot's own trim is spent on the first touch, so the ceiling cannot ride on shotOn
- const pinS=(o)=>rod(5,Object.assign({kickStyle:'trapShot',kickT:0.12},o||{}));
+ const pinS=(o)=>rod(5,Object.assign({kickStyle:'pinShot',kickT:0.12},o||{}));
  const bv=()=>({v:{x:1e4,y:0,z:0},t:BALL_TYPES.classic});
  const plain=bv();capSpeed(plain,rod(5,{kickT:0.12}),true,0);
  const first=bv();capSpeed(first,pinS({shotOn:true,shotPow:1.15}),true,0);
@@ -228,10 +228,10 @@ mutate('the sweet spot no longer raises the ceiling',CS,/ if\(sweet\)f\+=C\.swee
  rm=>Math.abs(rm(245,rod(10),true)-rm(245,rod(10),false))<1e-9);
 mutate('a follow-up contact in the same charged swing falls back to the plain ceiling',CS,/ else if\(r\.kickT>=0&&r\.swOver>0&&r\.swF>0\)\{if\(r\.swF>f\)f=r\.swF;if\(r\.swMx>mx\)mx=r\.swMx;\}/,'',
  rm=>{const sw=rod(5,{shotOn:true,shotPow:1.166,shotOver:1,kickT:0.02,swOver:1});rm(1e4,sw,true);sw.shotOn=false;sw.shotOver=0;return rm(1e4,sw,true)<=MV*C.max+1e-9;});
-mutate('a pin shot falls back to the plain ceiling',CS,/ if\(r\.kickStyle==='trapShot'\)f\+=C\.pin\|\|0;.*\n/,'\n',
- rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'trapShot',kickT:0.12}),true)-rm(1e4,rod(5,{kickT:0.12}),true))<1e-9);
-mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle==='trapShot'\)f\+=C\.pin\|\|0;/,'f+=C.pin||0;',
- rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pass',kickT:0.12}),true)-rm(1e4,rod(5,{kickStyle:'trapShot',kickT:0.12}),true))<1e-9);
+mutate('a pin shot falls back to the plain ceiling',CS,/ if\(r\.kickStyle==='pinShot'\)f\+=C\.pin\|\|0;.*\n/,'\n',
+ rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pinShot',kickT:0.12}),true)-rm(1e4,rod(5,{kickT:0.12}),true))<1e-9);
+mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle==='pinShot'\)f\+=C\.pin\|\|0;/,'f+=C.pin||0;',
+ rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pass',kickT:0.12}),true)-rm(1e4,rod(5,{kickStyle:'pinShot',kickT:0.12}),true))<1e-9);
 mutate('a charge no longer raises the most a ceiling may be',CS,/mx\+=\(C\.chargeTop\|\|0\)\*w;/,'',
  rm=>rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true)<=MV*C.max+1e-9);
 mutate('boost raises the ceiling of a touch that is not a strike',CS,'if(S.eff[r.team].boost>S.time&&boostSwing(r))','if(S.eff[r.team].boost>S.time)',
@@ -254,9 +254,9 @@ mutate('overspeed paid on any charge, however overcooked',CS,/const w=\(r\.shotO
 /* ---- the table ------------------------------------------------------------------------------ */
 const HEAT=MV*CONFIG.fx.heat.from;
 const raw=(str,sweet,shot)=>{ // reproduce collideRod's impulse for a head-on strike
- const foot=(KICK.strikeA/KICK.strike)*Math.hypot(CONFIG.physics.arm+CONFIG.physics.footBoxOff.x,CONFIG.physics.footBoxOff.y);
+ const foot=(CONFIG.swings.shoot.strikeA/CONFIG.swings.shoot.strike)*Math.hypot(CONFIG.physics.arm+CONFIG.physics.footBoxOff.x,CONFIG.physics.footBoxOff.y);
  const bin=40,vn=-(bin+foot),m=BALL_TYPES.classic.mass;
- let jm=-(1+KICK.restPower)*vn/m*Math.max(.2,1+(str-5)*CONFIG.stats.str);
+ let jm=-(1+CONFIG.swings.shoot.restPower)*vn/m*Math.max(.2,1+(str-5)*CONFIG.stats.str);
  if(shot)jm*=shot;
  if(sweet)jm*=1+KICK.sweetSpot.strBase;
  let v=-bin+jm;return v+(foot-v)*KICK.grip;

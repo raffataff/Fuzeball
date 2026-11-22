@@ -88,7 +88,7 @@ function boot(mutation) {
    const y = table === 'arena' ? pinSurfaceY(r.x, z) : BALL_R;
    const b = ballAt(r, 3.5, z, y);
    const from = b.cur.clone();
-   kickRod(r);
+   kickRod(r, 'shoot');
    step();
    assert.ok(b.cur.distanceTo(from) < 1.6, 'a swing visibly shoved the ball in one tick');
    assert.ok(b.v.length() > 15, 'a reachable strike failed to move the ball');
