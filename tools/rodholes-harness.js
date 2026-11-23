@@ -250,7 +250,7 @@ ok(dist(c5,X.RH_IDLE)>0.1&&dist(c5,X.RH_HOT)>0.1,'E5 a default sta-5 rod lands b
 /* ---------- F · charge, and the off switch ---------- */
 const G=boot(),lG=rig(G,0); spend(G,1); run(G,600);
 ok(G.__get('rodHoleMeshes')[0].fill<0.3,'F1 the ring is drained before the wind-up');
-const sweet=(CFG.shots.charge.sweetFrom+CFG.shots.charge.sweetTo)/2;
+const sweet=(CFG.swings.shoot.charge.sweetFrom+CFG.swings.shoot.charge.sweetTo)/2;
 G.__get('rods').forEach(r=>{r.chg=sweet;}); run(G,600);
 near(lG[0].fill,1,0.02,'F2 a wind-up fills the ring completely — a charge is not a level');
 ok(dist(lG[0].col,X.RH_BAND[1])<0.06,'F3 ...in the SAME gold as the seat marker');
@@ -282,7 +282,7 @@ const gCol=new (GG.__get('THREE').Color)(GG.__get('cfg').redColor);
 ok(dist(lGG[2].col,gCol)<0.02,'G4 the SCORER\'s ring takes the scoring team\'s colour on the first frame — a flash does not ease in');
 ok(dist(lGG[5].col,gCol)>0.1,'G5 ...and only that ring; the rest carry on reading stamina');
 // it must outrank a live wind-up too
-const sw2=(CFG.shots.charge.sweetFrom+CFG.shots.charge.sweetTo)/2;
+const sw2=(CFG.swings.shoot.charge.sweetFrom+CFG.swings.shoot.charge.sweetTo)/2;
 gRods.forEach(r=>{r.chg=sw2;}); run(GG,1);
 ok(dist(lGG[2].col,gCol)<0.02,'G6 a goal outranks a live charge on the same rod');
 gRods.forEach(r=>{r.chg=-1;});
@@ -361,7 +361,7 @@ const MUT=[
  ['a wind-up no longer fills the ring',
   s=>s.replace('tc=RH_BAND[band]||RH_IDLE;tg=RH.charge.glow;','tc=RH_BAND[band]||RH_IDLE;tg=RH.charge.glow;tf=0;'),
   c=>{const l=rig(c,5);spend(c,1);
-      const sw=(c.__x.CONFIG.shots.charge.sweetFrom+c.__x.CONFIG.shots.charge.sweetTo)/2;
+      const sw=(c.__x.CONFIG.swings.shoot.charge.sweetFrom+c.__x.CONFIG.swings.shoot.charge.sweetTo)/2;
       c.__get('rods').forEach(r=>{r.chg=sw;});run(c,600);
       return Math.abs(l[0].fill-1)>0.05;}],
  ['the shader injects without checking the anchor exists',

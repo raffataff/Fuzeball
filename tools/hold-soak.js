@@ -29,7 +29,7 @@
   window.kickRod=function(r,style){
    if(r.kickT<0&&!isUserRod(r)&&r.pinB){
     const b=r.pinB,p=b.m.position,gx=r.kickDir>0?F.L/2:-F.L/2,CA=AIC.catch;
-    const out=pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,CA.shotV),gx,0);
+    const out=pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,SWINGS.shoot.v),gx,0);
     const k={rod:r,team:r.team,role:r.role,style,why:r.pcWhy,ct:+(r.catT||0).toFixed(2),poss:+(S.time-(r.__a0??S.time)).toFixed(2),out:+out.toFixed(2),sv:+(r.slideV||0).toFixed(1),t:S.time,next:null};
     K.push(k);open.push(k);last[r.team]=k;
    }
@@ -57,7 +57,7 @@
   }finally{window.pinPlay=pp;window.kickRod=kr;window.momContact=mc;window.onGoal=og;for(const [k,v] of olds.reverse())setPath(k,v);}
   const n=m.n,W2={};for(const k of Object.keys(W).sort())W2[k]=+(W[k]/n).toFixed(1);
   const grp={};
-  for(const k of K){const g=k.role+':'+k.style+':'+k.why;const G=grp[g]=grp[g]||{n:0,ct:0,poss:0,blk:0,cov:0,opp:0,fb:0,goal:0};G.n++;if(k.goal)G.goal++;if(k.next==='opp'&&k.nt<0.6&&k.nr!=='GK')G.fb++;G.ct+=k.ct;G.poss+=k.poss;if(k.next==='opp'&&k.nt<0.6)G.blk++;if(k.next==='opp')G.opp++;if(k.out<AIC.catch.lineClear)G.cov++;}
+  for(const k of K){const g=k.role+':'+k.style+':'+k.why;const G=grp[g]=grp[g]||{n:0,ct:0,poss:0,blk:0,cov:0,opp:0,fb:0,goal:0};G.n++;if(k.goal)G.goal++;if(k.next==='opp'&&k.nt<0.6&&k.nr!=='GK')G.fb++;G.ct+=k.ct;G.poss+=k.poss;if(k.next==='opp'&&k.nt<0.6)G.blk++;if(k.next==='opp')G.opp++;if(k.out<SWINGS.pinShot.open)G.cov++;}
   for(const g in grp){const G=grp[g];grp[g]={pm:+(G.n/n).toFixed(2),ct:+(G.ct/G.n).toFixed(2),poss:+(G.poss/G.n).toFixed(2),cov:+(G.cov/G.n).toFixed(2),field:+(G.fb/G.n).toFixed(2),goal:+(G.goal/G.n).toFixed(2),blk:+(G.blk/G.n).toFixed(2),opp:+(G.opp/G.n).toFixed(2)};}
   window.__hd=K;
   return JSON.stringify({goals:[+(m.gt[0]/n).toFixed(2),+(m.gt[1]/n).toFixed(2)],secs:W2,plays:grp});

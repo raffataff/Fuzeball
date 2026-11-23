@@ -12,7 +12,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -23,9 +23,8 @@ const stubs=[
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -180,7 +179,7 @@ const MUT=[
  {n:'the cushion starts at once',from:'&&ahead<=Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD))r.catCush=true;',to:')r.catCush=true;'},
  {n:'the cushion starts from the distance cap only (the time is ignored)',from:'Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD)',to:'SD.cushionD'},
  {n:'the cushion has no distance cap',from:'Math.min(SD.cushionT*Math.max(cl,1),SD.cushionD)',to:'SD.cushionT*Math.max(cl,1)'},
- {n:'the speed of the rod itself is not asked about',from:'&&bv<=DIFFS[difficulty].speed*rodSpeedMult(r)+SD.pinV+SD.cushionSlack',to:''},
+ {n:'the speed of the rod itself is not asked about',from:'&&bv<=rodTopV(r)+SD.pinV+SD.cushionSlack',to:''},
  {n:'the slack on the rod speed is ignored',from:'+SD.pinV+SD.cushionSlack',to:'+SD.pinV'},
  {n:'the cushion tries a ball it cannot match',from:'&&bv<=cushionV&&',to:'&&'},
  {n:'the cushion ignores the room it has',from:'&&(sg>0?r.maxOff-r.offset:r.offset+r.maxOff)>=SD.cushionRoom;',to:';'},

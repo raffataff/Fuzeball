@@ -75,25 +75,25 @@ function aimAssist(b,r,noPass){
 }
 // The same aim correction is used by the collision and the AI's forecast.
 function assistTurn(r,cur,want,forward,pass){
- const PS=CONFIG.ai.dribble.pass;
+ const PS=SWINGS.passAssist;
  let a=assistAng(r,pass);
  if(r.shotOn)a*=clamp(r.shotCtl,0,1);
- if(a<=0||forward<(pass?PS.assistMinVX:STC.assistMinVX))return 0;
+ if(a<=0||forward<(pass?PS.minVX:STC.assistMinVX))return 0;
  let da=want-cur;if(da>Math.PI)da-=2*Math.PI;else if(da<-Math.PI)da+=2*Math.PI;
- return Math.abs(da)>(pass?PS.assistCone:STC.assistCone)?0:clamp(da,-a,a);
+ return Math.abs(da)>(pass?PS.cone:STC.assistCone)?0:clamp(da,-a,a);
 }
 // the most aimAssist can bend a strike (rad); the AI reads it as how far off straight a shot or a pass can be placed
 function assistAng(r,pass){
  const accFrac=(ST(r,'acc')-STC.base)/(STC.max-STC.base);        // −1 at acc 0, 0 at base, +1 at max
  const a=clamp(STC.assistBase+accFrac*(STC.assistMax-STC.assistBase),0,STC.assistMax);
- return pass?Math.max(a,CONFIG.ai.dribble.pass.assist):a;
+ return pass?Math.max(a,SWINGS.passAssist.bend):a;
 }
 // WALL PLAY: the side-of-the-boot strike (CONFIG.ai.wallPlay)
 // an end man stops two units short of a wall ball, so a strike on one only runs down the wall; a forward strike on a wall ball now leaves infield, aimed like aimAssist but clamped into [minAng,maxAng]
 // a pure heading rotation (no energy); worked in (forward, infield) coordinates so one expression serves both teams and walls
 function wallAssist(b,r,noPass){
  const W=AIC.wallPlay;
- if(!W||!W.on||(!W.human&&isUserRod(r)))return;
+ if(!W||!W.on)return;
  const p=b.m.position,v=b.v;
  if(F.W/2-Math.abs(p.z)-BALL_R>W.gap)return;             // not on the wall
  const dir=r.kickDir;

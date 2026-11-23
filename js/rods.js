@@ -33,15 +33,10 @@ function rodSpeedMult(r){
   if(e.frozen>S.time)m*=KICK.freezeMult;
  return m;
 }
-// the swing for a style NAME, split out so ai.js's forecasts read the timings the swing will run on
-function styleCfg(style){
- return style==='pinShot'?SWINGS.pinShot:(style==='shoot'?SWINGS.shoot:SWINGS.pass);
-}
-// the curve in play: the swing given to kickRod, else its style's; updateRods and collideRod both read it
-function kickStyleCfg(r){
- // r.kickCurve outranks the style: a pin swing or the snake
- return r.kickCurve||styleCfg(r.kickStyle);
-}
+// a swing by name: CONFIG.swings is the only source of a kick (player and AI); ai.js's forecasts read the same block
+function styleCfg(name){return SWINGS[name||'pass'];}
+// the swing in play; updateRods and collideRod both read it
+function kickStyleCfg(r){return styleCfg(r.kickStyle);}
 // was a contact a real front-face strike or a side/back graze? nx is the contact normal's world-x (dir-relative ~+1 in front, ~0 side, negative behind)
 // it gates only r.passTo, so side clips aren't bent toward a receiver; shots, clears and human kicks are untouched
 function passFaceOK(r,nx){
@@ -49,34 +44,32 @@ function passFaceOK(r,nx){
  if(!SG||!SG.on||!SG.faceOnContact)return true;
  return nx*r.kickDir>=SG.faceDot;
 }
-// ball-control actions: while one is live (no swing in flight) collideRod reads holdRest/holdGrip from the returned block and the slide scales by carryMult
-//   retrieve: the leg lowering onto the ball, sticky until the pin takes it (ai.retrieve.hold)
-//   dribble: works a ball at the feet of a resting row, no angle change (grip 0.30); only the contact and slide speed, not updateRods' angle chain
+// ball control: while a hold is live (no swing in flight) collideRod reads holdRest/holdGrip/sideRest from the returned block and the slide scales by carryMult
 function holdCfg(r){
  if(r.kickT>=0)return null;                        // a swing in flight is a release, never a hold
- // the player's hold (L2) comes first and can't collide: r.act is only written by ai.js (which skips user rods), r.hold only by a seat's pad
- // it's the rod's own block (buildRods; refreshed by shots.js shotHoldUpdate) since values blend by trigger depth per seat
+ // the player's hold (L2), blended by trigger depth per seat (buildRods, shotHoldUpdate); r.act is only written by ai.js, which skips user rods
  if(r.hold&&r.hold.on)return r.hold;
- if(r.act==='retrieve'&&r.retPh==='pin')return AIC.retrieve.hold;   // retrieve's pin: the leg lands on the ball as a dead sticky surface until the pin takes it
- if(r.act==='dribble')return AIC.dribble;
- return null;
+ if(r.act!=='retrieve'||r.retPh!=='pin')return null;
+ // the AI's retrieve lowering onto the ball: the player's hold fully squeezed (shots.hold)
+ const H=CONFIG.shots.hold,F=holdCfg.full||(holdCfg.full={});   // one block, rewritten in place (read per man per substep)
+ F.holdRest=H.rest;F.sideRest=KICK.sideRest*(H.side!=null?H.side:0);F.holdGrip=H.grip;F.carryMult=H.carry;
+ return F;
 }
-// style 'pass' (the default) | 'shoot' | 'pinShot' | 'snake'; curve = the swing when the style's is not it (the pin pass is style 'pass' on swings.pinPass); aimAt (optional): a {x,z} point the strike bends toward instead of the goal (the pass); rides on the rod since contact is mid-swing, cleared here so a kick can't inherit it
-// k (optional): the wind-up a shot carries
-function kickRod(r, style, aimAt, curve, k){
+// name: a swing in CONFIG.swings (default 'pass'); a new kick is a new block there, fired by its name
+// aimAt (optional): a {x,z} the strike bends toward instead of the goal (a pass), for this swing only; k (optional): the wind-up a shot carries
+function kickRod(r, name, aimAt, k){
  if(r.kickT>=0)return;
- style=style||'pass';
- const SW=curve||styleCfg(style);
+ name=name||'pass';
+ const SW=styleCfg(name);
+ if(!SW||SW.strikeA==null){console.warn('kickRod: no swing "'+name+'" in CONFIG.swings');return;}
  if(SW.pow!=null)shotArm(r,SW,k??-1);              // the trims ride in the swing's own block, player and AI alike
- r.raise=false;r.raiseKeep=false;r.kickHold=false;r.kickT=0;r.act=null;r.kickStyle=style;   // a fresh swing is never born held: js/input.js sets kickHold right after, for a human press only
- r.kickCurve=curve||null;                          // the curve given for this swing; null = the style's
+ r.raise=false;r.raiseKeep=false;r.kickHold=false;r.kickT=0;r.act=null;r.kickStyle=name;   // a fresh swing is never born held: js/input.js sets kickHold right after, for a human press only
  r.chg=-1;r.chgSrc=null;r.chgA=null;r.trem=0;      // a swing IS the release: no wind-up survives it
  r.kickHit=false;                                  // debug tracer: set true by collideRod on real contact this swing
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;    // fresh post-kick held-evade budget + escape direction for this swing
- r.dribMan=-1;r.dribZ=0;r.dribZ0=0;                // …and any dribble carry, for the same reason
  r.laneDir=0;                                      // …and any lane-clear escape direction (r.act was just nulled)
  r.passTo=aimAt||null;                             // pass target for this swing only
- if(typeof recvArm==='function'){if(aimAt&&style==='pass')recvArm(r,aimAt);else recvRelease(r);}   // the rod a pass is aimed at gets ready; any other kick lets the mates ahead go back up (ai.js)
+ if(typeof recvArm==='function'){if(aimAt)recvArm(r,aimAt);else recvRelease(r);}   // the rod a pass is aimed at gets ready; any other kick lets the mates ahead go back up (ai.js)
  r.swOver=0;r.swF=0;r.swMx=0;                     // overspeed this swing may carry past maxV (shots.js shotFire / physics.js capSpeed, for a charge)
  if(r.pinB)pinRelease(r);                          // a swing lets a pinned ball go, and this swing is what strikes it (physics.js)
  r.kickA0=r.angle/(r.kickDir||1);                  // rod-local angle the swing STARTS from (see updateRods)
@@ -92,7 +85,7 @@ function resetRodRotation(){
   shotReset(r);                                    // charge/arming/tremble die with the rally (js/shots.js)
   r.act=null;r.actT=0;r.laneDir=0;r.laneCd=0;
   if(r.hold)r.hold.on=false;
-  r.dribMan=-1;r.dribZ=0;r.dribZ0=0;r.dribCd=0;r.dribEvT=0;r.passTo=null;r.passEv=null;r.passEvT=0;
+  r.passTo=null;r.passEv=null;r.passEvT=0;
   r.catPh=null;r.catMan=-1;r.catCd=0;r.catSw=false;r.catSv=0;r.catSl=0;r.catHold=0;r.rnPh=null;r.rnCd=0;r.rvUntil=0;r.rvReady=false;r.rvLaneT=0;r.rvCd=0;r.gkWaitT=0;r.gkClearT=0;r.retFl=false;r.retKnow=0;r.tapF=false;r.catFwd=false;r.ftCd=0;r.ftPh=null;r.ahPh=null;r.unPh=null;r.unT=-9;r.unCd=0;r.hPh=null;r.tapHit=false;r.htT=0;r.pinFwd=false;r.ttOn=false;r.ttPh=null;r.ttCd=0;r.ttRoll=null;r.ttPk=null;r.tgV=0;r.tgP=null;r.puPh=null;r.puB=false;r.kwT0=0;r.kwS=-9;r.tgF=0;r.rnShot=false;
   if(r.behindFlag!=null)r.behindFlag=false;
   r.pivot.rotation.z=0;
@@ -103,7 +96,7 @@ function resetRodRotation(){
 function snakeStep(r,dt){
  r.kickT+=dt;let a=snakeA(kickStyleCfg(r),r.kickT,r.kickA0||0);
  r.heldFwd=false;
- if(a==null){a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;shotDisarm(r);}
+ if(a==null){a=0;r.kickT=-1;r.kickStyle=null;shotDisarm(r);}
  if(a>Math.PI)a-=2*Math.PI;
  r.angle=a*r.kickDir;
  if((r.angle-r.prevAngle)*r.kickDir<-Math.PI)r.prevAngle-=2*Math.PI*r.kickDir;
@@ -164,14 +157,13 @@ function updateRods(dt){
      const holdF=(uf||r.kickHold||(r.evadeHold>0&&!r.evadeSpent))&&T>=KS.hold;
      r.heldFwd=holdF;
      if(holdF){a=KS.strikeA;r.kickT=KS.hold;if(S.asl&&uf&&!r.kickHold&&seatOf(r))aslHit(r,'heldOut');}   // a player's swing kept out over a ball they did not hold
-     else if((a=swingA(KS,T,kA0))==null){a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;r.passTo=null;
+     else if((a=swingA(KS,T,kA0))==null){a=0;r.kickT=-1;r.kickStyle=null;r.passTo=null;
       shotDisarm(r);                                   // an uncontacted swing spends its charge anyway — see shots.js
       if(dbgLogRod===r&&!r.kickHit)dbgRod(r,'WHIFF','no contact — swing completed');}
      r.angle=a*r.kickDir;
   }else if(r.act==='safeRaise'){const sl=srLerp(r);r.heldFwd=false;r.angle=lerp(r.angle,backLimit(r,(r.srA!=null)?r.srA:AIC.safeRaise.angle*r.kickDir,sl),Math.min(1,sl*dt));}   // r.srA: ai.js picks the lift depth per ball; backLimit holds it short of a ball it would hit
-  // r.act==='dribble' is absent on purpose: it works the ball with the men down and lands on the final `else` (ease toward 0)
   // CHARGE WIND-UP (js/shots.js, classic pad): below the right-stick branch and above r.raise; r.chgA is the sweepClips-capped target
-  else if(shotPullAngle(r)!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.chgA,Math.min(1,SHOT.charge.pullLerp*dt));}
+  else if(shotPullAngle(r)!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.chgA,Math.min(1,SWINGS.shoot.charge.pullLerp*dt));}
   // finesse + the right stick (shots.js shotStickPin): the leg settles on the ball's top, a pinned ball is held against a wobbling stick, a pushed one receives a ball from behind (at the receive's rate)
   else if(r.pinMag!=null){r.heldFwd=false;r.angle=lerp(r.angle,r.pinMag,Math.min(1,(r.fwdR?SHOT.pin.assist.recv.lerp:SHOT.pin.lerp)*dt));}
   else if(r.padAngleOn){                              // right-stick absolute angle: the stick position is the rod angle (1:1)
@@ -228,9 +220,7 @@ function updateRods(dt){
   r.laneCd=Math.max(0,(r.laneCd||0)-dt);     // lane-clear re-entry lockout (CONFIG.ai.clearLane.cd)
   r.retCd=Math.max(0,(r.retCd||0)-dt);       // retrieve re-entry lockout (CONFIG.ai.retrieve.cd)
   r.catCd=Math.max(0,(r.catCd||0)-dt);       // catch re-entry lockout (CONFIG.ai.catch.cd)
-  r.dribCd=Math.max(0,(r.dribCd||0)-dt);     // dribble re-entry lockout (CONFIG.ai.dribble.cd)
-  r.dribEvT=Math.max(0,(r.dribEvT||0)-dt);   // next dribble target evaluation (dribble.reEval) — also gates entry scans
-  r.passEvT=Math.max(0,(r.passEvT||0)-dt);   // pass-scan cache age (dribble.pass.every); the scan is the AI's priciest call
+  r.passEvT=Math.max(0,(r.passEvT||0)-dt);   // pass-scan cache age (ai.pass.every); the scan is the AI's priciest call
   r.pivot.rotation.z=r.angle;
   r.pivot.position.z=r.offset;
   const fadeT=CONFIG.cannonball.respawnFade;
@@ -261,7 +251,7 @@ function updateRods(dt){
 // rodSlow: the slide is slowed by a carry (a pin, a grip under carry 1, a snake), set by every call (a module field, so it doesn't allocate)
 let rodSlow=false;
 function rodSlideMax(r,uSeat,cvS){
- let ms=(uSeat?KICK.userSpeed*uSeat.tcMult:DIFFS[teamDiff(r.team)].speed*cvS*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1))*rodSpeedMult(r);
+ let ms=uSeat?KICK.userSpeed*uSeat.tcMult*rodSpeedMult(r):rodTopV(r)*cvS;
  // a pinned ball is carried exactly (physics.js pinBallStep), so its limit is the pin's carry; holdCfg is null mid-swing
  // a player's forward pose receiving a ball from behind (shots.js r.fwdR) is not slowed by the grip: nothing is held yet
  const H=(r.fwdR&&!r.pinB)?null:holdCfg(r),snk=r.kickStyle==='snake'&&!r.kickHit,pb=uSeat?0:pushBurst(r);
@@ -270,3 +260,5 @@ function rodSlideMax(r,uSeat,cvS){
  else if(r.pinB||snk)ms*=SHOT.pin.carry*(!uSeat&&r.act==='catch'&&r.catPh==='hold'&&r.angle*r.kickDir>AIC.catch.recv.fwdMin?AIC.catch.recv.carry:1);else if(H)ms*=H.carryMult;   // a snake slides as the pin did until it strikes, so the man stays with the ball it let go
  return ms;
 }
+// an AI hand's top slide speed (u/s): the difficulty's, the stats and frost; a cover's step and a carried ball come on top (rodSlideMax)
+function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*(S.userTeam>=0&&r.team===S.userTeam?KICK.aiOwnMult:1)*rodSpeedMult(r);}

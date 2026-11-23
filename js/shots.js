@@ -45,27 +45,24 @@ function shotHoldUpdate(r,lt){
 function shotPinInput(r,I,dt){
  const P=SHOTC.pin,H=P&&P.assist&&P.assist.hop,R=P&&P.assist&&P.assist.recv;
  r.fwdR=false;r.pinRl=false;                                   // shotFwdAngle / shotStickPin / shotBackAngle set them again while the pose or the stick receives / drops onto a rolling ball
- if(!r.pinB||!r.pinFwd)r.snPT=-1e9;                            // a snake's two presses both land on a ball held forward
- if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinMag=null;r.sqA=null;r.pinKh=false;r.fwdStk=0;r.fwdRz=false;r.ppT=-1e9;return;}
- // one kick press on the back pin and no second within press.dbl: the pin pass (shotKickEdge stamps r.ppT)
- if(r.ppT>-1e8){if(!r.pinB||r.pinFwd||r.kickT>=0)r.ppT=-1e9;else if(S.time-r.ppT>=P.press.dbl)shotPinPass(r);}
- // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord; a pass waiting on its second press keeps the ball pinned whatever finesse does
- const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from,pp=r.ppT>-1e8;
+ if(!P||!P.on){r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinMag=null;r.sqA=null;r.pinKh=false;r.fwdStk=0;r.fwdRz=false;return;}
+ // finesse held, not finesse's grip: the keyboard grip eases in, which dropped the pose on a chord
+ const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;
  const rzUp=!!I.rz&&!r.rzWas;r.rzWas=!!I.rz;                   // a raise PRESS picks the back pin; held, it must not undo a forward pose asked for after it
  if(!I.kh)r.pinKh=false;                                       // the kick that posed the forward pin is up
  // kick held first (the swing frozen forward, a ball let under it), then finesse: the forward pin takes the leg over from the swing
- if(fin&&P.fwd.on&&r.kickT>=0&&r.heldFwd&&r.kickHold&&I.kh&&r.chg<0&&!r.pinB&&I.m<=SHOTC.pass.modAt){
-  r.kickT=-1;r.kickStyle=null;r.kickCurve=null;r.passTo=null;r.heldFwd=false;shotDisarm(r);
+ if(fin&&P.fwd.on&&r.kickT>=0&&r.heldFwd&&r.kickHold&&I.kh&&r.chg<0&&!r.pinB&&I.m<=SHOTC.mod.fwdAt){
+  r.kickT=-1;r.kickStyle=null;r.passTo=null;r.heldFwd=false;shotDisarm(r);
   r.pinPose=true;r.pinFwd=true;r.pinKh=true;r.fwdKT=-1e9;r.fwdStk=0;   // a hold, never a tap
   if(S.asl)aslHit(r,'fwdTake');
  }
- r.pinOn=(fin||pp)&&r.chg<0&&r.kickT<0;
+ r.pinOn=fin&&r.chg<0&&r.kickT<0;
  // finesse let go with kick still held: the forward leg stays up (r.fwdRz, rods.js) for a ball to roll under; the kick gives up the pose so finesse again re-poses it
  if(!r.pinOn&&P.fwd.raise&&I.kh&&r.chg<0&&r.kickT<0&&(r.fwdRz||(r.pinPose&&r.pinFwd))){r.fwdRz=true;r.pinKh=false;}else r.fwdRz=false;
  if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}
  else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}   // a ball held under the forward leg keeps its pose
  // kick held with no pose of its own (a rod just taken over, the AI's receiving pose with it, or kick held before finesse with no swing frozen), or a stroke's receive (I.rcv) on a rod with no forward pose: the forward pose, a hold
- else if(!r.pinB&&(I.kh?!r.pinKh:I.rcv&&!(r.pinPose&&r.pinFwd))&&R&&R.on&&R.take&&P.fwd.on&&I.m<=SHOTC.pass.modAt){r.pinPose=true;r.pinFwd=true;r.pinKh=!!I.kh;r.fwdKT=-1e9;r.fwdStk=0;if(S.asl)aslHit(r,'fwdTake');}
+ else if(!r.pinB&&(I.kh?!r.pinKh:I.rcv&&!(r.pinPose&&r.pinFwd))&&R&&R.on&&R.take&&P.fwd.on&&I.m<=SHOTC.mod.fwdAt){r.pinPose=true;r.pinFwd=true;r.pinKh=!!I.kh;r.fwdKT=-1e9;r.fwdStk=0;if(S.asl)aslHit(r,'fwdTake');}
  const stk=r.fwdStk>S.time&&r.pinPose&&r.pinFwd&&!r.pinB;      // a tapped kick's stroke runs on through the ball
  // unlatched: the pose lasts while its button is held (the other one, still held, takes over), then the leg relaxes to the square, held where it is over a ball in a man's lane; a stroke's receive holds it like the kick
  if(r.pinOn&&r.pinPose&&!r.pinB&&!P.latch&&!stk){
@@ -349,35 +346,32 @@ function shotFwdHold(r){const W=SHOTC.pin.fwd;return shotFwdBall(r,W.holdNear,W.
 // finesse + kick poses the forward pin instead of swinging; true = the press was spent on it (same axis as the old pass: power cancels it, a half trigger is a soft touch)
 function shotPinFwdPress(r,m){
  const P=SHOTC.pin,W=P&&P.fwd;
- if(!W||!W.on||!P.on||m>SHOTC.pass.modAt||r.chg>=0||r.kickT>=0)return false;
+ if(!W||!W.on||!P.on||m>SHOTC.mod.fwdAt||r.chg>=0||r.kickT>=0)return false;
  r.pinPose=true;r.pinFwd=true;r.pinKh=true;r.fwdKT=S.time;r.fwdStk=0;r.pinA=shotFwdAngle(r)*r.kickDir;
  if(S.asl)aslHit(r,'kFwdPin');
  return true;
 }
 // finesse and kick held: this seat's team-mates stand ready for a ball coming up at them (ai.js recvPossess, assist.recv.mates)
-function shotRecvAsk(I){const P=SHOTC.pin,R=P&&P.assist&&P.assist.recv;return !!(R&&R.on&&R.mates&&P.on&&P.fwd.on&&I.fin&&(I.kh||I.rcv)&&I.m<=SHOTC.pass.modAt);}
+function shotRecvAsk(I){const P=SHOTC.pin,R=P&&P.assist&&P.assist.recv;return !!(R&&R.on&&R.mates&&P.on&&P.fwd.on&&I.fin&&(I.kh||I.rcv)&&I.m<=SHOTC.mod.fwdAt);}
 // a kick from the pin is the pin shot (swings.pinShot, trims and all: kickRod arms them); ignores the finesse axis, keeps carryOut of the slide
 function shotPinFire(r){
  if(S.asl)aslHit(r,'kPinShot');
- r.ppT=-1e9;
  r.pinPose=false;
- kickRod(r,'pinShot',null,pinSwing());
+ kickRod(r,'pinShot');
 }
 // a pass from the back pin (shots.pin.press): swings.pinPass, the AI's too, aimed where the slide sends it on the next rod ahead (kickRod arms it and readies an AI rod there, recvArm)
 function shotPinPass(r){
- if(S.asl)aslHit(r,'kPinPass',r.ppT>-1e8?(S.time-r.ppT)*1000:0);   // the wait for a second press ('double'); 0 = sent on the press
- r.ppT=-1e9;r.ppS=S.time;                        // ppS: shotSeatsUpdate arms the seat's receive off it (press.recv)
+ if(S.asl)aslHit(r,'kPinPass');
+ r.ppS=S.time;                                   // ppS: shotSeatsUpdate arms the seat's receive off it (press.recv)
  r.pinPose=false;
- kickRod(r,'pass',shotPinPassAim(r),pinSwing(true));
+ kickRod(r,'pinPass',shotPinPassAim(r));
 }
-// the pin shot and the snake are power + kick, a kick alone the pass at once (pin.press.shoot 'power'); false = a second press shoots
-function shotPinPow(){const D=SHOTC.pin&&SHOTC.pin.press;return !!(D&&D.shoot==='power');}
 // the seat on this rod holds power: its power binding, or its pad's RT past mod.powAt
 function shotPowHeld(r){const s=seatOf(r);if(!s)return false;const P=s.shotPad;return (typeof bindHeld==='function'&&bindHeld('power',s))||!!(P&&P.live&&P.pw>=SHOTC.mod.powAt);}
 // the pad's face buttons on a pinned ball (cfg.padPinBtns): one passes, the other shoots; true = a press was spent on it
 function shotPinBtns(r,just){
  const c=cfg.padPinBtns||'sq';
- if(c==='off'||!shotsOn()||!shotPinPow()||!r.pinB||r.kickT>=0)return false;
+ if(c==='off'||!shotsOn()||!r.pinB||r.kickT>=0)return false;
  const ps=just[c==='ci'?1:2],sh=just[c==='ci'?2:1];
  if(!ps&&!sh)return false;
  shotKickEdge(r,0,!!sh);
@@ -396,44 +390,43 @@ function shotPinPassAim(r){
 // what the pin shows the player: the ring under the caught ball (fx.js pinMarkUpdate) and the kick plate (hud.js hudPinHint) both ask these
 function shotPinBall(s){const r=s&&seatRod(s),b=r&&r.pinB;return b&&!b.scored?b:null;}
 function shotPinSeat(){for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&!seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // the plate is for a ball one kick would shoot, so not one under the forward leg
-function shotSnakeSeat(){if(!shotSnakeOn())return null;for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // ...held under the forward leg, two presses are the snake
-function shotPinPassOn(r){const D=SHOTC.pin.press;return !!(r&&D&&D.on&&D.roles.indexOf(r.role)>=0);}   // ...on the back pin, one press passes and two shoot
+function shotSnakeSeat(){if(!shotSnakeOn())return null;for(let i=0;i<S.seats.length;i++)if(shotPinBall(S.seats[i])&&seatRod(S.seats[i]).pinFwd)return S.seats[i];return null;}   // ...held under the forward leg, power + kick is the snake
+function shotPinPassOn(r){const D=SHOTC.pin.press;return !!(r&&D&&D.on&&D.roles.indexOf(r.role)>=0);}   // ...on the back pin, a kick passes and power + kick shoots
 // the plate is live play only, off for a player who switched it off, and off in the tutorial (its own prompt says it)
 function shotPinHintOn(){const P=SHOTC.pin,H=P&&P.hint;return !!(shotsOn()&&P&&P.on&&H&&H.on&&cfg.pinHint!==false&&S.phase==='play'&&!S.tut);}
-// the snake (CONFIG.shots.snake): the ball under the forward leg is let go with the slide it was carried at, and the man rolls over the top of the rod onto it from behind (rods.js)
-function shotSnakeOn(){const K=SHOTC.snake;return !!(K&&K.on);}
+// the snake (swings.snake; shots.pin.fwd.snake switches it): the ball under the forward leg is let go with the slide it was carried at, and the man rolls over the top of the rod onto it from behind (rods.js)
+function shotSnakeOn(){const W=SHOTC.pin.fwd;return !!(W&&W.on&&W.snake);}
 function shotSnakeFire(r){
  const SN=SWINGS.snake;
  if(S.asl)aslHit(r,'kSnake');
- r.snPT=-1e9;
  pinRelease(r,false,SN.carry);
  r.pinPose=false;r.pinFwd=false;r.fwdOut=false;r.fwdStk=0;r.sqA=null;r.pinMag=null;
- kickRod(r,'snake',null,SN);
+ kickRod(r,'snake');
 }
 
 // --- what the charge is worth ---
 // power rises to the sweet band, is flat across it, then falls; control does the same
 function shotChgPow(k){
- const C=SHOTC.charge,s0=C.sweetFrom,s1=C.sweetTo;
- if(k<=s0)return lerp(C.powMin,C.powMax,s0>0?k/s0:1);
- if(k<=s1||s1>=1)return C.powMax;
- return lerp(C.powMax,C.overPow,(k-s1)/(1-s1));
+ const T=SWINGS.shoot.charge,s0=T.sweetFrom,s1=T.sweetTo;
+ if(k<=s0)return lerp(T.powMin,T.powMax,s0>0?k/s0:1);
+ if(k<=s1||s1>=1)return T.powMax;
+ return lerp(T.powMax,T.overPow,(k-s1)/(1-s1));
 }
 function shotChgCtl(k){
- const C=SHOTC.charge,s0=C.sweetFrom,s1=C.sweetTo;
- if(k<=s0)return lerp(C.ctlMin,1,s0>0?k/s0:1);
+ const T=SWINGS.shoot.charge,s0=T.sweetFrom,s1=T.sweetTo;
+ if(k<=s0)return lerp(T.ctlMin,1,s0>0?k/s0:1);
  if(k<=s1||s1>=1)return 1;
- return lerp(1,C.overCtl,(k-s1)/(1-s1));
+ return lerp(1,T.overCtl,(k-s1)/(1-s1));
 }
 // 0 below the band, 1 inside it, 2 past it (fx.js tints from this)
-function shotChgBand(k){const C=SHOTC.charge;return k<C.sweetFrom?0:(k<=C.sweetTo?1:2);}
-function shotOver(k){const C=SHOTC.charge;return C.sweetTo>=1?0:clamp((k-C.sweetTo)/(1-C.sweetTo),0,1);}
+function shotChgBand(k){const C=SWINGS.shoot.charge;return k<C.sweetFrom?0:(k<=C.sweetTo?1:2);}
+function shotOver(k){const C=SWINGS.shoot.charge;return C.sweetTo>=1?0:clamp((k-C.sweetTo)/(1-C.sweetTo),0,1);}
 // what the wind-up was worth, stamped when it ends: 0 too early, 1 clean, 2 overcooked, 3 no room (blocked outranks the band)
 function shotVerdict(r,k){
  const C=SHOTC.charge;
  r.chgEndT=S.time;
  r.chgEndK=Math.max(0,k);
- r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));
+ r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<SWINGS.shoot.charge.minFire?0:shotChgBand(k));
 }
 
 // --- arming ---
@@ -448,7 +441,7 @@ function shotArm(r,SW,k){
 }
 function shotDisarm(r){r.shotOn=false;r.shotPow=1;r.shotCtl=1;r.shotExert=1;r.shotOver=0;}
 // what a charge is worth against the speed cap (physics.js capSpeed, CONFIG.kick.cap.charge): 0 none, 1 across the band, 0 overcooked
-function shotChgOver(k){const C=SHOTC.charge;return clamp((shotChgPow(k)-1)/Math.max(1e-6,C.powMax-1),0,1);}
+function shotChgOver(k){return clamp((shotChgPow(k)-1)/Math.max(1e-6,SWINGS.shoot.charge.powMax-1),0,1);}
 // called by collideRod when a contact takes its power: one contact, one shot
 // Total Control has no discrete fire (the chord drop only banks the worth), so spend the bank here; gated on r.chgRel, which only the stick path sets
 function shotConsume(r){
@@ -457,15 +450,15 @@ function shotConsume(r){
  if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;}
  shotDisarm(r);
 }
-// full teardown (charge, tremble, and the arming + curve unless a swing is in flight); from resetRodRotation and whenever a seat lets go of a rod
+// full teardown (charge, tremble, and the arming unless a swing is in flight); from resetRodRotation and whenever a seat lets go of a rod
 function shotReset(r){
  if(!r)return;
  r.chg=-1;r.chgRel=0;r.chgGrace=0;r.chgSrc=null;r.chgA=null;r.chgHeld=0;r.chgSweet=false;r.trem=0;
  r.chgBlock=0;r.chgEndT=null;r.chgEndBand=-1;r.chgEndK=0;   // the blocked reading and the held verdict
- r.shotTrack=1;if(!(r.kickT>=0)){r.kickCurve=null;shotDisarm(r);}   // a swing in flight keeps its curve and trims when the hand leaves the rod
+ r.shotTrack=1;if(!(r.kickT>=0))shotDisarm(r);   // a swing in flight keeps its trims when the hand leaves the rod
  if(r.hold)r.hold.on=false;
  r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;r.fwdOut=false;r.rzWas=false;r.pinKh=false;r.pinMag=null;r.sqA=null;r.stlT=0;r.stlW=null;
- r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;r.fwdR=false;r.fwdRz=false;r.snPT=-1e9;r.ppT=-1e9;r.ppS=-1e9;r.stkRT=0;   // timestamps too: S.time restarts with the match
+ r.fwdKT=0;r.fwdStk=0;r.fwdBlk=false;r.fwdU=false;r.fwdR=false;r.fwdRz=false;r.ppS=-1e9;r.stkRT=0;   // timestamps too: S.time restarts with the match
  if(r.pinB)pinRelease(r);                         // a pinned ball never outlives the hand holding it
 }
 
@@ -513,9 +506,9 @@ function shotTrackMult(r){return shotsOn()?(r.shotTrack||1):1;}
 
 // --- firing ---
 // every kick without power is the pass
-// shotPassPick: not passEval's answer; a human presses now and the assist only bends a pass ~9 degrees (CONFIG.ai.dribble.pass.assist), so score the same lanes by whether the bend is deliverable; null = the pass leaves unaimed
+// shotPassPick: not passEval's answer; a human presses now and the assist only bends a pass ~9 degrees (CONFIG.swings.passAssist.bend), so score the same lanes by whether the bend is deliverable; null = the pass leaves unaimed
 function shotPassPick(r,bx,bz){
- const P=AIC.dribble.pass,dir=r.team===0?1:-1,maxBend=P.assist*SHOTC.pass.bendMult;
+ const P=AIC.pass,A=SWINGS.passAssist,dir=r.team===0?1:-1,maxBend=A.bend*A.pick;
  let best=null;
  for(const o of rods){
   if(o===r||o.team!==r.team)continue;
@@ -529,7 +522,7 @@ function shotPassPick(r,bx,bz){
    if(clr<P.minClear)continue;
    const bend=Math.abs(Math.atan2(tz-bz,Math.max(1e-3,(o.x-bx)*dir)));
    if(bend>maxBend)continue;                       // the assist cannot turn the ball this far
-   const score=clr*P.wClear-bend*SHOTC.pass.bendCost;
+   const score=clr*P.wClear-bend*A.bendCost;
    if(!best||score>best.score)best={rod:o,man:i,x:o.x,z:tz,clr,bend,score};
   }
  }
@@ -537,7 +530,7 @@ function shotPassPick(r,bx,bz){
 }
 // who a pass off the ball nearest the rod is aimed at; null = nobody
 function shotPassTarget(r){
- if(!SHOTC.pass.on)return null;
+ if(!SWINGS.passAssist.aim)return null;
  let best=null,bd=1e9;
  for(const b of S.balls){if(b.scored)continue;const d=Math.abs(b.m.position.x-r.x);if(d<bd){bd=d;best=b;}}
  if(!best)return null;
@@ -548,15 +541,15 @@ function shotPassTarget(r){
 function shotFire(r,shoot,k){
  // a swing in flight can't be re-fired
  if(r.kickT>=0)return;
- const on=shotsOn(),fl=on&&k>=0&&k<SHOTC.charge.minFire;
+ const on=shotsOn(),fl=on&&k>=0&&k<SWINGS.shoot.charge.minFire;
  if(!on||fl)k=-1;                            // a flinch is the shot with no wind-up, not a feeble charged one
- kickRod(r,shoot?'shoot':'pass',on&&!shoot?shotPassTarget(r):null,null,k);
+ kickRod(r,shoot?'shoot':'pass',on&&!shoot?shotPassTarget(r):null,k);
  r.swOver=r.shotOn?(r.shotOver||0):0;         // a charge beats the speed cap for the WHOLE swing (physics.js capSpeed)
  if(S.asl)aslHit(r,fl?'kFlinch':!shoot?'kPass':k>=0?'kCharge':'kShot');
 }
 // horizontal-only rotation of the outgoing velocity (no energy); own rng stream since it changes an outcome
 function shotSpray(b,r){
- const a=SHOTC.charge.spray*(1-clamp(r.shotCtl,0,1));
+ const a=SWINGS.spray*(1-clamp(r.shotCtl,0,1));
  if(a<=0)return;
  const th=(RNG.shot()*2-1)*a,cs=Math.cos(th),sn=Math.sin(th),vx=b.v.x,vz=b.v.z;
  b.v.x=vx*cs-vz*sn;b.v.z=vx*sn+vz*cs;
@@ -570,9 +563,9 @@ function shotInNew(){return {live:false,m:0,mt:0,lt:0,lw:0,pw:0,pwl:0,deep:false
 function shotSrcDepth(I,k){return k==='stick'?I.stick:k==='rt'?I.rt:k==='kick'?(I.kick?1:0):k==='key'?I.key:0;}
 // one pad read into o; stickD = the right-stick value, -1 fully back .. +1
 function shotPadRead(o,gp,TC,stickD){
- const lt=shotTrigD(gp,6),rt=shotTrigD(gp,7),K=SHOTC.pass;
- // LT squeezed to the pass depth counts as full until it is let back past the grip (pass.keep): a relaxing hand keeps its pass, forward pin and receive
- o.deep=!!K.keep&&(lt>=-K.modAt||(!!o.deep&&lt>SHOTC.hold.from));
+ const lt=shotTrigD(gp,6),rt=shotTrigD(gp,7),K=SHOTC.mod;
+ // LT squeezed to the pass depth counts as full until it is let back past the grip (mod.keep): a relaxing hand keeps its pass, forward pin and receive
+ o.deep=!!K.keep&&(lt>=-K.fwdAt||(!!o.deep&&lt>SHOTC.hold.from));
  o.lw=o.lt||0;o.pwl=o.pw||0;
  o.live=true;o.mt=shotAxis(lt,rt);o.m=o.deep?shotAxis(1,rt):o.mt;o.lt=lt;o.pw=rt;o.TC=TC;o.stick=0;o.rt=0;o.kick=false;o.key=0;
  o.rz=gpDown(gp,2);                              // X: raise — with LT held, the pin pose (shotPinInput)
@@ -593,11 +586,11 @@ function shotPadRead(o,gp,TC,stickD){
  }
  return o;
 }
-// a pad kick waits at most pass.chord s (w = s waited) for a trigger still on its way down: LT short of the pass depth (the forward pin), RT short of mod.powAt (the shot); false = fire now
+// a pad kick waits at most mod.chord s (w = s waited) for a trigger still on its way down: LT short of the pass depth (the forward pin), RT short of mod.powAt (the shot); false = fire now
 function shotChordWait(o,w){
- const C=SHOTC.pass.chord;
+ const C=SHOTC.mod.chord;
  if(!o||!o.live||!(C>0)||w>=C)return false;
- return (o.pw>o.pwl&&o.pw<SHOTC.mod.powAt)||(!o.deep&&o.lt>0&&o.lt>o.lw&&o.m>SHOTC.pass.modAt);
+ return (o.pw>o.pwl&&o.pw<SHOTC.mod.powAt)||(!o.deep&&o.lt>0&&o.lt>o.lw&&o.m>SHOTC.mod.fwdAt);
 }
 // the keyboard/mouse half of the axis for a kick pressed now (power - finesse); 0 with shots off
 function shotKbmAxis(s){
@@ -647,15 +640,9 @@ function shotSeatsUpdate(dt){
 function shotKickEdge(r,m,pw){
  const k=shotCharge(r),C=SHOTC.charge,p=pw!=null?!!pw:shotPowHeld(r);
  // a ball on the pin, whatever the axis says: on the back pin of a rod that passes (shots.pin.press) a kick passes and power + kick shoots, else the pin shot; under the forward leg power + kick is the snake
- // 'double': on the back pin one press waits for a second (the shot) and passes without it (shotPinInput); under the forward leg the second of two quick presses is the snake
  if(r.pinB&&r.kickT<0){
-  if(shotPinPow()){
-   if(!r.pinFwd){if(!p&&shotPinPassOn(r))shotPinPass(r);else shotPinFire(r);}
-   else if(p&&shotSnakeOn())shotSnakeFire(r);
-  }
-  else if(!r.pinFwd){if(shotPinPassOn(r)&&!(S.time-r.ppT<=SHOTC.pin.press.dbl))r.ppT=S.time;else shotPinFire(r);}
-  else if(shotSnakeOn()&&S.time-r.snPT<=SHOTC.snake.dbl)shotSnakeFire(r);
-  else r.snPT=S.time;
+  if(!r.pinFwd){if(!p&&shotPinPassOn(r))shotPinPass(r);else shotPinFire(r);}
+  else if(p&&shotSnakeOn())shotSnakeFire(r);
   return;
  }
  if(k>=0&&r.chgSrc&&r.chgSrc!=='stick'&&r.kickT<0){
@@ -693,7 +680,7 @@ function shotStep(dt,r,I){
 
  // WHO IS HOLDING THE WIND-UP — see SHOT_SRCS above.
  let src=null,depth=0;
- if(C.on&&r.kickT<0&&!(r.pinB&&shotPinPow())){   // power on a pinned ball is the pin shot's, not a wind-up (it would drop the pin)
+ if(C.on&&r.kickT<0&&!r.pinB){   // power on a pinned ball is the pin shot's, not a wind-up (it would drop the pin)
   const own=r.chgSrc?shotSrcDepth(I,r.chgSrc):0;
   if(own>0){src=r.chgSrc;depth=own;}
   else for(let i=0;i<SHOT_SRCS.length;i++){const d=shotSrcDepth(I,SHOT_SRCS[i]);if(d>0){src=SHOT_SRCS[i];depth=d;break;}}
@@ -731,7 +718,7 @@ function shotStep(dt,r,I){
   shotArm(r,src==='stick'?shotStickMod(m):SWINGS.shoot,r.chg);
   // the pull-back deepens with the charge and is fully back by the band's lower edge, so the band is a flat maximum; Total Control authors no angle
   if(src!=='stick'){
-   const full=C.pullA*r.kickDir,ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1);
+   const W=SWINGS.shoot.charge,full=W.pullA*r.kickDir,ask=clamp(W.sweetFrom>0?r.chg/W.sweetFrom:1,0,1);
    r.chgA=shotPullCap(r,r.angle,full*ask);
    // is the swing actually there? both tests: the angle alone reads blocked while the rod eases back, shotPullOk alone fires once it rests on the ball
    const got=Math.abs(full)>1e-4?clamp(r.angle/full,0,1):1;

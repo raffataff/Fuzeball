@@ -11,7 +11,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  ret:slice(AI,'function retrieveMan(',NL+'function retrievePhase('),
  clr:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'// z of the live foot nearest'),
  lz:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// the teammate behind us'),
@@ -26,9 +26,8 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "function rngAi(){return function(){return 0.99;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()
 ].join(NL);
 
 function boot(mut){
@@ -38,7 +37,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,pinOutlet:pinOutlet,laneObs:laneObs,pinPlay:pinPlay,pinPlayStart:pinPlayStart,laneMin:laneMin,laneShut:laneShut,setPick:function(v){PICK=v;}};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SWINGS:SWINGS,F:F,BALL_R:BALL_R,rods:rods,KICKS:KICKS,CAS:CAS,pinOutlet:pinOutlet,laneObs:laneObs,pinPlay:pinPlay,pinPlayStart:pinPlayStart,laneMin:laneMin,laneShut:laneShut,setPick:function(v){PICK=v;}};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -64,7 +63,7 @@ function suite(X){
  CA.recv.ready.on=false;CA.recv.settleT=0;CA.tictac.first=false;CA.tictac.on=false;CA.hit.on=false;CA.hit.loose.on=false;CA.push.play.on=false;CA.tap.on=false;   // nothing but the carry, the pass and the shot
  ok('the shipped gate is on, for the outfield rows, at a clearance of 0 (the line just misses the nearest man)',LN.on===true&&LN.clear===0&&LN.roles.join()==='DEF,MID,ATT',L0);
  {const r=world(X,{defOff:-3,gkOff:-9});pinned(X,r,0);const best=view(X,-0.5,0);
-  ok('shipped (catch.late.shot off): a lane past the gate but short of catch.lineClear is not shot at holdT, the hold is worked',CA.late.shot===false&&X.pinPlay(r,best,late,dt)===0);}
+  ok('shipped (catch.late.shot off): a lane past the gate but short of swings.pinShot.open is not shot at holdT, the hold is worked',CA.late.shot===false&&X.pinPlay(r,best,late,dt)===0);}
  CA.late.shot=true;   // the rest is the gate on the late shot
  // ---- laneMin ----
  {const r=world(X);
@@ -84,11 +83,11 @@ function suite(X){
   ok('MID: the row ahead decides, the mouth does not',X.laneShut(r,view(X,3,0))===true&&X.laneShut(r,view(X,3,-14))===false);}
  {const r=world(X),seen=view(X,3,-6),real=view(X,3,0),seen2=view(X,3,0);seen.real=real;seen2.real=view(X,3,-6);
   ok('the real ball is judged, not the rod\'s delayed view of it (shut where it is, open where it was seen)',X.laneShut(r,seen)===true&&X.laneShut(r,seen2)===false);}
- {const r=world(X,{defOff:-3,gkOff:-9}),bx=22.5+3,o=X.pinOutlet(r,bx,0,X.laneObs(0,bx,X.F.L/2,CA.shotV),X.F.L/2,0);
-  ok('a line that misses the man but by less than catch.lineClear is not shut (the gate is not the hold\'s open test)',o>=0&&o<CA.lineClear&&X.laneShut(r,view(X,3,0))===false,'out='+o.toFixed(2));}
+ {const r=world(X,{defOff:-3,gkOff:-9}),bx=22.5+3,o=X.pinOutlet(r,bx,0,X.laneObs(0,bx,X.F.L/2,X.SWINGS.shoot.v),X.F.L/2,0);
+  ok('a line that misses the man but by less than swings.pinShot.open is not shut (the gate is not the hold\'s open test)',o>=0&&o<X.SWINGS.pinShot.open&&X.laneShut(r,view(X,3,0))===false,'out='+o.toFixed(2));}
  {const r=world(X,{defOff:-3}),bx=22.5+3,d=X.rods[1];   // the defender 0.4 clear of z -6 standing, past it by the time a shot arrives sliding at 40
   ok('a defender standing just clear of the line leaves it open',X.laneShut(r,view(X,3,-6))===false);
-  d.vz=-40;ok('…sliding into it he shuts it (the rows are read where they will be at catch.shotV)',X.laneShut(r,view(X,3,-6))===true);
+  d.vz=-40;ok('…sliding into it he shuts it (the rows are read where they will be at swings.shoot.v)',X.laneShut(r,view(X,3,-6))===true);
   d.vz=40;ok('…sliding away he does not',X.laneShut(r,view(X,3,-6))===false);d.vz=0;}
  // ---- pinPlay past holdT ----
  {const r=world(X);pinned(X,r,0);const best=view(X,-0.5,0),n0=X.CAS.laneLate;
@@ -102,7 +101,7 @@ function suite(X){
  {const r=world(X);r.role='GK';pinned(X,r,0);const best=view(X,-0.5,0);
   ok('a role off the list is played at holdT as before',X.pinPlay(r,best,late,dt)===1);}
  {const r=world(X,{defOff:-3,gkOff:-9});pinned(X,r,0);const best=view(X,-0.5,0);
-  ok('a lane short of catch.lineClear but past the gate: held while young, shot at holdT',X.pinPlay(r,best,0.5,dt)===0&&X.pinPlay(r,best,late,dt)===1);}
+  ok('a lane short of swings.pinShot.open but past the gate: held while young, shot at holdT',X.pinPlay(r,best,0.5,dt)===0&&X.pinPlay(r,best,late,dt)===1);}
  {const r=world(X,{defOff:-3,gkOff:-9,maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);r.slideV=(CA.fireV+CA.push.minV)/2;
   ok('a rod sliding too slowly to push is judged on the straight line at holdT (it leaves straight)',X.pinPlay(r,best,late,dt)===1&&r.catSv===0);}
  {const r=world(X,{role:'MID',maxOff:0});pinned(X,r,0);const best=view(X,-0.5,0);X.setPick({score:3,x:37.5,z:5,clr:4,onward:3,th:0.1,rod:{role:'ATT'}});
@@ -127,8 +126,8 @@ const MUT=[
  {n:'laneMin ignores the dead-ball push',part:'catch',from:'||r.force||LN.roles',to:'||LN.roles'},
  {n:'laneMin ignores the role list',part:'catch',from:'||LN.roles.indexOf(r.role)<0)',to:')'},
  {n:'laneMin ignores the switch',part:'catch',from:'(!LN||!LN.on||r.force',to:'(!LN||r.force'},
- {n:'the gate reads the hold\'s open test instead of its own clearance',part:'catch',from:'-Infinity:LN.clear;}',to:'-Infinity:AIC.catch.lineClear;}'},
- {n:'laneShut reads the rows where they stand',part:'catch',from:'laneObs(r.team,p.x,gx,AIC.catch.shotV),gx,0)<m;',to:'laneObs(r.team,p.x,gx),gx,0)<m;'},
+ {n:'the gate reads the hold\'s open test instead of its own clearance',part:'catch',from:'-Infinity:LN.clear;}',to:'-Infinity:SWINGS.pinShot.open;}'},
+ {n:'laneShut reads the rows where they stand',part:'catch',from:'laneObs(r.team,p.x,gx,SWINGS.shoot.v),gx,0)<m;',to:'laneObs(r.team,p.x,gx),gx,0)<m;'},
  {n:'laneShut reads the delayed view',part:'catch',from:'const p=(b.real||b).m.position,gx=',to:'const p=b.m.position,gx='},
  {n:'laneShut never shuts',part:'catch',from:'if(m===-Infinity)return false;',to:'return false;'},
  {n:'past holdT a shot needs no lane',part:'catch',from:"if(!sn&&(r.force||!LT||byTeam(LT.shot,r.team))&&lnow>=laneMin(r)){v=1;",to:'if(true){v=1;'},

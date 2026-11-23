@@ -110,7 +110,7 @@ function boot(mutation) {
    r.angle = r.prevAngle = fwd ? AIC.catch.recv.lift.angle : SHOT.pin.assist.up;
    S.seats.push({rods: [r], ctrl: 0, tcMult: 1});
    const b = ballAt(r, fwd ? 5 : -4, wallZ(1));
-   const input = {fin: true, rz: !fwd, kh: fwd, m: SHOT.pass.modAt};
+   const input = {fin: true, rz: !fwd, kh: fwd, m: SHOT.mod.fwdAt};
    if (fwd) shotKickEdge(r, input.m);
    for (let i = 0; i < SIM.hz && !r.pinB; i++) {
     shotPinInput(r, input, dt);

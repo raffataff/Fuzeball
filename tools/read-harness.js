@@ -1,5 +1,5 @@
 // strike reaction + holder read harness. node tools/read-harness.js
-// CONFIG.ai.jolt: an opponent's strike is seen a reaction late; CONFIG.ai.rodView: so are the opponent's rods; CONFIG.ai.read: the keeper and DEF stand against the shots a held ball can become, guess, bait, jostle, learn
+// CONFIG.ai.jolt: an opponent's strike is seen a reaction late; CONFIG.ai.rodView: so are the opponent's rods; CONFIG.ai.read: the keeper and DEF stand against the shots a held ball can become, bait, jostle, learn
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -14,7 +14,7 @@ const parts={
  lanes:slice(AI,'function laneObs(','function lineClr(')
 };
 const stubs=["var S={time:0,balls:[],phase:'play'}; var rods=[]; var DIFF=['pro','pro']; function teamDiff(t){return DIFF[t];}",
- "function stReact(){return 1;} function isUserRod(){return false;} function isActiveRod(){return true;} function rodSpeedMult(){return 1;}",
+ "function stReact(){return 1;} function isUserRod(){return false;} function isActiveRod(){return true;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);}",
  "var THREE={Vector3:function(){this.x=0;this.y=0;this.z=0;}};",
  "THREE.Vector3.prototype.set=function(x,y,z){this.x=x;this.y=y;this.z=z;return this;};",
  "THREE.Vector3.prototype.copy=function(v){this.x=v.x;this.y=v.y;this.z=v.z;return this;};"].join(NL);
@@ -54,11 +54,11 @@ function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
  const J=X.AIC.jolt,RC=X.AIC.read,D=X.DIFFS;
  ok('reaction times are human and each difficulty is faster',J.on&&D.rookie.rt>D.pro.rt&&D.pro.rt>D.legend.rt&&D.legend.rt>=0.14&&D.rookie.rt<=0.3,[D.rookie.rt,D.pro.rt,D.legend.rt].join());
- ok('the read ships on with every knob (guess shipped off)',RC.on&&RC.moves.length===RC.moveP.length&&RC.tzP.length===RC.targets&&RC.bait.p&&RC.guess.k.legend===1&&RC.mem.use.legend>RC.mem.use.rookie);
+ ok('the read ships on with every knob',RC.on&&RC.moves.length===RC.moveP.length&&RC.tzP.length===RC.targets&&RC.bait.p&&RC.mem.use.legend>RC.mem.use.rookie);
  const JO=RC.jostle;
  ok('the jostle ships on, wider and quicker with difficulty',JO.on===true&&JO.amp.rookie<JO.amp.pro&&JO.amp.pro<=JO.amp.legend&&JO.every.legend[1]<JO.every.rookie[1]&&JO.roles.indexOf('ATT')>=0);
  const jon=JO.on;JO.on=false;   // off for the fit and plan tests; its own tests below switch it on
- const kp=RC.guess.k,bp=RC.bait.p;RC.guess.k={rookie:1.5,pro:2.5,legend:3};RC.bait.p={rookie:0,pro:0.3,legend:0.45};   // the rest tests them switched on
+ const bp=RC.bait.p;RC.bait.p={rookie:0,pro:0.3,legend:0.45};   // the rest tests it switched on
  // --- strike reaction ---
  {const w=world(X);const b=ball(X,-23.5,2);step(X,3);strike(X,b,1,-110,8);step(X,1);
   const v=X.aiView(w.g,b,0);
@@ -115,13 +115,10 @@ function suite(X){
   const kr=keeperAt({post:1,diff:'rookie'});ok('…rookie leans on it less',kr.g<kp.g,'rookie '+kr.g+' legend '+kp.g);}
  {const kc=keeperAt({solo:true,z:0}),kz=keeperAt({solo:true,z:8});
   ok('a keeper alone follows the hold\'s z',kz.g>kc.g+1,kc.g+' '+kz.g);}
- {const at=(o)=>{const w=world(X,{diff:'legend'});w.d.offset=w.d.target=o;const r=X.RD[0];r.hr=w.a;r.bx=-23.5;r.bz=0;r.ph='set';r.gj=-1;X.readFit(r,0,[w.g]);return r.off[w.g.idx];};
+ {const at=(o)=>{const w=world(X,{diff:'legend'});w.d.offset=w.d.target=o;const r=X.RD[0];r.hr=w.a;r.bx=-23.5;r.bz=0;r.ph='set';X.readFit(r,0,[w.g]);return r.off[w.g.idx];};
   const lo=at(-15),hi=at(15);ok('a keeper alone takes the side its DEF leaves open',lo>hi+2,'DEF -15: '+lo+' DEF +15: '+hi);}
  {const bk=X.RD[0].mem.tz.length-1,ba=keeperAt({bait:true,bk,ph:'bait',solo:true}),ju=keeperAt({bait:true,bk,ph:'jump',solo:true});
   ok('baiting leaves the +z post lane open, the jump closes it',ju.g>ba.g+2,'bait '+ba.g+' jump '+ju.g);}
- {const w=world(X,{diff:'legend'});const r=X.RD[0];r.hr=w.a;r.bx=-23.5;r.bz=0;r.ph='set';r.gj=-1;
-  r.gj=0;X.readFit(r,0,[w.g]);const gm=r.off[w.g.idx];r.gj=RC.moves.length-1;X.readFit(r,0,[w.g]);const gp=r.off[w.g.idx];
-  ok('the guess moves the keeper, mirrored for a mirrored guess',Math.abs(gm-gp)>3&&Math.abs(gm+gp)<0.6,gm+' '+gp);}
  // --- memory ---
  {const w=world(X);const r=X.RD[0];r.rz0=0;r.rt0=-0.7;const b={m:{position:{x:-24,y:X.BALL_R,z:3}},v:{x:-100,y:0,z:(9-3)/((-60)-(-24))*-100},jlP:{z:3}};   // a line from z 3 to 9 on the goal line
   X.readLearn(r,b,-60);const M=r.mem;
@@ -142,9 +139,6 @@ function suite(X){
  {let s=1,w;for(;s<200;s++){w=world(X,{diff:'legend',seed:s});hold(X,w);if(X.RD[0].bait)break;}
   const r=X.RD[0],t=r.jumpAt;while(r.ph==='bait'&&X.S.time<t+0.5)step(X);
   ok('with no tell the bait jumps on its timer',r.ph==='jump'&&X.S.time>=t&&X.S.time<t+2*dt);}
- {const w=world(X,{diff:'legend'});hold(X,w);const r=X.RD[0];const seen=new Set();
-  for(let i=0;i<600;i++){step(X);if(r.ph==='set')seen.add(r.gj);}
-  ok('the guess is re-picked while the hold lasts',seen.size>=3,[...seen].join());}
  {const w=world(X);hold(X,w);X.S.balls[0].m.position.x=0;step(X,Math.ceil((RC.hold.grace+X.DIFFS.pro.reactDelay)/dt)+3);
   ok('a lost hold ends the read',!X.RD[0].live&&X.readOff(w.g)===undefined);}
  {const w=world(X);w.d.act='catch';hold(X,w);ok('a DEF busy with the ball is not fitted',X.readOff(w.d)===undefined&&X.readOff(w.g)!==undefined);}
@@ -179,7 +173,7 @@ function suite(X){
  {JO.on=false;const a=jog({});ok('switched off, the keeper stands on its fit',a.sp.length===1&&a.js[0]===0);
   JO.on=[false,true];const b=jog({});ok('[red, blue]: a team switched off stands still',b.sp.length===1);JO.on=true;}
  JO.on=jon;
- RC.guess.k=kp;RC.bait.p=bp;
+ RC.bait.p=bp;
  return R;
 }
 
@@ -194,10 +188,8 @@ const MUT=[
  {n:'minT ignored',part:'read',from:'if(S.time-rd.t0<RC.hold.minT){rd.live=false;continue;}',to:''},
  {n:'memory ignored',part:'read',from:'return 1+((c[i]+a)/(s+n*a)*n-1)*use;',to:'return 1;'},
  {n:'bait leave/take swapped',part:'read',from:"rd.ph==='bait'?RC.bait.leave:rd.ph==='jump'?RC.bait.take:1",to:"rd.ph==='bait'?RC.bait.take:rd.ph==='jump'?RC.bait.leave:1"},
- {n:'guess weight ignored',part:'read',from:'pm*=RC.guess.k[dif]||1',to:'pm*=1'},
  {n:'tell seen at once',part:'read',from:'S.time-rd.tellT>=joltRT(g)',to:'true'},
  {n:'no bait timer',part:'read',from:'(seen||S.time>=rd.jumpAt)',to:'seen'},
- {n:'no re-pick',part:'read',from:'rd.gNext=S.time+rngR(R,RC.guess.every[0],RC.guess.every[1])',to:'rd.gNext=1e9'},
  {n:'no grace end',part:'read',from:'else{rd.hr=null;rd.live=false;continue;}',to:'else{vh=rd.hr;}'},
  {n:'busy DEF fitted',part:'read',from:'&&!o.act&&!o.force',to:''},
  {n:'shots not learned',part:'read',from:'&&S.time-rd.rt0>=RC.hold.minT)readLearn(rd,rd.rb,gx)',to:'&&false)readLearn(rd,rd.rb,gx)'},

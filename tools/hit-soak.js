@@ -57,7 +57,7 @@
  // the real AI: a ball pinned by a rod posed at ang, then a tap forced to the next man: how the ball gets there and whether the neighbour pins it
  function hitTap(o){
   o=Object.assign({ri:5,man:1,s:1,T:4,seed:1,ang:-0.75,dz:0,trace:false,every:0.1,diff:'pro',hit:true,block:[]},o||{});if(o.from==null)o.from=o.ang<0?8:-6;if(o.vx==null)o.vx=o.ang<0?-25:25;
-  const d0=[cfg.diffRed,cfg.diffBlue],h0=AIC.catch.hit.share,lc0=AIC.catch.lineClear;cfg.diffRed=cfg.diffBlue=o.diff;AIC.catch.hit.share=o.hit?1:0;
+  const d0=[cfg.diffRed,cfg.diffBlue],h0=AIC.catch.hit.share,lc0=SWINGS.pinShot.open;cfg.diffRed=cfg.diffBlue=o.diff;AIC.catch.hit.share=o.hit?1:0;
   try{
    S.seedNext=o.seed;startMatchNow('ai');clearBalls();S.phase='play';S.goalT=0;S.countT=0;resetRodRotation();
    rods.forEach(r=>{r.aiBX=r.x;r.aiBZ=0;r.bgT=-9;r.lhT=0;r.retCd=0;r.catCd=0;r.cd=0;r.offset=0;r.target=0;r.vz=0;r.slideV=0;r.prevOffset=0;r.pivot.position.z=0;r.tapPend=false;r.tapN=0;r.tapPk=null;r.bkRev=false;r.rvUntil=0;r.rvReady=false;});
@@ -65,10 +65,10 @@
    for(const q of rods)if(q!==r&&held.indexOf(q)<0)for(let i=0;i<q.baseZ.length;i++)q.removedUntil[i]=1e9;
    o.block.forEach(k=>{const q=rods[k.ri];q.aiErrT=1e9;q.offset=k.off;q.target=k.off;q.prevOffset=k.off;q.pivot.position.z=k.off;});
    if(o.lie!=null){                                                  // a ball at rest o.lie ahead: the AI's own fetch / retrieve pins it first
-    AIC.catch.lineClear=1e6;
+    SWINGS.pinShot.open=1e6;
     b.m.position.set(r.x+o.lie*dir,BALL_R,r.baseZ[o.man]+o.dz);b.v.set(0,0,0);syncBall(b);
     for(let i=0;i<Math.round(6*SIM.hz)&&!(r.pinB&&(r.catPh==='hold'||r.retPh==='pin'));i++){aiUpdate(FIX);userControlUpdate(FIX);deadBallUpdate(FIX);updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(q.m.position);}
-    if(!r.pinB){AIC.catch.lineClear=lc0;return {out:'nopin',lie:o.lie};}
+    if(!r.pinB){SWINGS.pinShot.open=lc0;return {out:'nopin',lie:o.lie};}
     const rel0=r.pinB.pinDx;r.tapN=0;
     if(r.act==='retrieve'){r.tapPk={j:o.man+o.s,s:o.s,out:9};retrieveTap(r);}
     else{r.catT=0;pinPlayStart(r);r.tapPk={j:o.man+o.s,s:o.s,out:9};tapStart(r);}
@@ -94,11 +94,11 @@
     if(tPin!=null&&t>tPin+0.3)break;
     if(S.phase!=='play'||b.scored)break;
    }
-   AIC.catch.lineClear=lc0;
+   SWINGS.pinShot.open=lc0;
    const p=b.m.position,want=o.man+o.s;
    const out=tPin!=null?(tBack!=null?'back-':'')+(pinMan===(tBack!=null?o.man:want)?'ok':'wrongman'):(tBack!=null?'back-lost':Math.abs(b.v.z)>2?'through':'lost');
    return {out,mode,pinRel:+o.rel0.toFixed(2),tHit,tSide,tPin,pinMan,ph:ph.join(' '),end:{rel:+((p.x-r.x)*dir).toFixed(1),z:+p.z.toFixed(1),v:+b.v.length().toFixed(1)},L};
-  }finally{cfg.diffRed=d0[0];cfg.diffBlue=d0[1];AIC.catch.hit.share=h0;AIC.catch.lineClear=lc0;}
+  }finally{cfg.diffRed=d0[0];cfg.diffBlue=d0[1];AIC.catch.hit.share=h0;SWINGS.pinShot.open=lc0;}
  }
  // every man of every outfield rod, both ways, forced hit taps from a back pin: how many end in a pin by the neighbour
  function hitTapGrid(o){
@@ -111,10 +111,10 @@
    rows[d]={t:JSON.stringify(t),bad:bad.join(' ')};}
   return rows;
  }
- // a ball placed d ahead of a rod (moving at vx / vz) and the real AI left to play it, with the shot gate shut (lineClear 1e6) so it plays the ball and does not kick: phases, when it pins and where
+ // a ball placed d ahead of a rod (moving at vx / vz) and the real AI left to play it, with the shot gate shut (swings.pinShot.open 1e6) so it plays the ball and does not kick: phases, when it pins and where
  function ballTry(o){
   o=Object.assign({ri:5,d:4,z:0.5,T:5,trace:false,diff:'pro',vx:0,vz:0,seed:1,every:0.2},o||{});
-  const d0=[cfg.diffRed,cfg.diffBlue],lc0=AIC.catch.lineClear;cfg.diffRed=cfg.diffBlue=o.diff;AIC.catch.lineClear=1e6;
+  const d0=[cfg.diffRed,cfg.diffBlue],lc0=SWINGS.pinShot.open;cfg.diffRed=cfg.diffBlue=o.diff;SWINGS.pinShot.open=1e6;
   try{
    S.seedNext=o.seed;startMatchNow('ai');clearBalls();S.phase='play';S.goalT=0;S.countT=0;resetRodRotation();
    rods.forEach(r=>{r.aiBX=r.x;r.aiBZ=0;r.bgT=-9;r.lhT=0;r.retCd=0;r.catCd=0;r.cd=0;r.offset=0;r.target=0;r.vz=0;r.slideV=0;r.prevOffset=0;r.pivot.position.z=0;r.tapPend=false;r.tapN=0;r.tapPk=null;});
@@ -131,7 +131,7 @@
    }
    const p=b.m.position;
    return {pinT,pinRel,phs:phs.join(' > '),end:{rel:+((p.x-r.x)*dir).toFixed(2),z:+p.z.toFixed(1),v:+b.v.length().toFixed(1),pinned:!!r.pinB},L};
-  }finally{cfg.diffRed=d0[0];cfg.diffBlue=d0[1];AIC.catch.lineClear=lc0;}
+  }finally{cfg.diffRed=d0[0];cfg.diffBlue=d0[1];SWINGS.pinShot.open=lc0;}
  }
  window.ballTry=ballTry;window.hitTapGrid=hitTapGrid;window.hitTap=hitTap;window.hitScene=hitScene;window.hitProbe=hitScene;window.hitGrid=hitGrid;window.hitAngleFor=hitAngleFor;
 })();

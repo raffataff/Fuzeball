@@ -42,7 +42,7 @@ function boot(mut){
 }
 
 const mkRod=o=>Object.assign({idx:0,x:0,team:0,role:'MID',baseZ:[0],removedUntil:[0],offset:0,maxOff:60,trnHidden:false,
- angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,kickHit:false,
+ angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,kickHit:false,
  msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,pinOn:false,pinPose:false,retPh:null,
  hold:{on:false,holdRest:0.01,holdGrip:0.6,carryMult:1},stats:null},o||{});
 
@@ -66,7 +66,7 @@ function suite(X){
  const K=X.KICK,was={d:K.rearDot,c:K.rearCarry};
  const back=()=>{K.rearDot=was.d;K.rearCarry=was.c;};
  const pc=f=>(f*100).toFixed(0)+'%';
- ok('the keys exist: rearDot, rearCarry numbers; dribble.back is not behind the pivot',typeof K.rearDot==='number'&&typeof K.rearCarry==='number'&&X.AIC.dribble.back>=0);
+ ok('the keys exist: rearDot, rearCarry numbers',typeof K.rearDot==='number'&&typeof K.rearCarry==='number');
  K.rearDot=0.3;K.rearCarry=0;
  // ---- the back of a man does not carry a ball ------------------------------------------------------------------
  for(const rel of [-2.45,-2.2,-1.5]){const f=slide(X,{rel,dz:2.4});ok('a ball '+(-rel)+' behind the pivot, at the back corner of a sliding man, is left behind',f<0.1,'taken along '+pc(f));}

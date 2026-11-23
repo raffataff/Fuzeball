@@ -12,7 +12,7 @@
  function rdCover(o){
   o=Object.assign({seeds:12,secs:120,seed0:1,diff:null,every:6},o||{});
   const keep=[cfg.diffRed,cfg.diffBlue];if(o.diff){cfg.diffRed=cfg.diffBlue=o.diff;}
-  const RV=AIC.catch.recv,RD=RV.ready,PS=AIC.dribble.pass,T={m:0,samples:0,by:{},acts:{},hold:{}};
+  const RV=AIC.catch.recv,RD=RV.ready,PS=AIC.pass,T={m:0,samples:0,by:{},acts:{},hold:{}};
   const wh=Au.whistle;Au.whistle=function(){};
   try{
    for(let si=0;si<o.seeds;si++){

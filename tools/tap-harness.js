@@ -12,7 +12,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -23,9 +23,8 @@ const stubs=[
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -35,7 +34,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,KICKS:KICKS,pinOutlet:pinOutlet,pinCarryV:pinCarryV,pinPlayStart:pinPlayStart,pinPlay:pinPlay,tapEval:tapEval,tapStart:tapStart,retrieveTap:retrieveTap,tapStep:tapStep,catchStep:catchStep,catchEnd:catchEnd,'+
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,KICKS:KICKS,pinOutlet:pinOutlet,pinCarryV:pinCarryV,pinPlayStart:pinPlayStart,pinPlay:pinPlay,tapEval:tapEval,tapStart:tapStart,retrieveTap:retrieveTap,tapStep:tapStep,catchStep:catchStep,catchEnd:catchEnd,'+
   'released:function(){return RELEASED;},setPick:function(v){PICK=v;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -74,8 +73,8 @@ function suite(X){
  const blockHere=[{x:37.5,z:-2.5},{x:37.5,z:21.5},{x:52.5,z:-9}];
  const hold=(over,mi,rel)=>{const r=world(X,Object.assign({baseZ:SP,offset:o3},over||{}));return {r,b:pinned(X,r,mi==null?0:mi,rel)};};
  {const {r,b}=hold();const o0=X.pinOutlet(r,22.5-0.7,b.m.position.z,blockHere,goalX,0),o1=X.pinOutlet(r,22.5-0.7,r.baseZ[1]+r.offset+TP.drift,blockHere,goalX,0);
-  ok('(the set-up) the lane is shut where the ball is and open where the next man will have it',o0<CA.lineClear&&o1>=CA.lineClear,o0.toFixed(2)+' / '+o1.toFixed(2));
-  const t=X.tapEval(r,b,blockHere,goalX);ok('a neighbouring man with an open lane is the one to tap to',t&&t.j===1&&t.s===1&&t.out>=CA.lineClear,JSON.stringify(t));}
+  ok('(the set-up) the lane is shut where the ball is and open where the next man will have it',o0<X.SWINGS.pinShot.open&&o1>=X.SWINGS.pinShot.open,o0.toFixed(2)+' / '+o1.toFixed(2));
+  const t=X.tapEval(r,b,blockHere,goalX);ok('a neighbouring man with an open lane is the one to tap to',t&&t.j===1&&t.s===1&&t.out>=X.SWINGS.pinShot.open,JSON.stringify(t));}
  {const {r,b}=hold();ok('...and nobody the other way (man 0 is the end of the row)',X.tapEval(r,b,blockHere,goalX).s===1);}
  {const {r,b}=hold({offset:-o3},2);const t=X.tapEval(r,b,[{x:37.5,z:2.5},{x:37.5,z:-21.5},{x:52.5,z:9}],goalX);
   ok('...either way along the row',t&&t.j===1&&t.s===-1,JSON.stringify(t));}
@@ -84,7 +83,7 @@ function suite(X){
   const q=X.tapEval(r,b,[{x:37.5,z:7.2},{x:37.5,z:-16},{x:52.5,z:9}],goalX);ok('...and the other way round',q&&q.s===-1,JSON.stringify(q));}
  // a blocker placed so the lane is open at the man's own z and shut 2 further on, where the receiving man drifts to
  {const {r,b}=hold();const zB=r.baseZ[1]+r.offset;let zq=null;
-  for(let z=zB+2;z<zB+12;z+=0.05){const ob=[{x:37.5,z:z}];if(X.pinOutlet(r,22.5-0.7,zB+TP.drift,ob,goalX,0)<CA.lineClear&&X.pinOutlet(r,22.5-0.7,zB,ob,goalX,0)>=CA.lineClear){zq=z;break;}}
+  for(let z=zB+2;z<zB+12;z+=0.05){const ob=[{x:37.5,z:z}];if(X.pinOutlet(r,22.5-0.7,zB+TP.drift,ob,goalX,0)<X.SWINGS.pinShot.open&&X.pinOutlet(r,22.5-0.7,zB,ob,goalX,0)>=X.SWINGS.pinShot.open){zq=z;break;}}
   ok('(the set-up) a lane that is open at the man and shut where it drifts to',zq!=null,'blocker '+zq);
   ok('the lane is judged where the receiving man will have drifted to, not where he stands',zq!=null&&X.tapEval(r,b,[{x:37.5,z:zq}],goalX)===null);}
  {const {r,b}=hold();ok('not when the lane there is shut too',X.tapEval(r,b,[{x:37.5,z:-2.5},{x:37.5,z:5.5},{x:52.5,z:-9}],goalX)===null);}
@@ -101,7 +100,7 @@ function suite(X){
  {let found=null;const dB=[-12,12];
   for(let off=-12;off<=12&&!found;off+=0.25){const r=world(X,{role:'DEF',baseZ:dB,maxOff:18,offset:0},{defOff:off,defBase:[0,60],gkOff:0});const b=pinned(X,r,0,-0.7);
    const here=X.pinOutlet(r,22.5-0.7,b.m.position.z,[],goalX,0),there=X.pinOutlet(r,22.5-0.7,r.baseZ[1]+r.offset+TP.drift,[],goalX,0);
-   if(here<CA.lineClear&&there>=CA.lineClear)found={off,r,b};}
+   if(here<X.SWINGS.pinShot.open&&there>=X.SWINGS.pinShot.open)found={off,r,b};}
   ok('(the set-up) the defence\'s lane is shut at the ball and open where the other man will have it',!!found,found&&('blue row at '+found.off));
   const t=found&&X.tapEval(found.r,found.b,[],goalX);
   ok('the defence taps across its two men, 24 apart',t&&t.j===1&&t.s===1,JSON.stringify(t));
@@ -114,11 +113,11 @@ function suite(X){
  {const sp=[-5.2,0,5.2],a=hold({baseZ:sp,offset:9-(TP.room-0.2)}),c=hold({baseZ:sp,offset:9-(TP.room+0.3)});
   ok('not without the slide left to run, brake and cushion in that direction',X.tapEval(a.r,a.b,[{x:37.5,z:-30}],goalX)===null);
   ok('...but with it, yes (the same lane)',X.tapEval(c.r,c.b,[{x:37.5,z:-30}],goalX)!==null);}
- // two open lanes, one clearer: the clearer one (the mouth term caps a clear lane at 2.15, so a blocker has to pull the other one under that; lineClear is lowered to leave room for it)
- {const lc=CA.lineClear;CA.lineClear=0.4;
+ // two open lanes, one clearer: the clearer one (the mouth term caps a clear lane at 2.15, so a blocker has to pull the other one under that; swings.pinShot.open is lowered to leave room for it)
+ {const lc=X.SWINGS.pinShot.open;X.SWINGS.pinShot.open=0.4;
   const {r,b}=hold({offset:0,baseZ:[-5.2,0,5.2]},1);let zq=null,oR=null;
   for(let z=16;z>7;z-=0.05){oR=X.pinOutlet(r,22.5-0.7,5.2+TP.drift,[{x:37.5,z:z}],goalX,0);if(oR>=0.4&&oR<1.5){zq=z;break;}}
-  const t=zq==null?null:X.tapEval(r,b,[{x:37.5,z:zq}],goalX);CA.lineClear=lc;
+  const t=zq==null?null:X.tapEval(r,b,[{x:37.5,z:zq}],goalX);X.SWINGS.pinShot.open=lc;
   ok('(two open lanes, one clearer) the clearer one is the one it taps to',zq!=null&&t&&t.s===-1,'blocker '+zq+' right '+(oR&&oR.toFixed(2))+' '+JSON.stringify(t));}
  {const {r,b}=hold({removedUntil:[0,1e9,0]});ok('not to a man a cannonball took',X.tapEval(r,b,blockHere,goalX)===null);}
 
@@ -211,10 +210,10 @@ const MUT=[
  {n:'a man that is too far is a candidate',from:'if(d<TP.minD||d>TP.maxD||',to:'if(d<TP.minD||'},
  {n:'the room to run is not asked for',from:'<TP.room)continue;',to:'<-99)continue;'},
  {n:'a cannonballed man is a candidate',from:'if(j<0||j>=r.baseZ.length||!manLive(r,j))continue;',to:'if(j<0||j>=r.baseZ.length)continue;'},
- {n:'the lane at the receiver is not asked to be open',from:'if(out>=CA.lineClear&&(!best||out>best.out))',to:'if(!best||out>best.out)'},
+ {n:'the lane at the receiver is not asked to be open',from:'if(out>=SWINGS.pinShot.open&&(!best||out>best.out))',to:'if(!best||out>best.out)'},
  {n:'the WORSE lane wins',from:'(!best||out>best.out)',to:'(!best||out<best.out)'},
  {n:'the receiver\'s drift is ignored when judging the lane',from:'clamp(zB+s*TP.drift,-zl,zl)',to:'clamp(zB,-zl,zl)'},
- {n:'it taps even when a carry would open a lane',from:'(tap&&(r.tapN|0)<CA.tap.maxChain&&(fwdTap||r.pcOut<CA.lineClear))',to:'(tap&&(r.tapN|0)<CA.tap.maxChain)'},
+ {n:'it taps even when a carry would open a lane',from:'(tap&&(r.tapN|0)<CA.tap.maxChain&&(fwdTap||r.pcOut<SWINGS.pinShot.open))',to:'(tap&&(r.tapN|0)<CA.tap.maxChain)'},
  {n:'there is no limit to a chain',from:'(r.tapN|0)<CA.tap.maxChain&&',to:''},
  {n:'retrieve\'s carry can tap too',from:'r.tapPk=(tap&&',to:'r.tapPk=('},
  {n:'the tap is never taken up (pinPlay\'s 3 is ignored)',from:'if(v===3){tapStart(r);return;}',to:''},

@@ -11,7 +11,7 @@ const AI=rd('js/ai.js'),PHYS=rd('js/physics.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  ret:slice(AI,'function retrieveMan(',NL+'function retrievePhase('),
  clr:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'// z of the live foot nearest'),
  lz:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// the teammate behind us'),
@@ -26,7 +26,7 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
 ].join(NL);
 
@@ -37,7 +37,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.phys,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
   'catchEnd:catchEnd,reseat:reseat,tapStep:tapStep,tapEval:tapEval,sidePick:sidePick,catchPick:catchPick,catchStep:catchStep,fetchPick:fetchPick,fetchStep:fetchStep,footAngle:footAngle,footBoxD:footBoxD,sideAngle:function(rel,fwd){const a=footAngle(rel,fwd);return a==null?AIC.catch.recv.lift.angle:a;},setPick:function(v){PICK=v;},setRng:function(v){RNGV=v;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -204,7 +204,7 @@ const MUT=[
  {n:'a ball too far is fetched',part:'catch',from:'rel<FE.near||rel>SHOT.pin.fwdFront||',to:'rel<FE.near||'},
  {n:'a rolling ball is fetched',part:'catch',from:'||rb.v.length()>FE.maxV)return false;',to:')return false;'},
  {n:'a ball in the air is fetched',part:'catch',from:'p.y>=AIC.lowY||rb.v.length()>FE.maxV',to:'rb.v.length()>FE.maxV'},
- {n:'a ball a shot is open to is fetched',part:'catch',from:'if(pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,CA.shotV),gx,0)>=CA.lineClear)return false;',to:''},
+ {n:'a ball a shot is open to is fetched',part:'catch',from:'if(pinOutlet(r,p.x,p.z,laneObs(r.team,p.x,gx,SWINGS.shoot.v),gx,0)>=SWINGS.pinShot.open)return false;',to:''},
  {n:'a ball no man can reach is fetched',part:'catch',from:'if(!retrieveMan(r,p.z))return false;',to:''},
  {n:'the switch is ignored',part:'catch',from:'if(!FE||!FE.on||',to:'if(!FE||'},
  {n:'the leg goes up with the man on the lane',part:'catch',from:'  if(inLaneZ(r,bz,cz)){\n   const o=clearOffset',to:'  if(false){\n   const o=clearOffset'},

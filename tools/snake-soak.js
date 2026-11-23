@@ -1,19 +1,19 @@
 // The snake shot on the real sim. Browser side (preview 'fuzeball') or from a terminal:
 //      node tools/page-run.js tools/snake-soak.js "snAll()"
-//      snScene({ri:5,R:3.5,dz:0,slide:0,gap:0.1,keep:[]})   // red human: finesse + kick poses the forward pin, the man slides onto a ball lying R ahead, kick let go, then kick pressed twice `gap` apart; keys go through bindPress / shotSeatsUpdate like a player's
+//      snScene({ri:5,R:3.5,dz:0,slide:0,gap:0.1,keep:[]})   // red human: finesse + kick poses the forward pin, the man slides onto a ball lying R ahead, kick let go, then power + kick `gap` after the slide starts; keys go through bindPress / shotSeatsUpdate like a player's
 //      snGrid()        // every depth of the forward pin x ATT / MID / DEF, the rod still: what leaves, how high, where it crosses the goal line
 //      snSlide()       // the same with the rod sliding through the shot at each speed: the heading the slide gives
 //      snKeeper()      // the ATT's snake against the blue keeper standing still at each z
 //      snVsAI({diff})  // snake against pin shot from the ATT, the blue keeper and defender played by the AI: goals of shots fired
 //      snShots({...})  // frames of the spin from the side: node tools/page-run.js tools/snake-soak.js "snShots()" > out.json, then node tools/fx-shots-save.js out.json <dir> snake
 //      snCost()        // stamina: what one snake, one plain kick and one pin shot each bank on the rod
-//      snTune({sets:[{spin:0.3,ease:1}],cap:0.3})   // snGrid's rows for each set of swings.snake / shots.snake overrides (restored after)
-// a scene removes every other man from the table (keep = rods left on); set:{...} overrides swings.snake / shots.snake by key, cap overrides kick.cap.snake, for that scene only
+//      snTune({sets:[{spin:0.3,ease:1}],cap:0.3})   // snGrid's rows for each set of swings.snake overrides (restored after)
+// a scene removes every other man from the table (keep = rods left on); set:{...} overrides swings.snake by key, cap overrides swings.snake.cap, for that scene only
 'use strict';
 (function(){
  const FIX=1/SIM.hz;
  if(typeof Au!=='undefined'){Au.init=function(){};if(Au.ctx){try{Au.ctx.suspend();}catch(e){}}}
- const FIN='ControlRight',KICK_K='Space',RZ='ShiftLeft';
+ const FIN='ControlRight',KICK_K='Space',RZ='ShiftLeft',POW='ShiftRight';
  const NM={5:'ATT',3:'MID',1:'DEF'},DZ={5:7,3:4,1:7},MAN={5:1,3:2,1:1};
  function setup(o){
   S.seedNext=o.seed;startMatchNow('red');clearBalls();S.phase='play';S.goalT=0;S.countT=0;resetRodRotation();
@@ -45,10 +45,10 @@
  }
  async function snShots(o){S.seedNext=1;startMatchNow('red');await new Promise(q=>setTimeout(q,3000));return snScene(Object.assign({ri:5,R:3.5,dz:0.01,man:1,shots:{at:[0,0.04,0.08,0.12,0.16,0.2,0.24,0.27,0.32,0.4]}},o||{}));}
  function snScene(o){
-  const a0=cfg.auto,set=(o&&o.set)||{},cap=(o&&o.cap!=null)?o.cap:null,old={},cap0=KICK.cap.snake;cfg.auto=false;
-  const at=k=>k in SWINGS.snake?SWINGS.snake:SHOT.snake;for(const k in set){old[k]=at(k)[k];at(k)[k]=set[k];}
-  if(cap!=null)KICK.cap.snake=cap;
-  try{return run(o);}finally{cfg.auto=a0;for(const q of rods)q.hold0=null;for(const k in old)at(k)[k]=old[k];KICK.cap.snake=cap0;}
+  const a0=cfg.auto,set=(o&&o.set)||{},cap=(o&&o.cap!=null)?o.cap:null,old={},cap0=SWINGS.snake.cap;cfg.auto=false;
+  for(const k in set){old[k]=SWINGS.snake[k];SWINGS.snake[k]=set[k];}
+  if(cap!=null)SWINGS.snake.cap=cap;
+  try{return run(o);}finally{cfg.auto=a0;for(const q of rods)q.hold0=null;for(const k in old)SWINGS.snake[k]=old[k];SWINGS.snake.cap=cap0;}
  }
  // pin the ball forward the way a player does (fwdhuman-soak's catch), then the snake (mode 'snake'), the pin shot from the back pin ('pinshot', for the yardstick), or a plain kick at a ball at the feet ('plain')
  function run(o){
@@ -74,11 +74,11 @@
    if(state==='fire'&&tFire==null){
     ex0=r.exert||0;
     if(o.mode==='snake'){
-     if(pressed===0){press(KICK_K);lift(KICK_K);pressed=1;state='gap';o._g=t;}
+     if(pressed===0){pressed=1;state='gap';o._g=t;}
     }else{press(KICK_K);lift(KICK_K);tFire=t;}
    }
-   if(state==='gap'&&t-o._g>=o.gap-1e-9){press(KICK_K);lift(KICK_K);pressed=2;state='snk';tFire=t;}
-   const sliding=o.slide&&(state==='gap'||state==='wait'&&t-tPin>0.25||tFire!=null&&!r.kickHit&&t-tFire<0.4);   // the slide starts 0.1 s before the first press (the ball is carried) and runs to the strike
+   if(state==='gap'&&t-o._g>=o.gap-1e-9){keys[POW]=true;press(KICK_K);lift(KICK_K);keys[POW]=false;pressed=2;state='snk';tFire=t;}
+   const sliding=o.slide&&(state==='gap'||state==='wait'&&t-tPin>0.25||tFire!=null&&!r.kickHit&&t-tFire<0.4);   // the slide starts `gap` before the press (the ball is carried) and runs to the strike
    if(sliding)r.target=clamp(r.target+o.slide*FIX,-r.maxOff,r.maxOff);
    step(1,o.ai);
    const p=b.m.position,sp=b.v.length(),ang=r.angle*dir;
@@ -152,14 +152,8 @@
   const sn=snScene({ri:5,R:3.5}),pl=snScene({ri:5,mode:'plain'}),ps=snScene({ri:5,mode:'pinshot'});
   return {snake:sn.exert,plain:pl.exert,pinShot:ps.exert,snakeV:sn.vMax,plainV:pl.vMax,pinShotV:ps.vMax,pinShotY:ps.yMax};
  }
- function snGap(o){
-  o=Object.assign({gaps:[0.02,0.1,0.2,0.3,0.34,0.4,0.6]},o||{});
-  const rows={};
-  for(const gap of o.gaps){const a=snScene({ri:5,R:3.5,gap});rows['gap '+gap]=a.snake?'snake':'no snake';}
-  return rows;
- }
  // the HUD with a ball held under the forward leg: the snake's plate (hud.js hudPinHint)
  async function snPlate(){S.seedNext=1;startMatchNow('red');await new Promise(q=>setTimeout(q,3000));const a=snScene({ri:5,R:3.5,stop:'pin'});const t0=HUD.t;for(let i=0;i<20;i++){HUD.t+=1/60;hudRender(1/60);}return {held:!!(a.r&&a.r.pinB),fwd:!!(a.r&&a.r.pinFwd),plate:HUD.pin.on,snk:HUD.pin.k==='snk',shots:[HUD.c.toDataURL('image/png')],info:{}};}
- function snAll(){return {grid:snGrid(),slide:snSlide(),keeper:snKeeper(),cost:snCost(),gap:snGap()};}
- window.snScene=snScene;window.snGrid=snGrid;window.snSlide=snSlide;window.snKeeper=snKeeper;window.snCost=snCost;window.snGap=snGap;window.snTune=snTune;window.snPlate=snPlate;window.snShots=snShots;window.snVsAI=snVsAI;window.snAll=snAll;
+ function snAll(){return {grid:snGrid(),slide:snSlide(),keeper:snKeeper(),cost:snCost()};}
+ window.snScene=snScene;window.snGrid=snGrid;window.snSlide=snSlide;window.snKeeper=snKeeper;window.snCost=snCost;window.snTune=snTune;window.snPlate=snPlate;window.snShots=snShots;window.snVsAI=snVsAI;window.snAll=snAll;
 })();

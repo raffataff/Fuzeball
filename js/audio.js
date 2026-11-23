@@ -486,7 +486,7 @@ const Au={ctx:null,mg:null,cb:null,ub:null,mu:null,ab:null,sum:null,out:null,lim
  chargeVoice(dt){const v=this.ch;if(!v||!this.ctx)return;
   // idle is the common case: bail before the exp() when nothing is driven or ringing
   if(v.want<0&&v.lvl<=0){v.want=-1;return;}
-  const T=CONFIG.shots.charge.tone,CH=CONFIG.shots.charge,
+  const T=CONFIG.shots.charge.tone,CH=CONFIG.swings.shoot.charge,
    live=cfg.sound&&this.inMatch(),
    fed=live&&v.want>=0,
    tc=fed?T.attack:T.release,a=1-Math.exp(-dt/Math.max(1e-3,tc));

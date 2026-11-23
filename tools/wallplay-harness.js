@@ -102,9 +102,7 @@ function units(X,quiet){
  {const b=ball(-4.3,WZ,80,0);X.wallAssist(b,rod(1,{x:-22.5}),false);
   ok('blue\'s forward is -x: a +x ball off a blue boot is not its strike',b.v.x===80&&b.v.z===0);}
  {X.setUser(true);const b=ball(-4.3,WZ,80,0);X.wallAssist(b,rod(0),false);
-  ok('a player-held rod is untouched by default (human:false)',b.v.z===0);
-  W.human=true;const b2=ball(-4.3,WZ,80,0);X.wallAssist(b2,rod(0),false);
-  ok('…and bent when human:true',b2.v.z<0);reset();}
+  ok('a player-held rod is bent like an AI rod',b.v.z<0);reset();}
  {W.on=false;const b=ball(-4.3,WZ,80,0);X.wallAssist(b,rod(0),false);
   ok('on:false is a true off switch',b.v.x===80&&b.v.z===0);reset();}
 
@@ -142,7 +140,7 @@ function strikes(X){
  const mo=(F.W-C.rods.margin-4*sp)/2,baseZ=[-2*sp,-sp,0,sp,2*sp];
  const rodFor=(team,side)=>{const dir=team?-1:1;
   return {idx:0,x:team?7.5:-7.5,team,role:'MID',baseZ,removedUntil:[0,0,0,0,0],offset:side*mo,maxOff:mo,trnHidden:false,
-   angle:0.05*dir,angVel:17.3*dir,vz:0,kickT:0.008,kickStyle:null,kickCurve:null,kickDir:dir,cd:0,aiIQ:false,aimSweet:-1,
+   angle:0.05*dir,angVel:17.3*dir,vz:0,kickT:0.008,kickStyle:null,kickDir:dir,cd:0,aiIQ:false,aimSweet:-1,
    kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,aimEv:null,act:null,
    hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:X.KICK.grip,carryMult:1},stats:null};};
  const strike=(team,side)=>{
@@ -186,7 +184,6 @@ const MUT=[
  ['un-bends a ball already infield','if(th<=0)return;',''],
  ['wall gate dropped','if(F.W/2-Math.abs(p.z)-BALL_R>W.gap)return;',''],
  ['strike gate dropped','if(r.angVel*dir<W.minW)return;',''],
- ['human gate dropped','(!W.human&&isUserRod(r))','false'],
  ['an additive nudge instead of a rotation','v.x=(u*cs-w*sn)*dir;v.z=(u*sn+w*cs)*sz;','v.z+=u*sn*sz;']
 ];
 console.log('== mutations');

@@ -24,7 +24,6 @@ function ok(c,msg){if(c)pass++;else{fail++;fails.push(msg);}}
 function boot(SHOTS,FX,HUDJS){
  const real=[
   slice(SHOTS,'function shotsOn(){','\n'),
-  slice(SHOTS,'function shotPinPow(){','\n'),
   slice(SHOTS,'function shotPinBall(s){','// --- what the charge is worth ---'),
   slice(FX,'function pinMarkUpdate(rdt){','function spawnTrail('),
   slice(HUDJS,'const hC=','\n'),
@@ -138,32 +137,14 @@ function suite(X,quiet){
  fresh(X,[so]);X.setPad(false);frame(X,0.5);ok(caps(X.LINES[0].L)==='SPACE+LMB','…and the keys when the keyboard was');
  fresh(X,[seat('#00f',['kbd'],rodOf(ball(1,1)))]);X.setPad(true);frame(X,0.5);
  ok(caps(X.LINES[0].L)==='SPACE+LMB','a keyboard-only seat never reads pad glyphs, whoever touched what');
- X.C.shots.pin.press.shoot='double';   // the two blocks below: the double press (shots.pin.press.shoot 'double')
- // under the forward leg the plate is the snake's two presses, and it changes over with the pin it shows
- {const rf=rodOf(ball(1,1));rf.pinFwd=true;const sf=seat('#f00',['kbd','mouse'],rf);fresh(X,[sf]);X.LINES.length=0;frame(X,0.5);
-  ok(X.LINES.length===1&&words(X.LINES[0].L)==='X2 SNAKE'&&caps(X.LINES[0].L)==='SPACE+LMB','a ball under the forward leg: the kick keys and "x2 snake"');
-  rf.pinFwd=false;X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','...back on the back pin it reads "pin shot" again');
-  rf.pinFwd=true;X.C.shots.snake.on=false;X.LINES.length=0;frame(X,0.5);frame(X,0.5);ok(X.LINES.length===0,'...and with the snake off nothing is offered');X.C.shots.snake.on=true;
-  const pf=rodOf(ball(1,1));pf.pinFwd=true;fresh(X,[seat('#00f',['pad2'],pf)]);X.LINES.length=0;frame(X,0.5);
-  ok(pads(X.LINES[0].L)==='A'&&words(X.LINES[0].L)==='X2 SNAKE','a pad seat reads A x2 snake');}
- // on the back pin of a rod that passes (shots.pin.press) one press is the pass and two the shot
- {const rm=rodOf(ball(1,1));rm.role='MID';const sm=seat('#f00',['kbd','mouse'],rm);fresh(X,[sm]);X.LINES.length=0;frame(X,0.5);
-  const L=X.LINES[0]&&X.LINES[0].L;
-  ok(!!L&&words(L)==='PASS X2 SHOT'&&L.some(k=>k.sep)&&caps(L)==='SPACE+LMB','a midfield back pin: the kick keys and "pass · x2 shot", one press and two');
-  rm.pinFwd=true;X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='X2 SNAKE','...under the forward leg it is the snake');
-  rm.pinFwd=false;X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PASS X2 SHOT','...and back on the back pin the pass again');
-  rm.role='ATT';rm.pinB=null;frame(X,0.5);rm.pinB=ball(1,1);X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','an attack back pin: "pin shot" (one press shoots)');
-  rm.role='MID';X.C.shots.pin.press.on=false;rm.pinB=null;frame(X,0.5);rm.pinB=ball(1,1);X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','...and so does any rod with press.on false');X.C.shots.pin.press.on=true;
-  X.setBind(false);rm.pinB=null;frame(X,0.5);rm.pinB=ball(1,1);X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PASS X2 SHOT','an unbound kick still reads "pass · x2 shot"');X.setBind(true);
-  const pm=rodOf(ball(1,1));pm.role='DEF';fresh(X,[seat('#00f',['pad2'],pm)]);X.LINES.length=0;frame(X,0.5);
-  ok(pads(X.LINES[0].L)==='A'&&words(X.LINES[0].L)==='PASS X2 SHOT','a pad seat reads A pass · x2 shot');}
- // power + kick shoots (shoot 'power'): the plate names power, and a pad reads the face buttons of its layout (cfg.padPinBtns)
- X.C.shots.pin.press.shoot='power';
+ // power + kick shoots: the plate names power, and a pad reads the face buttons of its layout (cfg.padPinBtns)
  {const rm=rodOf(ball(1,1));rm.role='MID';const sm=seat('#f00',['kbd','mouse'],rm);fresh(X,[sm]);X.LINES.length=0;frame(X,0.5);
   const L=X.LINES[0]&&X.LINES[0].L;
   ok(!!L&&words(L)==='PASS + SHOT'&&L.some(k=>k.sep)&&caps(L)==='SPACE+LMB+E+SPACE','a midfield back pin: the kick passes, power + kick shoots');
   rm.pinFwd=true;X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='+ SNAKE'&&caps(X.LINES[0].L)==='E+SPACE','...under the forward leg power + kick is the snake');
+  X.C.shots.pin.fwd.snake=false;X.LINES.length=0;frame(X,0.5);frame(X,0.5);ok(X.LINES.length===0,'...and with the snake off nothing is offered');X.C.shots.pin.fwd.snake=true;
   rm.pinFwd=false;rm.role='ATT';rm.pinB=null;frame(X,0.5);rm.pinB=ball(1,1);X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','an attack back pin: still pin shot');
+  rm.role='MID';X.C.shots.pin.press.on=false;rm.pinB=null;frame(X,0.5);rm.pinB=ball(1,1);X.LINES.length=0;frame(X,0.1);ok(words(X.LINES[0].L)==='PIN SHOT','...and so does any rod with press.on false');X.C.shots.pin.press.on=true;
   const pm=rodOf(ball(1,1));pm.role='DEF';fresh(X,[seat('#00f',['pad2'],pm)]);X.cfg.padPinBtns='sq';X.LINES.length=0;frame(X,0.5);
   ok(pads(X.LINES[0].L)==='X+B'&&words(X.LINES[0].L)==='PASS SHOT','a pad seat, square passes: X pass · B shot');
   X.cfg.padPinBtns='ci';X.LINES.length=0;frame(X,0.1);ok(pads(X.LINES[0].L)==='B+X','...circle passes: B pass · X shot, rebuilt while the ball stays pinned');
@@ -199,8 +180,6 @@ const muts=[
  ['hud','P.on=true;P.k=ky;P.t=HUD.t;','P.on=true;P.k=ky;','a long-held catch is never dimmed afresh'],
  ['hud',"shotPinPassOn(seatRod(bk))?'pp':'ps'","'ps'",'the back pin always says pin shot, where one press passes too'],
  ['hud',"shotPinPassOn(seatRod(bk))?'pp':'ps'","'pp'",'the attack\'s back pin says pass'],
- ['hud',"'{A} pass · x2 shot'","'{A} pin shot'",'a pad seat is told one press shoots where it passes'],
- ['hud',"(bindHint('kick','pass',2)||'pass')+' · x2 shot'","(bindHint('kick','pass',2)||'pin shot')",'an unbound kick reads pin shot where it passes'],
  ['hud','(hasPad&&(!hasKb||hudPadNow())?P.tokP:P.tok)[0]','P.tok[0]','a pad player is shown keyboard keys'],
  ['hud','(hasPad&&(!hasKb||hudPadNow())?P.tokP:P.tok)[0]','P.tokP[0]','a keyboard player is shown pad buttons'],
  ['hud','(age<H.hold?1:1-(1-H.dim)*hO3(hC((age-H.hold)/1.2)))','1','the plate never settles back'],
@@ -209,12 +188,10 @@ const muts=[
  ['hud','(bindHint(\'kick\',\'pin shot\',2)||\'pin shot\')','(\'[SPACE] pin shot\')','the plate ignores a rebind'],
  ['hud',"P.tok=hudTok(kd==='snk'?","P.tok=hudTok(false?",'the forward pin\'s plate says pin shot'],
  ['hud','if(!P.on||P.k!==ky){','if(!P.on){','the plate keeps the last pin\'s words'],
- ['hud',"ky=kd+(pw?'p':'d')+pb",'ky=kd','a layout change while pinned keeps the old buttons'],
- ['hud','const pw=shotPinPow(),','const pw=false,','the plate still says two presses where power shoots'],
+ ['hud',"ky=kd+pb",'ky=kd','a layout change while pinned keeps the old buttons'],
  ['hud',"ps=pb==='ci'?'{B}':'{X}'","ps='{X}'",'the circle-pass layout shows X as the pass'],
  ['hud',"pp=pb==='off'?'{RT} + {A}':sh",'pp=sh','the A-only layout shows a face button for the shot'],
  ['hud',"(bindCap('power')||'[power]')+' + '+",'','the keyboard plate leaves power out of the shot'],
- ['shots',"return !!(D&&D.shoot==='power');",'return false;','the power shot is never on'],
  ['shots','function shotSnakeSeat(){if(!shotSnakeOn())return null;','function shotSnakeSeat(){','the snake plate shows with the snake off']
 ];
 let caught=0;

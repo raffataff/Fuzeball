@@ -1,0 +1,10 @@
+{
+  "name": "Deltaborg",
+  "blurb": "Ruthless and fast",
+  "mug": "assets/renders/render_deltaborg_mugshot_v2.png",
+  "slug": "deltaborg",
+  "pose": "head canted forward and right, shoulders braced, cold visor scrutiny",
+  "prompt": "Use case: style-transfer. Create ONE square head-and-shoulders Fuzeball roster mugshot of Deltaborg. Image 1 is the exact character identity and costume reference. Image 2 is ONLY the approved rendering/lighting/style reference (Maria). Preserve image 1 species, gender, age identity, complexion, hair/crest/horns, face structure, visor/optics, and recognizable costume. Do not copy Maria's anatomy, hair or costume. Transform the cartoony reference into the same mature cinematic photoreal game-face style as image 2. Experienced competitive athlete, Ruthless and fast. Specific performance direction: head canted forward and right, shoulders braced, cold visor scrutiny. For mechanical faces express attitude via head and shoulder pose, preserve mechanical structure rather than adding a human mouth. Natural human facial proportions where human, tactile detailed alien skin where alien, worn metal and fabric, restrained sweat where appropriate, subtle signs of experience. Cool blue side lighting and warm amber edge lighting, readable eyes/optics with a soft frontal key. Full head/crest/horns visible with 4 percent clear top margin, shoulders and upper chest cut by bottom frame, head centered, large face readable at avatar size. REAL ALPHA TRANSPARENT BACKGROUND. Only the player cutout. No scenery, colored background, floor, backdrop, shadow behind subject, text, frame, watermark, weapons, smile, cute proportions, cartoon rendering, doll skin, or extra characters.",
+  "path": "C:\\Users\\Owner\\.codex\\generated_images\\01a1d0cf-1c78-74c1-94ea-479c861db502\\exec-9428959d-85de-494f-a78a-589e8799647e.png",
+  "dest": "assets/renders/render_deltaborg_mugshot_arena_cutout.png"
+}

@@ -49,7 +49,7 @@
    for(const q of S.balls){const d=Math.abs(q.m.position.x-r.x);if(d<bd){bd=d;b=q;}}
    if(b){
     const bx=b.m.position.x,bz=b.m.position.z,gx=dir>0?F.L/2:-F.L/2,ev=r.aimEv&&r.aimEv.best?r.aimEv:null;
-    const k=style==='pinShot'?'pin':style==='pass'?'pass':'plain',RX=aim?rods.find(q=>q.team===r.team&&Math.abs(q.x-aim.x)<0.5)||null:null;
+    const k=style==='pinShot'?'pin':style==='pass'||style==='pinPass'?'pass':'plain',RX=aim?rods.find(q=>q.team===r.team&&Math.abs(q.x-aim.x)<0.5)||null:null;
     const tx=aim?aim.x:gx,tz=aim?aim.z:(ev?ev.best.tz:0);
     T.sw.push({rod:r,t:S.time,team:r.team,role:r.role,k,bx,bz,ev:!!ev,clr:ev?ev.best.clr:null,want:Math.atan2(tz-bz,(tx-bx)*dir)*DEG,n:0,back:0,h:null,h0:null,sp:0,lz:null,opp:null,ft:null,fr:null,bvx:b.v.x*dir,bvz:b.v.z,sv:0,rsv:r.slideV,
      csv:r.catSv||0,rv:r.act==='run'?r.rnS*r.rnV:0,rth:r.act==='run'?r.rnTh:0,rx:RX,rxa:RX?RX.angle*RX.kickDir:null,rxact:RX?(RX.act||'-'):null,org:r.pinB?'pin':(r.act||'free'),rel:(bx-r.x)*dir,dz:nearestZ(r,bz),ang:r.angle*dir,pinv:r.pinB?b.v.z:null});

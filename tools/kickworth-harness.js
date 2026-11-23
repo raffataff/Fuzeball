@@ -15,7 +15,7 @@ function boot(mut){
   if(g[mut.part]===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
  const ctx={console,Math,JSON,Object,Array,localStorage:{getItem:()=>null,setItem:()=>{}}};ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.kw,
-  ';globalThis.X={S:S,AIC:AIC,rods:rods,kickWorth:kickWorth,KWS:KWS,setDiff:function(d){DIFF=d;}};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,rods:rods,kickWorth:kickWorth,KWS:KWS,setDiff:function(d){DIFF=d;}};'].join(NL),ctx);
  return ctx.X;
 }
 const dt=1/120;
@@ -33,7 +33,7 @@ function held(X,r,b,s){for(let i=0;i<1200;i++){if(X.kickWorth(r,b,s))return i*dt
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
  const KW=X.AIC.kickWorth,W=KW.wait,covered=shot(0),still=()=>ball(-3.5);
- ok('the shipped block names every knob (shipped off)',KW.on===false&&KW.roles.join()==='DEF,MID,ATT'&&KW.open.ATT>0&&KW.ctrlV>0&&W.pro>0&&KW.dumb>0&&KW.dumb<1&&KW.gap>0,JSON.stringify(KW));
+ ok('the shipped block names every knob (shipped off)',KW.on===false&&KW.roles.join()==='DEF,MID,ATT'&&X.SWINGS.shoot.open>0&&KW.ctrlV>0&&W.pro>0&&KW.dumb>0&&KW.dumb<1&&KW.gap>0,JSON.stringify(KW));
  const on0=KW.on;KW.on=true;
  {const r=world(X);
   ok('a slow ball with a covered lane is held',X.kickWorth(r,still(),covered)===false);
@@ -48,8 +48,8 @@ function suite(X){
   ok('a hold broken past gap starts over',X.kickWorth(r,still(),covered)===false);
   X.S.time+=W.pro*0.6;ok('…and is not counted from the first hold',X.kickWorth(r,still(),covered)===false);}
  {const r=world(X);
-  ok('an open lane kicks at once',X.kickWorth(r,still(),shot(KW.open.MID+0.01))===true);
-  ok('…a lane just short of it is held',X.kickWorth(r,still(),shot(KW.open.MID-0.01))===false);}
+  ok('an open lane kicks at once',X.kickWorth(r,still(),shot(X.SWINGS.shoot.open+0.01))===true);
+  ok('…a lane just short of it is held',X.kickWorth(r,still(),shot(X.SWINGS.shoot.open-0.01))===false);}
  {const r=world(X);ok('a ball at ctrlV kicks at once',X.kickWorth(r,ball(-3.5,0,KW.ctrlV),covered)===true);}
  {const r=world(X);ok('a ball heading for our goal past threat kicks at once',X.kickWorth(r,ball(-3.5,-(KW.threat+1),0),covered)===true);
   r.kwS=-9;ok('…one heading away as fast is held',X.kickWorth(r,ball(-3.5,KW.threat+1,0),covered)===false);}
@@ -64,7 +64,7 @@ function suite(X){
 
 const MUT=[
  {n:'no force exemption',part:'kw',from:'||r.force||KW.roles',to:'||KW.roles'},
- {n:'open lane ignored',part:'kw',from:'shot.ev.best.clr>=KW.open[r.role]',to:'shot.ev.best.clr>=1e9'},
+ {n:'open lane ignored',part:'kw',from:'shot.ev.best.clr>=SWINGS.shoot.open',to:'shot.ev.best.clr>=1e9'},
  {n:'fast ball held',part:'kw',from:'v.length()>=KW.ctrlV',to:'v.length()>=1e9'},
  {n:'threat sign flipped',part:'kw',from:'-v.x*r.kickDir>KW.threat',to:'v.x*r.kickDir>KW.threat'},
  {n:'no contested check',part:'kw',from:'Math.abs(o.x-p.x)<KW.oppX',to:'false'},

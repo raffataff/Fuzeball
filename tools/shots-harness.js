@@ -21,7 +21,7 @@ function build(srcShots){
   // kickRod is the real one (rods.js): its last call records the swing
   seatOf(){return null;},recvArm(){},recvRelease(){},pinRelease(r){r.pinB=null;},
   stExertKick(r){r.banked=r.shotExert;},
-  msKick(r){rec.kicks.push({style:r.kickStyle,curve:r.kickCurve,pass:r.passTo,pow:r.shotPow,ctl:r.shotCtl,on:r.shotOn,ex:r.banked,a0:r.kickA0});},
+  msKick(r){rec.kicks.push({style:r.kickStyle,curve:vm.runInContext('SWINGS',ctx)[r.kickStyle],pass:r.passTo,pow:r.shotPow,ctl:r.shotCtl,on:r.shotOn,ex:r.banked,a0:r.kickA0});},   // curve: the swing its name plays
   gpDown(gp,i){const b=gp.buttons[i];return!!b&&(b.pressed||b.value>0.5);},
   sweepClips(){return ctx.__clip;},          // flipped per test
   // shotPassPick walks the real rods with ai.js's lane primitives, so the harness supplies those
@@ -61,7 +61,7 @@ function build(srcShots){
 // A rod with every field shots.js touches, in the state buildRods leaves it.
 function rod(over){
  const r={idx:0,x:22.5,team:0,role:'ATT',kickDir:1,angle:0,offset:0,maxOff:12,baseZ:[0],men:[{}],
-  removedUntil:[],kickT:-1,kickStyle:null,kickCurve:null,passTo:null,passEv:null,passEvT:0,
+  removedUntil:[],kickT:-1,kickStyle:null,passTo:null,passEv:null,passEvT:0,
   raise:false,padAngleOn:false,padAngleTarget:0,kickA0:0,
   chg:-1,chgRel:0,chgA:null,chgSrc:null,chgHeld:0,chgSweet:false,trem:0,
  chgBlock:0,chgEndT:null,chgEndBand:-1,chgEndK:0,
@@ -80,7 +80,7 @@ const seat=()=>({team:0,devs:['pad*'],rods:[],ctrl:0,tcMult:1,padRaise:false,sho
 /* ---- the suite ---------------------------------------------------------------------------- */
 function run(src,label){
  pass=0;fail=0;fails.length=0;
- const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,SW=C.SWINGS;
+ const ctx=build(src),C=ctx.__c,SH=C.SHOT,CH=SH.charge,MD=SH.mod,SW=C.SWINGS,CS=SW.shoot.charge;
  // this suite drives the charge machine through the single-trigger rule it was written against (RT alone winds up, letting go fires); the shipped rule (charge.needRaise) sits on the same machine and is asserted in tools/binds-harness.js
  CH.needRaise=false;
  const rec=ctx.__rec;
@@ -107,30 +107,30 @@ function run(src,label){
  ok(MD.directLerp>0,'directLerp is a usable rate for padAngleLerp 0');
  // The pass threshold has to be REACHABLE by a real trigger position and must not fire on a
  // neutral kick — LT alone bottoms the axis at exactly -1, so modAt must lie in [-1, 0).
- ok(SH.pass.modAt>=-1&&SH.pass.modAt<0,'pass threshold is reachable and never neutral');
- // the pass has to be deliverable: the aim assist bends a pass by CONFIG.ai.dribble.pass.assist and no further (measured: 43 degrees needed, 9 delivered); bendMult is that budget as a multiple of the assist
- ok(SH.pass.bendMult>0&&SH.pass.bendMult<3,'pass bend budget is a lining-up requirement, not a guided missile');
- {const P=C.AIC.dribble.pass,deg=P.assist*SH.pass.bendMult*180/Math.PI;
+ ok(SH.mod.fwdAt>=-1&&SH.mod.fwdAt<0,'pass threshold is reachable and never neutral');
+ // the pass has to be deliverable: the aim assist bends a pass by CONFIG.swings.passAssist.bend and no further (measured: 43 degrees needed, 9 delivered); bendMult is that budget as a multiple of the assist
+ ok(SW.passAssist.pick>0&&SW.passAssist.pick<3,'pass bend budget is a lining-up requirement, not a guided missile');
+ {const P=C.AIC.pass,deg=SW.passAssist.bend*SW.passAssist.pick*180/Math.PI;
   ok(deg>5&&deg<25,'…which is '+deg.toFixed(0)+' degrees off-line — enough to offer, tight enough to aim');
-  const lat=Math.tan(P.assist*SH.pass.bendMult)*30;
+  const lat=Math.tan(SW.passAssist.bend*SW.passAssist.pick)*30;
   ok(lat>3&&lat<12,'…about '+lat.toFixed(1)+' units of lateral slack over a 30-unit MID to ATT ball');}
- ok(CH.sweetFrom>0&&CH.sweetFrom<CH.sweetTo&&CH.sweetTo<=1,'sweet band is ordered and inside 0..1');
- ok(CH.minFire<CH.sweetFrom,'a charge can reach the sweet band before minFire would fire it early');
- ok(CH.powMin<=CH.powMax&&CH.overPow<CH.powMax,'charge power rises then falls');
- ok(CH.ctlMin<1&&CH.overCtl<1,'control peaks inside the band');
+ ok(CS.sweetFrom>0&&CS.sweetFrom<CS.sweetTo&&CS.sweetTo<=1,'sweet band is ordered and inside 0..1');
+ ok(CS.minFire<CS.sweetFrom,'a charge can reach the sweet band before minFire would fire it early');
+ ok(SW.shoot.charge.powMin<=SW.shoot.charge.powMax&&SW.shoot.charge.overPow<SW.shoot.charge.powMax,'charge power rises then falls');
+ ok(SW.shoot.charge.ctlMin<1&&SW.shoot.charge.overCtl<1,'control peaks inside the band');
  ok(CH.rate>0&&CH.decay>0,'charge builds and bleeds');
  // Time to reach the band at full depth has to be a HUMAN interval — instant is not a mechanic and
  // two seconds is not a shot.
- const tIn=CH.sweetFrom/CH.rate,tOut=CH.sweetTo/CH.rate;
+ const tIn=CS.sweetFrom/CH.rate,tOut=CS.sweetTo/CH.rate;
  ok(tIn>0.15&&tIn<1.2,'sweet band opens at a human time ('+tIn.toFixed(2)+'s)');
  ok(tOut-tIn>0.12,'sweet band is wide enough to hit ('+(tOut-tIn).toFixed(2)+'s)');
  // the ease has to settle before the band opens: the rod eases toward the wind-up angle (e^(-pullLerp x t)), so a still-settling arc would make a full overcook the strongest shot; 95% by the band's opening wants pullLerp >= 3/(sweetFrom/rate)
- {const T=CH.sweetFrom/CH.rate,settled=1-Math.exp(-CH.pullLerp*T);
+ {const T=CS.sweetFrom/CH.rate,settled=1-Math.exp(-CS.pullLerp*T);
   ok(settled>0.95,'the wind-up is '+(settled*100).toFixed(1)+'% settled by the time the sweet band opens');}
- ok(CH.pullA<0,'the wind-up is a BACK angle');
- ok(Math.abs(CH.pullA)<=Math.abs(C.KICK.raiseA),'the wind-up is never deeper than the rod raise');
+ ok(CS.pullA<0,'the wind-up is a BACK angle');
+ ok(Math.abs(CS.pullA)<=Math.abs(C.KICK.raiseA),'the wind-up is never deeper than the rod raise');
  ok(CH.stickBack>0&&CH.stickBack<1,'Total Control pull-back threshold is inside stick travel');
- ok(CH.spray>=0&&CH.spray<0.6,'spray is a nudge, not a coin toss');
+ ok(SW.spray>=0&&SW.spray<0.6,'spray is a nudge, not a coin toss');
  ok(CH.trem.amp>0&&CH.trem.amp<0.2,'tremble is visible but not a swing');
  ok(CH.tapMax>0&&CH.tapMax<0.3,'tap grace is a tap');
  // the sound carries a direction: tension sweeps up as it gathers, a discharge sweeps down; invert either and a charge reads as a release
@@ -143,7 +143,7 @@ function run(src,label){
   ok(T.markA>=0.02,'the band marker has a soft attack — a fast one is the blip this pass removed');
   ok(T.attack<T.release,'the voice appears faster than it fades, so a wind-up is prompt and its tail is not');
   ok(T.release<0.2,'…but the tail is short enough to be under the strike, not smeared past it');
-  ok(T.fireMin>0&&T.fireMin<CH.sweetFrom,'a flinch makes no discharge, a real charge always does');
+  ok(T.fireMin>0&&T.fireMin<CS.sweetFrom,'a flinch makes no discharge, a real charge always does');
   ok(T.wobDepth>0&&T.wobDepth<1,'the overcook wobble is unsteadiness, not a gate');
   for(const k of ['vol','fifthVol','noiseVol','markVol','bodyVol','airVol','snapVol'])
    ok(T[k]>0&&T[k]<0.4,'tone.'+k+' is a mix level, not a peak');}
@@ -166,42 +166,42 @@ function run(src,label){
  /* ===== 3. THE PRESS WAITS FOR ITS TRIGGER ===== */
  {const o=C.shotInNew(),rd=(lt,rt)=>C.shotPadRead(o,pad(lt,rt),false,0);
   rd(0,0);rd(0,0.3);ok(C.shotChordWait(o,0),'A waits for an RT on its way down: pressed together they are the shot');
-  ok(!C.shotChordWait(o,SH.pass.chord),'...no longer than pass.chord');
+  ok(!C.shotChordWait(o,SH.mod.chord),'...no longer than pass.chord');
   rd(0,0.3);ok(!C.shotChordWait(o,0),'...nor for one resting short of powAt');
   rd(0,0.9);ok(!C.shotChordWait(o,0),'...nor once it is there');
   rd(0,0.2);ok(!C.shotChordWait(o,0),'...nor for one on its way up');
   rd(0,0);ok(!C.shotChordWait(o,0),'A alone is the pass at once');}
 
  /* ===== 4. THE CHARGE CURVES ===== */
- eq(C.shotChgPow(0),CH.powMin,'charge power starts at powMin');
- eq(C.shotChgPow(CH.sweetFrom),CH.powMax,'charge power peaks entering the band');
- eq(C.shotChgPow(CH.sweetTo),CH.powMax,'charge power holds across the band');
- eq(C.shotChgPow(1),CH.overPow,'charge power falls to overPow at full hold');
- eq(C.shotChgCtl(CH.sweetFrom),1,'control is full entering the band');
- eq(C.shotChgCtl(CH.sweetTo),1,'control is full leaving the band');
- eq(C.shotChgCtl(0),CH.ctlMin,'a snatched shot is at ctlMin');
- eq(C.shotChgCtl(1),CH.overCtl,'an overcooked shot is at overCtl');
- ok(C.shotChgPow(1)<C.shotChgPow(CH.sweetFrom*0.5),
+ eq(C.shotChgPow(0),SW.shoot.charge.powMin,'charge power starts at powMin');
+ eq(C.shotChgPow(CS.sweetFrom),SW.shoot.charge.powMax,'charge power peaks entering the band');
+ eq(C.shotChgPow(CS.sweetTo),SW.shoot.charge.powMax,'charge power holds across the band');
+ eq(C.shotChgPow(1),SW.shoot.charge.overPow,'charge power falls to overPow at full hold');
+ eq(C.shotChgCtl(CS.sweetFrom),1,'control is full entering the band');
+ eq(C.shotChgCtl(CS.sweetTo),1,'control is full leaving the band');
+ eq(C.shotChgCtl(0),SW.shoot.charge.ctlMin,'a snatched shot is at ctlMin');
+ eq(C.shotChgCtl(1),SW.shoot.charge.overCtl,'an overcooked shot is at overCtl');
+ ok(C.shotChgPow(1)<C.shotChgPow(CS.sweetFrom*0.5),
   'HOLDING TOO LONG IS WORSE THAN A HALF CHARGE — the band is a target, not a floor');
  let up=true,down=true;
- for(let i=1;i<=20;i++){const a=(i-1)/20*CH.sweetFrom,b=i/20*CH.sweetFrom;
+ for(let i=1;i<=20;i++){const a=(i-1)/20*CS.sweetFrom,b=i/20*CS.sweetFrom;
   if(C.shotChgPow(b)<C.shotChgPow(a)-1e-9)up=false;}
- for(let i=1;i<=20;i++){const a=CH.sweetTo+(i-1)/20*(1-CH.sweetTo),b=CH.sweetTo+i/20*(1-CH.sweetTo);
+ for(let i=1;i<=20;i++){const a=CS.sweetTo+(i-1)/20*(1-CS.sweetTo),b=CS.sweetTo+i/20*(1-CS.sweetTo);
   if(C.shotChgPow(b)>C.shotChgPow(a)+1e-9)down=false;}
  ok(up,'charge power is monotone up to the band');ok(down,'charge power is monotone down after it');
- eq(C.shotChgBand(CH.sweetFrom-1e-6),0,'band: just short reads BUILDING');
- eq(C.shotChgBand(CH.sweetFrom),1,'band: the lower edge is IN');
- eq(C.shotChgBand(CH.sweetTo),1,'band: the upper edge is IN');
- eq(C.shotChgBand(CH.sweetTo+1e-6),2,'band: just past reads OVER');
- eq(C.shotOver(CH.sweetTo),0,'overcharge is 0 at the top of the band');
+ eq(C.shotChgBand(CS.sweetFrom-1e-6),0,'band: just short reads BUILDING');
+ eq(C.shotChgBand(CS.sweetFrom),1,'band: the lower edge is IN');
+ eq(C.shotChgBand(CS.sweetTo),1,'band: the upper edge is IN');
+ eq(C.shotChgBand(CS.sweetTo+1e-6),2,'band: just past reads OVER');
+ eq(C.shotOver(CS.sweetTo),0,'overcharge is 0 at the top of the band');
  eq(C.shotOver(1),1,'overcharge is 1 at a full hold');
 
  /* ===== 5. ARMING ===== */
  {const r=rod();
   C.shotArm(r,null,-1);
   ok(r.shotOn&&r.shotPow===1&&r.shotCtl===1&&r.shotExert===1,'arm: with no swing it is IDENTITY (pow/ctl/exert all 1)');
-  C.shotArm(r,SW.shoot,CH.sweetFrom);
-  eq(r.shotPow,SW.shoot.pow*CH.powMax,'arm: swing and charge MULTIPLY');
+  C.shotArm(r,SW.shoot,CS.sweetFrom);
+  eq(r.shotPow,SW.shoot.pow*SW.shoot.charge.powMax,'arm: swing and charge MULTIPLY');
   eq(r.shotCtl,SW.shoot.ctl,'arm: control multiplies too');
   eq(r.shotExert,SW.shoot.exert,'arm: a shot books its exertion');
   C.shotArm(r,SW.pass,-1);
@@ -211,16 +211,16 @@ function run(src,label){
   ok(!r.shotOn&&r.shotPow===1&&r.shotCtl===1,'disarm clears everything physics reads');
   C.shotArm(r,SW.shoot,0.6);C.shotConsume(r);
   ok(!r.shotOn,'ONE CONTACT SPENDS THE SHOT — a charge cannot apply twice');
-  r.chg=0.5;r.chgRel=0.9;r.chgSrc='rt';r.chgA=-1;r.trem=0.04;r.kickCurve={};r.shotTrack=2.6;C.shotArm(r,SW.shoot,0.5);
+  r.chg=0.5;r.chgRel=0.9;r.chgSrc='rt';r.chgA=-1;r.trem=0.04;r.shotTrack=2.6;C.shotArm(r,SW.shoot,0.5);
   C.shotReset(r);
-  ok(r.chg===-1&&!r.chgSrc&&r.chgA===null&&r.trem===0&&!r.shotOn&&r.kickCurve===null&&r.shotTrack===1,
-   'reset clears charge, arming, tremble, curve and tracking');
+  ok(r.chg===-1&&!r.chgSrc&&r.chgA===null&&r.trem===0&&!r.shotOn&&r.shotTrack===1,
+   'reset clears charge, arming, tremble and tracking');
   // chgRel is unreachable-if-stale TODAY (a new wind-up zeroes it on entry), which is exactly why it
   // is pinned: shotReset claims to be a full teardown, and the next reader of that field will assume it.
   const f=rod({kickT:0.01,kickStyle:'shoot'});C.shotArm(f,SW.shoot,-1);C.shotReset(f);
   ok(f.shotOn&&f.shotPow===SW.shoot.pow,'a shot in flight keeps its trims when the seat lets the rod go');
-  for(const [st,cv] of [['pass',SW.pinPass],['snake',SW.snake]]){const g=rod({kickT:0.01,kickStyle:st,kickCurve:cv});C.shotArm(g,cv,-1);C.shotReset(g);
-   ok(g.kickCurve===cv&&g.shotOn&&g.shotPow===cv.pow,'...a pin pass or snake in flight keeps its own swing too: '+st);}
+  for(const [st,cv] of [['pinPass',SW.pinPass],['snake',SW.snake]]){const g=rod({kickT:0.01,kickStyle:st});C.shotArm(g,cv,-1);C.shotReset(g);
+   ok(g.kickStyle===st&&g.shotOn&&g.shotPow===cv.pow,'...a pin pass or snake in flight keeps its own swing too: '+st);}
   eq(r.chgRel,0,'reset clears the BANKED charge too — the teardown is complete, not nearly complete');
  }
 
@@ -228,13 +228,13 @@ function run(src,label){
  {const r=rod();rec.kicks.length=0;ctx.__pass=null;
   C.shotFire(r,false,-1);
   let k=rec.kicks[0];
-  ok(k&&k.style==='pass'&&k.curve===null&&k.pass===null,'A KICK IS THE PASS, with no mate ahead too (it leaves unaimed)');
+  ok(k&&k.style==='pass'&&k.curve===SW.pass&&k.pass===null,'A KICK IS THE PASS, with no mate ahead too (it leaves unaimed)');
   eq(k.pow,SW.pass.pow,'...armed with the pass trim');
   eq(k.ex,SW.pass.exert,'...and its stamina, booked before the swing is charged');
   r.kickT=-1;rec.kicks.length=0;
   C.shotFire(r,true,-1);
   k=rec.kicks[0];
-  ok(k.style==='shoot'&&k.curve===null&&k.on,'POWER + KICK IS THE SHOT, on swings.shoot itself');
+  ok(k.style==='shoot'&&k.curve===SW.shoot&&k.on,'POWER + KICK IS THE SHOT, on swings.shoot itself');
   eq(k.pow,SW.shoot.pow,'...armed with the shot trim');
   eq(k.ex,SW.shoot.exert,'...and its stamina');
   const ai=rod({idx:2});rec.kicks.length=0;
@@ -249,11 +249,11 @@ function run(src,label){
   ok(k.style==='pass'&&k.pass&&k.pass.x===mate.x,'the pass is aimed at a teammate the ball can actually be turned toward');
   ok(kick(true).pass===null,'a shot is never aimed at a teammate');
   // the refusal: slide the teammate square of the ball and the bend needed passes what the assist can deliver
-  const P=C.AIC.dribble.pass,far=Math.tan(P.assist*SH.pass.bendMult)*25+4;
+  const P=C.AIC.pass,far=Math.tan(SW.passAssist.bend*SW.passAssist.pick)*25+4;
   mate.offset=far;
   ok(kick(false).pass===null,'a receiver too far off-line is REFUSED ('+far.toFixed(1)+'u square)');
   // and one just inside the budget is still offered
-  mate.offset=Math.tan(P.assist*SH.pass.bendMult)*25-1;
+  mate.offset=Math.tan(SW.passAssist.bend*SW.passAssist.pick)*25-1;
   ok(!!kick(false).pass,'...while one just inside the budget still is');
   mate.offset=0;ctx.__clr=0;                       // every lane blocked
   k=kick(false);
@@ -272,10 +272,10 @@ function run(src,label){
   C.cfg.padChargeBtn=old;}
  {const r=rod(),s=seat();rec.kicks.length=0;C.cfg.padControlMode='classic';C.cfg.padChargeBtn='rt';
   // hold RT for long enough to reach the middle of the band
-  const hold=(CH.sweetFrom+CH.sweetTo)/2/CH.rate;
+  const hold=(CS.sweetFrom+CS.sweetTo)/2/CH.rate;
   let t=0;while(t<hold){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);t+=1/60;}
   ok(r.chgSrc==='rt','RT holds the wind-up');
-  ok(r.chg>CH.sweetFrom&&r.chg<=CH.sweetTo,'…and the charge lands in the band after the expected time');
+  ok(r.chg>CS.sweetFrom&&r.chg<=CS.sweetTo,'…and the charge lands in the band after the expected time');
   ok(r.shotOn&&r.shotPow>1,'a live wind-up is already armed, so a contact mid-charge is worth something');
   ok(r.chgA!==null&&r.chgA<0,'the rod is authored BACK while winding up');
   const deep=r.chgA,atRelease=r.chg;
@@ -289,7 +289,7 @@ function run(src,label){
   ok(rec.kicks[0].on&&rec.kicks[0].pow>1,'…and it carries the charge');
   // the axis is the one the wind-up was held at, not the live one on the release frame (RT is on its way up then, giving a neutral curve with no power trim)
   ok(rec.kicks[0].style==='shoot','a charge held on RT fires the shot, whatever the release frame reads');
-  ok(rec.kicks[0].pow>C.shotChgPow(CH.sweetFrom)*1.0001,'…and carries the RT power trim as well as the charge');
+  ok(rec.kicks[0].pow>C.shotChgPow(CS.sweetFrom)*1.0001,'…and carries the RT power trim as well as the charge');
   ok(r.chg===-1&&!r.chgSrc,'the wind-up is over');
   ok(deep<0,'wind-up angle stayed negative');
  }
@@ -305,7 +305,7 @@ function run(src,label){
  {const r=rod(),s=seat();rec.kicks.length=0;C.cfg.padChargeBtn='rt';
   // THE KICK BUTTON IS A SECOND RELEASE for a classic wind-up. Without it, pressing it mid-charge
   // swung out of the wound-back angle with none of the charge applied and threw the wind-up away.
-  let t=0;while(t<(CH.sweetFrom+CH.sweetTo)/2/CH.rate){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);t+=1/60;}
+  let t=0;while(t<(CS.sweetFrom+CS.sweetTo)/2/CH.rate){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);t+=1/60;}
   const k=r.chg;
   C.shotFire(r,true,C.shotCharge(r));
   ok(rec.kicks.length===1&&rec.kicks[0].on,'pressing the kick button mid-wind-up fires it');
@@ -398,26 +398,26 @@ function run(src,label){
   // the pull-back deepens WITH the charge and saturates at the top of the band, so the rocking men
   // are the meter and holding past the band adds tremble rather than depth
   const A=[];let t=0;
-  while(t<CH.sweetTo/CH.rate+0.4){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);A.push({k:r.chg,a:r.chgA});t+=1/60;}
+  while(t<CS.sweetTo/CH.rate+0.4){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);A.push({k:r.chg,a:r.chgA});t+=1/60;}
   let deepens=true;for(let i=1;i<A.length;i++)if(A[i].a>A[i-1].a+1e-6)deepens=false;
   ok(deepens,'the wind-up only ever deepens while the charge builds');
-  const atBand=A.find(x=>x.k>=CH.sweetFrom);
+  const atBand=A.find(x=>x.k>=CS.sweetFrom);
   ok(atBand&&Math.abs(A[A.length-1].a-atBand.a)<1e-6,
    'the wind-up saturates at the band LOWER edge, so the arc is already full everywhere inside it');
   // the peak of the whole shot must be inside the band: saturating the arc at the band's top let an overcook beat a mid-band charge (2.73x vs 2.16x); walks the product of both channels
-  const worth=k=>Math.min(1,Math.max(0,k/CH.sweetFrom))*C.shotChgPow(k);
+  const worth=k=>Math.min(1,Math.max(0,k/CS.sweetFrom))*C.shotChgPow(k);
   let bestK=0,bestW=-1;
   for(let i=0;i<=200;i++){const k=i/200,w=worth(k);if(w>bestW+1e-9){bestW=w;bestK=k;}}
-  ok(bestK>=CH.sweetFrom-1e-6&&bestK<=CH.sweetTo+1e-6,
+  ok(bestK>=CS.sweetFrom-1e-6&&bestK<=CS.sweetTo+1e-6,
    'the strongest charge is INSIDE the sweet band (peaks at '+bestK.toFixed(2)+')');
   ok(worth(1)<bestW-1e-9,'…and a full overcook is strictly weaker than it');
-  ok(worth(CH.sweetFrom)>worth(CH.sweetFrom*0.5)+1e-9,'…and stronger than a half charge');
+  ok(worth(CS.sweetFrom)>worth(CS.sweetFrom*0.5)+1e-9,'…and stronger than a half charge');
  }
 
  /* ===== 10. TREMBLE AND TONE — the readouts ===== */
  {const r=rod(),s=seat();C.cfg.padChargeBtn='rt';rec.tick=0;rec.mark.length=0;
   let t=0,tremInBand=0;
-  while(t<CH.sweetTo/CH.rate){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);
+  while(t<CS.sweetTo/CH.rate){C.shotPadUpdate(1/60,pad(0,1),s,r,false,0);
    if(C.shotChgBand(r.chg)<=1)tremInBand=Math.max(tremInBand,Math.abs(r.trem));t+=1/60;}
   eq(tremInBand,0,'NO TREMBLE up to and inside the band — the shake means "you have held it too long"');
   ok(rec.tick>0,'the charge voice is FED while the wind-up builds');
@@ -447,8 +447,8 @@ function run(src,label){
    if(Math.abs(bb.v.y-2)>1e-12)speedOK=false;
   }
   ok(speedOK,'SPRAY IS A PURE HORIZONTAL ROTATION — it adds no energy and never touches v.y');
-  ok(maxDev<=CH.spray+1e-9,'spray stays inside its configured bound');
-  ok(maxDev>CH.spray*0.7,'…and actually reaches most of it over 400 draws');
+  ok(maxDev<=SW.spray+1e-9,'spray stays inside its configured bound');
+  ok(maxDev>SW.spray*0.7,'…and actually reaches most of it over 400 draws');
   // reproducibility: the same seed must give the same spray, or a recorded run cannot be replayed
   C.rngSeed(999);const a1={v:{x:40,y:0,z:0}};C.shotSpray(a1,r);
   C.rngSeed(999);const a2={v:{x:40,y:0,z:0}};C.shotSpray(a2,r);
@@ -465,7 +465,7 @@ function run(src,label){
   eq(C.shotTrackMult(rod({shotTrack:2.6})),1,'shots off: stick tracking is untouched');
   ok(C.shotKickPress(false)===true,'shots off: the kick button fires on press whatever cfg says');
   rec.kicks.length=0;const r2=rod();C.shotFire(r2,true,0.8);
-  ok(rec.kicks[0].style==='shoot'&&rec.kicks[0].curve===null&&rec.kicks[0].pow===SW.shoot.pow,
+  ok(rec.kicks[0].style==='shoot'&&rec.kicks[0].curve===SW.shoot&&rec.kicks[0].pow===SW.shoot.pow,
    'shots off: still pass / shoot, with no wind-up on it');
   SH.on=wasOn;}
 
@@ -475,7 +475,7 @@ function run(src,label){
  {
   const frames=(r,s,lt,rt,TC,stick,n,fn)=>{for(let i=0;i<n;i++){ctx.S.time+=1/60;
    C.shotPadUpdate(1/60,pad(lt,rt),s,r,TC,stick);if(fn)fn(i,r);}};
-  const bandFrame=Math.ceil(CH.sweetFrom/CH.rate*60);   // when the sweet band opens, in frames
+  const bandFrame=Math.ceil(CS.sweetFrom/CH.rate*60);   // when the sweet band opens, in frames
 
   // --- a free swing is NEVER reported as blocked. The lerp lag alone would say otherwise, which
   //     is exactly why the detector needs the guard's own verdict as well as the angle shortfall.
@@ -483,7 +483,7 @@ function run(src,label){
    const r=rod(),s=seat();let worst=0;
    frames(r,s,0,1,false,0,40,(i,r)=>{worst=Math.max(worst,C.shotChargeBlock(r));});
    ok(worst<CH.blockAt,'a free wind-up NEVER reads as blocked (worst '+worst.toFixed(3)+')');
-   ok(r.chg>CH.sweetFrom,'…and it really did charge through the band');}
+   ok(r.chg>CS.sweetFrom,'…and it really did charge through the band');}
 
   // --- a refused wind-up is caught, and caught BEFORE the band opens: a warning that arrives
   //     after the moment it is warning about is not a warning.
@@ -582,10 +582,10 @@ const MUTS=[
  mutate('return (o.pw>o.pwl&&o.pw<SHOTC.mod.powAt)||','return ','A never waits for RT, so a chord passes'),
  mutate("kickRod(r,shoot?'shoot':'pass',","kickRod(r,'pass',",'power + kick passes'),
  mutate('on&&!shoot?shotPassTarget(r):null','on?shotPassTarget(r):null','a shot is aimed at a teammate'),
- mutate("if(!(r.kickT>=0)){r.kickCurve=null;shotDisarm(r);}",'r.kickCurve=null;shotDisarm(r);','letting the rod go strips the shot in flight'),
-  mutate("if(!(r.kickT>=0)){r.kickCurve=null;shotDisarm(r);}",'r.kickCurve=null;if(!(r.kickT>=0))shotDisarm(r);','letting the rod go swaps the swing in flight for a pass'),
- mutate(' if(k<=s1||s1>=1)return C.powMax;\n return lerp(C.powMax,C.overPow,(k-s1)/(1-s1));',
-        ' return C.powMax;','holding too long is free (no power falloff)'),
+ mutate("if(!(r.kickT>=0))shotDisarm(r);",'shotDisarm(r);','letting the rod go strips the shot in flight'),
+  mutate("if(!(r.kickT>=0))shotDisarm(r);","if(!(r.kickT>=0))shotDisarm(r);else r.kickStyle='pass';",'letting the rod go swaps the swing in flight for a pass'),
+ mutate(' if(k<=s1||s1>=1)return T.powMax;\n return lerp(T.powMax,T.overPow,(k-s1)/(1-s1));',
+        ' return T.powMax;','holding too long is free (no power falloff)'),
  mutate('  if(clip)break;\n  best=a;','  best=a;','the wind-up ignores sweepClips'),
  mutate(' if(C.on&&r.kickT<0){',' if(C.on){','a charge builds during the swing'),
  mutate(' if(r.chgRel>0){shotVerdict(r,r.chgRel);r.chg=-1;r.chgRel=0;}\n shotDisarm(r);',
@@ -595,7 +595,7 @@ const MUTS=[
         'a banked Total Control charge survives the contact and re-arms itself'),
  mutate('shotVerdict(r,r.chgRel)','shotVerdict(r,r.chg)',
         'Total Control stamps what landed instead of the release timing'),
- mutate(' const a=SHOTC.charge.spray*(1-clamp(r.shotCtl,0,1));',
+ mutate(' const a=SWINGS.spray*(1-clamp(r.shotCtl,0,1));',
         ' const a=SHOTC.charge.spray*clamp(r.shotCtl,0,1);','spray scales with control instead of against it'),
  mutate('if(shotChord(lt,rt)&&back>=SHOTC.charge.stickBack)o.stick=back;',
         'if((lt>0||rt>0)&&back>=SHOTC.charge.stickBack)o.stick=back;',
@@ -605,16 +605,16 @@ const MUTS=[
  mutate(' if(!on||fl)k=-1;',' if(!on)k=-1;','a flinch fires a weak charged shot instead of a normal swing'),
  mutate('   if(bend>maxBend)continue;','   if(false)continue;',
         'the player passes at a receiver the assist could never turn the ball toward'),
- mutate('ask=clamp(C.sweetFrom>0?r.chg/C.sweetFrom:1,0,1)',
-        'ask=clamp(C.sweetTo>0?r.chg/C.sweetTo:1,0,1)',
+ mutate('ask=clamp(W.sweetFrom>0?r.chg/W.sweetFrom:1,0,1)',
+        'ask=clamp(W.sweetTo>0?r.chg/W.sweetTo:1,0,1)',
         'the wind-up saturates at the band TOP, so power peaks past the band'),
  mutate(' const deny=(shotPullOk>=1)?0:clamp(ask-got,0,1);',
         ' const deny=clamp(ask-got,0,1);',
         'the pull-back lerp lag alone reads as a blocked swing'),
  mutate(' shotPullOk=ok;',' shotPullOk=1;',
         'the guard never admits it refused a wind-up'),
- mutate(' r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<C.minFire?0:shotChgBand(k));',
-        ' r.chgEndBand=(k<C.minFire?0:shotChgBand(k));',
+ mutate(' r.chgEndBand=((r.chgBlock||0)>=C.blockAt)?3:(k<SWINGS.shoot.charge.minFire?0:shotChgBand(k));',
+        ' r.chgEndBand=(k<SWINGS.shoot.charge.minFire?0:shotChgBand(k));',
         'a blocked wind-up is stamped as a clean shot'),
  mutate('   shotFire(r,!tap||shotPowHeld(r),tap?-1:k);',
         '   shotFire(r,shotPowHeld(r),tap?-1:k);','a let-go wind-up reads power at the release frame and passes'),

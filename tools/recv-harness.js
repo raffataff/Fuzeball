@@ -20,9 +20,9 @@ const parts={
 const stubs=[
  "var S={balls:[],time:0,lastTouch:0}; var rods=[];",
  "function pinRelease(r){r.pinB=null;}",
- "function rodInputRelease(){} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';} function isUserRod(r){return !!r.human;}",
+ "function kickStyleCfg(r){return SWINGS[r.kickStyle||'pass'];}",   // rods.js: the swing in play
+ "function rodInputRelease(){} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function teamDiff(){return 'pro';} function isUserRod(r){return !!r.human;}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -32,7 +32,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.inlane,g.catch,g.calm,g.seat,
-  ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,DIFFS:DIFFS,recvReady:recvReady,recvPossess:recvPossess,recvReadyNow:recvReadyNow,recvArm:recvArm,recvBall:recvBall,recvStart:recvStart,recvStep:recvStep,recvEnd:recvEnd,recvRelease:recvRelease,gkHold:gkHold,clearRodAI:clearRodAI,SHOT_capV:SHOT.pin.capV,SHOT_back:SHOT.pin.back,SHOT_front:SHOT.pin.front,SHOT_fwdBack:SHOT.pin.fwdBack,SHOT_fwdFront:SHOT.pin.fwdFront,FOOT_BOX:FOOT_BOX};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,DIFFS:DIFFS,recvReady:recvReady,recvPossess:recvPossess,recvReadyNow:recvReadyNow,recvArm:recvArm,recvBall:recvBall,recvStart:recvStart,recvStep:recvStep,recvEnd:recvEnd,recvRelease:recvRelease,gkHold:gkHold,clearRodAI:clearRodAI,SHOT_capV:SHOT.pin.capV,SHOT_back:SHOT.pin.back,SHOT_front:SHOT.pin.front,SHOT_fwdBack:SHOT.pin.fwdBack,SHOT_fwdFront:SHOT.pin.fwdFront,FOOT_BOX:FOOT_BOX};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -48,7 +48,7 @@ function world(X,opt){
  X.rods.length=0;X.rods.push(from,r,blue);
  return {from,r,blue};
 }
-const AIC_PS=X=>X.AIC.dribble.pass;
+const AIC_PS=X=>X.AIC.pass;
 function ball(X,x,z,vx,vz,y){return {scored:false,m:{position:{x:x,y:y==null?X.BALL_R:y,z:z}},v:{x:vx||0,y:0,z:vz||0}};}
 
 function suite(X){
@@ -58,7 +58,7 @@ function suite(X){
  {const {from,r,blue}=world(X);
   X.recvArm(from,{x:-7.5,z:12});
   ok('a pass arms the rod it is aimed at',r.rvUntil>X.S.time&&r.rvZ===12);
-  ok('…for the flight (30 units at the assumed speed), the pad and the grace',near(r.rvUntil-X.S.time,30/RV.speed+RV.pad+RV.grace,1e-6)&&near(r.rvFl,30/RV.speed,1e-6)&&r.rvT0===X.S.time);
+  ok('…for the flight (30 units at the assumed speed), the pad and the grace',near(r.rvUntil-X.S.time,30/X.SWINGS.pass.v+RV.pad+RV.grace,1e-6)&&near(r.rvFl,30/X.SWINGS.pass.v,1e-6)&&r.rvT0===X.S.time);
   ok('…and nobody else: not the passer, not the other team\'s rod',from.rvUntil===undefined&&blue.rvUntil===0);
   const w2=world(X);X.recvArm(w2.from,{x:7.5,z:0});
   ok('a rod of the other team at that x is not armed (a pass is to a mate)',w2.blue.rvUntil===0&&w2.r.rvUntil===0);
@@ -157,7 +157,7 @@ function suite(X){
   const n=world(X);X.recvReady(n.from,undefined);
   ok('a holder with nobody in view gets nobody ready',n.r.rvReady!==true);}
  // possession: the team has the ball behind a rod, slowly
- const PSS=X.AIC.dribble.pass;
+ const PSS=X.AIC.pass;
 RD.maxBall=0;
  {const {r}=world(X);const ballAt=(x,z,v,y,vx)=>({real:null,m:{position:{x:x,y:y==null?X.BALL_R:y,z:z}},v:{x:vx||0,y:0,z:0,length(){return v||0;}}});
   const b=ballAt(-30,14,5);b.real=b;X.S.lastTouch=0;const t0=X.S.time;
@@ -283,7 +283,7 @@ RD.maxBall=0;
   ok('…and a rod the play is near (not calm) is on it at once',near(zOf(c),6,1e-6),'z='+zOf(c));}
  {const {from,r}=world(X);X.recvReady(from,[{rod:r,man:3,z:12,score:5}]);X.recvStart(r);X.recvStep(r,null,D,dt);
   X.recvArm(from,{x:-7.5,z:12});
-  ok('a real pass takes over: no longer just ready, the flight timed from now',r.rvReady===false&&r.rvT0===X.S.time&&near(r.rvFl,30/RV.speed,1e-6));
+  ok('a real pass takes over: no longer just ready, the flight timed from now',r.rvReady===false&&r.rvT0===X.S.time&&near(r.rvFl,30/X.SWINGS.pass.v,1e-6));
   X.S.balls=[ball(X,-20,12,48,0)];X.S.lastTouch=1;X.recvStep(r,null,D,dt);
   ok('…so the usual reading applies again: before the grace the last touch is not read',r.act==='recv');
   X.S.time+=RV.grace+0.05;const n0=X.CAW['recv:taken']||0;X.recvStep(r,null,D,dt);

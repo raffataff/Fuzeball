@@ -50,7 +50,7 @@
   B.t+=DT;
   const b=ballFor(u);if(!b){H.off();B.ph='idle';return;}
   const p=b.m.position,dir=u.kickDir,rel=(p.x-u.x)*dir,vf=b.v.x*dir,sp=Math.hypot(b.v.x,b.v.z),nm=near(u,p.z),low=p.y<BALL_R+0.6;
-  const go=p.z-u.baseZ[nm.i],end=()=>{H.off();B.ph='idle';B.t=0;},PWS=()=>CONFIG.shots.pin.press.shoot==='power';
+  const go=p.z-u.baseZ[nm.i],end=()=>{H.off();B.ph='idle';B.t=0;};
   switch(B.ph){
    case 'idle':
     H.slide(u,go);
@@ -69,10 +69,10 @@
    case 'bhold':
     if(!u.pinB){end();break;}
     H.slide(u,B.z0+B.dz);
-    if(B.t>B.hold){B.ph=(u.role==='ATT'||rnd()<0.5)?'two':'one';B.t=0;if(B.ph==='two'&&PWS())H.power(true);H.kick(true);}
+    if(B.t>B.hold){B.ph=(u.role==='ATT'||rnd()<0.5)?'two':'one';B.t=0;if(B.ph==='two')H.power(true);H.kick(true);}
     break;
    case 'one':if(B.t>=DT*1.5)H.kick(false);if(B.t>0.35)end();break;   // a kick: the pin pass (shots.pin.press)
-   case 'two':if(PWS()){if(B.t>=DT*1.5){H.kick(false);H.power(false);}}else H.kick(B.t<DT*1.5||(B.t>=0.08&&B.t<0.08+DT*1.5));if(B.t>0.3)end();break;   // power + kick ('double': two kicks): the pin shot
+   case 'two':if(B.t>=DT*1.5){H.kick(false);H.power(false);}if(B.t>0.3)end();break;   // power + kick: the pin shot
    case 'fpin':
     H.slide(u,go);
     if(u.pinB&&u.pinFwd){B.ph='fhold';B.t=0;B.snake=rnd()<0.4;}
@@ -82,8 +82,7 @@
     if(!u.pinB){end();break;}
     if(B.t<0.5)break;
     if(!B.snake){end();break;}
-    if(PWS()){H.power(B.t>=0.5+DT*2);H.kick(!(B.t<0.5+DT*4));}   // let go, then power + kick: the snake
-    else H.kick(!(B.t<0.5+DT*2||(B.t>=0.5+DT*4&&B.t<0.5+DT*6)));   // 'double': let go, then two quick presses
+    H.power(B.t>=0.5+DT*2);H.kick(!(B.t<0.5+DT*4));   // let go, then power + kick: the snake
     if(B.t>0.8)end();
     break;
    case 'recv':

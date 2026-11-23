@@ -58,7 +58,6 @@ function suite(X){
  {const r=mk(X);ball(X,1,4);ok('a ball beside/ahead of the boot is ordinary strike geometry, left alone',X.slideBlocked(r,0,1.0)===false);}
  {const r=mk(X,{angle:-0.44,offset:2.5});ball(X,-1.8,0);X.AIC.backGuard.lane=false;const b=X.slideBlocked(r,2.5,1.0);X.AIC.backGuard.lane=true;
   ok('CONTACT: a ball INSIDE the half-lifted box blocks a slide onto it (its normal reads forward)',b===true);}
- {const r=mk(X,{act:'dribble'});ball(X,-1.5,4);ok('a dribble is contact on purpose',X.slideBlocked(r,0,1.0)===false);}
  {const r=mk(X,{act:'retrieve',retPh:'pin'});ball(X,-1.5,4);ok("retrieve's pin descent is contact on purpose",X.slideBlocked(r,0,1.0)===false);}
  {const r=mk(X,{act:'retrieve',retPh:'side'});ball(X,-1.5,4);ok('…but its other phases are still guarded',X.slideBlocked(r,0,1.0)===true);}
  {const r=mk(X);ball(X,-1.5,4);X.setSeat({});const b=X.slideBlocked(r,0,1.0);X.setSeat(null);ok('a human-held rod is exempt',b===false);}
@@ -101,7 +100,6 @@ const MUT=[
  {n:'a forward move is treated as a back-swing',part:'guard',from:'||(aT-r.angle)*r.kickDir>=0)return aT;',to:')return aT;'},
  {n:'a slide AWAY from a ball is refused too (no closing test)',part:'guard',from:'if(d1<footBoxDist(r,r.angle,i,p.x,p.y,p.z,o0)-1e-4)',to:'if(true)'},
  {n:'a ball beside/ahead of the boot blocks the slide (no behind test)',part:'guard',from:'||(p.x-r.x)*dir>G.behindRel)continue;',to:')continue;'},
- {n:'a dribble is no longer exempt from the slide guard',part:'guard',from:"||r.act==='dribble'||(r.act==='retrieve'",to:"||(r.act==='retrieve'"},
  {n:"retrieve's pin descent is no longer exempt from the slide guard",part:'guard',from:"||(r.act==='retrieve'&&r.retPh==='pin')||(r.force",to:"||(r.force"},
  {n:'a forced rod is still held back by the slide guard',part:'guard',from:"||(r.force&&r.role!=='GK')||seatOf(r))return false;",to:"||seatOf(r))return false;"},
  {n:'the keeper is exempt from the slide guard when forced',part:'guard',from:"||(r.force&&r.role!=='GK')||seatOf(r))return false;",to:"||r.force||seatOf(r))return false;"},

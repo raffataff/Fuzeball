@@ -28,7 +28,10 @@ const ST=(r,k)=>(r.stats&&r.stats[k]!=null)?r.stats[k]:STC.base;
 const stCapFrac=new Function('ST','STC','clamp','return '+slice(rd('stats.js'),'stCapFrac'))(ST,STC,clamp);
 const S={time:0,eff:[{boost:-1},{boost:-1}]};
 const boostSwing=new Function('KICK','return '+slice(rd('physics.js'),'boostSwing'))(KICK);
-const capSpeed=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+slice(rd('physics.js'),'capSpeed'))(KICK,clamp,stCapFrac,S,boostSwing);
+const SWC=CONFIG.swings;globalThis.SWC=SWC;
+const styleCfg=new Function('SWINGS','return '+slice(rd('rods.js'),'styleCfg'))(CONFIG.swings);
+const kickStyleCfg=new Function('styleCfg','return '+slice(rd('rods.js'),'kickStyleCfg'))(styleCfg);
+const capSpeed=new Function('KICK','clamp','stCapFrac','S','boostSwing','kickStyleCfg','return '+slice(rd('physics.js'),'capSpeed'))(KICK,clamp,stCapFrac,S,boostSwing,kickStyleCfg);
 
 const C=KICK.cap,MV=BALL_TYPES.classic.maxV;
 const rod=(str,o={})=>Object.assign({team:0,stats:{str},shotOn:false,shotPow:1},o);
@@ -111,15 +114,15 @@ for(const str of [0,5,10]){
  const plain=bv();capSpeed(plain,rod(5,{kickT:0.12}),true,0);
  const first=bv();capSpeed(first,pinS({shotOn:true,shotPow:1.15}),true,0);
  const later=bv();capSpeed(later,pinS(),true,0);   // shot already spent: shotOn false, the swing still in flight
- ok(C.pin>0,'C3: the pin ceiling bonus is on');
+ ok(CONFIG.swings.pinShot.cap>0,'C3: the pin ceiling bonus is on');
  ok(Math.abs(later.v.x)>Math.abs(plain.v.x)+1,'C3: a later contact of a pin shot out-runs a plain swing\'s');
- ok(Math.abs(later.v.x)>=Math.abs(plain.v.x)+MV*C.pin*0.3,'C3: ...by a real margin, not a rounding error');
+ ok(Math.abs(later.v.x)>=Math.abs(plain.v.x)+MV*CONFIG.swings.pinShot.cap*0.3,'C3: ...by a real margin, not a rounding error');
  ok(Math.abs(first.v.x)>=Math.abs(later.v.x)-1e-9,'C3: the armed first touch is never LOWER than a spent follow-up');
  ok(Math.abs(later.v.x)<MV,'C3: ...and the pin shot still never reaches maxV on its own (that stays the charge\'s)');
  const pass=bv();capSpeed(pass,rod(5,{kickStyle:'pass',kickT:0.12}),true,0);
  ok(Math.abs(pass.v.x)<=Math.abs(plain.v.x)+1e-9,'C3: a pass swing gets no pin bonus');
- const was=C.pin;C.pin=0;const off=bv();capSpeed(off,pinS(),true,0);C.pin=was;
- ok(Math.abs(off.v.x)<=Math.abs(plain.v.x)+1e-9,'C3: cap.pin 0 puts the pin shot back on the plain ceiling');
+ const PS=CONFIG.swings.pinShot,was=PS.cap;PS.cap=0;const off=bv();capSpeed(off,pinS(),true,0);PS.cap=was;
+ ok(Math.abs(off.v.x)<=Math.abs(plain.v.x)+1e-9,'C3: swings.pinShot.cap 0 puts the pin shot back on the plain ceiling');
 }
 
 /* ---- D · only the best strikes may reach maxV, and they DO ----------------------------------- */
@@ -212,7 +215,7 @@ keepChecks(capSpeed);
 function mutate(label,src,find,repl,check){
  const m=src.replace(find,repl);
  if(m===src){fail++;fails.push('MUTATION DID NOT APPLY: '+label);return;}
- const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+m)(KICK,clamp,stCapFrac,S,boostSwing);
+ const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','kickStyleCfg','return '+m)(KICK,clamp,stCapFrac,S,boostSwing,kickStyleCfg);
  const runM=(sp,r,sw,inSp)=>{const b={v:{x:sp,y:0,z:0},t:BALL_TYPES.classic};
   f(b,r,!!sw,(inSp||0)*(inSp||0));return Math.abs(b.v.x);};
  ok(check(runM),'G mutation caught: '+label);
@@ -228,9 +231,9 @@ mutate('the sweet spot no longer raises the ceiling',CS,/ if\(sweet\)f\+=C\.swee
  rm=>Math.abs(rm(245,rod(10),true)-rm(245,rod(10),false))<1e-9);
 mutate('a follow-up contact in the same charged swing falls back to the plain ceiling',CS,/ else if\(r\.kickT>=0&&r\.swOver>0&&r\.swF>0\)\{if\(r\.swF>f\)f=r\.swF;if\(r\.swMx>mx\)mx=r\.swMx;\}/,'',
  rm=>{const sw=rod(5,{shotOn:true,shotPow:1.166,shotOver:1,kickT:0.02,swOver:1});rm(1e4,sw,true);sw.shotOn=false;sw.shotOver=0;return rm(1e4,sw,true)<=MV*C.max+1e-9;});
-mutate('a pin shot falls back to the plain ceiling',CS,/ if\(r\.kickStyle==='pinShot'\)f\+=C\.pin\|\|0;.*\n/,'\n',
+mutate('a pin shot falls back to the plain ceiling',CS,/ if\(r\.kickStyle\)f\+=kickStyleCfg\(r\)\.cap\|\|0;.*\n/,'\n',
  rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pinShot',kickT:0.12}),true)-rm(1e4,rod(5,{kickT:0.12}),true))<1e-9);
-mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle==='pinShot'\)f\+=C\.pin\|\|0;/,'f+=C.pin||0;',
+mutate('every swing gets the pin bonus',CS,/if\(r\.kickStyle\)f\+=kickStyleCfg\(r\)\.cap\|\|0;/,'f+=SWC.pinShot.cap;',
  rm=>Math.abs(rm(1e4,rod(5,{kickStyle:'pass',kickT:0.12}),true)-rm(1e4,rod(5,{kickStyle:'pinShot',kickT:0.12}),true))<1e-9);
 mutate('a charge no longer raises the most a ceiling may be',CS,/mx\+=\(C\.chargeTop\|\|0\)\*w;/,'',
  rm=>rm(1e4,rod(5,{shotOn:true,shotPow:1.166,shotOver:1}),true)<=MV*C.max+1e-9);
@@ -239,7 +242,7 @@ mutate('boost raises the ceiling of a touch that is not a strike',CS,'if(S.eff[r
 function mutateK(label,src,find,repl){
  const m=src.replace(find,repl);
  if(m===src){fail++;fails.push('MUTATION DID NOT APPLY: '+label);return;}
- const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','return '+m)(KICK,clamp,stCapFrac,S,boostSwing);
+ const f=new Function('KICK','clamp','stCapFrac','S','boostSwing','kickStyleCfg','return '+m)(KICK,clamp,stCapFrac,S,boostSwing,kickStyleCfg);
  ok(keepChecks(f,label)>0,'G mutation caught: '+label);
 }
 mutateK('keep ignored: a re-hit is rescaled as before',CS,'const v0=C.keep&&b.v0;','const v0=null;');

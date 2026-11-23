@@ -148,8 +148,8 @@ function lightAudit(){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,raiseBehind:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,safeRaise:false,evade:false,makeWay:false,dribble:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
-let dbgAIGKPad=[],dbgAIRaise=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDribble=[],dbgDeadzones=[];
+let dbgAIOpts={gkPad:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,safeRaise:false,evade:false,makeWay:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
+let dbgAIGKPad=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDeadzones=[];
 let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
@@ -260,7 +260,6 @@ function dbgKickGate(r,g){
  else if(!g.low)why='ball-high';
  else if(g.wait)why='wait-sweetspot';
  else if(g.noContact)why='no-live-contact';
- else if(g.holdShot)why='hold-for-lane';
  else if(g.shut)why='lane-shut';
  else why='?';
  const kind='BLK:'+why.split(' ')[0];             // dedupe on the REASON, not the numbers riding on it
@@ -276,7 +275,6 @@ function buildAIPanel(){
  dbgAIPanel.innerHTML='<h4>AI DEBUG</h4>';
  const items=[
   {key:'gkPad',label:'GK Pad',col:'#ff8c3a'},
-  {key:'raiseBehind',label:'Raise Behind',col:'#ff2bd6'},
    {key:'overFoot',label:'Over Foot',col:'#7dff8a'},
    {key:'underFoot',label:'Under Foot',col:'#ff8c3a'},
    {key:'inFront',label:'In Front',col:'#3d8bff'},
@@ -291,7 +289,6 @@ function buildAIPanel(){
    {key:'safeRaise',label:'Safe Raise',col:'#c2ff4d'},
    {key:'evade',label:'Evade',col:'#00d9a3'},
     {key:'makeWay',label:'Make Way',col:'#ffa1f0'},
-    {key:'dribble',label:'Dribble',col:'#7a5cff'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
     {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'},
@@ -779,8 +776,8 @@ function buildDebug(){
   g.visible=false;dbgAIGroup.add(g);dbgAIGKPad.push(g);
  }
 
- // per-rod x-zones: raiseBehind, overFoot, inFront (flat boxes spanning the slide range)
-  const raiseM=dbgMat(0xff2bd6,.18),footM=dbgMat(0x7dff8a,.18),ufootM=dbgMat(0xff8c3a,.18),frontM=dbgMat(0x3d8bff,.18);
+ // per-rod x-zones: overFoot, inFront (flat boxes spanning the slide range)
+  const footM=dbgMat(0x7dff8a,.18),ufootM=dbgMat(0xff8c3a,.18),frontM=dbgMat(0x3d8bff,.18);
  const abox=(w,d,x,z,m)=>{const g=new THREE.Group();box(w,0.04,d,x,0.03,z,m,g);dbgAIGroup.add(g);return g;};
  for(const r of rods){
   const dir=r.team===0?1:-1;
@@ -788,15 +785,9 @@ function buildDebug(){
   const zMax=Math.max(...r.baseZ)+r.maxOff;
   const zC=(zMin+zMax)/2,zS=zMax-zMin||0.1;
 
-  // raiseBehind: zone behind the rod where the AI would raise men
-  const rbSize=Math.abs(AIC.raiseBehind);
-  const rbCx=r.x+AIC.raiseBehind*dir/2;
-  const rg=abox(rbSize,zS,rbCx,zC,raiseM);
-  rg.visible=false;dbgAIRaise.push(rg);
-
    // overFoot: forward-offset zone, dir-relative
-   const ofCx=r.x+AIC.overFootOffset*dir;
-   const og=abox(AIC.overFoot*2,zS,ofCx,zC,footM);
+   const ofCx=r.x+SWINGS.reach.overFootOffset*dir;
+   const og=abox(SWINGS.reach.overFoot*2,zS,ofCx,zC,footM);
    og.visible=false;dbgAIOverFoot.push(og);
 
    // underFoot: asymmetric box — more behind than in front of rod
@@ -805,7 +796,7 @@ function buildDebug(){
    ug.visible=false;dbgAIUnderFoot.push(ug);
 
   // inFront: ball is ahead of the rod within the forward-swing window
-  const ifMin=AIC.inFrontMin,ifMax=AIC.inFrontMax,ifSize=ifMax-ifMin;
+  const ifMin=SWINGS.reach.inFrontMin,ifMax=SWINGS.reach.inFrontMax,ifSize=ifMax-ifMin;
   const ifCx=r.x+(ifMin+ifMax)/2*dir;
   const ig=abox(ifSize,zS,ifCx,zC,frontM);
   ig.visible=false;dbgAIInFront.push(ig);
@@ -879,24 +870,6 @@ function buildDebug(){
   dbgMakeWay.push({mesh:m,rod:r,matDim:mwDim,matHot:mwHot});
  }
 
- // dribble: the trigger band (the strike zone) on dribble.roles rods; hot violet while r.act==='dribble'
- // plus a carry-target disc at r.dribZ and a line to the chosen pass receiver
- const DRD=AIC.dribble;
- const drDim=dbgMat(0x7a5cff,.15),drHot=dbgMat(0x7a5cff,.5);
- const drMark=dbgMat(0x7a5cff,.95),drPass=dbgMat(0x7a5cff,.9);
- const drW=Math.max(.1,DRD.front-DRD.back);
- for(const r of rods){
-  if(DRD.roles&&DRD.roles.indexOf(r.role)<0)continue;
-  const dir=r.team===0?1:-1;
-  const zMin=Math.min(...r.baseZ)-r.maxOff,zMax=Math.max(...r.baseZ)+r.maxOff;
-  const m=plate(drDim,drW,0.05,zMax-zMin||0.1,r.x+(DRD.back+DRD.front)/2*dir,0.07,(zMin+zMax)/2);
-  const mk=disc(0.5,0.08,drMark);
-  // the pass line holds its own per-frame endpoints, so it genuinely needs its own buffer
-  const geo=keep(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
-  const ln=new THREE.Line(geo,drPass);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);
-  dbgDribble.push({mesh:m,mark:mk,line:ln,rod:r,matDim:drDim,matHot:drHot});
- }
-
  // serveZone: kickoff spawn box — SRV.spread (x) by SRV.zSpread (z), centred at x=0,z=0
  const serveM=dbgMat(0xc299ff,.22);
  const svg=abox(SRV.spread*2,SRV.zSpread*2,0,0,serveM);
@@ -962,7 +935,7 @@ function buildDebug(){
 
   // aligned: per-man floor bars showing the ±align zone along z, green = nearest man aligned
   // keeps its own geometry since updateAIVis animates .scale.z
-  const alGeo=keep(new THREE.BoxGeometry(0.15,0.06,AIC.alignSlow*2));
+  const alGeo=keep(new THREE.BoxGeometry(0.15,0.06,SWINGS.reach.alignSlow*2));
   const alMatGreen=dbgMat(0x7dff8a,.65);
   const alMatDim=dbgMat(0x7dff8a,.12);
   for(const r of rods){
@@ -1039,9 +1012,9 @@ function disposeDebug(){
  dbgGroup=dbgAIGroup=dbgArenaWalls=dbgAILowY=null;
  dbgUnitBox=dbgUnitSph=dbgUnitCyl=null;dbgGeo=[];
  dbgCaps=[];dbgBalls=[];dbgFootS=[];dbgContourRings=[];
- dbgAIGKPad=[];dbgAIRaise=[];dbgAIOverFoot=[];dbgAIUnderFoot=[];dbgAIInFront=[];
+ dbgAIGKPad=[];dbgAIOverFoot=[];dbgAIUnderFoot=[];dbgAIInFront=[];
  dbgDropSweep=[];dbgFootRange=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
- dbgMakeWay=[];dbgDribble=[];dbgDeadzones=[];dbgShotLanes=[];
+ dbgMakeWay=[];dbgDeadzones=[];dbgShotLanes=[];
  dbgAIManRings=[];dbgAITargetDots=[];dbgFootReach=[];dbgAlignRings=[];dbgAIServe=[];dbgAIRedrop=[];
  dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;dbgPins=[];
  dbgShotOpen=dbgShotBlock=dbgMarkOpen=dbgMarkBlock=null;
@@ -1055,7 +1028,6 @@ function updateAIVis(){
   if(!dbgAIGroup)return;
   const on=dbgOn;
   for(const g of dbgAIGKPad)g.visible=on&&dbgAIOpts.gkPad;
-  for(const g of dbgAIRaise)g.visible=on&&dbgAIOpts.raiseBehind;
   for(const g of dbgAIOverFoot)g.visible=on&&dbgAIOpts.overFoot;
   for(const g of dbgAIUnderFoot)g.visible=on&&dbgAIOpts.underFoot;
   for(const g of dbgAIInFront)g.visible=on&&dbgAIOpts.inFront;
@@ -1115,24 +1087,6 @@ function updateAIVis(){
    mw.mesh.material=mw.rod.act==='lane'?mw.matHot:mw.matDim;
   }
 
-  // dribble: static trigger band (hot violet while carrying), a disc at r.dribZ, a line to the receiver the rod would pick
-  for(const dr of dbgDribble){
-   const vis=on&&dbgAIOpts.dribble,r=dr.rod,carrying=r.act==='dribble';
-   dr.mesh.visible=vis;
-   if(!vis){dr.mark.visible=false;dr.line.visible=false;continue;}
-   dr.mesh.material=carrying?dr.matHot:dr.matDim;
-   dr.mark.visible=carrying;
-   if(carrying)dr.mark.position.set(r.x,0.09,r.dribZ);
-   const pk=r.passEv;                                   // last cached pass pick (dribble.pass.every)
-   const showP=carrying&&!!pk;
-   dr.line.visible=showP;
-   if(showP){
-    const pa=dr.line.geometry.attributes.position.array,mi=r.dribMan>=0?r.dribMan:0;
-    pa[0]=r.x;pa[1]=0.18;pa[2]=r.baseZ[mi]+r.offset;pa[3]=pk.x;pa[4]=0.18;pa[5]=pk.z;
-    dr.line.geometry.attributes.position.needsUpdate=true;
-   }
-  }
-
   // dropSweep: follow each foot's live z (baseZ + slide); hot while rod is held forward
   for(const ds of dbgDropSweep){
    const vis=on&&dbgAIOpts.dropSweep;
@@ -1162,7 +1116,7 @@ function updateAIVis(){
    const bp=S.balls[0].m.position;
    const speed=S.balls[0].v.length();
    const slow=speed<AIC.slowSpeed;
-   const alThresh=slow?AIC.alignSlow:AIC.alignFast;
+   const alThresh=slow?SWINGS.reach.alignSlow:SWINGS.reach.alignFast;
    // find nearest man + dz per rod
    const rodNearest=new Map();
    for(const r of rods){
@@ -1182,7 +1136,7 @@ function updateAIVis(){
     const al=isNearest&&near.dz<alThresh;
     ar.bar.material=al?ar.matGreen:ar.matDim;
     ar.bar.visible=true;
-    ar.bar.scale.z=alThresh/AIC.alignSlow;
+    ar.bar.scale.z=alThresh/SWINGS.reach.alignSlow;
    }
   }else{
    for(const ar of dbgAlignRings)ar.bar.visible=false;
@@ -1212,11 +1166,11 @@ function updateAIVis(){
     const pa=ln.geometry.attributes.position.array;
     pa[0]=ev.ox;pa[1]=y;pa[2]=ev.oz;pa[3]=ev.goalX;pa[4]=y;pa[5]=lane.tz;
     ln.geometry.attributes.position.needsUpdate=true;
-    ln.material=lane.clr>=AIC.gapAim.openMargin?dbgShotOpen:dbgShotBlock;
+    ln.material=lane.clr>=SWINGS.shoot.open?dbgShotOpen:dbgShotBlock;
     ln.visible=true;
    }
     sl.marker.position.set(ev.goalX,y,ev.best.tz);
-    sl.marker.material=ev.best.clr>=AIC.gapAim.openMargin?dbgMarkOpen:dbgMarkBlock;
+    sl.marker.material=ev.best.clr>=SWINGS.shoot.open?dbgMarkOpen:dbgMarkBlock;
     sl.marker.visible=true;
   }
 

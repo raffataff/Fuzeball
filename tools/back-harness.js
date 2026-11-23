@@ -12,7 +12,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -22,9 +22,8 @@ const stubs=[
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;}",
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -34,7 +33,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,ARM:ARM,FOOT_BOX_OFF:FOOT_BOX_OFF,rods:rods,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,backEval:backEval,backStep:backStep,catchStep:catchStep,catchEnd:catchEnd};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,F:F,BALL_R:BALL_R,ARM:ARM,FOOT_BOX_OFF:FOOT_BOX_OFF,rods:rods,CAS:CAS,CAW:CAW,pinOutlet:pinOutlet,backEval:backEval,backStep:backStep,catchStep:catchStep,catchEnd:catchEnd};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -56,7 +55,7 @@ function view(X,rel,zOff,vx,vz,y){const b={scored:false,m:{position:{x:22.5+rel,
 
 function suite(X){
  const R=[],ok=(name,c,info)=>R.push({name,ok:!!c,info});
- const CA=X.AIC.catch,TP=CA.tap,TB=TP.back,goalX=X.F.L/2,drift=TP.drift,lc=CA.lineClear;
+ const CA=X.AIC.catch,TP=CA.tap,TB=TP.back,goalX=X.F.L/2,drift=TP.drift,lc=X.SWINGS.pinShot.open;
  const keep=JSON.stringify(TB),restore=()=>{const k=JSON.parse(keep);for(const x in k)TB[x]=k[x];};
  const out=(r,z,blockers)=>X.pinOutlet(r,22.5-0.7,z,blockers,goalX,0);
  // the geometry: sender man 0 at -5, receiver man 1 at +5, both inside the mouth (a lane at +-7 is open, one further out is not); the ball is rolling +z at vb, TB.clear off the sender
@@ -143,8 +142,8 @@ console.log(NL+'  '+(res.length-bad)+' passed, '+bad+' failed'+NL);
 
 console.log('=== mutations: each must break an assertion ===');
 const MUT=[
- {n:'it goes back whatever the receiver\'s lane',from:'if(pinOutlet(r,p.x,clamp(r.baseZ[j]+r.offset+s*TP.drift,-zl,zl),obs,goalX,0)>=CA.lineClear)return false;',to:''},
- {n:'it goes back whatever the sender\'s lane',from:'return pinOutlet(r,p.x,clamp(r.baseZ[i]+r.offset-s*TP.drift,-zl,zl),obs,goalX,0)>=CA.lineClear;',to:'return true;'},
+ {n:'it goes back whatever the receiver\'s lane',from:'if(pinOutlet(r,p.x,clamp(r.baseZ[j]+r.offset+s*TP.drift,-zl,zl),obs,goalX,0)>=SWINGS.pinShot.open)return false;',to:''},
+ {n:'it goes back whatever the sender\'s lane',from:'return pinOutlet(r,p.x,clamp(r.baseZ[i]+r.offset-s*TP.drift,-zl,zl),obs,goalX,0)>=SWINGS.pinShot.open;',to:'return true;'},
  {n:'the receiver\'s drift is ignored',from:'clamp(r.baseZ[j]+r.offset+s*TP.drift,-zl,zl)',to:'clamp(r.baseZ[j]+r.offset,-zl,zl)'},
  {n:'the sender\'s drift is ignored',from:'clamp(r.baseZ[i]+r.offset-s*TP.drift,-zl,zl)',to:'clamp(r.baseZ[i]+r.offset,-zl,zl)'},
  {n:'the sender\'s drift is the wrong way',from:'clamp(r.baseZ[i]+r.offset-s*TP.drift,-zl,zl)',to:'clamp(r.baseZ[i]+r.offset+s*TP.drift,-zl,zl)'},

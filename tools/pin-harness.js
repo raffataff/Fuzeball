@@ -11,7 +11,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 
 const stubs=[
 "var ARENA_ON=false;var S={time:0,balls:[]};var rods=[];var SHOTC=CONFIG.shots;function isUserRod(r){return !!r.user;}",
-"var KICKS=[];function kickRod(r,style,aim,curve,k){if(r.kickT>=0)return;kickArm(r,style,curve,k);if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:curve||null});}",
+"var KICKS=[];function kickRod(r,style,aim,k){if(r.kickT>=0)return;kickArm(r,style,k);if(r.pinB)pinRelease(r);r.kickT=0;r.kickStyle=style||null;KICKS.push({style:style,pow:r.shotPow,on:r.shotOn,curve:styleCfg(style)});}",
 "var CAP=null;function shotPullCap(r,a0,a1){return CAP==null?a1:CAP;}",
 "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
 ].join(NL);
@@ -22,8 +22,8 @@ function ok(c,msg){if(c)pass++;else{fail++;fails.push(msg);}}
 function boot(PHYS,SHOTS,RODS){
  RODS=RODS||rd('js/rods.js');
  const real=[slice(PHYS,'function pinUpdate(){','function hitFresh('),
-  slice(RODS,'function styleCfg(','// the curve in play'),
-  'function kickArm(r,style,curve,k){'+slice(RODS,' const SW=curve||styleCfg(style);',' r.raise=false;r.raiseKeep=false;r.kickHold=false;')+'}',
+  slice(RODS,'function styleCfg(','// the swing in play'),
+  'function kickArm(r,name,k){name=name||\'pass\';'+slice(RODS,' const SW=styleCfg(name);',' r.raise=false;r.raiseKeep=false;r.kickHold=false;')+'}',
   slice(SHOTS,'function shotArm(r,SW,k){','// what a charge is worth against'),
   slice(SHOTS,'function shotPinInput(r,I,dt){','// --- what the charge is worth ---')].join(NL);
  const ctx={console,Math,JSON,Object,Array,Set,Map,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
@@ -207,13 +207,13 @@ const muts=[
  ['physics','b.v.set(0,0,intoRail?0:vz);','b.v.set(0,0,0);','a released ball forgets the slide'],
  ['physics','const vz=(H&&isUserRod(r)?','const vz=(false?','a player\'s release keeps only the last step\'s slide'],
  ['physics','v.set((tx-p.x)/h,0,(cz-p.z)/h);','v.set(0,0,0);','a carried ball reports no velocity'],
- ['shots','r.pinOn=(fin||pp)&&r.chg<0&&r.kickT<0;','r.pinOn=(fin||pp)&&r.kickT<0;','a wind-up and a pin at once'],
- ['shots',' const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from,pp=',' const fin=I.lt>SHOTC.hold.from,pp=','the pin waits for the finesse grip to ease in'],
+ ['shots','r.pinOn=fin&&r.chg<0&&r.kickT<0;','r.pinOn=fin&&r.kickT<0;','a wind-up and a pin at once'],
+ ['shots',' const fin=(I.fin!=null)?I.fin:I.lt>SHOTC.hold.from;',' const fin=I.lt>SHOTC.hold.from;','the pin waits for the finesse grip to ease in'],
  ['shots',' if(!r.pinOn){if(r.pinFwd)r.fwdOut=true;r.pinPose=false;r.pinFwd=false;r.fwdStk=0;}',' if(!r.pinOn){r.pinFwd=false;}','the pose outlives the finesse'],
  ['shots',' else if(I.rz){r.pinPose=true;if(rzUp&&!r.pinB){r.pinFwd=false;r.fwdStk=0;}}',' else r.pinPose=!!I.rz;','the pose drops the moment raise comes up'],
- ['shots',' kickRod(r,\'pinShot\',null,pinSwing());',' kickRod(r,null,null,pinSwing());','the pin shot is a plain kick'],
- ['shots',' kickRod(r,\'pinShot\',null,pinSwing());',' kickRod(r,\'pinShot\');','the pin shot is not given the pin swing'],
- ['rods',' if(SW.pow!=null)shotArm(r,SW,k??-1);',' if(!curve)shotArm(r,SW,k??-1);','the pin shot is unarmed']
+ ['shots',' kickRod(r,\'pinShot\');',' kickRod(r);','the pin shot is the pass'],
+ ['shots',' kickRod(r,\'pinShot\');',' kickRod(r,\'shoot\');','the pin shot is the loose-ball shot'],
+ ['rods',' if(SW.pow!=null)shotArm(r,SW,k??-1);',' if(name!==\'pinShot\')shotArm(r,SW,k??-1);','the pin shot is unarmed']
 ];
 let caught=0;
 for(const [file,find,repl,name] of muts){
