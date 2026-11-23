@@ -17,7 +17,7 @@ function boot(mutate){
   +'\n'+rd('js/state.js')+'\n'+STUBS+'\n'+rd('js/binds.js')+'\n'+trials   // binds.js: the trial hint and the retry key read the bindings
   +'\n;globalThis.__api={CONFIG,F,PHY,TRL,TRLC,S,cfg,rods,TRN,SCREENS,'
   +'trialById,trialBest,trialMedal,trialStart,trialArm,trialReset,trialGoal,trialTick,trialFinish,'
-  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC,'
+  +'trialRestart,trialExit,trialVenueHeld,trialTableApply,trialTableRestore,renderTrials,trialOn,freshStats,trialCats,trialsIn,trialCatStat,trialCatDefault,trialCatSet,trialRowHtml,dailyBuild,dailyDate,dailyPrev,dailyStreak,dailyDone,dailyRecord,dailyOn,trialObjText,renderDaily,AIC,SWINGS,'
   +'trialDir,trialBetter,trialScoreText,trialServe,trialAttemptEnd,trialSpawnFor,trialServeDelay,RODRST,trialTouch,trialGo,trialHome,'
   +'DRC,SHOT,FOOT_BOX,BALL_R,drillProg,drillObjText,drillLose,drillLaneSpot,trialSets,trialSetOf,trialSetsIn,trialSetPick};';
  const sb={console:{log(){},warn(){}},Math,Date,JSON,Object,Array,String,Number,Map,Set,isFinite,
@@ -123,7 +123,7 @@ function reachOK(A,d,s){
  s=s||d.ball;
  return strikers(A,d).some(r=>{
   const rel=(s.x-r.x)*(r.team===0?1:-1);
-  return rel>0&&rel<=A.AIC.inFrontMax&&zReach(A,r,s.z);
+  return rel>0&&rel<=A.SWINGS.reach.inFrontMax&&zReach(A,r,s.z);
  });
 }
 // a rod slides, so the ball's z is reachable if SOME man can be slid onto it
@@ -198,11 +198,11 @@ function suite(A){
    R.ok(footClear(r,s.x,s.z),'A-spawn "'+d.id+'" spawn '+s.x+'/'+s.z+' is clear of the '+r.team+'|'+r.role+' foot box',
     'gap '+footGap(r,s.x,s.z).toFixed(2)+' < BALL_R '+PHY.ballR);
   }
-  // ...and it must be within reach of a rod you control: too close is inside the boot, too far can't be reached; CONFIG.ai.inFrontMax is the config-derived stand-in for a human's reach
+  // ...and it must be within reach of a rod you control: too close is inside the boot, too far can't be reached; swings.reach.inFrontMax is the config-derived stand-in for a human's reach
   if(d.goal.kind==='drill')drillData(A,R,d);
   else for(const s of SPW)
    R.ok(reachOK(A,d,s),'A-reach "'+d.id+'" spawn '+s.x+'/'+s.z+' is inside a striking rod\'s window',
-    'rel='+relOf(A,d,s).toFixed(2)+' max='+A.AIC.inFrontMax);
+    'rel='+relOf(A,d,s).toFixed(2)+' max='+A.SWINGS.reach.inFrontMax);
   const show=d.rods&&d.rods.show;
   R.ok(!!show&&show.length>0,'A-rods "'+d.id+'" declares which rods are on the table');
   // a 'saveRun' is only playable if the keeper is on the table, something can shoot at it, and the run can end

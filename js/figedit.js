@@ -457,7 +457,6 @@ const PL_GROUPS=[
  ['SWINGS',['swings']],
  ['BACK PIN',['shots.pin!','shots.pin.press']],
  ['FORWARD PIN + ASSIST',['shots.pin.fwd','shots.pin.assist']],
- ['SNAKE',['shots.snake']],
  ['SQUARE',['shots.square']],
  ['KICK CONTACT + TRIMS',['kick!','shots.mod']],
  ['RECEIVE + LIFT',['ai.catch.recv']],

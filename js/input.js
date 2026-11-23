@@ -279,7 +279,7 @@ function padSeatUpdate(dt,gp,s,just){
  else if(r.tcSpin)r.tcSpin=0;
  // shots: read the trigger axis and charge source into this seat's pad record; the step runs once per seat after all pads
  const P=shotsOn()?shotPadRead(s.shotPad||(s.shotPad=shotInNew()),gp,TC,sd):null;
- if(S.asl&&P&&P.deep&&P.lt<-SHOTC.pass.modAt)aslHit(r,'ltLatch');   // LT relaxed past the pass depth, still read as full
+ if(S.asl&&P&&P.deep&&P.lt<-SHOTC.mod.fwdAt)aslHit(r,'ltLatch');   // LT relaxed past the pass depth, still read as full
  // A: kick (RT is the alternate kick only while shots are off); with a wind-up live the kick button is a second release
  // pressed while a trigger is still on its way down it waits a moment for it (shotChordWait), so LT and A together are the forward pin, RT and A the shot; a rod switch drops a waiting press
  if(just[0]&&shotKickPress(TC)){s.kickW=0;s.kickR=r;}

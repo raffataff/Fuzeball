@@ -90,7 +90,7 @@ function clearRodAI(r){
  if(r.hold)r.hold.on=false;                 // …and any L2 grip: the AI drives this rod now
  r.evadeHold=0;r.evadeSpent=false;r.evadeDir=0;
  r.aiMan=-1;
- r.dribMan=-1;r.dribZ=0;r.dribZ0=0;
+
  r.laneDir=0;
  r.passTo=null;r.aimEv=null;
  r.catSw=false;r.catAim=null;r.catSv=0;r.catHold=0;

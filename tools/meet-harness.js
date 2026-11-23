@@ -12,7 +12,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -23,9 +23,8 @@ const stubs=[
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -146,8 +145,8 @@ const MUT=[
  // the approach
  {n:'he slides AWAY from the ball',from:'r.target=clamp(r.offset+e*mu*dt,-r.maxOff,r.maxOff);\n const tA',to:'r.target=clamp(r.offset-e*mu*dt,-r.maxOff,r.maxOff);\n const tA'},
  {n:'he runs at the closing speed all the way (no rush while far)',from:'Math.sqrt(u*u+2*MT.brake*Math.max(0,dist-MT.slow))',to:'u'},
- {n:'he never brakes (flat out to the end)',from:'Math.min(DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r)*MT.use,Math.sqrt(u*u+2*MT.brake*Math.max(0,dist-MT.slow)))',to:'DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r)*MT.use'},
- {n:'he runs at the rod\'s whole speed, no margin',from:'DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r)*MT.use,Math.sqrt',to:'DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r),Math.sqrt'},
+ {n:'he never brakes (flat out to the end)',from:'Math.min(rodTopV(r)*MT.use,Math.sqrt(u*u+2*MT.brake*Math.max(0,dist-MT.slow)))',to:'rodTopV(r)*MT.use'},
+ {n:'he runs at the rod\'s whole speed, no margin',from:'rodTopV(r)*MT.use,Math.sqrt',to:'rodTopV(r),Math.sqrt'},
  {n:'he closes without allowing for the ball\'s own speed',from:'u=Math.max(0,MT.closeV+bu)',to:'u=MT.closeV'},
  {n:'a ball already closing fast is run into',from:'u=Math.max(0,MT.closeV+bu)',to:'u=Math.abs(MT.closeV+bu)'},
  {n:'the braking never starts (the slow distance is the whole way)',from:'Math.max(0,dist-MT.slow)',to:'Math.max(0,dist)'},

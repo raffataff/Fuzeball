@@ -21,7 +21,6 @@
   const why=[r.act||'-'];
   if(r.heldFwd)why.push('held');
   if(r.cd>0)why.push('cd');
-  if(r.shotHoldT>0)why.push('hold');
   if(dz>=1.25)why.push(r.aiMan!==mi?'wrongMan':'aimOff');
   why.push(rel<-0.6?'heel':(rel<6.3?'reach':'far'));
   return r.role+' '+why.join('+');
@@ -41,7 +40,7 @@
    for(let si=0;si<o.seeds;si++){
     const seed=o.seed0+si*7;
     S.seedNext=seed;startMatchNow('ai');S.phase='count';S.countT=0;serve();
-    rods.forEach(r=>{r.bgT=-9;r.lhT=0;r.cd=0;r.retCd=0;r.laneCd=0;r.evadeCd=0;r.dribCd=0;r.shotHoldT=0;});
+    rods.forEach(r=>{r.bgT=-9;r.lhT=0;r.cd=0;r.retCd=0;r.laneCd=0;r.evadeCd=0;r.dribCd=0;});
     const n=Math.round(o.secs*SIM.hz);let run=0;
     for(let i=0;i<n;i++){
      if(S.phase!=='play'){S.phase='count';serve();}

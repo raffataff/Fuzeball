@@ -1,5 +1,5 @@
 // snake harness. node tools/snake-harness.js
-// the SNAKE (CONFIG.shots.snake, swings.snake): the man rolls over the top of the rod from the forward pin and strikes the ball from behind
+// the SNAKE (swings.snake): the man rolls over the top of the rod from the forward pin and strikes the ball from behind
 // slices the real snakeStep / kickStyleCfg (rods.js), snakeLoft / capSpeed (physics.js) and lerpAng (core.js) and runs them on live CONFIG with plain-object rods and balls
 // pins the turn (one wrap, continuous for angVel and the substeps, a full turn plus the follow-through, back at rest), the low launch and the speed ceiling; the trigger is binds-harness's (section 8b)
 // every mutation at the bottom must break an assertion; a drifted anchor throws
@@ -12,7 +12,7 @@ const slice=(src,from,to)=>{const a=src.indexOf(from);if(a<0)throw new Error('sl
 const RODS=rd('js/rods.js'),PHYS=rd('js/physics.js');
 const parts={
  core:rd('js/core.js'),
- style:slice(RODS,'function styleCfg(style){','// was a contact a real front-face strike'),
+ style:slice(RODS,'function styleCfg(name){','// was a contact a real front-face strike'),
  step:slice(RODS,'function snakeStep(r,dt){',NL+'function updateRods('),
  cap:slice(PHYS,'function capSpeed(b,r,sweet,in2){',NL+'// a snake leaves low'),
  loft:slice(PHYS,'function snakeLoft(b){',NL+'function collideRod(')
@@ -40,7 +40,7 @@ function boot(mut){
 const H=1/120,PI2=2*Math.PI;
 // a rod posed forward at a0 and the snake fired: steps snakeStep the way updateRods does (angVel from prevAngle, then prevAngle = angle) and returns the trace
 function spin(X,a0,dir){
- const r={kickDir:dir,angle:a0*dir,prevAngle:a0*dir,kickT:0,kickStyle:'snake',kickCurve:X.K,kickA0:a0,shotOn:true,heldFwd:true};
+ const r={kickDir:dir,angle:a0*dir,prevAngle:a0*dir,kickT:0,kickStyle:'snake',kickA0:a0,shotOn:true,heldFwd:true};
  const T=[];let u=a0,n=0;
  while(r.kickT>=0&&n<1000){
   X.snakeStep(r,H);
@@ -72,7 +72,7 @@ function suite(X){
   const wB=atBottom?atBottom.w*dir:0;
   ok(wB>10&&wB<40,'...turning at a striking speed there, not a scoop ('+wB.toFixed(1)+' rad/s)'+tag);
   const end=T[T.length-1];
-  ok(r.kickT===-1&&r.kickStyle===null&&r.kickCurve===null&&r.angle===0,'the swing ends at rest, the style cleared'+tag);
+  ok(r.kickT===-1&&r.kickStyle===null&&r.angle===0,'the swing ends at rest, the style cleared'+tag);
   ok(Math.abs(end.t-(K.spin+K.follow+K.back))<2*H,'...after spin + follow + back ('+end.t.toFixed(3)+' s)'+tag);
   ok(Math.abs(end.u-PI2)<1e-6,'...one whole turn on from where it started counting, i.e. upright'+tag);
   ok(T.every(s=>!s.hf),'the snake never freezes the swing forward'+tag);
@@ -99,9 +99,9 @@ function suite(X){
  {const MV=X.BT.classic.maxV,C=X.KICK.cap,t={maxV:MV};
   const run=(style)=>{const b={v:{x:600,y:0,z:0},t};X.capSpeed(b,{team:0,kickStyle:style,shotOn:false,shotPow:1,kickT:0.2,swOver:0},false,0);return b.v.x;};
   const pl=run(null),sn=run('snake');
-  ok(C.snake>0&&sn>pl+MV*C.snake*0.5,'every contact of a snake has the higher ceiling ('+pl.toFixed(1)+' -> '+sn.toFixed(1)+')');
+  ok(X.K.cap>0&&sn>pl+MV*X.K.cap*0.5,'every contact of a snake has the higher ceiling ('+pl.toFixed(1)+' -> '+sn.toFixed(1)+')');
   ok(sn<MV*C.max+1e-9,'...and never past cap.max');
-  const c0=C.snake;C.snake=0;const z=run('snake');C.snake=c0;ok(Math.abs(z-pl)<1e-9,'cap.snake 0: the plain ceiling');}
+  const c0=X.K.cap;X.K.cap=0;const z=run('snake');X.K.cap=c0;ok(Math.abs(z-pl)<1e-9,'swings.snake.cap 0: the plain ceiling');}
 }
 
 suite(boot());
@@ -114,13 +114,13 @@ const MUTS=[
  {part:'step',from:' if(a>Math.PI)a-=2*Math.PI;',to:'',name:'the angle runs past π'},
  {part:'step',from:'a1=2*Math.PI+KS.strikeA',to:'a1=Math.PI+KS.strikeA',name:'half a turn'},
  {part:'step',from:'if(T<t1+KS.back)return a1+(2*Math.PI-a1)*((T-t1)/KS.back);',to:'if(T<t1+KS.back)return a1;',name:'the leg never eases back'},
- {part:'step',from:'if(a==null){a=0;r.kickT=-1;r.kickStyle=null;r.kickCurve=null;shotDisarm(r);}',to:'if(a==null){a=0;r.kickT=-1;r.kickCurve=null;shotDisarm(r);}',name:'the style outlives the swing'},
+ {part:'step',from:'if(a==null){a=0;r.kickT=-1;r.kickStyle=null;shotDisarm(r);}',to:'if(a==null){a=0;r.kickT=-1;shotDisarm(r);}',name:'the style outlives the swing'},
  {part:'step',from:' r.heldFwd=false;',to:'',name:'a held kick can freeze the snake'},
  {part:'step',from:'Math.pow(T/KS.spin,KS.ease)',to:'Math.pow(T/KS.spin,KS.ease*3)',name:'the spin arrives at a scoop'},
  {part:'loft',from:'v.y=sp*Math.sin(L);',to:'v.y=0;',name:'the loft flattens the ball and loses speed'},
  {part:'loft',from:'if(L==null||h<1e-6||v.y<=h*Math.tan(L))return;',to:'if(L==null||h<1e-6)return;',name:'a low ball is raised to the loft'},
  {part:'loft',from:'const sp=Math.hypot(h,v.y),k=sp*Math.cos(L)/h;',to:'const sp=Math.hypot(h,v.y),k=1;',name:'the climb is cut, not turned'},
- {part:'cap',from:' if(r.kickStyle===\'snake\')f+=C.snake||0;',to:'',name:'no ceiling for the snake'},
+ {part:'cap',from:' if(r.kickStyle)f+=kickStyleCfg(r).cap||0;',to:'',name:'no ceiling for the snake'},
  {part:'core',from:'if(d>Math.PI)d-=2*Math.PI;else if(d<-Math.PI)d+=2*Math.PI;',to:'',name:'lerpAng goes the long way round'}
 ];
 let caught=0;const missed=[];

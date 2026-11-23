@@ -45,7 +45,7 @@ const HZ=120,SUB=8,H=1/(HZ*SUB);
 function mkRod(X,baseZ,over){
  const K=X.KICK;
  return Object.assign({idx:0,x:0,team:0,role:'ATT',baseZ:baseZ,removedUntil:baseZ.map(()=>0),offset:0,maxOff:20,trnHidden:false,
-  angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
+  angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
   kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,
   pinOn:false,pinPose:false,pinA:null,pinB:null,
   hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:K.grip,carryMult:1,sideRest:K.sideRest},stats:null},over||{});
@@ -179,7 +179,7 @@ function suite(X){
  ok('at the very start of the squeeze it is exactly the free bounce (no step)',near(sideHit(X,45,{hold:HC.from+1e-9}),o45,1e-6),sideHit(X,45,{hold:HC.from+1e-9}).toFixed(2)+' vs '+o45.toFixed(2));
  const half=sideHit(X,45,{hold:(HC.from+1)/2});
  ok('half a squeeze is in between',half>sideHit(X,45,{hold:1})&&half<o45,half.toFixed(1));
- ok('the AI\'s dribble and retrieve holds stay dead',sideHit(X,45,{rod:{act:'dribble'}})<0.05*45&&sideHit(X,45,{rod:{act:'retrieve',retPh:'pin'}})<0.05*45);
+ ok('the AI retrieve hold is the player hold fully squeezed',near(sideHit(X,45,{rod:{act:'retrieve',retPh:'pin'}}),sideHit(X,45,{hold:1}),1e-6));
 
  // ---- the moves ----
  const tapAlone=slideAt(X,80,0);

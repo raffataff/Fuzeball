@@ -12,7 +12,7 @@ const AI=rd('js/ai.js');
 const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
- fwd:slice(AI,'function fwdClr(',NL+'// how good is the way forward from'),
+ fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -21,9 +21,8 @@ const stubs=[
  "function kickRod(){} function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return null;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} function retrieveMan(r,bz){return {i:1,o:0};} function retrievePhase(r,ph){r.retPh=ph;}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
- (()=>{const s=rd('js/physics.js'),a=s.indexOf('function pinSwing('),b=s.indexOf(NL+'// let go:',a);return s.slice(a,b);})()   // physics.js: the swing played from the pin
 ].join(NL);
 
 function boot(mut){
@@ -34,7 +33,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,FOOT_BOX:FOOT_BOX,FOOT_BOX_OFF:FOOT_BOX_OFF,FOOT_T:FOOT_T,rods:rods,CAS:CAS,CAW:CAW,hitAngle:hitAngle,hitStand:hitStand,hitFits:hitFits,hitOk:hitOk,hitStart:hitStart,hitGo:hitGo,hitStep:hitStep,hitLoose:hitLoose,'+
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,FOOT_BOX:FOOT_BOX,FOOT_BOX_OFF:FOOT_BOX_OFF,FOOT_T:FOOT_T,rods:rods,CAS:CAS,CAW:CAW,hitAngle:hitAngle,hitStand:hitStand,hitFits:hitFits,hitOk:hitOk,hitStart:hitStart,hitGo:hitGo,hitStep:hitStep,hitLoose:hitLoose,'+
   'tapStart:tapStart,tapSide:tapSide,fliftStep:fliftStep,catchStep:catchStep,catchEnd:catchEnd,catchPick:catchPick,'+
   'setOut:function(f){OUT=f;},setRng:function(v){RNGV=v;},released:function(){return RELEASED;}};'].join(NL),ctx);
  return ctx.X;
@@ -260,8 +259,8 @@ const MUT=[
  {n:'a ball in the air is knocked',part:'catch',from:'(r.htT||0)>S.time||p.y>=AIC.lowY||rb.v.length()>LS.maxV',to:'(r.htT||0)>S.time||rb.v.length()>LS.maxV'},
  {n:'a ball a man is on is knocked',part:'catch',from:'if(Math.abs(p.z-z)<cz)return false;',to:''},
  {n:'a row with a man gone is trusted',part:'catch',from:"if(!manLive(r,i))return false;                                    // a man gone",to:"if(!manLive(r,i))continue;                                    // a man gone"},
- {n:'a shot open where it lies is not the kick\'s',part:'catch',from:'if(pinOutlet(r,p.x,p.z,obs,gx,0)>=CA.lineClear)return false;       // a shot is open where it lies: that is the kick\'s',to:''},
- {n:'a lane that is shut will do',part:'catch',from:'if(out>=CA.lineClear&&(!bs||out>bs.out))bs={mi,j,s,out};',to:'if(!bs||out>bs.out)bs={mi,j,s,out};'},
+ {n:'a shot open where it lies is not the kick\'s',part:'catch',from:'if(pinOutlet(r,p.x,p.z,obs,gx,0)>=SWINGS.pinShot.open)return false;       // a shot is open where it lies: that is the kick\'s',to:''},
+ {n:'a lane that is shut will do',part:'catch',from:'if(out>=SWINGS.pinShot.open&&(!bs||out>bs.out))bs={mi,j,s,out};',to:'if(!bs||out>bs.out)bs={mi,j,s,out};'},
  {n:'the lane is judged at the wrong end',part:'catch',from:'const out=pinOutlet(r,p.x,clamp(r.baseZ[j]+hitStand(r,mi,p.z,s)+s*CA.tap.drift,-zl,zl),obs,gx,0);',to:'const out=pinOutlet(r,p.x,p.z,obs,gx,0);'},
  {n:'the sender is the man on the wrong side',part:'catch',from:'const mi=s>0?lo:lo+1,j=mi+s;',to:'const mi=s>0?lo+1:lo,j=mi+s;'},
  {n:'it decides every frame',part:'catch',from:'r.htT=S.time+LS.every;\n if(rngAi(r.idx)()>=LS.share)return false;',to:'if(rngAi(r.idx)()>=LS.share)return false;'},

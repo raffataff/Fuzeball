@@ -133,8 +133,6 @@ function pinBallStep(b,h){
  b.pinVx=v.x;b.pinVz=v.z;b.pinPx=p.x;b.pinPz=p.z;
  return true;
 }
-// the swing from a pin, player and AI
-function pinSwing(pass){return pass?SWINGS.pinPass:SWINGS.pinShot;}
 // let go: ext = something else already moved it (keep that velocity), else it keeps carryOut (or k) of the slide; a player's rod's slide over the last four steps, since a mouse or pad moves it once a frame
 function pinRelease(r,ext,k){
  const b=r.pinB;r.pinB=null;
@@ -417,9 +415,8 @@ function capSpeed(b,r,sweet,in2){
  let f=C.base+C.str*stCapFrac(r),mx=C.max;
  if(sweet)f+=C.sweet;
  if(r.shotOn)f+=C.shot*(r.shotPow-1);   // the swing's own power trim: a pass lowers the ceiling, a shot or a timed charge raises it
- if(r.kickStyle==='pinShot')f+=C.pin||0;   // the pin shot: every contact of the swing, not just the first (which spends the trim)
- if(r.kickStyle==='snake')f+=C.snake||0;
- // a charge beats the cap: raises the ceiling and the most any ceiling may be
+ if(r.kickStyle)f+=kickStyleCfg(r).cap||0;   // the swing's own ceiling (pin shot, snake): every contact of the swing, not just the first (which spends the trim)
+  // a charge beats the cap: raises the ceiling and the most any ceiling may be
  const w=(r.shotOn&&r.shotOver>0)?r.shotOver:0;
  if(w>0){f+=(C.charge||0)*w;mx+=(C.chargeTop||0)*w;}
  if(S.eff[r.team].boost>S.time&&boostSwing(r))f+=C.boost;
@@ -491,7 +488,7 @@ function collideRod(b,r,pushLeft=Infinity){
      const dbgBN=(dbgLogRod===r)?(b.v.x*nx+b.v.y*ny+b.v.z*nz):0;
      const ks=kickStyleCfg(r);
      const pow=r.kickT>=ks.powFrom&&r.kickT<ks.powTo;
-     // hold contact: while ai.js has a retrieve lowering or a dribble live, the boot is a dead sticky surface (rest 0, big grip so b.v follows the contact point); no sweet bonus or aim-assist; holdCfg (rods.js) returns the block or null
+     // hold contact: while ai.js has a retrieve lowering live, the boot is a dead sticky surface (rest 0, big grip so b.v follows the contact point); no sweet bonus or aim-assist; holdCfg (rods.js) returns the block or null
      const HLD=holdCfg(r),trapping=!!HLD;
      const rest=trapping?HLD.holdRest:(pow?ks.restPower:(r.kickT>=0?ks.rest:KICK.rest));
     // sweet spot: struck in the foot's narrow z-centre and a tight forward x band (dir-relative); lz = z offset from the foot, relR = how far ahead of the rod
@@ -505,7 +502,7 @@ function collideRod(b,r,pushLeft=Infinity){
     jm*=stHit(r);
     // an armed swing or wind-up (js/shots.js shotArm): r.shotOn is the whole contract (the only way a Total Control stick swing carries a charge, it never calls kickRod)
     if(r.shotOn)jm*=r.shotPow;
-    if(sweet){let sb=SW.strBase+SW.strAcc*stAccFrac(r);if(r.aiIQ)sb+=SW.iqBonus;jm*=1+sb;}
+    if(sweet)jm*=1+SW.strBase+SW.strAcc*stAccFrac(r);
     b.v.x+=nx*jm;b.v.y+=ny*jm;b.v.z+=nz*jm;
     const g=trapping?clamp(HLD.holdGrip,0,1):stGrip(r);
     b.v.x=lerp(b.v.x,cvx,g);b.v.z=lerp(b.v.z,(nx*r.kickDir<-KICK.rearDot&&!r.pinPose)?cvz*KICK.rearCarry:cvz,g);if(sb)sideGive(b,nx,ny,nz,sb,HLD);   // the back of a man does not carry a ball along with the slide
@@ -519,10 +516,9 @@ function collideRod(b,r,pushLeft=Infinity){
     // tiny imperfection prevents pixel-perfect side-to-side oscillations; a re-hit adds none, or it piles up over the swing
     // seeded on its own stream: it draws per man per substep, so sharing would tie other consumers to the contact count
     if(hit){const jit=Math.abs(jm)*FOOT_JITTER,JR=RNG.jit;b.v.x+=(JR()-.5)*jit;b.v.y+=(JR()-.5)*jit*.3;b.v.z+=(JR()-.5)*jit;}
-    // aim-assist bends a shot goalward: humans on a clean strike, AI rods on every contact, only shots already moving goalward
-    // passFaceOK (rods.js): a side/back clip is a deflection, so the pass assist skips it; r.shotOn joins the gate (a Total Control swing has kickT<0); one contact spends the shot
-    if(aim&&(pow||(sweet&&SW.forceAssist)||r.shotOn||!isUserRod(r)))aimAssist(b,r,!passFaceOK(r,nx));
-    if(aim)wallAssist(b,r,!passFaceOK(r,nx));   // a wall ball leaves infield: after the aim, before the spray (stats.js)
+    // the assists bend a swing only (its power window, or the first contact of an armed swing: a Total Control swing has kickT<0), player and AI alike; a block or a touch goes where it goes
+    // passFaceOK (rods.js): a side/back clip is a deflection, so the pass assist skips it
+    if(aim&&(pow||r.shotOn)){aimAssist(b,r,!passFaceOK(r,nx));wallAssist(b,r,!passFaceOK(r,nx));}   // the wall: after the aim, before the spray (stats.js)
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
     const fsh=typeof feelShakeOn==='function'&&feelShakeOn();   // js/feel.js owns the shake: the old one stays off
     if(sweet){if(!fsh)S.shake=Math.min(1,S.shake+SW.shake);r.aimSweet=i;}
@@ -597,8 +593,7 @@ function collideRod(b,r,pushLeft=Infinity){
     // Total Control: the user rod's swerve line (r.tcSpin) bends the shot on contact
     if(r.tcSpin&&cfg.padControlMode==='total'&&isUserRod(r))
      b.spin=clamp(b.spin+r.tcSpin*KICK.tcSpinGain,-KICK.spinClamp,KICK.spinClamp);
-    if(aim&&(pow||r.shotOn||!isUserRod(r)))aimAssist(b,r,true);   // human: power window only; AI: every contact; never the pass assist
-    if(aim)wallAssist(b,r,true);
+    if(aim&&(pow||r.shotOn)){aimAssist(b,r,true);wallAssist(b,r,true);}   // a swing only, as the foot; never the pass assist
     if(r.shotOn){shotSpray(b,r);shotConsume(r);}
    if(-vn>KICK.sndFrom){Au.kick(-vn,b.t.audio?.kick,b);
     if(-vn>KICK.hardHit&&!(typeof feelShakeOn==='function'&&feelShakeOn())){S.shake=Math.min(1,S.shake+(-vn)/KICK.shakeDiv);}}

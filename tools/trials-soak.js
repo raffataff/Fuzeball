@@ -135,14 +135,14 @@
    rollBot(r,b,B,D);
   }
  };
- // the pin shot's keys once lined up: power down, the kick 6 frames on (a pin keeps the last four steps' slide, pinRelease), as the second of two quick kicks was ('double')
- function shotKeys(B){const t=B.f-B.kf;if(CONFIG.shots.pin.press.shoot==='power'){if(t===6)I.kick(true);else if(t>=9){I.kick(false);I.power(false);}return;}if(t===3||t>12)I.kick(false);else if(t===6)I.kick(true);}
+ // the pin shot's keys once lined up: power down, the kick 6 frames on (a pin keeps the last four steps' slide, pinRelease)
+ function shotKeys(B){const t=B.f-B.kf;if(t===6)I.kick(true);else if(t>=9){I.kick(false);I.power(false);}}
  // carry the pinned ball to a lane beside the keeper (±aim, or as near as this man reaches), stop, kick
  function aimShot(r,b,B){
   const p=b.m.position,m=nearMan(r,p.z),dz=p.z-mz(r,m),lo=r.baseZ[m]-r.maxOff+dz,hi=r.baseZ[m]+r.maxOff+dz;
   const s=p.z>=0?1:-1,c=[s*B.o.aim,-s*B.o.aim].map(z=>clamp(z,lo,hi)).sort((x,y)=>Math.abs(Math.abs(x)-B.o.aim)-Math.abs(Math.abs(y)-B.o.aim))[0];
   slideTo(r,r.offset+(c-p.z),30);
-  if(Math.abs(c-p.z)<0.4&&Math.abs(r.vz)<2){if(CONFIG.shots.pin.press.shoot==='power')I.power(true);else I.kick(true);B.st='shot';B.kf=B.f;}
+  if(Math.abs(c-p.z)<0.4&&Math.abs(r.vz)<2){I.power(true);B.st='shot';B.kf=B.f;}
  }
  // the ball to z (or onto man `to`): pinned, carried, lifted off and handed on along the row; raise held throughout, finesse down pins
  function walkTo(r,b,B,z,to){

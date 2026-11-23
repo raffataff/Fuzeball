@@ -10,7 +10,7 @@
  if(!window.__pl_kr0)window.__pl_kr0=kickRod;
  if(!window.__pl_mc0)window.__pl_mc0=momContact;
  let T=null;
- const kindOf=(r,style)=>style==='pass'?(r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass'):(style==='shoot'&&r.act==='dribble')?'dribble':null;
+ const kindOf=(r,style)=>style==='pinPass'?'pinPass':style==='pass'?(r.pinB?'pinPass':r.act==='run'?'runPass':r.act==='dribble'?'dribPass':'kickPass'):(style==='shoot'&&r.act==='dribble')?'dribble':null;
  const lineZ=(e,x)=>e.z0+e.vz/e.vx*(x-e.x0);
  const reach=()=>FOOT_BOX.z+BALL_R;
  function rowGap(o,e,offs){let g=1e9,gi=-1;const z=lineZ(e,o.x),off=offs.get(o);for(let i=0;i<o.baseZ.length;i++){if(!manLive(o,i))continue;const d=Math.abs(z-(o.baseZ[i]+off))-reach();if(d<g){g=d;gi=i;}}return {g,i:gi};}
@@ -93,7 +93,7 @@
  }
  function plReach(o){
   o=Object.assign({diff:'pro',rels:5,dz:0.05,v:null},o||{});
-  const FR=AIC.catch.steer.free,P=AIC.dribble.pass,keep=[cfg.diffRed,cfg.diffBlue];cfg.diffRed=o.diff;cfg.diffBlue=o.diff;
+  const FR=AIC.catch.steer.free,P=AIC.pass,keep=[cfg.diffRed,cfg.diffBlue];cfg.diffRed=o.diff;cfg.diffBlue=o.diff;
   try{
    S.seedNext=1;startMatchNow('ai');S.phase='count';S.countT=0;serve();S.phase='play';
    const r=rods.find(q=>q.team===0&&q.role==='DEF'),b=S.balls[0],dir=r.kickDir,t0=b.t,v=o.v||FR.vMin,out={};
@@ -101,7 +101,7 @@
     for(let k=0;k<o.rels;k++){const rel=FR.relMin+(FR.relMax-FR.relMin)*k/(o.rels-1);let hm=0;
      for(let dz=0;dz<=r.maxOff;dz+=o.dz){const V=Object.create(r);V.angle=0;V.slideV=v;V.offset=-dz;   // man 0 dz short of the ball, at the run's speed
       b.m.position.set(r.x+rel*dir,BALL_R,r.baseZ[0]);b.v.set(0,0,0);b.pinR=null;
-      const L=kickLaunch(V,b,'pass',v);if(L&&passFaceOK(r,L.face*dir)&&L.forward>=P.assistMinVX)hm=Math.max(hm,L.heading);}
+      const L=kickLaunch(V,b,'pass',v);if(L&&passFaceOK(r,L.face*dir)&&L.forward>=SWINGS.passAssist.minVX)hm=Math.max(hm,L.heading);}
      lo=Math.min(lo,hm);}
     out[m]=+lo.toFixed(3);}
    b.t=t0;

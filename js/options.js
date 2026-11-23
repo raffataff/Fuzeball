@@ -147,10 +147,10 @@ function updateOptLabels(){
  $('optTCFastV').textContent=(+cfg.padTCFast).toFixed(2)+'×';
  $('optTCSwerveV').textContent=(+cfg.padTCSwerve).toFixed(2)+'×';
 }
-// the reference's pin line follows the pinned-ball buttons (cfg.padPinBtns) and how the pin shoots (shots.pin.press.shoot)
+// the reference's pin line follows the pinned-ball buttons (cfg.padPinBtns)
 function optPinRefSet(){
  const c=cfg.padPinBtns||'sq',e=$('optPinRef');if(!e)return;
- e.textContent=CONFIG.shots.pin.press.shoot!=='power'?'pin the ball — A passes, A twice shoots':c==='off'?'pin the ball — A passes, RT + A shoots':c==='ci'?'pin the ball — B passes, X shoots':'pin the ball — X passes, B shoots';
+ e.textContent=c==='off'?'pin the ball — A passes, RT + A shoots':c==='ci'?'pin the ball — B passes, X shoots':'pin the ball — X passes, B shoots';
 }
 function updateTCVis(){                                    // TC sliders + tester swerve preview only make sense in Total Control mode
  const off=cfg.padControlMode!=='total';
@@ -214,7 +214,7 @@ function kbRender(){
  }).join('')
   +(sh&&SHOT.pin&&SHOT.pin.on&&fl.length&&rl.length?fixed('Pin the ball',bindLabel(fl[0])+' + '+bindLabel(rl[0])):'')
   +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&fl.length&&kl.length?fixed('Forward pin',bindLabel(fl[0])+' + '+bindLabel(kl[0])):'')
-  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&SHOT.snake&&SHOT.snake.on&&kl.length?fixed('Snake shot',shotPinPow()?bindLabel(bindList('power')[0]||'')+' + '+bindLabel(kl[0]):bindLabel(kl[0])+' x2'):'')
+  +(sh&&SHOT.pin&&SHOT.pin.on&&SHOT.pin.fwd.on&&SHOT.pin.fwd.snake&&kl.length?fixed('Snake shot',bindLabel(bindList('power')[0]||'')+' + '+bindLabel(kl[0])):'')
   +fixed('Camera views','NUM 1-9')+fixed('Rod camera','NUM 0')
   +fixed('Pause','ESC');
 }

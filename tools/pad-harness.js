@@ -34,7 +34,6 @@ function boot(F){
   slice(F.sh,'function shotInNew(){','\n'),
   slice(F.sh,'// one pad read into o;','function shotKbmAxis('),
   slice(F.sh,'function shotKickPress(TC){','// live charge for the readouts'),
-  slice(F.sh,'function shotPinPow(){','\n'),
   slice(F.sh,'function shotPinBtns(r,just){','// where the pin pass crosses'),
   slice(F.in,'function slideBy(','function userControlUpdate('),
   slice(F.in,'function gpDown(gp,i){','\n'),
@@ -73,7 +72,7 @@ function speed(X,o){X.mult(o.mult||1);const r=rod(o.rod),s=seat(r);
 
 function suite(X,quiet){
  pass=0;fail=0;fails.length=0;
- const cfg=X.cfg,KICK=X.KICK,DZ=cfg.padDeadzone,V=KICK.userSpeed,SH=X.SHOT,K=SH.pass;
+ const cfg=X.cfg,KICK=X.KICK,DZ=cfg.padDeadzone,V=KICK.userSpeed,SH=X.SHOT,K=SH.mod;
  cfg.padSlideAxis='ly';cfg.padAngleAxis='ry';cfg.padSlideSens=1;cfg.padAngleSens=1;cfg.padSlideCurve=1;cfg.padSlideInvert=false;cfg.padAngleInvert=false;cfg.padControlMode='classic';
  const near=(a,b,t)=>Math.abs(a-b)<=t*Math.abs(b);
  /* 1. the slide: a full stick is the rod's own speed */
@@ -117,39 +116,38 @@ function suite(X,quiet){
  /* 4. LT latched at the pass depth (shotPadRead) */
  const raw=x=>SH.mod.dead+x*(1-SH.mod.dead);   // the trigger value whose rescaled depth is x
  {const o=X.shotInNew();X.shotPadRead(o,pad({lt:1}),false,0);X.shotPadRead(o,pad({lt:raw(0.35)}),false,0);
-  ok(o.m<=K.modAt,'LT squeezed full then relaxed to 35% still reads as the pass ('+o.m.toFixed(2)+')');
+  ok(o.m<=K.fwdAt,'LT squeezed full then relaxed to 35% still reads as the pass ('+o.m.toFixed(2)+')');
   ok(Math.abs(o.mt+0.35)<1e-9,'...the raw axis is kept for Total Control\'s tracking');
-  X.shotPadRead(o,pad({lt:raw(SH.hold.from*0.5)}),false,0);ok(o.m>K.modAt&&!o.deep,'...let back past the grip, it lets go');}
+  X.shotPadRead(o,pad({lt:raw(SH.hold.from*0.5)}),false,0);ok(o.m>K.fwdAt&&!o.deep,'...let back past the grip, it lets go');}
  {const o=X.shotInNew();X.shotPadRead(o,pad({lt:raw(0.35)}),false,0);ok(Math.abs(o.m+0.35)<1e-9,'a half squeeze that never went deep is still the soft swing');}
- {const o=X.shotInNew();X.shotPadRead(o,pad({lt:1}),false,0);X.shotPadRead(o,pad({lt:1,rt:1}),false,0);ok(o.m>K.modAt,'power still cancels a latched finesse');}
+ {const o=X.shotInNew();X.shotPadRead(o,pad({lt:1}),false,0);X.shotPadRead(o,pad({lt:1,rt:1}),false,0);ok(o.m>K.fwdAt,'power still cancels a latched finesse');}
  {const k=K.keep;K.keep=false;const o=X.shotInNew();X.shotPadRead(o,pad({lt:1}),false,0);X.shotPadRead(o,pad({lt:raw(0.35)}),false,0);K.keep=k;
-  ok(Math.abs(o.m+0.35)<1e-9,'pass.keep:false reads the raw depth');}
+  ok(Math.abs(o.m+0.35)<1e-9,'mod.keep:false reads the raw depth');}
  /* 5. A and LT pressed together (the chord) */
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad());frame(X,s,pad({lt:raw(0.15),btn:[0]}),{0:true});
   ok(X.KICKS.length===0,'A pressed while LT is still on its way down waits');
   frame(X,s,pad({lt:1,btn:[0]}));
-  ok(X.KICKS.length===1&&X.KICKS[0].m<=K.modAt,'...and fires as the pass once LT gets there');}
+  ok(X.KICKS.length===1&&X.KICKS[0].m<=K.fwdAt,'...and fires as the pass once LT gets there');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad());frame(X,s,pad({btn:[0]}),{0:true});
   ok(X.KICKS.length===1&&X.KICKS[0].m===0,'A with LT at rest fires on the press');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad({lt:raw(0.35)}));frame(X,s,pad({lt:raw(0.35),btn:[0]}),{0:true});
   ok(X.KICKS.length===1&&Math.abs(X.KICKS[0].m+0.35)<1e-9,'A with LT held still at half fires at once, the soft swing');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad());let n=0;
   for(let i=0;i<20&&!X.KICKS.length;i++){frame(X,s,pad({lt:raw(0.02*(i+1)),btn:[0]}),i?{}:{0:true});n++;}
-  ok(X.KICKS.length===1&&n<=Math.ceil(K.chord/FR)+1,'a slowly rising LT holds the press no longer than pass.chord ('+n+' frames)');}
+  ok(X.KICKS.length===1&&n<=Math.ceil(K.chord/FR)+1,'a slowly rising LT holds the press no longer than mod.chord ('+n+' frames)');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad({lt:1}));frame(X,s,pad({lt:raw(0.35)}));frame(X,s,pad({lt:raw(0.35),btn:[0]}),{0:true});
-  ok(X.KICKS.length===1&&X.KICKS[0].m<=K.modAt,'A after LT went deep and relaxed is still the pass');}
+  ok(X.KICKS.length===1&&X.KICKS[0].m<=K.fwdAt,'A after LT went deep and relaxed is still the pass');}
  {X.KICKS.length=0;const r=rod(),s=seat(r);frame(X,s,pad());frame(X,s,pad({lt:raw(0.15),btn:[0]}),{0:true});s.rod=rod();frame(X,s,pad({lt:1,btn:[0]}));
   ok(X.KICKS.length===0,'a waiting press is dropped when the rod changes under it');}
- /* 6. the face buttons on a pinned ball (cfg.padPinBtns, shots.pin.press.shoot 'power'): one passes, the other shoots; B is the guide with nothing pinned */
- {X.KICKS.length=0;const r=rod({pinB:{}}),s=seat(r),g0=X.guides();cfg.padPinBtns='sq';X.C.shots.pin.press.shoot='power';
+ /* 6. the face buttons on a pinned ball (cfg.padPinBtns): one passes, the other shoots; B is the guide with nothing pinned */
+ {X.KICKS.length=0;const r=rod({pinB:{}}),s=seat(r),g0=X.guides();cfg.padPinBtns='sq';
   frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===1&&X.KICKS[0].pw===false,'square passes: X on a pinned ball is the pass');
   frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===2&&X.KICKS[1].pw===true&&X.guides()===g0,'...B the shot, and the guide is left alone');
   cfg.padPinBtns='ci';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===3&&X.KICKS[2].pw===false,'circle passes: B is the pass');
   frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===4&&X.KICKS[3].pw===true,'...X the shot');
   cfg.padPinBtns='off';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+1,'face buttons off: B is the guide, nothing fires');
   cfg.padPinBtns='sq';r.pinB=null;frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+2,'nothing pinned: B is the guide');
-  r.pinB={};r.kickT=0.1;frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===4,'a swing in flight: no second fire');r.kickT=-1;
-  X.C.shots.pin.press.shoot='double';frame(X,s,pad({btn:[1]}),{1:true});ok(X.KICKS.length===4&&X.guides()===g0+3,'shoot \'double\': the face buttons are what they always were');X.C.shots.pin.press.shoot='power';}
+  r.pinB={};r.kickT=0.1;frame(X,s,pad({btn:[2]}),{2:true});ok(X.KICKS.length===4,'a swing in flight: no second fire');r.kickT=-1;}
 
  if(!quiet){console.log('assertions: '+pass+' passed, '+fail+' failed');for(const f of fails)console.log('  FAIL  '+f);}
  return fail;
@@ -183,7 +181,6 @@ const muts=[
  ['in',' else if(r.padCarry&&(!r.padAngleOn||mv))r.padCarry=false;\n','\n','a flick during the carry is eased'],
  ['sh',"const ps=just[c==='ci'?1:2],sh=just[c==='ci'?2:1];",'const ps=just[2],sh=just[1];','the circle-pass layout is ignored'],
  ['sh',"if(c==='off'||",'if(','face buttons off still fire'],
- ['sh','||!shotPinPow()||!r.pinB','||!r.pinB','the face buttons fire under the double press'],
  ['sh','||!r.pinB||r.kickT>=0)return false;','||r.kickT>=0)return false;','the face buttons fire with nothing pinned'],
  ['sh','shotKickEdge(r,0,!!sh);','shotKickEdge(r,0);','the shoot button passes'],
  ['in','if(just[1]&&!pinB)toggleSweetGuide(s);','if(just[1])toggleSweetGuide(s);','B on a pinned ball toggles the guide too']

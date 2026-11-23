@@ -22,7 +22,7 @@
    const before=r.kickT,res=kr.apply(this,arguments);
    if(r.role==='GK'&&before<0&&r.kickT>=0){
     const def=rods.find(q=>q.team===r.team&&q.role==='DEF'),dir=r.kickDir;
-    live.push({r,def,dir,t0:S.time,style:(!style||style==='shoot')?'plain':style,pass:!!(aimAt&&style==='pass'),tr:[],done:false,seed:o.cur,
+    live.push({r,def,dir,t0:S.time,style:(!style||style==='shoot')?'plain':style,pass:!!(aimAt&&(style==='pass'||style==='pinPass')),tr:[],done:false,seed:o.cur,
      pose:{ang:+(def.angle*dir).toFixed(2),act:def.act||'-',ready:!!def.rvReady,raise:!!def.raise}});
    }
    return res;

@@ -54,7 +54,7 @@ const REACH=P.ballR*P.footBoxReach;
 
 function mkRod(over){                                   // one man at z=0, red, at rest
  const r={idx:0,x:0,team:0,role:'MID',baseZ:[0],removedUntil:[0],offset:0,maxOff:20,trnHidden:false,
-  angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
+  angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,
   kickHit:false,msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,
   hold:{on:false,holdRest:X.CONFIG.kick.rest,holdGrip:K.grip,carryMult:1},stats:null};
  return Object.assign(r,over||{});
@@ -178,8 +178,8 @@ ok('shots off = no hold at all',(()=>{const s=X.CONFIG.shots.on;X.CONFIG.shots.o
  const r=mkRod();X.shotHoldUpdate(r,1);X.CONFIG.shots.on=s;return !r.hold.on;})());
 ok('hold.on:false = no hold at all',(()=>{const s=H.on;H.on=false;
  const r=mkRod();X.shotHoldUpdate(r,1);H.on=s;return !r.hold.on;})());
-ok('the AI retrieve/dribble blocks still resolve through holdCfg',
- X.holdCfg(mkRod({act:'retrieve',retPh:'pin'}))===X.AIC.retrieve.hold&&X.holdCfg(mkRod({act:'dribble'}))===X.AIC.dribble);
+ok('the AI retrieve lowering is the player hold fully squeezed',
+ (()=>{const h=X.holdCfg(mkRod({act:'retrieve',retPh:'pin'})),a=mkRod();X.shotHoldUpdate(a,1);return !!h&&h.holdRest===a.hold.holdRest&&h.holdGrip===a.hold.holdGrip&&h.carryMult===a.hold.carryMult&&h.sideRest===a.hold.sideRest;})());
 
 console.log(NL+'=== 7. ball type no longer swings the feel as wildly ===');
 const types=['classic','fire','cannon','golden'];

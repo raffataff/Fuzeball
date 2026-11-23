@@ -41,7 +41,7 @@ function boot(mut){
 }
 
 const mkRod=o=>Object.assign({idx:0,x:0,team:0,role:'MID',baseZ:[0],removedUntil:[0],offset:0,maxOff:20,trnHidden:false,
- angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickCurve:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,kickHit:false,
+ angle:0,angVel:0,vz:0,kickT:-1,kickStyle:null,kickDir:1,cd:0,aiIQ:false,aimSweet:-1,kickHit:false,
  msSw:false,tcSpin:0,chg:-1,shotOn:false,shotPow:1,shotCtl:1,passTo:null,act:null,pinOn:false,pinPose:false,
  hold:{on:false,holdRest:0.01,holdGrip:0.6,carryMult:1},stats:null},o||{});
 

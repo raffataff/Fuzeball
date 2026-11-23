@@ -55,11 +55,6 @@ vm.runInContext(`
   rods.length = 0;
   rods.push(r);
   resetRodRotation();
-  if (opt.dribble) {
-   r.act = 'dribble';
-   r.dribMan = 1;
-   r.dribEvT = 1;
-  }
   const ball = makeBall('classic');
   ball.m.position.set(seenX, BALL_R, 0);
   syncBall(ball); // the delayed view sees a low, aligned ball in reach
@@ -91,8 +86,6 @@ vm.runInContext(`
     test(diff, team, role, 'ball clear of boot sideways', {z: 4});
     test(diff, team, role, 'ball in contact range', {hit: true});
    }
-   test(diff, team, 'ATT', 'dribble release out of reach', {dribble: true, z: 4});
-   test(diff, team, 'ATT', 'dribble release in reach', {dribble: true, hit: true});
    test(diff, team, 'GK', 'fast goalbound ball in reach', {depth: 4.4, vx: -95, hit: true});
    test(diff, team, 'GK', 'dead-ball force still needs live contact', {force: true, z: 4});
    test(diff, team, 'GK', 'dead-ball clearance in reach', {force: true, hit: true});

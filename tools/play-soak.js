@@ -18,7 +18,7 @@
  window.catchEnd=function(r,cd,why){r.__ceT=S.time;r.__ceWhy=why;return __ce0.apply(this,arguments);};
  window.kickRod=function(r,style,aim,curve){
   if(T&&r.kickT<0&&!isUserRod(r)){
-   const k=style==='pinShot'?'pin':style==='pass'?'pass':'plain';
+   const k=style==='pinShot'?'pin':style==='pass'||style==='pinPass'?'pass':'plain';
    inc(T.n,k);
    if(k==='plain'){
     inc(T.plainRole,r.role);

@@ -2,7 +2,7 @@
 //      node tools/page-run.js tools/aisnake-soak.js "asAll()"
 //      asScene({ri:5,man:1,R:3.5,dz:0,slide:0,mode:'ai',keep:[],diff:'pro',assist:true,trace:false})   // a ball pinned under a red AI rod's forward leg R ahead, the rod sliding at `slide`; mode 'ai' lets the AI play it, 'fire' forces the snake at once
 //      asGrid()             // every depth x ATT / MID / DEF, open goal, the AI deciding: what it fires, how fast, how high, goal
-//      asSlide({assist})    // the snake forced with the rod sliding at each speed: the heading it leaves on against the one the AI judged (catch.snake.k / drift)
+//      asSlide({assist})    // the snake forced with the rod sliding at each speed: the heading it leaves on against the one the AI judged (swings.snake.slideK / slideDrift)
 //      asVsAI({diff,on})    // a ball held forward at the red ATT, the blue keeper + DEF played by the AI: what comes of it with the snake on, and off (re-seat, pin shot)
 //      asWatch({seeds,secs,diff})   // whole AI-vs-AI matches: every snake by role, its slide, depth and lane margin, and what came of it (goal / first touched by)
 // a scene removes every man but the shooting rod's and `keep` (rod indices); every rod's aiErrT is pinned, or aiUpdate re-rolls its iq
@@ -42,7 +42,7 @@
   let fire=null,tz=null;
   if(o.mode==='fire'){
    const SN=AIC.catch.snake,sv=r.slideV;
-   r.pcSn=true;r.catSv=sv;r.catSl=SN.k*sv;r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;r.pcWhy='scene';
+   r.pcSn=true;r.catSv=sv;r.catSl=SWINGS.snake.slideK*sv;r.catHold=SWINGS.snake.spin+SWINGS.snake.follow;r.pcWhy='scene';
    pinFire(r,b,DIFFS[teamDiff(r.team)],1);catchEnd(r,AIC.catch.cd,'snake');
    fire={t:0,style:r.kickStyle,sv:+sv.toFixed(1)};tz=r.catAim&&r.catAim.best?+r.catAim.best.tz.toFixed(2):null;
   }
@@ -68,12 +68,12 @@
   for(const ri of o.ris)for(const R of o.Rs){const a=asScene({ri,R,diff:o.diff});rows[NM[ri]+' R='+R]=row(a)+' (held at '+a.rel0+')';n.all++;if(a.fire)n.fired++;if(a.fire&&a.fire.style==='snake')n.snake++;if(a.goal)n.goal++;}
   rows.sum=n;return rows;
  }
- // the heading the slide gives: forced snake from a sliding rod, against the slope the AI judged it at (atan of catch.snake.k x slide) and where it was told to aim (tz)
+ // the heading the slide gives: forced snake from a sliding rod, against the slope the AI judged it at (atan of swings.snake.slideK x slide) and where it was told to aim (tz)
  function asSlide(o){
   o=Object.assign({ri:5,R:3.5,vs:[-40,-30,-20,-10,0,10,20,30,40],assist:false,diff:'pro'},o||{});
   const rows={},SN=AIC.catch.snake;
   for(const v of o.vs){const a=asScene({ri:o.ri,R:o.R,slide:v,mode:'fire',assist:o.assist,diff:o.diff});
-   const sv=a.fire?a.fire.sv:0;rows['slide '+v]=`sv ${sv} leaves ${a.hd} deg (judged ${(Math.atan(SN.k*sv)*57.3).toFixed(1)}) cross ${a.cross?a.cross.z:'-'} aimed ${a.tz} v ${a.vMax} y ${a.yMax}`;}
+   const sv=a.fire?a.fire.sv:0;rows['slide '+v]=`sv ${sv} leaves ${a.hd} deg (judged ${(Math.atan(SWINGS.snake.slideK*sv)*57.3).toFixed(1)}) cross ${a.cross?a.cross.z:'-'} aimed ${a.tz} v ${a.vMax} y ${a.yMax}`;}
   return rows;
  }
  // the ATT holding a ball forward with the blue keeper and DEF in front, every man x dz x seed; on:false = the old play (re-seat, retrieve's pin shot)
@@ -100,7 +100,7 @@
   const tally=k=>T.by[k]||(T.by[k]={n:0,goal:0,first:{},clr:[],sv:[],rel:[]});
   window.snakeFire=function(r){
    const b=r.pinB,SN=AIC.catch.snake,gx=r.kickDir>0?F.L/2:-F.L/2,p=b.m.position;
-   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObsAt(r.team,p.x,gx,SN.shotV,SWINGS.snake.spin),gx);
+   const clr=pushOutlet(r,p.x,p.z,r.slideV,laneObsAt(r.team,p.x,gx,SWINGS.snake.v,SWINGS.snake.spin),gx);
    const q=tally(r.role);q.n++;q.clr.push(clr);q.sv.push(Math.abs(r.slideV));q.rel.push(b.pinDx);
    live.push({q,team:r.team,t:S.time,sc:S.score[r.team],first:null});
    return sf.apply(this,arguments);

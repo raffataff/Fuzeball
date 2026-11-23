@@ -40,7 +40,7 @@
   const rel=(b.m.position.x-r.x)*dir,sp=b.v.length();
   // the FIRST thing that happened decides it: a later pin after a wall rebound is another story
   const kT=fire?fire.t:1e9,pT=pinT==null?1e9:pinT;let out;
-  if(pT<kT)out=fire&&fire.style==='pinShot'?'pin>shot':fire&&fire.style==='pass'?'pin>pass':'pin';
+  if(pT<kT)out=fire&&fire.style==='pinShot'?'pin>shot':fire&&(fire.style==='pass'||fire.style==='pinPass')?'pin>pass':'pin';
   else if(kT<1e9)out='kick';
   else if(rev)out='bounce';
   else if(sp<2)out='stop';
@@ -102,7 +102,7 @@
   o.block.forEach(k=>{const q=rods[k.ri];q.aiErrT=1e9;q.offset=k.off;q.target=k.off;q.prevOffset=k.off;q.pivot.position.z=k.off;});
   r.offset=o.off;r.target=r.offset;r.prevOffset=r.offset;r.pivot.position.z=r.offset;
   b.m.position.set(r.x+o.rel*dir,BALL_R,r.baseZ[o.man]+r.offset+o.dz);b.v.set(0,0,0);syncBall(b);
-  const PS=AIC.dribble.pass,CA=AIC.catch,keep=[PS.roles,CA.slideMax],c0={tap:CAS.tap,retTap:CAS.retTap,tapOk:CAS.tapOk,tapFail:CAS.tapFail};
+  const PS=AIC.pass,CA=AIC.catch,keep=[PS.roles,CA.slideMax],c0={tap:CAS.tap,retTap:CAS.retTap,tapOk:CAS.tapOk,tapFail:CAS.tapFail};
   PS.roles=[];CA.slideMax=0.5;
   const L=[],phs=[];let nt=0,tRet=null,tTap=null,tLand=null,pinMan=-1;
   try{

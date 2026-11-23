@@ -21,7 +21,7 @@
  const avg=(a)=>a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(2):0;
  window.kickRod=function(r,style,aim,curve){
   if(T&&r.kickT<0){
-   const k=style==='pinShot'?'pin':style==='pass'?'pass':style==='snake'?'snake':'plain';
+   const k=style==='pinShot'?'pin':style==='pass'||style==='pinPass'?'pass':style==='snake'?'snake':'plain';
    T.sw.push({t:S.time,team:r.team,k,sc:S.score[r.team],why:k==='pin'?'pin:'+r.pcWhy:null});
    T.n[k]=(T.n[k]||0)+1;
   }

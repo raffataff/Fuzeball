@@ -289,7 +289,7 @@ matchStats:{
 
  /* ---- core physics --------------------------------------------------- */
 physics:{
-   ballR:1.6, rodH:7.50, playerH:-6.90, arm:6.90, grav:850,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
+   ballR:1.6, rodH:7.50, playerH:-6.90, arm:6.90, grav:450,   // arm, prad and the foot box are fitted to the figurines at their playerModel scales (~0.876)
    prad:0.66,                      // leg capsule radius: the figurines' legs are about 1.3 thick front to back (a tapered foot box ends it at the box's top, footLegT)
    head:{ len:2.0, r:1 },        // head capsule: pivot to len up the body, radius r (tops of the heads 2.3-3.9 above the rod, ~1.1 round); null = no head
    footT:1.0,                      // arm-fraction from pivot to foot centre (1 = at the foot)
@@ -351,8 +351,6 @@ kick:{
       sweet:0.20,    // a clean centre strike earns this much more ceiling
       shot:0.75,     // an armed swing adds this x its power trim (r.shotPow-1): a pass lowers the ceiling, a shot or a charge raises it
       boost:0.18,    // POWER HITS. Without this its 2.5x impulse is invisible again
-      pin:0.20,      // ceiling added to EVERY contact of a pin-shot swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
-      snake:0.40,    // ...and of a snake (swings.snake)
       keep:true,     // true = a re-hit by a boot faster than the ball keeps the heading the strike gave it (speed and lift as before); false = every re-hit re-aims it (an off-centre kick comes off straight)
       held:0.9,      // with keep: a clipped contact whose ball arrived at this share of the speed it leaves at or more is a re-hit, and aims nothing (no aim or wall assist)
       min:0.2,      // a contact can never be capped below this...
@@ -368,8 +366,6 @@ kick:{
       xMin:1.8, xMax:3., // dir-relative x band ahead of the rod the ball must strike within
       strBase:0.3,       // hit-impulse bonus at base acc
       strAcc:0.40,        // extra hit-impulse bonus at max acc
-      iqBonus:0.15,       // extra bonus when the rod's iq roll is set (AI only)
-      forceAssist:true,   // apply aim-assist on a sweet hit even outside the power window
       shake:0.9           // screen-shake kick on a sweet strike
    },
    spinGain:0.001, spinClamp:1,    // side-spin from sliding into the ball
@@ -380,6 +376,7 @@ kick:{
 
  /* ---- swings: the shape and hit of every swing ------------------------- */
  // ai decides when to swing and shots which input does it; each block below is complete, nothing is laid over another
+ // v / slideK / slideDrift / rollK / meet / slideT: what the AI plans the swing with (measured: re-measure when the swing changes); spray and passAssist are shared by every swing
  swings:{
   // kick: the pass, player and AI, off any ball that is not on a pin
   pass:{
@@ -391,11 +388,14 @@ kick:{
    drop:0.40,         // the leg is back at rest by (s)
    powFrom:0.001,     // power window opens (s)
    powTo:0.05,        // power window closes (s)
-   restPower:0.75,    // bounce inside the window: higher = a harder hit
+   restPower:0.8,    // bounce inside the window: higher = a harder hit
    rest:0.1,          // bounce outside it
-   pow:0.80,          // impulse trim of the first contact, and its speed ceiling: lower = a softer pass
+   pow:0.60,          // impulse trim of the first contact, and its speed ceiling: lower = a softer pass
    ctl:1.00,          // control: scales the aim assist, and 1-ctl is the spray
-   exert:1            // stamina charged, in swings (stats.kickFat)
+   exert:1,           // stamina charged, in swings (stats.kickFat)
+   v:45,              // the AI's assumed flight speed (u/s): how long a receiver holds its pose (catch.recv)
+   meet:0.07,         // s from the swing's start to the boot meeting the ball: the AI's run-up sizes its back-off on it (catch.steer.free)
+   slideT:0.22        // the AI's run-up keeps its slide this long from the swing's start (s), and budgets the rod's room for it
   },
   // power + kick, and a wind-up: the shot, player and AI
   shoot:{
@@ -406,28 +406,57 @@ kick:{
    hold:0.24,         // the angle is held until (s)
    drop:0.31,         // the leg is back at rest by (s)
    powFrom:0.001,     // power window opens (s)
-   powTo:0.02,        // power window closes (s)
-   restPower:0.65,    // bounce inside the window: higher = a harder hit
-   rest:0.1,          // bounce outside it
+   powTo:0.05,        // power window closes (s)
+   restPower:0.95,    // bounce inside the window: higher = a harder hit
+   rest:0,          // bounce outside it
    pow:1.3,           // impulse trim of the first contact, and its speed ceiling (a wind-up multiplies it); past ~1.35 the AI keeper's foot catches more
-   ctl:0.55,          // control: scales the aim assist, and 1-ctl is the spray (shots.charge.spray)
-   exert:2.2          // stamina charged, in swings (stats.kickFat)
+   ctl:0.8,          // control: scales the aim assist, and 1-ctl is the spray (swings.spray)
+   exert:2.2,         // stamina charged, in swings (stats.kickFat)
+   v:105,             // the AI's assumed exit speed (u/s): where it reads the opposing rows for a plain shot and a loose ball's lanes
+   open:1.5,          // the AI shoots at once on a lane clearing the blockers by this (kickShotPlan's clr: ATT the goal, others past the row ahead); under it the shot waits (ai.kickWorth)
+   // the AI's aim: it slides so the boot's corner sends the ball at a spot in the mouth (accuracy = DIFFS.aim x the acc stat)
+   aim:{
+    gain:20,          // converts the lateral wanted into a z aim-offset
+    max:0.7,          // clamp on that offset (u)
+    spread:1.3,       // low-accuracy miss across the mouth: wider = a rookie sprays more
+    minAcc:0.25,      // accuracy under which it aims at the middle, not the widest open lane (ai.gapAim)
+    sprayMix:0.2      // share of the miss still added onto an open-lane target
+   },
+   // the wind-up (shots.charge builds it): its band, its pull-back, and what it does to the trims by where it was let go
+   charge:{
+    sweetFrom:0.45, sweetTo:0.78,   // the band that pays full power AND full control
+    minFire:0.10,                   // a release under this charge is the shot with no wind-up
+    pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
+    pullLerp:24,                    // ease rate toward it
+    powMin:1.00, powMax:1.10,       // impulse trim from 0 charge to the sweet band
+    overPow:0.80,                   // …and back down to this by full charge, held too long
+    ctlMin:0.55,                    // control at 0 charge (a snatched shot)
+    overCtl:0.35                    // …and at full overcharge
+   }
   },
   // kick from a pin: THE pin pass, player and AI
   pinPass:{
    windup:0,          // keep 0: a pull-back swings the boot through the pinned ball
    windupA:-0.35,     // pull-back angle; read only with a wind-up
-   strike:0.07,       // sweep end time (s), so the pass speed: lower = quicker (0.07 is ~1.4x the speed of 0.1) and less angle off a slide; the aim follows it (ai.catch.steer.at)
+   strike:0.07,       // sweep end time (s), so the pass speed: lower = quicker (0.07 is ~1.4x the speed of 0.1) and less angle off a slide; the aim follows it (steer.at)
    strikeA:0.85,      // sweep end angle
    hold:0.28,         // the angle is held until (s)
    drop:0.35,         // the leg is back at rest by (s)
    powFrom:0.08,      // power window opens (s)
    powTo:0.15,        // power window closes (s)
-   restPower:0.85,    // bounce inside the window: higher = a harder hit
+   restPower:0.7,    // bounce inside the window: higher = a harder hit
    rest:0,            // bounce outside it
    pow:1,             // impulse trim of the first contact, and its speed ceiling: lower = a softer pass
    ctl:1,             // control: scales the pass assist, and 1-ctl is the spray
-   exert:1            // stamina charged, in swings (stats.kickFat)
+   exert:1,           // stamina charged, in swings (stats.kickFat)
+   v:45,              // the AI's assumed flight speed (u/s): how long a receiver holds its pose (catch.recv)
+   slideT:0.22,       // the AI keeps its planned slide this long from the swing's start (s), and a rod holds only the slide its room lasts for
+   // slide (u/s) -> heading (rad) the ball leaves on, measured with kaPinSweep at a sweep of `at`; a pin pass scales it by strike / at, the AI's run-up reads it as it is
+   steer:{
+    table:[[0,0],[10,0.178],[20,0.354],[30,0.513],[43,0.691]],
+    at:0.1,           // the sweep time the table was measured at (s)
+    vMax:43           // faster than this the heading stops following the slide
+   }
   },
   // power + kick from a pin: THE pin shot, player and AI (the AI's tic-tac strike too)
   pinShot:{
@@ -442,8 +471,16 @@ kick:{
    restPower:0.8,     // bounce inside the window: higher = a harder hit
    rest:0.01,         // bounce outside it
    pow:1.15,          // impulse trim of the first contact, and its speed ceiling: higher = a harder shot
-   ctl:0.6,           // control: scales the aim assist, and 1-ctl is the spray (shots.charge.spray: +-0.064 rad at 0.6); 1 = no spray
-   exert:1            // stamina charged, in swings (stats.kickFat)
+   ctl:0.6,           // control: scales the aim assist, and 1-ctl is the spray (swings.spray: +-0.064 rad at 0.6); 1 = no spray
+   exert:1,           // stamina charged, in swings (stats.kickFat)
+   cap:0.20,          // speed ceiling added to EVERY contact of the swing (the boot keeps meeting the ball after the first touch); higher = faster but the ball starts to hop; 0 = off
+   v:160,             // the AI's assumed exit speed (u/s) of a classic ball: where it reads the opposing rows for a pinned ball's lanes
+   open:1.5,          // the AI shoots a held ball once its way forward clears the blockers by this; a carry, tap or fetch only goes where it would (the tic-tac strike asks catch.tictac.strike.prep more)
+   slideK:0.0091,     // a pinned ball shot off a sliding rod (the push): slope gained per u/s of slide (z per unit of x)
+   slideDrift:-0.02,  // ...and the line it leaves on starts this many s of slide off the ball (fitted through the DEF and keeper crossings)
+   rollK:0.0069,      // a ball rolling along the row struck with the slide the man has (the AI's tic-tac strike): slope per u/s of slide, aim assist off (tt-soak ttStrikeScene)
+   meet:0.025,        // s from the swing's start to the boot meeting the ball: the tic-tac strike fires this early
+   slideT:0.22        // the AI's tic-tac strike keeps its slide this long from the swing's start (s)
   },
   // power + kick from a forward pin: THE snake, player and AI (over the top of the rod and through the ball)
   snake:{
@@ -457,10 +494,35 @@ kick:{
    restPower:0.9,     // bounce inside the window: higher = a harder hit
    rest:0.01,         // bounce outside it
    pow:1.15,          // impulse trim of the first contact, and its speed ceiling: higher = a harder snake
-   ctl:0.6,           // control: scales the aim assist, and 1-ctl is the spray (+-0.064 rad at 0.6); 1 = no spray
+   ctl:0.8,           // control: scales the aim assist, and 1-ctl is the spray (+-0.064 rad at 0.6); 1 = no spray
    exert:2.7,         // stamina charged, in swings (stats.kickFat)
-   carry:1.0,         // share of the slide the ball keeps when let go: 1 = it stays with the man, lower = it trails him (and the AI's aim, ai.catch.snake.k, was measured at 1)
-   loft:0.8          // the most a snake's contact launches the ball above the pitch (rad), turned down without losing speed: a ball held deep (4.5+ ahead) is met late in the foot's arc and left at up to 24 degrees, over the bar; null = the raw contact
+   carry:1.0,         // share of the slide the ball keeps when let go: 1 = it stays with the man, lower = it trails him (slideK was measured at 1)
+   loft:0.8,          // the most a snake's contact launches the ball above the pitch (rad), turned down without losing speed: a ball held deep (4.5+ ahead) is met late in the foot's arc and left at up to 24 degrees, over the bar; null = the raw contact
+   cap:0.40,          // speed ceiling added to every contact of the swing
+   v:200,             // the AI's assumed exit speed (u/s); the turn is counted separately
+   open:1.95,         // the AI snakes once the lane clears by this (catch.snake.lateClear past holdT)
+   slideK:0.0038,     // slope gained per u/s of slide (aisnake-soak asSlide)
+   slideDrift:0.12    // s of lateral travel before the strike
+  },
+  spray:0.16,         // rad of random heading error a swing leaves with at zero control (scaled by 1 - ctl)
+  // where the AI's plain kick (pass or shot) reaches a loose ball, rod-relative (dir-relative x, + = ahead)
+  reach:{
+   inFrontMin:1.5, inFrontMax:7.3,  // ahead-window a forward swing can reach
+   overFoot:2.2,      // |dx| under which the ball is at the feet and strikeable
+   overFootOffset:1.4,  // shift the overFoot zone this far forward of the rod
+   alignSlow:1.5, alignFast:1.25,   // z-alignment tolerance for a swing (slow / fast ball)
+   wallReach:2.6, wallSlack:0.7,    // wall-hug rescue: capsule z-reach / slack at the slide limit
+   waitTta:3.0,       // a smart rod waits for a ball reaching the feet within this (s) instead of poking at full stretch
+   waitMinVX:3        // ...coming at least this fast in x
+  },
+  // the pass assist: a pass (either swing) bends toward its receiver; the player's and the AI's
+  passAssist:{
+   bend:0.16,         // the most it bends (rad); the acc stat's aim assist counts if higher
+   cone:1.1,          // ...only if the ball is leaving within this angle of him
+   minVX:5,           // ...and moving forward at least this fast (u/s)
+   aim:true,          // false = a player's pass leaves unaimed (shots.js shotPassTarget)
+   bendCost:4,        // a player's pass prefers a straighter lane over a clearer one this hard
+   pick:1.4           // a player's pass picks only receivers within pick x bend of where the ball leaves (shots.js shotPassPick)
   }
  },
 
@@ -471,20 +533,13 @@ kick:{
   mod:{
    dead:0.08,        // trigger travel under this reads as untouched (analog triggers rest noisy)
    powAt:0.5,        // pad RT depth that counts as power held: a kick is the shot past it, the pass short of it; on a pin too
+   fwdAt:-0.55,      // axis at or below this is deep finesse: kick is the forward pin (shots.pin.fwd)
+   keep:true,        // a pad's LT squeezed that deep counts as full until it is let back past hold.from (a relaxing hand keeps its pass, forward pin and receive); false = the raw depth every frame
+   chord:0.06,       // a pad kick pressed while LT is still travelling down waits up to this long (s) for it to get that deep: LT and A pressed together are the forward pin. The same wait for RT on its way to powAt: RT and A together are the shot; 0 = off
 
 // Total Control: the axis scales how fast the rod tracks the right stick; LT heavy, RT snappy
     softTrack:0.28, hardTrack:2.6,
    directLerp:120                  // stand-in tracking rate when KICK.padAngleLerp is 0 (fully direct)
-  },
-
-  pass:{
-   on:true,
-   modAt:-0.55,      // axis at or below this is deep finesse: kick is the forward pin (shots.pin.fwd)
-   keep:true,        // a pad's LT squeezed that deep counts as full until it is let back past hold.from (a relaxing hand keeps its pass, forward pin and receive); false = the raw depth every frame
-   chord:0.06,       // a pad kick pressed while LT is still travelling down waits up to this long (s) for it to get that deep: LT and A pressed together are the forward pin. The same wait for RT on its way to mod.powAt: RT and A together are the shot; 0 = off
-
-   bendMult:1.4,
-   bendCost:4        // how hard a straighter lane is preferred over a clearer one
   },
 
   hold:{
@@ -503,7 +558,7 @@ kick:{
    back:-6.9, front:7.4,   // a ball this deep behind / ahead of the rod (dir-relative x): the foot's face reaches it
    zMax:16,         // ...within this of a man's z, beside him (in his lane the leg is held where it is)
    lerp:35,        // ease rate onto the angle
-   dead:0.01       // the target only moves for a change bigger than this (rad)
+   dead:0.05       // the target only moves for a change bigger than this (rad)
    },
 
   // THE PIN (shots.js shotPinInput, physics.js pinUpdate): finesse + raise tilts the men; a slow ball under a man's foot is caught and carried
@@ -532,15 +587,14 @@ kick:{
    carryOut:0.93,    // fraction of the carried slide velocity the ball keeps when let go
    // a player's kick on a back-pinned ball: the pin pass (swings.pinPass) or the pin shot (swings.pinShot; shots.js shotKickEdge)
    press:{
-    on:true,        // false = every kick from the back pin is the pin shot (kick held after it is the pass the receiver takes)
+    on:true,        // false = every kick from the back pin is the pin shot; true = a kick passes and power + kick shoots (the snake under the forward leg)
     roles:['GK','DEF','MID'],   // rods that pass; the rest (the ATT, nothing ahead to pass to) shoot on any kick
-    shoot:'power',  // 'power' = kick alone passes at once, power + kick shoots (and is the snake under the forward leg); 'double' = a second kick within dbl shoots (snake.dbl for the snake)
-    dbl:0.17,        // 'double': the second press within this of the first is the shot (s); the pass waits this long for it, so longer = a later pass
     recv:true       // a clicked pass is received too while finesse is held (the stroke's receive, assist.recv.strokeT); false = only kick held after it poses the man ahead
     },
-   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, power + kick is the snake (shots.snake, press.shoot)
+   // the forward pin (finesse + kick): the men tilt forward and a slow ball touched from above is caught; while it holds one, power + kick is the snake (swings.snake)
    fwd:{
     on:true,        // false = finesse + kick is the pass (swings.pass)
+    snake:true,     // power + kick on a ball held under the forward leg is the snake (swings.snake); false = no snake
     assist:true,    // beside a slow ball lying ahead (ai.catch.fetch.near..fwdFront) the leg is up and clear, over it it lowers onto the top; false = always `angle`
     angle:0.9,      // rod-local forward tilt with no ball there: the foot comes down on a ball lying 3 ahead (a ball from behind takes ai.catch.recv.angle, assist.recv)
     lerp:14,         // ease rate into the pose, and so the speed of the stroke through a ball lying in the way: about 6 u/s per unit (4 = 23, 8 = 47, 14 = 83); the old soft pass left at ~50
@@ -631,34 +685,17 @@ kick:{
     }
    },
 
-  // THE SNAKE (shots.js shotSnakeFire, rods.js updateRods): power + kick (pin.press.shoot) with a ball held under the forward leg; the man rolls over the top of the rod and strikes it from behind
-  snake:{
-   on:true,
-   dbl:0.25          // pin.press.shoot 'double': the second kick press within this of the first (s)
-   // everything about the swing itself: swings.snake
-   },
-
+  // the player's wind-up: how it is built, its marker and its tone (the band, pull-back and trims: swings.shoot.charge)
   charge:{
    on:true,
  
    rate:1.1,          // charge gained per second at a full pull-back / a full hold
    decay:2.2,         // charge bled per second once the wind-up is abandoned
-   sweetFrom:0.45, sweetTo:0.78,   // the band that pays full power AND full control
-   
-   powMin:1.00, powMax:1.10,       // impulse trim from 0 charge to the sweet band
-   overPow:0.80,                   // …and back down to this by full charge, held too long
-   ctlMin:0.55,                    // control at 0 charge (a snatched shot)
-   overCtl:0.35,                   // …and at full overcharge
-   spray:0.16,                     // rad of random heading error at zero control
-   minFire:0.10,                   // release under this charge is the shot with no wind-up
    stickBack:0.18,                 // right-stick pull-back depth that counts as a wind-up
    // power + pull-back, fired by kick: power alone winds up nothing, the rod must go back (raise or stick) and only a kick fires it
    // false = the old rule: power alone winds up, letting go fires
    needRaise:true,
    grace:0.09,                     // s after letting the wind-up go that a kick still fires it (keys lift a frame apart)
-   pullA:-1.15,                    // rod-local wind-up angle at full charge (classic; capped by sweepClips)
-
-   pullLerp:24,                    // ease rate toward it
    blockAt:0.30,                   // wind-up shortfall (asked minus got) that reads as "no room to swing"
    blockLerp:9,                    // how fast that reading eases in and out — a rolling ball must not strobe it
    tapMax:0.11,                    // 'kick'/'both': a press shorter than this is the pass
@@ -747,13 +784,8 @@ ai:{
     gkPad:1,                                   // keeper stays within goalHalf + this
     reactMax:.25,                              // longest reaction latency the ball-history ring covers (s)
     ttaMax:0.8,                                // only lead the ball's z if it arrives within this (s)
-    inFrontMin:1.5, inFrontMax:7.3,              // ahead-window a forward swing can reach
     underFootFront:6.5, underFootBack:2.9,     // ahead/behind window where a swung rod stays forward
     lowY:2.05,                                 // only swing when the ball is below this height
-    raiseBehind:-7.8,                          // ball must be this far behind before the rod will raise
-    raiseBack:false,                           // false = a rod never lifts back for a ball coming from behind (the latch, a benched rod's raise, the DEF's lane lift): the men stay down and the pin pose takes it
-    overFoot:2.2,                              // |Δx| under which the ball is at the feet and strikeable
-    overFootOffset:1.4,                        // shift the overFoot zone this far forward of the rod
 
    // Side-step after a kick: slide clear in z, then lower.
    repositionSpeed:0.5,                        // max ball speed that triggers the side-step
@@ -784,75 +816,33 @@ ai:{
       clampSteps:10,    // steps the charge pull-back is walked in
       pushDot:0.2       // how goalward the impulse must be to count as a knock-back
    },
-// dribble: ball at the feet, men down, no way forward: slide it instead of hitting it into the row opposite
-   dribble:{
-      on:false,
-      roles:['ATT','MID','DEF'],  // roles allowed to dribble (never GK)
-      iqGate:true,        // only rods whose iq roll passed try it
-      back:0,             // control window behind the rod (dir-relative x): never a ball behind the man, the back of a man does not carry it (kick.rearCarry)
-      front:3.1,          // …and in front of it
-      alignZ:2.2,        // z-distance of the nearest man within which the ball is controllable
-      maxSpeed:65,        // ball must be slower than this to be brought under control
-      minApproach:-8,     // closing-speed window: below this the ball is running away
-      maxApproach:22,     // …above this it won't settle
-      ownGoalGuard:14,    // never dribble within this x-distance of our own goal line
-      holdRest:0.3,         // restitution while dribbling (0 = absorbing)
-      holdGrip:0.60,      // fraction of the foot's velocity lerped into the ball (higher = carried more closely)
-      holdZ:2.9,          // z-distance from the man above which contact is lost
-      carryLead:1.5,      // how far past the ball in z the man aims while pushing it
-      carryMult:0.8,      // rod slide-speed multiplier while dribbling
-      slideMax:16,        // cumulative z travel cap from where control was taken
-      // Target scoring: outletClr + centrePull×(gain toward centre) − travelCost×(distance).
-      samples:5,          // candidate ball-z positions scanned
-      range:16,           // …spanning at most this far either side of the ball
-      centrePull:0.65,    // weight on getting central (raise to make wide players cut inside)
-      travelCost:0.10,    // penalty per unit travelled
-      minGain:1.5,        // don't enter unless the best target is this far from the ball
-      retargetDead:1.5,   // a new target must move more than this to be adopted
-      reEval:0.25,        // seconds between target re-evaluations
-      // Release conditions, whichever fires first.
-      coveredClr:1.6,     // entry gate: only dribble when the current outletClr is below this
-      wideZ:14,           // …or when the ball is at least this far off centre in z
-      lineClear:2.4,      // release and play it once outletClr clears by this much
-      arrive:1.2,         // …or once the ball is within this of the target z
-      holdT:2.2,          // …or after this long dribbling (s, keep under deadball.stallT)
-      pressX:13,          // closed down: an opposing man within this x…
-      pressZ:3.2,         //   …and this z of the ball forces an immediate release
-      abortT:6.8,         // hard safety valve on the whole action (s)
-      cd:1.2,             // re-entry lockout after a dribble ends (s)
-      noPoke:true,        // also suppress the full-stretch poke so the ball can reach the feet
-      // Pass: give a covered ball to a teammate rod ahead with a better shot.
-      pass:{
-         on:true,
-         roles:['GK', 'DEF','MID'],  // roles allowed to pass (adding 'GK' lets the keeper pass to the DEF, no opposing row between them: more landed receives, goalward knocks up about 25%, not shipped); ATT removed: it shoots instead
-         minAhead:10,         // receiver must be at least this far ahead in x
-         maxAhead:34,         // …and at most this far
-         minClear:1.8,        // the lane to him must clear the opposing men by this much
-         receiveZ:1.4,       // a predicted loose pass must cross within this distance of the receiver
-         wClear:1.0,          // scoring weight: can the pass get there
-         wOnward:0.9,         // scoring weight: how good his shot would be
-         wDist:0.05,          // scoring weight: preference for the nearer option
-         bias:0.9,            // margin a pass must beat the current shot by (raise = shoot-first)
-         shotBias:1.0,        // multiplier on the shot's clearance in that comparison
-         onKick:true,         // also redirect a normal kick into a pass when the shot is covered
-         onKickClr:1.8,       // …only when the best lane clears by less than this
-         every:0.2,           // seconds between pass evaluations per rod
-         assist:0.16,         // aim-assist bend toward the receiver (rad)
-         assistCone:1.1,      // …only if the ball is leaving within this angle of him
-         assistMinVX:5,       // …and moving forward at least this fast
-         // gk: the keeper passes to the DEF whenever a man is near enough straight ahead, whatever its iq roll or the shot it has; a plain kick waits for a mate standing ready in its lane to lift out of it
-         gk:{
-            on:true,          // false = the keeper passes like any rod (iq roll, covered shot) and kicks through a ready mate
-            maxTh:0.3,        // pass only to a man within this of straight ahead (rad)
-            maxBall:45,       // …off a ball no quicker than this (u/s): a quicker one is a save, kicked plain
-            wTh:10,           // pick the man nearest straight ahead: score lost per rad off it
-            clrCap:4,         // …a lane clear of the opposing men by more than this counts as this
-            readyT:0.35,      // with no pass on, a mate standing ready ahead is given this long (s) to get a man onto the lane
-            clearT:0.4,       // then it is let go, and a plain kick waits at most this long (s) for the mates ahead to get out of its way
-            clearA:-1.1,      // …a mate's leg lifted past this (rad) is over the ball
-            laneZ:6,          // …a mate's man within this of the ball's z is in the way
-            reach:20          // …only the rods this close ahead of the keeper (the DEF)
-         }
+// pass: a covered ball given to a team-mate rod ahead with a better shot (the swings are swings.pass / pinPass, the bend toward him swings.passAssist)
+   pass:{
+      on:true,
+      roles:['GK', 'DEF','MID'],  // roles allowed to pass (adding 'GK' lets the keeper pass to the DEF, no opposing row between them: more landed receives, goalward knocks up about 25%, not shipped); ATT removed: it shoots instead
+      minAhead:10,         // receiver must be at least this far ahead in x
+      maxAhead:34,         // …and at most this far
+      minClear:1.8,        // the lane to him must clear the opposing men by this much
+      receiveZ:1.4,       // a predicted loose pass must cross within this distance of the receiver
+      wClear:1.0,          // scoring weight: can the pass get there
+      wOnward:0.9,         // scoring weight: how good his shot would be
+      wDist:0.05,          // scoring weight: preference for the nearer option
+      bias:0.9,            // margin a pass must beat the current shot by (raise = shoot-first)
+      shotBias:1.0,        // multiplier on the shot's clearance in that comparison
+      onKick:true,         // a plain kick may be a pass: any pass when its shot is shut, else one that beats the shot by bias (as off the pin)
+      every:0.2,           // seconds between pass evaluations per rod
+      // gk: the keeper passes to the DEF whenever a man is near enough straight ahead, whatever its iq roll or the shot it has; a plain kick waits for a mate standing ready in its lane to lift out of it
+      gk:{
+         on:true,          // false = the keeper passes like any rod (iq roll, covered shot) and kicks through a ready mate
+         maxTh:0.3,        // pass only to a man within this of straight ahead (rad)
+         maxBall:45,       // …off a ball no quicker than this (u/s): a quicker one is a save, kicked plain
+         wTh:10,           // pick the man nearest straight ahead: score lost per rad off it
+         clrCap:4,         // …a lane clear of the opposing men by more than this counts as this
+         readyT:0.35,      // with no pass on, a mate standing ready ahead is given this long (s) to get a man onto the lane
+         clearT:0.4,       // then it is let go, and a plain kick waits at most this long (s) for the mates ahead to get out of its way
+         clearA:-1.1,      // …a mate's leg lifted past this (rad) is over the ball
+         laneZ:6,          // …a mate's man within this of the ball's z is in the way
+         reach:20          // …only the rods this close ahead of the keeper (the DEF)
       }
    },
    // Safe raise: lift over a slow ball loitering behind the rod.
@@ -870,10 +860,10 @@ ai:{
       gkFront:5.3,         // GK only: push that front line this much further in front of the keeper
       maxVX:105,            // ball |v.x| must be under this
       maxSpeed:105,        // total ball speed cap
-      abortT:6.5          // give up after this long (s, keep under deadball.stallT)
+      abortT:6.5          // give up after this long (s, keep under deadball.stallT); never over a ball at the boot (the kick gate swings it from the lift)
    },
    // back guard: an AI rod never pushes a ball behind its boot toward its own goal
-   // last word on the angle and slide (rods.js updateRods); kicks, dribble, the pin and human rods are exempt; tools/backswing-soak.js measures it
+   // last word on the angle and slide (rods.js updateRods); kicks, the pin and human rods are exempt; tools/backswing-soak.js measures it
    backGuard:{
       on:true,
       lift:true,          // hold a back-swing short of a ball it would hit on the way
@@ -894,7 +884,6 @@ ai:{
    // retrieve: a slow ball behind a man's heel or under the row: side (slide clear), lift, over (onto its z), pin (or drop through it)
    // every step is forward of the ball, so nothing knocks it toward the rod's own goal
    retrieve:{
-      hold:{holdRest:0.3, holdGrip:0.60, carryMult:0.5},   // while the leg lowers onto the ball: its bounce, the share of the foot's velocity it takes, the rod's slide speed
       on:true,
       maxSpeed:18,        // enter only for a ball slower than this (u/s)
       bailSpeed:36,       // a live action lets go once the ball is quicker than this
@@ -911,9 +900,9 @@ ai:{
       liftT:1.0, overT:1.2, pinT:1.4,   // phase timeouts (s); pinT covers the descent
       pinLead:0.10,       // rad the pin pose leads the boot on the way down; keep under shots.pin.capA (0.12) or the catch never arms
       abortT:4.0,         // whole action, keep under deadball.stallT
-      pin:true,           // try to pin the ball under the leg, then play the pin shot; false = always drop through it
+      pin:true,           // try to pin the ball under the leg, then play the pin shot; false = always the drop (the shot swung from the lift)
       settleT:0.30,       // a pinned ball is held this long before it is played (s)
-      dropT:0.6,          // the drop is given this long to swing through (s)
+      dropT:0.6,          // the drop waits this long for a shot its swing reaches, then the man steps clear (s)
       cd:0.6              // re-entry lockout after an action ends (s)
    },
    // catch: pin a ball that is running at the rod (the player's pin, shots.pin), carry it to the best way forward, then play it
@@ -1067,7 +1056,7 @@ ai:{
          // loose: a ball lying at rest between two men is knocked to the neighbour with the open lane, not kicked
          loose:{
             on:true,
-            maxV:10.5,      // lying there (u/s)
+            maxV:4.5,      // lying there (u/s)
             share:0.33,     // share of the chances taken; the decision is made once every `every`
             every:1.5      // s
          }
@@ -1152,12 +1141,11 @@ ai:{
          strike:{
             on:true,
             w:[0,12,22,32],   // slides the man can arrive at, either way (u/s): 0 is the straight shot, the rest cuts
-            k:0.0069,         // slope the ball leaves on per u/s of slide (z per unit x), aim assist off
             look:0.04,        // s between looks at the lanes
             warm:3,           // the rows are read for a strike only once the ball has been touched this many times: the rally is established first
              tilt:0.12,        // time (s) for the leg to get back; the shot can be chosen later now that there is no return swing
             late:0.05,        // a strike is committed in the last this much (s) before the leg could no longer get back: the rows are read as late as they can be
-            prep:2.0,         // the leg goes back for a strike when its best lane clears the blockers by this much
+            prep:0.5,         // the leg goes back for a strike when its best lane clears the blockers by this much more than swings.pinShot.open (the rows are read moving)
              guard:0.05,       // require clearance even if the defenders get this much longer (s) to close
              go:1.0,           // clearance needed to start the planned slide; a closure hands off to a side catch
             patient:3.0,      // a rally this old (s) starts to settle for less: prep, back and go fall...
@@ -1165,11 +1153,9 @@ ai:{
             drop:-0.5,        // ...and once on his way the strike is given up only if it clears by less than this (or ai.lanes.clear, the higher)
             pushMax:0.8,      // a slide with the ball is at most this share of its speed (the ball has to overtake the man)
             settle:0.02,      // the man is at speed this long before the swing (s)
-            lag:0.025,        // s from the swing's start to the boot meeting the ball
             gap:0.4,          // the ball is this far short of the man's centre at contact (u)
             past:1.0,         // given up once it is this far beyond him
             tgtLead:1.0,      // an opposing rod's target is carried on at the pace it is moving, this share of the way over the time to the strike
-            hold:0.22,        // the slide is kept this long from the swing (s)
             tolA:0.08,        // the leg is back once within this of the pose (rad)
             abortT:1.0        // whole strike (s)
          }
@@ -1223,7 +1209,6 @@ ai:{
       turnT:0.8,          // ...and only after it has been going that way this long (s); 0 = as soon as another z is better
       arrive:1.0,         // within this of the target z it holds and looks again
       reEval:0.1,         // seconds between target re-evaluations
-      lineClear:1.5,      // play it once the way forward clears the blockers by this much
       carryFirst:true,    // a carry or a tap to a better z goes before a pass from any pin; false = only from a forward pin
       // open: with the way forward open a rod listed here looks at the mates first and passes when the best one scores above k x the clearance + b (low = would rather pass); a rod not listed shoots
       // push:false = it never shoots on the slide (the soft pass swing cannot be placed off a sliding rod, so a push would go every time): it carries to the z, stops, then passes or shoots
@@ -1232,15 +1217,11 @@ ai:{
          DEF:{k:0, b:-9, push:false},
          MID:{k:1, b:4}
       },
-      shotV:105,         // assumed speed for ordinary drives and loose-ball lane checks (u/s)
-      pinShotV:160,      // effective forward speed of a classic ball from the back pin (u/s)
       fireV:6,            // a still shot needs the rod slower than this (u/s)
       // push: the shot fired while sliding. The ball keeps carryOut of the slide and the boot keeps its speed through the swing, so it leaves at an angle toward the slide
       push:{
          on:true,
          minV:12,         // slide at or above this is a push; between fireV and this nothing is judged, the rod settles
-         k:0.0091,        // slope gained per u/s of slide (z per unit of x)
-         drift:-0.02,     // the line it leaves on starts this many s of slide off the ball (z = drift x slide; fitted through the DEF and keeper crossings)
          room:3,          // slide left to carry on through the swing
          lead:0.3,        // how far ahead (s of slide) the strike gate is told the boot is going
          // play: the pull. A held ball is taken wide (the sell), then burst back toward the middle and shot on the move to the near post, behind a keeper leading the ball across (pushpull-soak ppRows: 70-95% of such shots score at pro, 45-55% at legend)
@@ -1254,7 +1235,7 @@ ai:{
             sellT:0.4,     // the sell's time limit (s)
             post:[7,9.6],  // the pull fires when the line it leaves on reaches the goal this far from the middle on the ball's own side (u)
             aim:8.5,       // ...the burst holds the slide that lands it here
-            clear:{ATT:-2, MID:0},   // ...unless a man stands this far inside that line (catch.lineClear is the still shot's); the ATT beats a keeper leading the ball, a MID's line crosses field rows
+            clear:{ATT:-2, MID:0},   // ...unless a man stands this far inside that line (swings.pinShot.open is the still shot's); the ATT beats a keeper leading the ball, a MID's line crosses field rows
             burst:1.0,     // the burst: x the rod's top speed while it holds the ball (a carry is shots.pin.carry)
             acc:1.5,       // ...and x its acceleration
             burstT:0.5,    // the burst's time limit (s)
@@ -1269,21 +1250,16 @@ ai:{
          roles:['ATT', 'MID'],   // a MID or DEF snake is a clearance into the row in front: at legend it added goalward knocks and dead balls and no goals (catchSoak / bsSoak)
          use:{rookie:0.4, pro:0.8, legend:1},   // share of forward holds that shoot with it (drawn once a hold); the rest re-seat as before
          // the depths it shoots from are the forward pin's, shots.pin.fwdBack..fwdFront: the foot comes round onto the ball from behind
-         clear:1.95,       // minimum clearance for a snake during the setup
          lateClear:0.6,    // after catch.holdT, take a narrower lane that still clears the projected defenders
          samples:17,      // lateral positions to try when carrying a covered snake
          brake:false,     // true = fired standing only (catch.recv.fwdBrake), like a re-seat; false = the slide carried through
-         shotV:200,       // effective forward speed after contact (u/s); the wind-up is counted separately
-         drift:0.12,      // s of lateral travel before the strike
-         follow:0.042,    // extra lateral coverage per u/s of slide for defenders tracking the ball
-         k:0.0038         // slope gained per u/s of slide (asSlide)
+         follow:0.042     // extra lateral coverage per u/s of slide for defenders tracking the ball
       },
       // recv: the rod a pass is aimed at holds a forward pin pose while it is in flight, so the ball is pinned where the front pin holds it
       recv:{
          on:true,           // false = a pass is received as before (the behind-catch, or a block)
          roles:['DEF','MID','ATT'],
-         angle:0.9,         // rod-local pose, + forward: a ball from behind rolls under the man and stops under his forward foot, about 4.85 ahead of the rod
-         speed:45,          // flight speed assumed when it is armed (u/s)
+         angle:0.95,         // rod-local pose, + forward: a ball from behind rolls under the man and stops under his forward foot, about 4.85 ahead of the rod
          pad:0.9,           // seconds beyond the flight before it gives up
          grace:0.35,        // the pass swing meets the ball ~0.15-0.3 s after it starts: until then there is no flight to read and the last touch is not the pass's
          liftT:0.14,        // a ball this many seconds from arriving is not let through: the lift takes this long, and started later it goes across the ball
@@ -1295,7 +1271,7 @@ ai:{
          awayV:80,         // ...whatever its speed (a pass is pinged fast: the pose is for taking a fast ball), unless it runs away from the rod toward the team's own goal faster than this (u/s)
          trackV:15,         // a ready rod follows a ball coming at it from behind this fast (u/s), not the lane: an unarmed pass, a clearance, the keeper's kick
          feet:true,         // ...also a ball lying in reach of one of the team's rods that the other team touched last (it is the team's to play); false = only a ball the team touched last
-         ownBack:-5,        // ...reach: this far behind a rod's heel (dir-relative x)...
+         ownBack:-5.0,        // ...reach: this far behind a rod's heel (dir-relative x)...
          ownFront:6.3,      // ...and this far in front of its foot
          reach:75,          // ...and the rod is this far or less ahead of the ball (every rod of the team ahead of it, not only the ones a pass could reach)
          reachT:0.5,        // the time a ready rod is given to get a man onto the lane (s): it is not in a hurry
@@ -1364,11 +1340,8 @@ ai:{
       // steer: a pass from a pin slides through the swing and the soft swing turns the slide into heading (the same from a standing rod, a carried ball or a released one)
       steer:{
          on:true,         // false = a pass from a pin is made standing
-         slide:[[0,0],[10,0.178],[20,0.354],[30,0.513],[43,0.691]],   // slide (u/s) -> heading (rad) the ball leaves on, measured with kaPinSweep at a sweep of `at`; the run-up reads it as it is
-         at:0.1,          // the sweep time slide was measured at (s): a pin pass scales the table by swings.pinPass.strike over this
-         vMax:43,         // faster than this the heading stops following the slide
-         hold:0.22,       // slide commitment from the swing start (s); also budgets room to the rod's travel limit
-         standing:0.30,   // a pass from a standing rod leaves on this heading toward its target (rad)
+         standing:0.30,   // a pass from a standing rod leaves on this heading toward its target (rad); also the aim cone of a pass (ai.aimCone)
+         ownGoal:14,      // no run-up (free pass or shot) this close to our own goal line
          // free: a pass off a slow ball in front of the rod runs at it first. The man backs off to the far side and slides at it; the swing fires on the step whose predicted launch lands on the mate (the boot's corner turns the ball, not the slide)
          free:{
             on:true,         // false = a free pass is kicked where the rod stands, whatever lane it was judged on
@@ -1387,20 +1360,6 @@ ai:{
             thTol:0.12,      // the mate is looked at again once a launch is predicted (he slides during the run): he must still be within this of the planned heading (rad), with a clear lane, or it is given up
             abortT:1.5,      // the whole run, s
             cd:0.6           // s before another run after one ends without a pass
-         },
-         // shot: a striker's run-up off a slow ball in front: the boot's corner turns a plain kick (the slide hardly does: ~0.001 rad per u/s; ~0.2 rad at most from a ball 3 ahead, ~0.45 at 2.5 or 4.5), so the man slides slowly across the ball and fires on the first step whose predicted shot clears the lane
-         shot:{
-            on:false,        // [red, blue] for a duel. Off: pro duels 3 x 48, the running team 0.22 : 0.33 and 0.23 : 0.27; ~0.15 shots a match fire, 80-100% touched by the other team first (the defence moves during the run)
-            roles:['ATT'],
-            relMin:2.0,      // the ball this far ahead of the rod...
-            relMax:5.5,      // ...to this
-            maxBall:8,       // ...and slower than this (u/s)
-            open:1.5,        // a shot already clearing the lane by this is kicked as it stands
-            clear:1.0,       // the run fires once its predicted shot clears the lane by this (ai.lanes.clear is the floor)
-            step:0.4,        // the run is planned by predicting the shot (kickSlidePlan) every this far along it, each side; it runs to the side whose shot clears soonest
-            pre:0.5,         // the man first stands this far on the near side of the ball's centre (units), so the corner crosses it from square
-            v:12,            // the slide (u/s): slow, so the corner crosses the ball over many steps
-            past:3.2         // given up once the man is this far off the ball (units): the boot no longer reaches it
          }
       },
       cd:0.9              // re-entry lockout after the action ends (s)
@@ -1412,7 +1371,6 @@ ai:{
       maxSpeed:35,        // only evade balls slower than this
       maxApproach:4,      // ball must not be closing on the rod faster than this
       abortT:3.0,         // give up after this long (s, keep under deadball.stallT)
-      raiseAfter:true,    // latch the raise on a successful clear so the drop knocks the ball upfield
       cd:0.8,             // re-entry lockout after an evade ends (s)
       behindDead:1.6      // ball must be at least this far behind the rod for evade to fire
    },
@@ -1426,16 +1384,12 @@ ai:{
       mateBack:6.0,       // the handling mate must be at least this far behind us in x
       mateReach:14.0,     // …and within this x-distance of the ball
       laneMargin:1.0,     // extra z clearance beyond footBox.z + BALL_R when stepping aside
-      lift:true,          // also lift the men once nothing is in back-swing reach
       throughV:12,        // ball closing faster than this counts as struck
       release:-5.8,       // hand back to the normal path once the ball reaches this (dir-rel x)
       passed:1.0,         // …but a struck ball holds the lane open until it is this far past us
       abortT:3.4,         // never sit out of the lane longer than this (s)
       cd:0.35             // re-entry lockout after the action ends (s)
    },
-   // smart rods wait for the ball to reach the sweet spot instead of poking at full stretch
-   waitTta:3.0,        // only wait if the ball reaches the rod within this (s)
-   waitMinVX:3,         // …and is approaching at least this fast in x
 
    // dead-ball push: with the whistle this close a rod with the ball at its feet stops deliberating and plays it
    force:{
@@ -1445,32 +1399,24 @@ ai:{
       align:3.5           // a forced swing counts as lined up within this z gap (u); a ball resting on the boot sits just past footBox.z + ballR (3.25)
    },
 
-   // --- goal targeting (accuracy = DIFFS.aim) ---
-   aimGain:20,                                // converts desired lateral into a z aim-offset
-   aimMax:0.7,                                // clamp on that offset (u)
+   // --- goal targeting (the plain shot's own aim: swings.shoot.aim) ---
    aimGoalZ:0.85,                              // aim within ±this fraction of goalHalf
-   aimSpread:1.3,                             // low-accuracy spray width across the mouth
-   // gap aiming: accurate rods steer at the widest open lane and hold a covered shot briefly
+   // gap aiming: accurate rods steer at the widest open lane
    gapAim:{
       gap:true,           // master toggle
       samples:5,         // lanes sampled across the mouth
       blockR:2.6,         // z half-width an opposing man blocks
-      minAhead:2,         // an opposing rod must be this far ahead of the ball to block
-      minAcc:0.25,        // minimum aim accuracy to bother gap-aiming
-      sprayMix:0.2,       // fraction of the normal spray still added onto the gap target
-      openMargin:0.8,     // lane clearance at or above this counts as an open shot
-      holdMax:3.5         // how long a smart ATT/MID holds a covered shot (s)
+      minAhead:2          // an opposing rod must be this far ahead of the ball to block
    },
    // what a swing can deliver: only lanes inside that cone of the straight line count as shots or passes
    aimCone:{
       on:false,           // false = every lane across the mouth and every mate ahead counts, wherever the swing sends it
-      shot:null,          // slack added to the assist's cap for a shot (rad); null = shots are not limited
-      pass:0.30           // a pass leaves on this heading toward its target (rad); a pass from a pin measures 17.3 deg whatever the lane asks for
+      shot:null           // slack added to the assist's cap for a shot (rad); null = shots are not limited
    },
    // Defensive positioning: GK and DEF sit on the ball→own-goal line.
    defend:{
       on:true,
-      engage:5.5,         // only line-block while the ball is at least this far in front
+      engage:15.5,         // only line-block while the ball is at least this far in front
       lineBias:1,       // 1 = sit exactly on the line; 0 = track ball z
       dumbBias:0.45       // fraction of that a low-iq rod commits
    },
@@ -1539,7 +1485,7 @@ ai:{
       tzP:[1.3,1,0.8,0.6,0.8,1,1.3],     // prior weight of each: shooters go for the posts
       aim:0.8,            // the aim points span this share of goalHalf
       onGoal:1.15,        // a shot whose line misses the mouth by more than this share of goalHalf is not learned
-      shotV:40,           // a ball leaving a hold toward our goal faster than this is a shot (u/s)
+      shotV:20,           // a ball leaving a hold toward our goal faster than this is a shot (u/s)
       soft:0.6,           // a line this close to a man's block edge is half blocked (u)
       minAhead:2,         // a row must be this far past the ball to stand in a shot
       travel:0.012,       // cost per unit of slide, against a goal chance of 1
@@ -1552,16 +1498,11 @@ ai:{
          decay:0.97,      // each shot scales the old counts by this
          use:{rookie:0.2,pro:0.7,legend:1}   // how far each difficulty leans on what it learned
       },
-      // the guess: the strike point it favours, re-picked every so often (a moving keeper is hard to read); shipped off: k 1.5/2.5/3 conceded more in pro duels
-      guess:{
-         k:{rookie:1,pro:1,legend:1},        // weight on the guessed strike point (1 = no guess)
-         every:[0.35,0.8]                    // seconds between re-picks
-      },
       // the jostle: against a held ball the keeper and DEF never stand still; each slides to a fresh spot near its fit, drawn among spots that cover nearly as well
       jostle:{
          on:true,            // false = they stand on the fit; [red, blue] for a duel
          roles:['ATT', 'MID'],      // holds by these opposing rows are jostled against
-         amp:{rookie:3,pro:3.5,legend:4.0},     // furthest a spot may be from the fit (u)
+         amp:{rookie:2,pro:2.5,legend:3.0},     // furthest a spot may be from the fit (u)
          every:{rookie:[0.25,0.5],pro:[0.15,0.35],legend:[0.12,0.3]},   // seconds between fresh spots
          step:0.9,           // a fresh spot is at least this far from the last (u)
          n:9,                // spots tried across the fit ± amp
@@ -1574,7 +1515,7 @@ ai:{
       },
       // bait: leave the opponent's favourite lane open, then close it as they shoot; shipped off: 0.3 at pro conceded more in duels (the AI's lane forecast reads the open lane and shoots before the jump)
       bait:{
-         p:{rookie:0.3,pro:0.2,legend:0.1},        // chance per hold
+         p:{rookie:0,pro:0,legend:0},        // chance per hold
          leave:0.15,      // weight left on the bait lane while baiting
          take:4,          // weight on it once the defence jumps
          at:[0.6,0.95],   // jump at this share of the opponent's usual hold time…
@@ -1582,14 +1523,12 @@ ai:{
          hold:0.6         // the jump holds this long, then the defence settles (s)
       }
    },
-   alignSlow:1.5, alignFast:1.25,             // z-alignment tolerance for a swing (slow / fast ball)
 
    swingFromA:0.85,    // no AI pass or shot from a leg further forward than this over a ball under it (the drop would sweep it back: catch.under takes it); higher = swings from deeper poses
 
    // Strike gate: replay the swing curve and refuse an aimed shot the boot can't reach.
    strikeGate:{
       on:true,
-      styles:['pass','pinShot', 'shoot', 'snake'], // kick styles that must clear the gate 
       samples:9,                // arc samples across the contact window
       lead:0.05, lag:0.02,      // widen the sampled window this far either side of the power window (s); the pin shot has no wind-up, so its boot is on the ball before the window opens
       pad:0.2,                  // slack on footBoxReach, to cover the gap between arc samples
@@ -1602,13 +1541,13 @@ ai:{
       faceOnContact:true        // re-test at contact; refuse pass aim-assist on a graze or leg hit
    },
 
-   // Lane gate for plain kicks, dribble releases, late pin shots and tic-tac strikes. Passes and snakes use their own clearance margins.
+   // Lane gate for plain kicks, late pin shots and tic-tac strikes. Passes and snakes use their own clearance margins.
    // The dead-ball push (ai.force) bypasses this gate.
    // lane look: a shot's lane (laneObs, fwdClr: anything judged at a ball speed) reads each opposing row where it is heading (its target, at its top speed, over the flight + wind-up) and widened by part of what it can reach in that time
    // off = offset + vz x flight: lanes judged open were touched by that row 47% of the time (the row moves ~2.7 u a shot, the forecast missed by 2.6); target + reach 0.25: 32%, but half the plain kicks are refused
    // shipped off: no setting scored more in pro duels (6 x 48: reach 0.25 0.90 : 0.98, mode 'aim' 1.00 : 1.13; reach 0 and 0.4 lost by ~0.2 on 3 sets): a shot a defender can reach still scores sometimes, refusing it never does
    laneLook:{
-      on:false,       // [red, blue] for a duel
+      on:true,       // [red, blue] for a duel
       mode:'all',     // 'all' = every shot lane; 'aim' = only which lane a plain kick aims at (whether it shoots is judged as before)
       windup:0.05,    // s from the swing's start to the boot meeting the ball, added to the flight
       lat:0.05,       // s the row needs to see the shot before it reacts
@@ -1616,16 +1555,15 @@ ai:{
    },
    lanes:{
       on:true,
-      roles:['DEF','MID','ATT'],  // the keeper still clears (it has no catch)
-      clear:0                     // least clearance (z past gapAim.blockR, the rows read at catch.shotV) a kick may leave through: pro plain kicks under 0 were touched first by the other team 73-79% of the time, 0 and over 33-56%
+      roles:['GK','DEF','MID','ATT'],  // the keeper still clears (it has no catch)
+      clear:0                     // least clearance (z past gapAim.blockR, the rows read at swings.shoot.v) a kick may leave through: pro plain kicks under 0 were touched first by the other team 73-79% of the time, 0 and over 33-56%
    },
 
    // Kick worth: a plain kick (not a pass) has to beat keeping the ball; while it doesn't the man stays down on the ball and a fetch may take it. Off = every kick the lane gate allows fires at once.
    // Pro, 3 x 48 matches: plain kicks 15 -> 12 but goals 0.79-0.94 -> 0.67-0.79, pin shots flat: the held balls are lost, not kept (the catch had already turned them down)
    kickWorth:{
       on:true,
-      roles:['DEF','MID','ATT'],  // the keeper clears as before
-      open:{ATT:1.5,MID:1.5,DEF:1.5}, // a lane clearing by this much (kickShotPlan's clr: ATT the goal, others past the row ahead) always shoots
+      roles:['GK','DEF','MID','ATT'],  // a lane past swings.shoot.open always shoots
       ctrlV:30,           // a ball this fast (u/s, real ball) can't be kept: kick it; lower = more first-time kicks
       threat:20,          // a ball heading for our own goal faster than this (u/s) is kicked
       oppX:3.5,           // an opposing rod this near the ball in x contests it: kick
@@ -1634,7 +1572,6 @@ ai:{
       gap:0.15            // a hold broken for longer than this (s) starts the wait over
    },
 
-   wallReach:2.6, wallSlack:0.7,              // wall-hug rescue: capsule z-reach / slack at the slide limit
 // wall play: an end man can't reach a wall ball, so a forward strike off one bends into the rod's aim
    wallPlay:{
       on:true,
@@ -1642,8 +1579,7 @@ ai:{
       minAng:0.28,        // infield heading floor off the wall (rad, ~16°)
       maxAng:0.52,        // …and ceiling when aiming at the rod's target (rad, ~30°)
       minW:4,             // the boot must be swinging forward at least this fast (rad/s)
-      minVX:10,           // …and the ball leaving forward at least this fast (u/s)
-      human:false         // also apply to player-held rods
+      minVX:10            // …and the ball leaving forward at least this fast (u/s); a swing only, player and AI alike (collideRod)
    },
    slowSpeed:35,                              // ball speed under this counts as a dead ball
    cdSlow:[1,2.5], cdFast:[0.9,1.5],       // kick cooldown random range, slow / fast ball (× DIFFS.cd)
@@ -1665,17 +1601,10 @@ ai:{
       ffLerp:20,          // rate the target's own motion is read at (per s); lower = smoother, laggier following
       cmdTol:2            // a target within a step that moved with the rod (to this, u/s) is a slide speed asked for (target = offset + v·dt): driven as given
    },
-   // --- strike slide: a plain kick picks the slide it carries through contact (the heading), as the pin pass does ---
-   // off: the plain swing reaches the ball in a few steps, too soon to build a new slide, so another slide almost never won (~20 of ~1100 plans a match) and goals did not move
-   strikeSlide:{
-      on:false,
-      v:[0,0.5,1],        // slides tried (share of the rod's top speed, both ways); the current slide is always one
-      margin:0.3          // another slide must clear the lane by this much more than the current one (z)
-   },
    // --- calm: a rod the play is far from stands its ground instead of chasing the ball's z (plain alignment, goal cover, ready for a team ball) ---
    calm:{
       on:true,            // false = every rod tracks the ball's z at full speed wherever the ball is
-      ahead:[30,42],      // ball this far ahead of the rod (u, dir-relative): tracked fully at the first, fully calm from the second
+      ahead:[44,62],      // ball this far ahead of the rod (u, dir-relative): tracked fully at the first, fully calm from the second
       own:[16,28],        // ...ahead and the rod's own team touched it last (nothing to block)
       behind:[14,26],     // ...behind it (the play has gone past the rod)
       t:[0.5,1.0],        // ...unless it is coming at the rod and gets there within the first (s); fully calm only past the second
@@ -1698,7 +1627,7 @@ ai:{
    // ROBOTS
    {id:'cyborg',name:'Cyborg',blurb:'Chrome-plated all-rounder',
       src:'assets/fuzeball_cyborg.glb',scale:0.92, rodY:8.63,
-      mug:'assets/renders/render_cyborg_mugshot_v2.png',
+      mug:'assets/renders/render_cyborg_mugshot_arena_cutout.png',
       renderTop:64,
       teamParts:['kit_cyborg', 'kit_cyborg_visor'],
       hairParts:['kit_cyborg_hair'],
@@ -1706,21 +1635,21 @@ ai:{
    },
    {id:'deltaborg',name:'Deltaborg',blurb:'Ruthless and fast',
       src:'assets/fuzeball_deltaborg.glb',scale:0.895, rodY:8.63,
-      mug:'assets/renders/render_deltaborg_mugshot_v2.png',
+      mug:'assets/renders/render_deltaborg_mugshot_arena_cutout.png',
       renderTop:41,
       teamParts:['kit_deltaborg'],hairParts:[],
       explosionSrc:'assets/animations/deltaborg_explosion.glb'
    },
    {id:'irnman',name:'Irnman',blurb:'Strong and relentless',
       src:'assets/fuzeball_irnman.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_irnman_mugshot_v2.png',
+      mug:'assets/renders/render_irnman_mugshot_arena_cutout.png',
       renderTop:51,
       teamParts:['kit_irnman','kit_irnman_centre'],hairParts:[],
       explosionSrc:'assets/animations/irnman_explosion.glb'
    },
    {id:'mechaMan',name:'Mecha Man',blurb:'Logical and methodical',
       src:'assets/fuzeball_mechaman.glb',scale:0.9, rodY:8.63,
-      mug:'assets/renders/render_mechaman_mugshot_v2.png',   
+      mug:'assets/renders/render_mechaman_mugshot_arena_cutout.png',   
       renderTop:90,
       teamParts:['kit_mechaman_new'],hairParts:[],
       explosionSrc:'assets/animations/mechaman_explosion.glb'
@@ -1729,7 +1658,7 @@ ai:{
    // THINGS
    {id:'rocko',name:'Rocko',blurb:'Solid and unpredictable',
       src:'assets/fuzeball_rocko.glb',scale:0.895, rodY:8.63,
-      mug:'assets/renders/render_rocko_mugshot_v2.png',   
+      mug:'assets/renders/render_rocko_mugshot_arena_cutout.png',   
       renderTop:33,
       teamParts:['kit_rocko' ],hairParts:['kit_rocko_hair'],
       explosionSrc:'assets/animations/rocko_explosion.glb'
@@ -1738,21 +1667,21 @@ ai:{
    // MEN
    {id:'manrichie',name:'Richie',blurb:'Ambitious and skilled',
       src:'assets/fuzeball_manRichie.glb',scale:0.865, rodY:8.63,
-      mug:'assets/renders/render_richie_mugshot_v2.png',   
+      mug:'assets/renders/render_richie_mugshot_arena_cutout.png',   
       renderTop:38,
       teamParts:['kit_richie'],hairParts:['kit_richie_hair'],
       explosionSrc:'assets/animations/richie_explosion.glb'
    },
    {id:'manDeano',name:'Deano',blurb:'Calm and clinical',
       src:'assets/fuzeball_manDeano.glb',scale:0.905, rodY:8.63,
-      mug:'assets/renders/render_deano_mugshot_v2.png',
+      mug:'assets/renders/render_deano_mugshot_arena_cutout.png',
       renderTop:89,
       teamParts:['kit_deano'],hairParts:[],
       explosionSrc:'assets/animations/deano_explosion.glb'
    },
    {id:'manLeo',name:'Leo',blurb:'Calm and clinical',
       src:'assets/fuzeball_manLeo.glb',scale:0.905, rodY:8.63,
-      mug:'assets/renders/render_leo_mugshot_v2.png',
+      mug:'assets/renders/render_leo_mugshot_arena_cutout.png',
       renderTop:109,
       teamParts:['kit_leo'],hairParts:['kit_leo_hair'],
       explosionSrc:'assets/animations/leo_explosion.glb'
@@ -1768,35 +1697,35 @@ ai:{
    },
    {id:'womanSasha',name:'Sasha',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSasha.glb',scale:0.87, rodY:8.63,
-      mug:'assets/renders/render_sasha_mugshot_v2.png',
+      mug:'assets/renders/render_sasha_mugshot_arena_cutout.png',
       renderTop:136,
       teamParts:['kit_sasha'],hairParts:[],
       explosionSrc:'assets/animations/sasha_explosion.glb'
    },
    {id:'womanKimi',name:'Kimi',blurb:'Fierce and funny',
       src:'assets/fuzeball_womanKimi.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_kimi_mugshot_v2.png',   
+      mug:'assets/renders/render_kimi_mugshot_arena_cutout.png',   
       renderTop:85,
       teamParts:['kit_kimi'],hairParts:[ 'kit_kimi_hair' ],
       explosionSrc:'assets/animations/kimi_explosion.glb'   
       },
    {id:'womanSandy',name:'Sandy',blurb:'Cunning and quick',
       src:'assets/fuzeball_womanSandy.glb',scale:0.905, rodY:8.63,
-      mug:'assets/renders/render_sandy_mugshot_v2.png',
+      mug:'assets/renders/render_sandy_mugshot_arena_cutout.png',
       renderTop:90,
       teamParts:['kit_sandy'],hairParts:['kit_sandy_hair'],
       explosionSrc:'assets/animations/sandy_explosion.glb'
    },
    {id:'womanTalia',name:'Talia',blurb:'Witty and wise',
       src:'assets/fuzeball_womanTalia.glb',scale:0.9, rodY:8.63,
-      mug:'assets/renders/render_talia_mugshot_v2.png',   
+      mug:'assets/renders/render_talia_mugshot_arena_cutout.png',   
       renderTop:89,
       teamParts:['kit_talia', 'kit_talia_centre'],hairParts:[ 'kit_talia_hair' ],
       explosionSrc:'assets/animations/talia_explosion.glb'   
       },
    {id:'womanTanya',name:'Tanya',blurb:'Strong and fast',
       src:'assets/fuzeball_womanTanya.glb',scale:0.894, rodY:8.63,
-      mug:'assets/renders/render_tanya_mugshot_v2.png',   
+      mug:'assets/renders/render_tanya_mugshot_arena_cutout.png',   
       renderTop:52,
       teamParts:['kit_tanya', 'kit_tanya_centre'],hairParts:[ 'kit_tanya_hair' ],
       explosionSrc:'assets/animations/tanya_explosion.glb'   
@@ -1804,7 +1733,7 @@ ai:{
     
    {id:'womanFaye',name:'Faye',blurb:'Bold and fearless',
       src:'assets/fuzeball_womanFaye.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_faye_mugshot_v2.png',
+      mug:'assets/renders/render_faye_mugshot_arena_cutout.png',
       renderTop:125,
       teamParts:['kit_faye'],hairParts:['kit_faye_hair'],
       explosionSrc:'assets/animations/faye_explosion.glb'
@@ -1813,42 +1742,42 @@ ai:{
    // ALIENS
    {id:'womanZaneesh',name:'Zaneesh',blurb:'Logical and brilliant',
       src:'assets/fuzeball_womanZaneesh.glb',scale:0.895, rodY:8.63,
-      mug:'assets/renders/render_zaneesh_mugshot_v2.png',   
+      mug:'assets/renders/render_zaneesh_mugshot_arena_cutout.png',   
       renderTop:131,
       teamParts:['kit_zaneesh'],hairParts:[],
       explosionSrc:'assets/animations/zaneesh_explosion.glb'
    }, 
    {id:'alienTamirok',name:'Tamirok',blurb:'Intense and thoughtful',
       src:'assets/fuzeball_alienTamirok.glb',scale:0.895, rodY:8.63,
-      mug:'assets/renders/render_tamirok_mugshot_v2.png',   
+      mug:'assets/renders/render_tamirok_mugshot_arena_cutout.png',   
       renderTop:83,
       teamParts:['kit_tamirok', 'kit_tamirok_centre'],hairParts:[],
       explosionSrc:'assets/animations/tamirok_explosion.glb'
       },
    {id:'alienGrimlot',name:'Grimlot',blurb:'Wild and unpredictable',
       src:'assets/fuzeball_alienGrimlot.glb',scale:0.88, rodY:8.63,
-      mug:'assets/renders/render_grimlot_mugshot_v2.png',   
+      mug:'assets/renders/render_grimlot_mugshot_arena_cutout.png',   
       renderTop:82,
       teamParts:['kit_Grimlot'],hairParts:[],
       explosionSrc:'assets/animations/grimlot_explosion.glb'
       },
    {id:'alienKatum',name:'Katum',blurb:'Fierce and aggressive',
       src:'assets/fuzeball_alienKatum.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_katum_mugshot_v2.png',   
+      mug:'assets/renders/render_katum_mugshot_arena_cutout.png',   
       renderTop:10,
       teamParts:['kit_Katum'],hairParts:[],
       explosionSrc:'assets/animations/katum_explosion.glb'
       },
    {id:'alienKodus',name:'Kodus',blurb:'Cunning and clever',
       src:'assets/fuzeball_alienKodus.glb',scale:0.89, rodY:8.63,
-      mug:'assets/renders/render_kodus_mugshot_v2.png',   
+      mug:'assets/renders/render_kodus_mugshot_arena_cutout.png',   
       renderTop:84,
       teamParts:['kit_Kodus', 'kit_kodus_centre'],hairParts:[],
       explosionSrc:'assets/animations/kodus_explosion.glb'
       },
     {id:'alienZargon',name:'Zargon',blurb:'Mysterious and powerful',
        src:'assets/fuzeball_alienZargon.glb',scale:0.89, rodY:8.63,
-       mug:'assets/renders/render_zargon_mugshot_v2.png',   
+       mug:'assets/renders/render_zargon_mugshot_arena_cutout.png',   
        renderTop:51,
        teamParts:['kit_Zargon', 'kit_zargon_centre'],hairParts:[],
        explosionSrc:'assets/animations/zargon_explosion.glb'
@@ -1862,21 +1791,21 @@ ai:{
       },   
     {id:'alienDrako',name:'Drako',blurb:'Fierce and mysterious',
        src:'assets/fuzeball_alienDrako.glb',scale:0.89, rodY:8.63,
-       mug:'assets/renders/render_drako_mugshot_v2.png',
+       mug:'assets/renders/render_drako_mugshot_arena_cutout.png',
        renderTop:131,
        teamParts:['kit_drako'],hairParts:[],
        explosionSrc:'assets/animations/drako_explosion.glb'
        },
     {id:'alienAda',name:'Ada',blurb:'Sharp and fearless',
        src:'assets/fuzeball_alienAda.glb',scale:0.885, rodY:8.63,
-       mug:'assets/renders/render_ada_mugshot.png',
+       mug:'assets/renders/render_ada_mugshot_arena_cutout.png',
        renderTop:79,
        teamParts:['kit_ada'],hairParts:[],
        explosionSrc:'assets/animations/ada_explosion.glb'
        },
     {id: 'animalAzlar', name: 'Azlar', blurb: 'Fierce and loyal',
       src: 'assets/fuzeball_animalAzlar.glb', scale:0.87, rodY:8.63,
-      mug: 'assets/renders/render_azlar_mugshot.png',
+      mug: 'assets/renders/render_azlar_mugshot_arena_cutout.png',
       renderTop:7,
       teamParts: ['kit_Azlar', 'kit_azlar_claws'], hairParts: ['kit_azlar_hair'],
       explosionSrc: 'assets/animations/azlar_explosion.glb'
@@ -2225,7 +2154,7 @@ deadball:{
      on:true,
      mult:0.4,        // clock speed while the ball is strikeable (1 = no discount, 0 = frozen)
      graceMax:2.5,    // most extra REAL seconds one stall can earn
-     // strikeable window around each man; mirrors CONFIG.ai.inFrontMax and the back edge of the overFoot zone
+     // strikeable window around each man; mirrors swings.reach.inFrontMax and the back edge of its overFoot zone
      ahead:6.3,       // units IN FRONT of the rod the ball still counts as strikeable
      back:1.5,        // …and behind it
      zPad:0.6         // slack on the z line-up, beyond footBox.z + BALL_R
@@ -2811,12 +2740,12 @@ deadball:{
       bg:0x000000, fog:[900,1000],
       sky:{src:'assets/rooms/moon/sky/moon'},
       shots:{home:[-12,32,116,-24,20,-30]},
-      hemi:{sky:0xeff2f5,ground:0xc8ccd0,int:1.32,on:true},
-      dir:{color:0xfffaf2,int:7.23,pos:[-91.9,82.7,40.2],on:true,shadow:true},
+      hemi:{sky:0xeff2f5,ground:0xc8ccd0,int:1.02,on:true},
+      dir:{color:0xfffaf2,int:3.45,pos:[-91.9,82.7,40.2],on:true,shadow:true},
       env:{shell:0x1c1c22,panels:[[0xfffaf2,-250,140,110,120,120],[0xa09e9a,0,-200,0,500,500],[0xb0d4ff,60,60,-250,60,60]]},
       lights:[
-        {type:'spot', pos:[-54,46,-22], look:[-53,0,0], color:0xf9fbfb, int:28.3, dist:104, decay:0.65, angle:0.85, penumbra:0.78},
-        {type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf9fbfb, int:32.8, dist:108, decay:0.75, angle:0.9, penumbra:0.8},
+        {type:'spot', pos:[-54,46,-22], look:[-53,0,0], color:0xf9fbfb, int:28.3, dist:104, decay:0.65, angle:0.85, penumbra:0.78, shadow:false},
+        {type:'spot', pos:[0,55,8], look:[0,0,0], color:0xf9fbfb, int:32.8, dist:108, decay:0.75, angle:0.9, penumbra:0.8, shadow:false},
         {type:'spot', pos:[54,46,-22], look:[53,0,0], color:0xf9fbfb, int:28.3, dist:104, decay:0.65, angle:0.85, penumbra:0.78}
       ],
       props:[],
@@ -3887,7 +3816,7 @@ padSlideInvert:false,padAngleInvert:false,padDeadzone:0.25,
 padControlMode:'classic',padTCBase:0.75,padTCFine:0.35,padTCFast:1.6,padTCSwerve:1,padTCSpinInvert:false,
 // classic charge input: 'rt' (RT holds the wind-up), 'kick' (the kick button holds it, a tap fires on release) or 'both'
 padChargeBtn:'rt',
-// face buttons on a pinned ball (shots.pin.press.shoot 'power'): 'sq' = X / square passes, B / circle shoots; 'ci' = the other way round; 'off' = A and RT + A only
+// face buttons on a pinned ball: 'sq' = X / square passes, B / circle shoots; 'ci' = the other way round; 'off' = A and RT + A only
 padPinBtns:'sq',
 mouseSens:1,kbdSens:1,
 // rebound keyboard/mouse actions: action -> [codes], only for actions the player changed (js/binds.js)

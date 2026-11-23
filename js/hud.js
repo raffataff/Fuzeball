@@ -447,17 +447,12 @@ function hudHintDraw(a){
 // while a seat's rod holds a ball on the pin, the keys that play it: a slim plate bottom centre with a slab in the seat's colour; it settles back after CONFIG.shots.pin.hint.hold (Options > Display, cfg.pinHint)
 function hudPinHint(a,rdt){
  const H=SHOT.pin.hint,P=HUD.pin,on=shotPinHintOn(),bk=on?shotPinSeat():null,s=bk||(on?shotSnakeSeat():null),kd=!bk?'snk':shotPinPassOn(seatRod(bk))?'pp':'ps';
- const pw=shotPinPow(),pb=cfg.padPinBtns||'sq',ky=kd+(pw?'p':'d')+pb;
+ const pb=cfg.padPinBtns||'sq',ky=kd+pb;
  if(s){
   if(!P.on||P.k!==ky){P.on=true;P.k=ky;P.t=HUD.t;   // rebuilt per catch, so a rebind shows
-   if(pw){
-    const pk=(bindCap('power')||'[power]')+' + '+(bindCap('kick')||'[kick]'),ps=pb==='ci'?'{B}':'{X}',sh=pb==='ci'?'{X}':'{B}',pp=pb==='off'?'{RT} + {A}':sh;
-    P.tok=hudTok(kd==='snk'?pk+' snake':kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · '+pk+' shot':(bindHint('kick','pin shot',2)||'pin shot'));
-    P.tokP=hudTok(kd==='snk'?pp+' snake':kd==='pp'?(pb==='off'?'{A}':ps)+' pass · '+pp+' shot':'{A} pin shot');
-   }else{
-    P.tok=hudTok(kd==='snk'?(bindHint('kick','x2 snake',2)||'x2 snake'):kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · x2 shot':(bindHint('kick','pin shot',2)||'pin shot'));
-    P.tokP=hudTok(kd==='snk'?'{A} x2 snake':kd==='pp'?'{A} pass · x2 shot':'{A} pin shot');
-   }
+   const pk=(bindCap('power')||'[power]')+' + '+(bindCap('kick')||'[kick]'),ps=pb==='ci'?'{B}':'{X}',sh=pb==='ci'?'{X}':'{B}',pp=pb==='off'?'{RT} + {A}':sh;
+   P.tok=hudTok(kd==='snk'?pk+' snake':kd==='pp'?(bindHint('kick','pass',2)||'pass')+' · '+pk+' shot':(bindHint('kick','pin shot',2)||'pin shot'));
+   P.tokP=hudTok(kd==='snk'?pp+' snake':kd==='pp'?(pb==='off'?'{A}':ps)+' pass · '+pp+' shot':'{A} pin shot');
   }
   P.s=s;
  }else P.on=false;

@@ -1,7 +1,7 @@
 // Push / pull soak: the AI's shot from a back pin with the slide (CONFIG.ai.catch.push), on the real sim. From a terminal:
 //      node tools/page-run.js tools/pushpull-soak.js "ppAll()"
 //      ppScene({ri:5,man:1,dz:0,off:0,diff:'pro',seed:1,keep:[7,6],tt:false,trace:false})   // a ball back-pinned under a red AI rod, the blue keeper + DEF (keep) covering; the rod plays it after `settle` s
-//      ppSlide({vs,assist})    // the push forced at each slide speed, no defence: the heading it leaves on against the one the AI judged (push.k / drift)
+//      ppSlide({vs,assist})    // the push forced at each slide speed, no defence: the heading it leaves on against the one the AI judged (swings.pinShot.slideK / slideDrift)
 //      ppVsAI({diff,set,tt})   // every man x start offset x dz x seed against the AI keeper + DEF: shots, how each was fired, goals, keeper / DEF touches; set = CONFIG.ai.catch overrides for the run
 //                              // a scene plays the same whatever the seed (the first draw decides push.play.use for all of them): force use to 1 to judge the pull itself
 //      ppForce({s,v,d,fake})   // one committed play scripted on the rod (sell, burst at v, fire d past the turn, no lane check); ppGrid / ppRows run a grid of them (ppRows: one csv row a play, for what predicts a goal)
@@ -124,7 +124,7 @@
     else if(s*(r.offset-o1)>=o.d){
      if(room(s)<AIC.catch.push.room)return {out:'noroom'};
      const sv=r.slideV,gx=dir*F.L/2,P=AIC.catch.push,bp=b.m.position;r.catSv=sv;r.catSl=pushSlope(r,sv);r.pcWhy='force';r.puPh='burst';fz=bp.z;fv=sv;
-     var judge=pushOutlet(r,bp.x,bp.z,sv,laneObs(r.team,bp.x,gx,AIC.catch.shotV),gx),zg=bp.z+sv*(P.drift+P.k*Math.abs(gx-bp.x)),gkz=rods[7].baseZ[0]+rods[7].offset;
+     var judge=pushOutlet(r,bp.x,bp.z,sv,laneObs(r.team,bp.x,gx,SWINGS.shoot.v),gx),zg=bp.z+sv*(SWINGS.pinShot.slideDrift+SWINGS.pinShot.slideK*Math.abs(gx-bp.x)),gkz=rods[7].baseZ[0]+rods[7].offset;
      if(pinFire(r,b,DIFFS[teamDiff(r.team)],1)<1)return {out:'gate'};catchEnd(r,AIC.catch.cd,'force');fired=true;break;
     }
     const want=ph==='sell'?tgt:r.offset+s*o.v/SIM.hz;
