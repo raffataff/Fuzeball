@@ -14,7 +14,7 @@ const parts={
  lanes:slice(AI,'function laneObs(','function lineClr(')
 };
 const stubs=["var S={time:0,balls:[],phase:'play'}; var rods=[]; var DIFF=['pro','pro']; function teamDiff(t){return DIFF[t];}",
- "function stReact(){return 1;} function isUserRod(){return false;} function isActiveRod(){return true;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);}",
+ "function stReact(){return 1;} function isUserRod(){return false;} function isActiveRod(){return true;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);}",
  "var THREE={Vector3:function(){this.x=0;this.y=0;this.z=0;}};",
  "THREE.Vector3.prototype.set=function(x,y,z){this.x=x;this.y=y;this.z=z;return this;};",
  "THREE.Vector3.prototype.copy=function(v){this.x=v.x;this.y=v.y;this.z=v.z;return this;};"].join(NL);
@@ -105,7 +105,7 @@ function suite(X){
  // --- the fit ---
  // where the keeper stands against a ball held at z with a memory of every shot going to one post
  const keeperAt=(o)=>{const w=world(X,{diff:o.diff||'legend'});const r=X.RD[0];
-  r.hr=w.a;r.bx=-23.5;r.bz=o.z||0;r.ph=o.ph||'set';r.gj=-1;r.bait=!!o.bait;r.bk=o.bk==null?-1:o.bk;
+  if(o.def!=null)w.d.offset=w.d.target=o.def;r.hr=w.a;r.bx=-23.5;r.bz=o.z||0;r.ph=o.ph||'set';r.gj=-1;r.bait=!!o.bait;r.bk=o.bk==null?-1:o.bk;
   if(o.post){for(let i=0;i<12;i++){r.mem.tz[o.post>0?r.mem.tz.length-1:0]+=1;r.mem.mv[1]+=1;}}
   X.readFit(r,0,o.solo?[w.g]:[w.g,w.d]);return {g:r.off[w.g.idx],d:r.off[w.d.idx],w};};
  {const k0=keeperAt({}),kp=keeperAt({post:1}),km=keeperAt({post:-1});
@@ -116,8 +116,25 @@ function suite(X){
  {const kc=keeperAt({solo:true,z:0}),kz=keeperAt({solo:true,z:8});
   ok('a keeper alone follows the hold\'s z',kz.g>kc.g+1,kc.g+' '+kz.g);}
  {const at=(o)=>{const w=world(X,{diff:'legend'});w.d.offset=w.d.target=o;const r=X.RD[0];r.hr=w.a;r.bx=-23.5;r.bz=0;r.ph='set';X.readFit(r,0,[w.g]);return r.off[w.g.idx];};
-  const lo=at(-15),hi=at(15);ok('a keeper alone takes the side its DEF leaves open',lo>hi+2,'DEF -15: '+lo+' DEF +15: '+hi);}
- {const bk=X.RD[0].mem.tz.length-1,ba=keeperAt({bait:true,bk,ph:'bait',solo:true}),ju=keeperAt({bait:true,bk,ph:'jump',solo:true});
+  const lo=at(11),hi=at(-11);ok('a keeper alone takes the side its DEF (on the short line) leaves open',lo>hi+2,'DEF man -1: '+lo+' DEF man +1: '+hi);}
+ // --- the short line: ball to the nearest point of the mouth, held by the keeper or the DEF ---
+ const SH=X.AIC.cover.short,gh=X.F.goalHalf*X.AIC.cover.mouth;
+ const lineD=(w,z,g,d)=>{const gz=Math.max(-gh,Math.min(gh,z)),L=x=>z+(gz-z)*(x+23.5)/(-60+23.5);
+  return [Math.abs(L(w.g.x)-w.g.baseZ[0]-g),Math.min(...w.d.baseZ.map(b=>Math.abs(L(w.d.x)-b-d)))];};
+ {const r=[0,6,-15,18].map(z=>{const k=keeperAt({z});return lineD(k.w,z,k.g,k.d);});
+  ok('a held ball: the keeper or the DEF stands on its short line, centred or wide',r.every(q=>Math.min(...q)<=SH.tol+1e-6),r.map(q=>q.map(v=>v.toFixed(1)).join('/')).join(' '));
+  ok('…and the other takes another lane',r.every(q=>Math.max(...q)>2),r.map(q=>q.map(v=>v.toFixed(1)).join('/')).join(' '));}
+ {const at=(z,o)=>{const w=world(X,{diff:'legend'});w.d.act='catch';w.d.offset=w.d.target=o;const r=X.RD[0];r.hr=w.a;r.bx=-23.5;r.bz=z;r.ph='set';X.readFit(r,0,[w.g]);return lineD(w,z,r.off[w.g.idx],o);};
+  const far=at(15,18),on=at(0,12);
+  ok('a DEF busy off the line (a wide hold, its men at the wall): the keeper takes the near post line',far[0]<=SH.tol+1e-6,'keeper '+far[0].toFixed(2)+' DEF '+far[1].toFixed(2));
+  ok('a DEF busy on the line: the keeper is free to take another lane',on[1]<0.01&&on[0]>SH.tol,'keeper '+on[0].toFixed(2));}
+ {const hl=z=>{const w=world(X,{diff:'legend'});w.a.role='ATT';const b=hold(X,w,z);let bad=0,n=0,mx=0;
+   for(let i=0;i<Math.round(4/dt);i++){step(X);const g=X.readOff(w.g),d=X.readOff(w.d);if(g===undefined||d===undefined)continue;w.g.target=g;w.d.target=d;
+    const q=Math.min(...lineD(w,X.RD[0].bz,g,d));n++;if(q>SH.tol+1e-6)bad++;mx=Math.max(mx,q);}
+   return {bad,n,mx};};
+  const jo0=JO.on,bp0=RC.bait.p;JO.on=true;RC.bait.p={rookie:0,pro:0,legend:0};const c=hl(0),wd=hl(14);JO.on=jo0;RC.bait.p=bp0;
+  ok('the jostle never leaves the short line open',c.n>200&&wd.n>200&&c.bad===0&&wd.bad===0,'centred '+c.bad+'/'+c.n+' worst '+c.mx.toFixed(2)+', wide '+wd.bad+'/'+wd.n+' worst '+wd.mx.toFixed(2));}
+ {const bk=X.RD[0].mem.tz.length-1,ba=keeperAt({bait:true,bk,ph:'bait',solo:true,def:12}),ju=keeperAt({bait:true,bk,ph:'jump',solo:true,def:12});
   ok('baiting leaves the +z post lane open, the jump closes it',ju.g>ba.g+2,'bait '+ba.g+' jump '+ju.g);}
  // --- memory ---
  {const w=world(X);const r=X.RD[0];r.rz0=0;r.rt0=-0.7;const b={m:{position:{x:-24,y:X.BALL_R,z:3}},v:{x:-100,y:0,z:(9-3)/((-60)-(-24))*-100},jlP:{z:3}};   // a line from z 3 to 9 on the goal line
@@ -156,13 +173,13 @@ function suite(X){
   ok('…each a real move, not a twitch',minD>=JO.step-1e-6,'smallest '+minD.toFixed(2));
   ok('…all near its fit',a.js.every(j=>Math.abs(j)<=amp+1e-6)&&a.js.some(j=>Math.abs(j)>amp*0.5),a.js.map(j=>j.toFixed(1)).join());
   ok('…both ways',a.js.some(j=>j>0.5)&&a.js.some(j=>j<-0.5));
-  ok('the DEF jostles too',new Set(a.ds.map(j=>j.toFixed(2))).size>=5);}
+  ok('the DEF jostles too (holding the short line: a wig-wag inside cover.short.tol)',new Set(a.ds.map(j=>j.toFixed(2))).size>=2);}
  {const a=jog({seed:3}),b=jog({seed:3}),c=jog({seed:4});
   ok('the spots are seeded (a retry replays them)',a.js.join()===b.js.join()&&a.js.join()!==c.js.join());}
  {const rk=jog({diff:'rookie'}),lg=jog({diff:'legend'});
   ok('legend jostles more often and wider than rookie',lg.sp.length>rk.sp.length*1.3&&Math.max(...lg.js.map(Math.abs))>Math.max(...rk.js.map(Math.abs)),'spots '+rk.sp.length+' / '+lg.sp.length);}
- {const mean=a=>a.reduce((s,x)=>s+x,0)/a.length,sl=JO.slack;JO.slack=0.01;const lo=jog({def:-15,secs:8}),hi=jog({def:15,secs:8});JO.slack=sl;
-  ok('spots are drawn by cover: the keeper jostles more toward the side its DEF leaves open',mean(lo.js)>mean(hi.js)+0.8,'DEF -15: '+mean(lo.js).toFixed(2)+' DEF +15: '+mean(hi.js).toFixed(2));}
+ {const mean=a=>a.reduce((s,x)=>s+x,0)/a.length,sl=JO.slack;JO.slack=0.01;const lo=jog({def:11,secs:8}),hi=jog({def:-11,secs:8});JO.slack=sl;
+  ok('spots are drawn by cover: the keeper jostles more toward the side its DEF leaves open',mean(lo.js)>mean(hi.js)+0.4,'DEF man -1: '+mean(lo.js).toFixed(2)+' DEF man +1: '+mean(hi.js).toFixed(2));}
  {const a=jog({role:'MID'});ok('a MID hold is not jostled against',a.js.every(j=>j===0));}
  {const w=world(X);hold(X,w);step(X,40);const r=X.RD[0];w.a.kickT=0;let n=0;while(!r.commit&&n++<120)step(X);step(X,8);
   ok('a swing, once seen, settles the keeper back on its fit',r.commit&&(r.jo[w.g.idx]||0)===0);}
@@ -209,7 +226,13 @@ const MUT=[
  {n:'jostle through a seen swing',part:'read',from:"rd.ph==='set'&&!rd.swS&&JO.roles",to:"rd.ph==='set'&&JO.roles"},
  {n:'swing seen at once',part:'read',from:'S.time-rd.swT>=joltRT(g)',to:'true'},
  {n:'jostle off switch ignored',part:'read',from:'amp=JO&&byTeam(JO.on,t)&&',to:'amp=JO&&'},
- {n:'jostle from the fit, not the spot',part:'read',from:'o[q]=clamp(p[q]+(rd.jo[mine[q].idx]||0)',to:'o[q]=clamp(p[q]'}
+ {n:'jostle from the fit, not the spot',part:'read',from:'o[q]=clamp(p[q]+(rd.jo[mine[q].idx]||0)',to:'o[q]=clamp(p[q]'},
+ {n:'short line ignored',part:'read',from:'s+=shortCost(d,SH.read);',to:''},
+ {n:'short line run to the goal centre',part:'read',from:'sgz=clamp(rd.bz,-gh,gh)',to:'sgz=0'},
+ {n:'a busy DEF on the line not counted',part:'read',from:'mine.indexOf(q)<0)sfd=',to:'mine.indexOf(q)<0&&false)sfd='},
+ {n:'DEF fitted only past defend.engage',part:'read',from:'>RC.defAhead))',to:'>AIC.defend.engage))'},
+ {n:'a refit leaves the jostle off the line',part:'read',from:'if(d>SH.tol&&bj>=0)rd.jo',to:'if(false)rd.jo'},
+ {n:'no room on the line for the jostle',part:'read',from:'Math.max(0,d-AIC.cover.short.tol)',to:'d'}
 ];
 
 let bad=0;

@@ -70,8 +70,8 @@
     for(let i=0;i<Math.round(6*SIM.hz)&&!(r.pinB&&(r.catPh==='hold'||r.retPh==='pin'));i++){aiUpdate(FIX);userControlUpdate(FIX);deadBallUpdate(FIX);updateRods(FIX);physics(FIX);S.time+=FIX;for(const q of S.balls)q.cur.copy(q.m.position);}
     if(!r.pinB){SWINGS.pinShot.open=lc0;return {out:'nopin',lie:o.lie};}
     const rel0=r.pinB.pinDx;r.tapN=0;
-    if(r.act==='retrieve'){r.tapPk={j:o.man+o.s,s:o.s,out:9};retrieveTap(r);}
-    else{r.catT=0;pinPlayStart(r);r.tapPk={j:o.man+o.s,s:o.s,out:9};tapStart(r);}
+    if(r.act==='retrieve')retrieveHold(r);
+    r.catT=0;pinPlayStart(r);r.tapPk={j:o.man+o.s,s:o.s,out:9};tapStart(r);
     o.rel0=rel0;
    }else{
    b.m.position.set(r.x+o.from*dir,BALL_R,r.baseZ[o.man]+o.dz);b.v.set(o.vx*dir,0,0);syncBall(b);

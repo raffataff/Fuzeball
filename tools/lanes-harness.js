@@ -26,7 +26,7 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "function rngAi(){return function(){return 0.99;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),
 ].join(NL);
 
@@ -134,7 +134,7 @@ const MUT=[
  {n:'past holdT the lane is judged on the slide even when it leaves straight',part:'catch',from:'const lnow=(still||sn||sl)?now:',to:'const lnow=true?now:'},
  {n:'a held-on late ball is not counted',part:'catch',from:'else if(!r.pcLn){r.pcLn=1;CAS.laneLate++;}',to:''},
  {n:'…it is counted every frame',part:'catch',from:'if(!r.pcLn){r.pcLn=1;CAS.laneLate++;}',to:'if(true){CAS.laneLate++;}'},
- {n:'…a new hold does not count again',part:'catch',from:'r.pcSn=false;r.pcSnD=null;r.pcLn=0;',to:'r.pcSn=false;r.pcSnD=null;'}
+ {n:'…a new hold does not count again',part:'catch',from:'r.pcSn=false;r.pcLn=0;',to:'r.pcSn=false;'}
 ];
 let caught=0;
 for(const m of MUT){

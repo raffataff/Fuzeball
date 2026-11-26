@@ -29,7 +29,7 @@ const stubs=[
  slice(rd('js/rods.js'),'function passFaceOK(',NL+'// ball control: while a hold'),
  "var LAUNCH=null; function kickLaunch(r,b,style,slide){if(LAUNCH)return LAUNCH(r,b,style,slide);const sv=r.slideV+clamp(slide-r.slideV,-5,5);return {x:b.m.position.x,z:b.m.position.z,heading:Math.atan2(sv,80),forward:80,slide,face:1};}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
- "const STC=CONFIG.stats; function assistAng(r,pass){return pass?SWINGS.passAssist.bend:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function stAgil(){return 1;} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
+ "const STC=CONFIG.stats; function assistAng(r,pass){return pass?SWINGS.passAssist.bend:0.045;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function stAgil(){return 1;} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function isUserRod(){return false;} function teamDiff(){return 'pro';}",
  slice(rd('js/stats.js'),'function assistTurn(',NL+'// the most aimAssist'),
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
 ].join(NL);
@@ -215,7 +215,7 @@ function suite(X){
   ok('…nor a ball in the air',X.freeBall(r,hi)===false);
   FR.on=false;ok('with the run-up off, none',X.freeBall(r,view(X,3.4,0))===false);FR.on=true;
   ST.on=false;ok('with steer off, none',X.freeBall(r,view(X,3.4,0))===false);ST.on=true;}
- {const r=fw();const a=600,top=Math.min(X.SWINGS.pinPass.steer.vMax,X.DIFFS.pro.speed);
+ {const r=fw();const a=X.AIC.slideAccel*X.DIFFS.pro.acc,top=Math.min(X.SWINGS.pinPass.steer.vMax,X.DIFFS.pro.speed);
   const feas=(rod,oc,s,v)=>{const os=oc-s*(v*X.SWINGS.pass.meet+v*v/(2*a)+FR.back),oe=oc+s*(v*(X.SWINGS.pass.slideT-X.SWINGS.pass.meet)+v*v/(2*a));return Math.abs(os)<=rod.maxOff&&Math.abs(oe)<=rod.maxOff;};
   ok('a rod with room all round runs at its top speed',X.runV(r,1,0,1)===top&&X.runV(r,1,0,-1)===top,X.runV(r,1,0,1));
   const small=fw({maxOff:6.2});const v1=X.runV(small,1,0,1);
@@ -242,7 +242,7 @@ function suite(X){
  {const r=fw();
   const pl=X.runPlan(r,0,0.476);
   ok('a pass 27 deg off straight is run by the man on the ball, at the slide that leaves on that line',!!pl&&pl.mi===1&&pl.s===1&&near(pl.v,X.steerSlide(0.476),1e-6),pl&&pl.v);
-  ok('…backing off to the far side of the ball by the run it needs',!!pl&&pl.os<0&&near(pl.os,-pl.R,1e-6)&&near(pl.R,pl.v*X.SWINGS.pass.meet+pl.v*pl.v/(2*600)+FR.back,1e-6),pl&&pl.os);
+  ok('…backing off to the far side of the ball by the run it needs',!!pl&&pl.os<0&&near(pl.os,-pl.R,1e-6)&&near(pl.R,pl.v*X.SWINGS.pass.meet+pl.v*pl.v/(2*X.AIC.slideAccel*X.DIFFS.pro.acc)+FR.back,1e-6),pl&&pl.os);
   const pn=X.runPlan(r,0,-0.476);
   ok('a pass to -z runs the other way: backs off to +z, slides to -z',!!pn&&pn.s===-1&&pn.os>0,pn&&pn.os);
   const nine=X.runPlan(r,9,0.476);
@@ -272,7 +272,7 @@ function suite(X){
   X.rods.push(mate);X.runStart(r,best,pk);return {r,best,mate,pk};};
  const wantTh=Math.atan2(6,-22.5+34.1),dxM=-22.5+34.1,asP=X.SWINGS.passAssist.bend;   // the line from the ball to the mate's man (z 6)
  const lnch=(h,o)=>()=>Object.assign({x:-34.1,z:0,heading:h,forward:150,face:1,w:10},o||{});   // a launch off the front of the boot leaving on heading h
- {const {r,best}=startRun();const os=r.rnV?-(r.rnV*X.SWINGS.pass.meet+r.rnV*r.rnV/1200+FR.back):0;
+ {const {r,best}=startRun();const os=r.rnV?-(r.rnV*X.SWINGS.pass.meet+r.rnV*r.rnV/(2*X.AIC.slideAccel*X.DIFFS.pro.acc)+FR.back):0;
   const f0=X.runStep(r,best,D,dt);
   ok('it backs off first: the target is the start of the run and nothing is fired',f0===0&&r.act==='run'&&r.rnPh==='back'&&near(r.target,os,1e-6),r.target+' vs '+os);
   r.offset=os;r.slideV=0;X.setLaunch(()=>null);

@@ -16,14 +16,14 @@ const parts={
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
- "var S={balls:[],time:0}; var rods=[]; var BGS={retEnd:0};",
+ "var S={balls:[],time:0}; var rods=[]; var BGS={retEnd:0,retPin:0};",
  "var RELEASED=0,STRIKE=true,SWEEP=false,PICK=null,KICKS=[];",
  "function pinRelease(r){r.pinB=null;RELEASED++;}",
  "function kickRod(r,style,aim){r.kickT=0;r.act=null;KICKS.push(style);}",
  "function strikeOn(){return STRIKE;} function sweepClips(){return SWEEP;} function passPick(){return PICK;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
 ].join(NL);
 
@@ -34,7 +34,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,KICKS:KICKS,pinOutlet:pinOutlet,pinCarryV:pinCarryV,pinPlayStart:pinPlayStart,pinPlay:pinPlay,tapEval:tapEval,tapStart:tapStart,retrieveTap:retrieveTap,tapStep:tapStep,catchStep:catchStep,catchEnd:catchEnd,'+
+  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,DIFFS:DIFFS,F:F,BALL_R:BALL_R,rods:rods,CAS:CAS,CAW:CAW,KICKS:KICKS,pinOutlet:pinOutlet,pinCarryV:pinCarryV,pinPlayStart:pinPlayStart,pinPlay:pinPlay,tapEval:tapEval,tapStart:tapStart,retrieveHold:retrieveHold,tapStep:tapStep,catchStep:catchStep,catchEnd:catchEnd,'+
   'released:function(){return RELEASED;},setPick:function(v){PICK=v;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -188,9 +188,9 @@ function suite(X){
   const e=world(X,{catPh:'side',catDeep:true,catMan:1,catSg:1,tapPend:true,tapN:1});X.catchStep(e,view(X,TD.back-1.5,-8,0,12),D);ok('...and a deep roll is over past that',e.act===null&&X.CAW['side:off']===1);}
  {const r=world(X,{catDeep:true,tapN:1});X.catchEnd(r,0,'x');ok('every ending clears the deep mark',r.catDeep===false);}
  // ---- a ball retrieve pinned ----
- {const r=world(X,{act:'retrieve',catPh:null,retPh:'pin',retMan:0,retDir:1,retZ:2,tapPk:{j:1,s:1,out:5}});pinned(X,r,0,-3.0);X.retrieveTap(r);
-  ok('a pin of retrieve that has nowhere to go: the rod becomes the catch tap, the pin still on the ball',r.act==='catch'&&r.catPh==='tap'&&r.pinB&&r.tapS===1&&r.tapJ===1&&r.tapPk===null,'act '+r.act+' ph '+r.catPh);
-  ok('...retrieve is wound up (its phase, man and lockout) and it is counted',r.retPh===null&&r.retMan===-1&&r.retCd===X.AIC.retrieve.cd&&X.CAS.retTap===1);}
+ {const r=world(X,{act:'retrieve',catPh:null,retPh:'pin',retMan:0,retDir:1,retZ:2});pinned(X,r,0,-3.0);X.retrieveHold(r);
+  ok('a pin of retrieve goes to the catch hold, the pin still on the ball',r.act==='catch'&&r.catPh==='hold'&&r.pinB&&r.catT===0,'act '+r.act+' ph '+r.catPh);
+  ok('...retrieve is wound up (its phase, man and lockout) and it is counted',r.retPh===null&&r.retMan===-1&&r.retCd===X.AIC.retrieve.cd&&X.CAS.retHold===1);}
  return R;
 }
 
@@ -239,11 +239,10 @@ const MUT=[
  {n:'an ending leaves the deep mark up',from:'r.catCush=false;r.catDeep=false;',to:'r.catCush=false;'},
  {n:'a deep roll is judged by the side catch limit',from:'rel<(deep?CA.tap.deep.back:SHOT.pin.back)-1',to:'rel<SHOT.pin.back-1'},
  {n:'every roll is judged by the deep limit',from:'rel<(deep?CA.tap.deep.back:SHOT.pin.back)-1',to:'rel<CA.tap.deep.back-1'},
- {n:'the tap from retrieve does not take the action over',from:"r.act='catch';r.actT=0;r.retPh=null;",to:"r.actT=0;r.retPh=null;"},
- {n:'the tap from retrieve leaves retrieve running',from:'r.retPh=null;r.retMan=-1;r.retDir=0;',to:'r.retMan=-1;r.retDir=0;'},
- {n:'the tap from retrieve never starts the run',from:'r.retCd=AIC.retrieve.cd;\n tapStart(r);',to:'r.retCd=AIC.retrieve.cd;'},
- {n:'the tap from retrieve sets no lockout',from:'r.retZ=null;r.retCd=AIC.retrieve.cd;',to:'r.retZ=null;'},
- {n:'the tap from retrieve is not counted',from:'BGS.retEnd++;CAS.retTap++;',to:'BGS.retEnd++;'},
+ {n:'the hold from retrieve does not take the action over',from:"r.act='catch';r.actT=0;r.retPh=null;",to:"r.actT=0;r.retPh=null;"},
+ {n:'the hold from retrieve leaves retrieve running',from:'r.retPh=null;r.retMan=-1;r.retDir=0;r.retZ=null;r.retCd=AIC.retrieve.cd;r.retFl',to:'r.retMan=-1;r.retDir=0;r.retZ=null;r.retCd=AIC.retrieve.cd;r.retFl'},
+ {n:'the hold from retrieve sets no lockout',from:'r.retZ=null;r.retCd=AIC.retrieve.cd;r.retFl',to:'r.retZ=null;r.retFl'},
+ {n:'the hold from retrieve is not counted',from:'BGS.retPin++;CAS.retHold++;',to:'BGS.retPin++;'},
  {n:'an ending leaves the chain count up',from:'r.tapN=0;r.tapPk=null;r.catCush=false;',to:'r.tapPk=null;r.catCush=false;'},
  {n:'a lost ball is waited on',from:"if(!b||r.force||r.catT>TP.abortT){catchEnd(r,CA.cd,!b?'tap:lost':r.force?'tap:force':'tap:time');return;}",to:"if(!b)return;if(r.force||r.catT>TP.abortT){catchEnd(r,CA.cd,r.force?'tap:force':'tap:time');return;}"},
  {n:'a run is never given up on',from:'||r.catT>TP.abortT){catchEnd(r,CA.cd,!b',to:'){catchEnd(r,CA.cd,!b'},

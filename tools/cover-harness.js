@@ -13,7 +13,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  cover:slice(AI,'const CVB=new Float64Array',NL+' function aiUpdate(')
 };
-const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(){return 'pro';} function stPred(){return 1;} function stReact(){return 1;}";
+const stubs="var S={time:0}; var rods=[]; function isUserRod(r){return !!r.human;} function isActiveRod(r){return !r.benched;} function teamDiff(t){return typeof t==='string'?t:'pro';} function stPred(){return 1;} function stReact(){return 1;} function stErr(){return 1;} function rngAi(){return Math.random;} function rngR(R,a,b){return a+(b-a)*R();} function rodTopV(){return 85;}";
 
 function boot(mut){
  const g=Object.assign({},parts);
@@ -22,7 +22,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,Float64Array,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.cover,
-  ';globalThis.X={S:S,AIC:AIC,F:F,setRods:function(v){rods=v;},coverZ:coverZ,coverMen:coverMen,coverGap:coverGap,coverFit:coverFit,coverReach:coverReach,coverEye:coverEye,coverSlide:coverSlide,DIFFS:DIFFS,CVB:CVB};'].join(NL),ctx);
+  ';globalThis.X={S:S,AIC:AIC,F:F,setRods:function(v){rods=v;},coverZ:coverZ,coverMen:coverMen,coverGap:coverGap,coverFit:coverFit,coverReach:coverReach,coverEye:coverEye,coverSlide:coverSlide,foreZ:foreZ,foreMan:foreMan,foreRun:foreRun,BALL_R:BALL_R,DIFFS:DIFFS,CVB:CVB};'].join(NL),ctx);
  return ctx.X;
 }
 
@@ -225,7 +225,7 @@ function suite(X){
 
  // ---- the eyes on a ball carried sideways (coverEye) ---------------------------------------------------------
  // a ball carried along at v and seen D.reactDelay late, both reads stepped the way aiUpdate steps them: the old one (r.aiBZ, the react smoothing) and the cover's
- {const P=X.DIFFS.pro,TK=CV.track,dl=P.reactDelay,v=40,dt=DT,tr=P.react*TK.react;
+ {const P=X.DIFFS.pro,TK=CV.track,dl=P.reactDelay,v=40,dt=DT,tr=P.react*TK.react,fs0=X.AIC.foresee.on;X.AIC.foresee.on=false;   // the read as it was before foresee
   const carry=(o)=>{o=Object.assign({pred:1,T:1.2,on:true,rel:17,set:{}},o);const keep={};for(const k in o.set){keep[k]=TK[k];TK[k]=o.set[k];}const on0=TK.on;TK.on=o.on;
    const r={aiBX:0,aiBZ:0,aiBVX:0,aiBVZ:0,aiTZ:null,aiTVZ:0};let eye=0,real=0;
    for(let t=0;t<o.T;t+=dt){real=v*t;const seen=v*Math.max(0,t-dl),b={m:{position:{z:seen}},v:{z:t>=dl?v:0}};
@@ -246,7 +246,29 @@ function suite(X){
   const r3={aiBX:0,aiBZ:3,aiBVX:0,aiBVZ:12,aiTZ:5,aiTVZ:20},ri=X.coverEye(r3,{m:{position:{z:5}},v:{z:20}},P,0.5,0.8,17,dt);
   ok('a ball coming at the rod is read where it will cross it (its tta lead), with no lag lead on top',Math.abs(ri-(5+20*0.5*0.8))<1e-9,'z '+ri);
   const inc0=TK.inc;TK.inc=false;const r4={aiBX:0,aiBZ:3,aiBVX:0,aiBVZ:12,aiTZ:5,aiTVZ:20},ro=X.coverEye(r4,{m:{position:{z:5}},v:{z:20}},P,0.5,0.8,17,dt);TK.inc=inc0;
-  ok('...and with inc off through the old read',Math.abs(ro-(3+12*0.5*0.8))<1e-9,'z '+ro);}
+  ok('...and with inc off through the old read',Math.abs(ro-(3+12*0.5*0.8))<1e-9,'z '+ro);
+  X.AIC.foresee.on=fs0;}
+ // ---- foresee: where the ball will cross, brought up to now, and the man who can get there ---------------------
+ {const FS=X.AIC.foresee,hw=X.F.W/2-X.BALL_R,on0=FS.on;FS.on=true;
+  const rr=(diff,vz,e)=>{const r={team:diff,idx:0,aiBVX:-30,aiBVZ:vz};if(e!=null){r.fsH=Math.atan2(vz,-30);r.fsE=e;}return r;};
+  const zw=X.foreZ(rr('pro',30,0),hw-2,30,0.5,1);
+  ok('FORESEE: a ball heading into the side wall is read folded back off it',zw<hw-1&&zw>-hw,'z '+zw.toFixed(2)+' wall '+hw.toFixed(2));
+  const zf=X.foreZ(rr('pro',10,0),0,10,1.2,1),zl=X.foreZ(rr('pro',10,0),0,10,0.3,1);
+  ok('...the ball slows on the floor: a long lead falls short of vz x tta',zf<10*1.2*0.75&&Math.abs(zl-X.foreRun(10,0.3))<1e-9,'long '+zf.toFixed(2)+' short '+zl.toFixed(3));
+  ok('...a long look is led a smaller share than a short one',zf/X.foreRun(10,1.2)<0.8,'share '+(zf/X.foreRun(10,1.2)).toFixed(2));
+  const cp=X.foreZ(rr('pro',40,0),0,40,-1,1),cr=X.foreZ(rr('rookie',40,0),0,40,-1,1),cl=X.foreZ(rr('legend',40,0),0,40,-1,1);
+  ok('...a ball not coming at the rod is carried on from the late view to about now',cp>3.5&&cp<5,'z '+cp.toFixed(2));
+  ok('...a legend carries it on further than a rookie',cl>cr&&cr>0,'rookie '+cr.toFixed(2)+' legend '+cl.toFixed(2));
+  const miss=d=>X.foreZ(rr(d,20,1),0,20,0.6,1)-X.foreZ(rr(d,20,0),0,20,0.6,1),mr=miss('rookie'),ml=miss('legend');
+  ok('...a rookie misreads the crossing more than a legend',ml>0&&mr>3*ml,'rookie '+mr.toFixed(2)+' legend '+ml.toFixed(2));
+  FS.on=false;const zo=X.foreZ(rr('pro',12,0),3,12,0.5,0.8),zo2=X.foreZ(rr('pro',12,0),3,12,1.0,0.8);FS.on=true;
+  ok('...switched off it is the old lead (none past ttaMax)',Math.abs(zo-(3+12*0.5*0.8))<1e-9&&zo2===3,'z '+zo+' / '+zo2);
+  const pk=(base,maxOff,offset,pz,T)=>X.foreMan({baseZ:base,maxOff,offset,aiMan:-1,removedUntil:[]},pz,T);
+  const p1=pk([-12,0,12],9,-6,10,2);
+  ok('...of two men that both reach the ball the one with less to slide takes it',p1[0]===2&&Math.abs(p1[1]+2)<1e-9,'man '+p1[0]+' off '+p1[1]);
+  const p2=pk([0,20],11,-8,7,0.05),p3=pk([0,20],11,-8,7,2);
+  ok('...a man that cannot get there in time loses to one that nearly can',p2[0]===1&&p3[0]===0,'quick '+p2[0]+' slow '+p3[0]);
+  FS.on=on0;}
  // ---- a covering rod slides at cover.slide (coverSlide, read by rods.js) ---------------------------------------
  {const r={cvOn:true,act:null,kickT:-1};
   ok('a keeper / DEF covering the goal slides at cover.slide',X.coverSlide(r,null)===CV.slide&&CV.slide>1,'got '+X.coverSlide(r,null));
@@ -325,7 +347,15 @@ const MUT=[
  {n:'the eyes lead perfectly whatever the anticipation stat',part:'cover',from:'*TK.carry*TK.flight)*predL;',to:'*TK.carry*TK.flight);'},
  {n:'the flight term is always on',part:'cover',from:'*TK.carry*TK.flight)*predL;',to:'*TK.carry)*predL;'},
  {n:'a ball coming at the rod gets the lag lead too',part:'cover',from:'if(inc)return TK.inc?',to:'if(false)return TK.inc?'},
- {n:'inc off still reads a ball coming at the rod the new way',part:'cover',from:'return TK.inc?r.aiTZ+r.aiTVZ*tta*predL:r.aiBZ+r.aiBVZ*tta*predL;',to:'return r.aiTZ+r.aiTVZ*tta*predL;'},
+ {n:'inc off still reads a ball coming at the rod the new way',part:'cover',from:'return TK.inc?foreZ(r,r.aiTZ,r.aiTVZ,tta,predL):foreZ(r,r.aiBZ,r.aiBVZ,tta,predL);',to:'return foreZ(r,r.aiTZ,r.aiTVZ,tta,predL);'},
+ {n:'foresee: no side-wall fold',part:'cover',from:'for(let n=0;n<2;n++){',to:'for(let n=0;n<0;n++){'},
+ {n:'foresee: no floor friction',part:'cover',from:'return c>0?vz*(1-Math.exp(-c*t))/c:vz*t;',to:'return vz*t;'},
+ {n:'foresee: the late view is not carried on',part:'cover',from:'if(!(tta>0))return foreWall(z+foreRun(vz,lag));',to:'if(!(tta>0))return z;'},
+ {n:'foresee: a long look is trusted as much as a short one',part:'cover',from:'lerp(1,FD.farK,',to:'lerp(1,1,'},
+ {n:'foresee: the guess never misses',part:'cover',from:'r.fsE*FD.err*stErr(r)',to:'0'},
+ {n:'foresee: the man pick ignores the time to get there',part:'cover',from:'got=r.offset+clamp(off-r.offset,-reach,reach)',to:'got=off'},
+ {n:'foresee: the man pick ignores the slide',part:'cover',from:'+P.slideCost*Math.abs(off-r.offset)',to:''},
+ {n:'foresee: off still forecasts',part:'cover',from:'if(!FD)return tta>0&&tta<AIC.ttaMax?z+vz*tta*predL:z;',to:''},
  {n:'the first read slides in from z 0',part:'cover',from:'if(r.aiTZ==null){r.aiTZ=p.z;r.aiTVZ=b.v.z;}',to:'if(r.aiTZ==null){r.aiTZ=0;r.aiTVZ=0;}'},
  {n:'track off is ignored',part:'cover',from:'if(!TK||!TK.on)return ',to:'if(!TK)return '},
  {n:'the slide lift is not budgeted in the reach',part:'cover',from:'.speed*CV.slide*CV.speedMul*',to:'.speed*CV.speedMul*'},

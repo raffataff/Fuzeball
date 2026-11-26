@@ -21,7 +21,7 @@ const stubs=[
  "var S={balls:[],time:0,lastTouch:0}; var rods=[];",
  "function pinRelease(r){r.pinB=null;}",
  "function kickStyleCfg(r){return SWINGS[r.kickStyle||'pass'];}",   // rods.js: the swing in play
- "function rodInputRelease(){} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function teamDiff(){return 'pro';} function isUserRod(r){return !!r.human;}",
+ "function rodInputRelease(){} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function teamDiff(){return 'pro';} function isUserRod(r){return !!r.human;}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
 ].join(NL);
 
@@ -420,7 +420,7 @@ RD.maxBall=0;
   ok('…nor one further ahead than gk.reach',none(w=>{w.d.x=-52.5+GKc.reach+3;})===0);
   ok('…nor the other team\'s rod',none(w=>{w.d.team=1;w.d.kickDir=-1;})===0);}
  // ---- coming back to rest --------------------------------------------------------------------------------------------
- ok('the drop from a forward pose is a back-lift the guard holds short of a ball (rods.js)',/else\{r\.heldFwd=false;r\.angle=lerp\(r\.angle,backLimit\(r,0,KICK\.dropLerp(,r\.fwdOut)?\),/.test(rd('js/rods.js')));
+ ok('the drop from a forward pose is a back-lift the guard holds short of a ball (rods.js)',/else\{r\.heldFwd=false;r\.angle=rodEase\(r,backLimit\(r,0,KICK\.dropLerp(,r\.fwdOut)?\),/.test(rd('js/rods.js')));
  // ---- which ball -----------------------------------------------------------------------------------------------------
  {const {r}=world(X);
   const slow=ball(X,-20,0,10,0),fast=ball(X,-25,0,50,0),away=ball(X,-20,0,-50,0),past=ball(X,0,0,50,0),gone=ball(X,-25,0,90,0);gone.scored=true;
