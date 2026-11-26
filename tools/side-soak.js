@@ -102,7 +102,7 @@
   o.block.forEach(k=>{const q=rods[k.ri];q.aiErrT=1e9;q.offset=k.off;q.target=k.off;q.prevOffset=k.off;q.pivot.position.z=k.off;});
   r.offset=o.off;r.target=r.offset;r.prevOffset=r.offset;r.pivot.position.z=r.offset;
   b.m.position.set(r.x+o.rel*dir,BALL_R,r.baseZ[o.man]+r.offset+o.dz);b.v.set(0,0,0);syncBall(b);
-  const PS=AIC.pass,CA=AIC.catch,keep=[PS.roles,CA.slideMax],c0={tap:CAS.tap,retTap:CAS.retTap,tapOk:CAS.tapOk,tapFail:CAS.tapFail};
+  const PS=AIC.pass,CA=AIC.catch,keep=[PS.roles,CA.slideMax],c0={tap:CAS.tap,retHold:CAS.retHold,tapOk:CAS.tapOk,tapFail:CAS.tapFail};
   PS.roles=[];CA.slideMax=0.5;
   const L=[],phs=[];let nt=0,tRet=null,tTap=null,tLand=null,pinMan=-1;
   try{
@@ -110,7 +110,7 @@
     aiUpdate(FIX);for(const k of o.block)rods[k.ri].target=k.off;userControlUpdate(FIX);deadBallUpdate(FIX);updateRods(FIX);physics(FIX);S.time+=FIX;
     for(const q of S.balls)q.cur.copy(q.m.position);
     const t=i/SIM.hz,ph=(r.act||'-')+(r.catPh?'/'+r.catPh:'')+(r.retPh?'/'+r.retPh:'');if(phs[phs.length-1]!==ph)phs.push(ph);
-    if(tRet==null&&r.act==='retrieve'&&r.pinB)tRet=+t.toFixed(2);
+    if(tRet==null&&CAS.retHold>c0.retHold)tRet=+t.toFixed(2);   // retrieve's pin, handed to the catch's hold
     if(tTap==null&&r.catPh==='tap')tTap=+t.toFixed(2);
     if(tLand==null&&tTap!=null&&r.pinB&&r.catPh==='hold'){tLand=+t.toFixed(2);pinMan=r.pinB.pinMan;}
     if(o.trace&&t>=nt){nt+=o.every;const p=b.m.position;L.push(`${t.toFixed(2)} ${ph} pin=${r.pinB?1:0} ang=${(r.angle*dir).toFixed(2)} off=${r.offset.toFixed(1)} | ball rel=${((p.x-r.x)*dir).toFixed(2)} z=${p.z.toFixed(1)} v=${(b.v.x*dir).toFixed(1)},${b.v.z.toFixed(1)}`);}
@@ -118,7 +118,7 @@
     if(S.phase!=='play')break;
    }
   }finally{PS.roles=keep[0];CA.slideMax=keep[1];}
-  const taps=CAS.retTap-c0.retTap,out=taps===0?'no-tap':tLand!=null?'tap-ok':'tap-lost';
+  const taps=tRet==null?0:CAS.tap-c0.tap,out=taps===0?'no-tap':tLand!=null?'tap-ok':'tap-lost';
   return {out,tRet,tTap,tLand,pinMan,ph:phs.join(' > '),L};
  }
  // every start (man, side of the opposing row) of a retrieve pin that is tapped: what comes of it

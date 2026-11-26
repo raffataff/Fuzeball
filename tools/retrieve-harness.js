@@ -1,6 +1,6 @@
 // retrieve harness. node tools/retrieve-harness.js
 // slices the real retrieveStep / retrieveEnd / retrieveMan (ai.js) and helpers and steps them against live CONFIG with a bare-bones rod (slide and lift ease like updateRods, a pin takes when the leg is over the ball); the entry and bail tests live in aiUpdate and aren't covered
-// covers the approach, pin geometry and both fallback lanes; every mutation must break an assertion
+// covers the approach, pin geometry, both fallback lanes and the hand-over of an outfield pin to the catch's hold; every mutation must break an assertion
 'use strict';
 const fs=require('fs'),vm=require('vm');
 const NL=String.fromCharCode(10);
@@ -15,7 +15,7 @@ const parts={
  clearOffset:slice(AI,'function clearOffset(r,bz,cz,prefer){',NL+'function nearestFootZ('),
  lane:slice(AI,'function inLaneZ(r,lz,cz){',NL+'function laneMate('),
  pose:slice(AI,'const FA_R={',NL+'function sideAngle('),
- hand:slice(AI,'function retrieveTap(',NL+'function sidePick(')
+ hand:slice(AI,'function retrieveHold(',NL+'function sidePick(')
 };
 const stubs=[
  "var S={balls:[],time:0}; var SEAT=null; function seatOf(){return SEAT;}",
@@ -25,14 +25,17 @@ const stubs=[
  "function kickRod(r,style){r.kickT=0;r.act=null;KICKS.push(style);}",
  "function strikeOn(){return STRIKE;} function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;}",
  // the carry (catch-harness pins it) is stubbed to the plain rule: play it once settleT is up; pinFire asks the strike gate like the real one
- "var PLAY=null,SAWTAP=null,TAPPED=0; function tapStart(r){TAPPED++;r.catPh='tap';} function ttStart(r){r.catPh='hit';}",
- "function pinPlayStart(){} function pinPlay(r,best,t,dt,tap){SAWTAP=tap;if(t<AIC.retrieve.settleT)return 0;return PLAY!=null?PLAY:1;}",
+ "var PLAY=null,SAWTAP=null,STARTS=0; function ttStart(r){r.catPh='hit';}",
+ "function pinPlayStart(){STARTS++;} function pinPlay(r,best,t,dt,tap){SAWTAP=tap;if(t<AIC.retrieve.settleT)return 0;return PLAY!=null?PLAY:1;}",
  "function pinPassPlan(){return PASS;} var PASS=null;",
  // the drop's swing: the plain shot's plan (ai.js kickShotPlan) stubbed to a reachable, open shot unless a test says otherwise
  "var SHOTPLAN={launch:{slide:0},ev:{best:{clr:9}}}; function kickShotPlan(){return SHOTPLAN;} function laneMin(){return 0;} function plannedKick(r,style){kickRod(r,style);}",
  "function pinFire(r,best,D,v){if(r.kickT>=0)return 0;if(!strikeOn())return -1;kickRod(r,'pinShot');return 1;}",
  slice(rd('js/physics.js'),'function footBoxD(',NL+'function pinSurfaceY('),
- 'const CAS={retTap:0};',
+ 'const CAS={retHold:0,pin:0,enter:0,hit:0};',
+ "var LOOSE=false,LOOSEN=0; function hitLoose(r,best,own){LOOSEN++;return LOOSE&&own===true;}",
+ "function teamDiff(){return 'pro';}",
+ slice(rd('js/rods.js'),'// --- hand (CONFIG.ai.hand)'),   // the hand arc's switch and helpers
 ].join(NL);
 
 function boot(mut){
@@ -43,13 +46,13 @@ function boot(mut){
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.foot,g.guard,g.clearOffset,g.lane,g.pose,g.hand,
   ';globalThis.X={S:S,AIC:AIC,KICK:KICK,SHOT:SHOT,SIM:SIM,BALL_R:BALL_R,FOOT_BOX:FOOT_BOX,footUnder:footUnder,retrieveStep:retrieveStep,retrieveMan:retrieveMan,'+
-  'retrievePhase:retrievePhase,KICKS:KICKS,setStrike:function(v){STRIKE=v;},setShot:function(v){SHOTPLAN=v;},setShut:function(v){SHUT=v;},setPlay:function(v){PLAY=v;},tapped:function(){return TAPPED;},sawTap:function(){return SAWTAP;},released:function(){return RELEASED;}};'].join(NL),ctx);
+  'retrievePhase:retrievePhase,KICKS:KICKS,setStrike:function(v){STRIKE=v;},setShot:function(v){SHOTPLAN=v;},setShut:function(v){SHUT=v;},setPlay:function(v){PLAY=v;},starts:function(){return STARTS;},CAS:CAS,sawTap:function(){return SAWTAP;},released:function(){return RELEASED;},setLoose:function(v){LOOSE=v;},looseN:function(){return LOOSEN;}};'].join(NL),ctx);
  return ctx.X;
 }
 
-/* A red keeper-style rod with `baseZ` men, in the state aiUpdate leaves it on entry to the action. */
+/* A red keeper rod with `baseZ` men, in the state aiUpdate leaves it on entry to the action. */
 function mkRod(X,over){
- return Object.assign({x:-52.5,team:0,kickDir:1,role:'MID',aiIQ:true,baseZ:[0],maxOff:10,removedUntil:[],offset:0,target:0,slideV:0,
+ return Object.assign({x:-52.5,team:0,kickDir:1,role:'GK',aiIQ:true,baseZ:[0],maxOff:10,removedUntil:[],offset:0,target:0,slideV:0,
   angle:0,raise:false,behindFlag:false,aiMan:-1,kickT:-1,cd:0,pinB:null,pinOn:false,pinPose:false,pinA:null,
   act:'retrieve',retPh:'side',retT:0,retDir:0,retZ:null,retMan:-1,retHold:0,retCd:0},over||{});
 }
@@ -108,8 +111,11 @@ function suite(X){
   const lastPose=o.tr.findLast(t=>t.ph==='pin');
   ok('the sole stops at the pin geometry while waiting for the ball to take',
      !!lastPose&&X.footUnder({...r,angle:lastPose.ang},b.m.position,r.baseZ[0]+lastPose.off));}
- {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'MID',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
-  ok('an outfield rod pins and shoots even when its IQ roll fails',o.tr.some(t=>t.pinB)&&X.KICKS[0]==='pinShot','phases='+o.phases.join('>'));}
+ {X.KICKS.length=0;const n0=X.starts(),h0=X.CAS.retHold;const r=mkRod(X,{offset:0,role:'MID',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
+  ok('an outfield rod pins even when its IQ roll fails, and hands the held ball to the catch\'s hold (no swing from retrieve)',o.tr.some(t=>t.pinB)&&r.act==='catch'&&r.catPh==='hold'&&r.pinB===b&&X.KICKS.length===0,'act='+r.act+' ph='+r.catPh+' kicks='+X.KICKS.join());
+  ok('...the hold starts (pinPlayStart) and is counted, and retrieve is wound up with its lockout',X.starts()===n0+1&&X.CAS.retHold===h0+1&&r.retPh===null&&r.retMan===-1&&r.retCd===X.AIC.retrieve.cd&&r.catMan===0);}
+ {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'ATT'});const b=mkBall(X,-3,0);run(X,r,b,{T:6});
+  ok('an outfield retrieve never lets go of a pinned ball, lane shut or not: the catch holds it',r.act==='catch'&&r.pinB===b);}
  {const r=mkRod(X,{offset:0,role:'GK',aiIQ:false});const b=mkBall(X,-3,0);const o=run(X,r,b);
   ok('…except the keeper, who always tries to pin',o.phases.includes('pin'),'phases='+o.phases.join('>'));}
  {const r=mkRod(X,{offset:0,retPh:'over',angle:X.KICK.raiseA,slideV:X.AIC.retrieve.slideV+1});const b=mkBall(X,-3,0);
@@ -142,18 +148,24 @@ function suite(X){
   ok('a ball no man can get to (out of slide reach) ends the action',r.act===null);}
  {const r=mkRod(X,{offset:0,pinB:{}});r.pinPose=true;r.pinOn=true;r.pinA=-0.5;const b=mkBall(X,-1.5,2);b.m.position.z=40;X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
   ok('ending releases a held pin',r.pinB===null&&!r.pinOn&&!r.pinPose&&r.pinA===null);}
- // ---- a pinned ball with nowhere to go is tapped ----
- {X.KICKS.length=0;X.setPlay(3);const r=mkRod(X,{offset:0,retPh:'pin',retMan:0,retHold:1});const b=mkBall(X,-3,0);r.pinB=b;r.pinOn=true;r.pinPose=true;r.pinA=-1;
+ // ---- an outfield pin is the catch's from the step it takes ----
+ {X.KICKS.length=0;X.setPlay(1);const r=mkRod(X,{offset:0,role:'DEF',retPh:'pin',retMan:0,retHold:1});const b=mkBall(X,-3,0);r.pinB=b;b.pinMan=0;r.pinOn=true;r.pinPose=true;r.pinA=-1;
   X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});X.setPlay(null);
-  ok('a pinned ball the carry says to tap is handed to the tap (the catch takes the rod), not fired',X.tapped()===1&&r.act==='catch'&&X.KICKS.length===0,'tapped '+X.tapped()+' kicks '+X.KICKS.join(','));
-  ok('...and the carry was asked for a tap (retrieve shares it)',X.sawTap()===true);}
- {X.KICKS.length=0;X.setPlay(1);const n0=X.tapped(),r=mkRod(X,{offset:0,retPh:'pin',retMan:0,retHold:1});const b=mkBall(X,-3,0);r.pinB=b;r.pinOn=true;r.pinPose=true;r.pinA=-1;
+  ok('a held outfield ball is not played by retrieve even when a shot is there: the hold plays it',r.act==='catch'&&r.catPh==='hold'&&X.KICKS.length===0,'kicks '+X.KICKS.join(','));}
+ {X.KICKS.length=0;X.setPlay(1);const r=mkRod(X,{offset:0,retPh:'pin',retMan:0,retHold:1});const b=mkBall(X,-3,0);r.pinB=b;r.pinOn=true;r.pinPose=true;r.pinA=-1;
   X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});X.setPlay(null);
-  ok('a shot is still a shot (and the tap is not taken)',X.KICKS.length===1&&X.KICKS[0]==='pinShot'&&X.tapped()===n0,'kicks '+X.KICKS.join(',')+' tapped '+X.tapped());}
+  ok('the keeper still plays its pin from retrieve',X.KICKS.length===1&&X.KICKS[0]==='pinShot'&&r.act===null,'kicks '+X.KICKS.join(','));}
+ // ---- no pin reaches it: the catch's loose tap / tic-tac before the drop's shot ----
+ {const RT=X.AIC.retrieve,pin0=RT.pin;RT.pin=false;X.setLoose(true);
+  {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'DEF'});const b=mkBall(X,-3,0);const o=run(X,r,b);
+   ok('an outfield ball no pin reaches goes to the loose tap / tic-tac from over, the leg still up, no swing',o.phases.join('>')==='side>lift>over'&&r.act==='catch'&&r.catPh==='hit'&&r.retPh===null&&X.KICKS.length===0&&r.angle<-1,'phases='+o.phases.join('>')+' act='+r.act+' ph='+r.catPh+' ang='+r.angle.toFixed(2));}
+  {X.KICKS.length=0;const r=mkRod(X,{offset:0});const b=mkBall(X,-3,0);const o=run(X,r,b);
+   ok('…the keeper still drops and shoots',r.act!=='catch'&&X.KICKS.join()==='shoot','phases='+o.phases.join('>')+' kicks='+X.KICKS.join());}
+  X.setLoose(false);
+  {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'DEF'});const b=mkBall(X,-3,0);const o=run(X,r,b);
+   ok('…and with no loose play there the drop shoots as before',r.act!=='catch'&&X.KICKS.join()==='shoot','phases='+o.phases.join('>')+' kicks='+X.KICKS.join());}
+  RT.pin=pin0;}
  // ---- a re-seat from a forward pin (retFl): the leg stays up while the man steps clear ----
- {X.KICKS.length=0;X.setPlay(4);const r=mkRod(X,{retPh:'pin',retHold:1});const b=mkBall(X,-3,0);r.pinB=b;b.pinMan=0;
-  X.retrieveStep(r,{m:b.m,v:b.v,real:b},{cd:1});X.setPlay(null);
-  ok('a tic-tac choice hands the held ball to the catch action',r.act==='catch'&&r.catPh==='hit'&&r.pinB===b&&X.KICKS.length===0);}
  {const up=X.AIC.catch.recv.lift.angle;
   {const r=mkRod(X,{offset:0,retFl:true});const b=mkBall(X,-0.8,1.0);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
    ok('a re-seat holds the leg up and forward while the man steps clear: pin pose on at the lift angle, no ball pinned',r.retPh==='side'&&r.pinOn===true&&r.pinPose===true&&Math.abs(r.pinA-up)<1e-9,'ph='+r.retPh+' pinA='+r.pinA);}
@@ -161,9 +173,9 @@ function suite(X){
    ok('…an ordinary retrieve does not',r.pinOn===false&&r.pinPose===false);}
   {const r=mkRod(X,{offset:9.9,baseZ:[0],retFl:true});const b=mkBall(X,-1.5,8.0);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
    ok('with the leg up the way clear through a close ball is free: it crosses, not gives up',r.act==='retrieve'&&r.retDir===-1,'act='+r.act+' retDir='+r.retDir);}
-  {X.KICKS.length=0;const r=mkRod(X,{offset:0,retFl:true});const b=mkBall(X,-1.5,1.0);const o=run(X,r,b);
+  {X.KICKS.length=0;const r=mkRod(X,{offset:0,role:'ATT',retFl:true});const b=mkBall(X,-1.5,1.0);const o=run(X,r,b);
    const lift=o.tr.find(t=>t.ph==='lift');
-   ok('once clear the leg is let go (the lift is the back-lift again) and the sequence goes on to the pin shot',o.phases.join('>')==='side>lift>over>pin'&&lift&&lift.pose===false&&r.retFl===false&&X.KICKS.length===1,'phases='+o.phases.join('>')+' retFl='+r.retFl);}
+   ok('once clear the leg is let go (the lift is the back-lift again) and the sequence goes on to the pin, held by the catch',o.phases.join('>')==='side>lift>over>pin'&&lift&&lift.pose===false&&r.retFl===false&&r.act==='catch'&&X.KICKS.length===0,'phases='+o.phases.join('>')+' retFl='+r.retFl);}
   {const r=mkRod(X,{offset:0,retFl:true,retPh:'side'});r.pinOn=true;r.pinPose=true;r.pinA=up;const b=mkBall(X,-0.8,40);X.retrieveStep(r,{m:b.m,v:b.v,real:b,scored:false},{cd:1});
    ok('ending clears the flag',r.act===null&&r.retFl===false);}
   {const mk=(know)=>{const r=mkRod(X,{offset:0,retKnow:know});const b=mkBall(X,-0.8,1.0);const far={m:{position:{x:b.m.position.x,y:b.m.position.y,z:30}},v:b.v,real:b,scored:false};X.S.time=1;X.retrieveStep(r,far,{cd:1});return r;};
@@ -185,6 +197,9 @@ const MUT=[
  {n:'the slide-in starts before the boot is over the ball',part:'guard',from:'if(backHit(r,KICK.raiseA*dir,mn.o)===null)retrievePhase(r,\'over\');',to:'if(true)retrievePhase(r,\'over\');'},
  {n:'the pin pose is set at the final angle before the leg settles',part:'guard',from:'r.pinA+=clamp(pose*dir-r.angle,-RT.pinLead,RT.pinLead);',to:'r.pinA=pose*dir;'},
  {n:'the keeper plays a caught ball at once (no settle)',part:'guard',from:'if(r.retHold>=RT.settleT&&r.cd<=0){',to:'if(r.cd<=0){'},
+ {n:'no pin: straight to the drop, never the loose play',part:'guard',from:"   if(!pin&&retrieveLoose(r,best))return;",to:''},
+ {n:'the keeper hands its unpinnable ball to the loose play too',part:'hand',from:"if(!AIC.catch.on||!AIC.catch.roles.includes(r.role)||",to:"if(!AIC.catch.on||"},
+ {n:'the hand-off forgets the ball is retrieve\'s (asks hitLoose as an ordinary loose ball)',part:'hand',from:"!hitLoose(r,best,true)",to:"!hitLoose(r,best)"},
  {n:'a refused pin shot can never use the open drop',part:'guard',from:"if(!laneShut(r,ball))retrievePhase(r,'drop');",to:'void 0;'},
  {n:'a refused pin shot always drops, including in a shut lane',part:'guard',from:"if(!laneShut(r,ball))retrievePhase(r,'drop');",to:"retrievePhase(r,'drop');"},
  {n:'a pin that never takes hangs on instead of dropping',part:'guard',from:'if(r.retT>RT.pinT)retrievePhase(r,\'drop\');',to:'void 0;'},
@@ -195,10 +210,13 @@ const MUT=[
  {n:'the drop lowers the leg through the ball again',part:'guard',from:'r.raise=true;r.target=mn.o;',to:'r.raise=false;r.target=mn.o;'},
  {n:'the drop never swings',part:'guard',from:"plannedKick(r,'shoot',null,shot.launch,shot.ev);",to:''},
  {n:'the drop shoots into a shut lane',part:'guard',from:'if(!shot||shot.ev.best.clr<laneMin(r)){',to:'if(!shot){'},
- {n:'retrieve never offers the tap',part:'guard',from:'v=pinPlay(r,best,r.retHold,dt,true);',to:'v=pinPlay(r,best,r.retHold,dt);'},
- {n:'a tap is fired as a shot',part:'guard',from:'if(v===3||v===4){retrieveTap(r,v);return;}',to:'if(v===4){retrieveTap(r,v);return;}'},
- {n:'every pin is tapped',part:'guard',from:'if(v===3||v===4){retrieveTap(r,v);return;}',to:'if(v){retrieveTap(r,v);return;}'},
- {n:'a tic-tac is treated as a tap',part:'hand',from:'if(play===4)ttStart(r);',to:'if(false)ttStart(r);'},
+ {n:'an outfield pin stays in retrieve (the old loop)',part:'guard',from:'if(AIC.catch.on&&AIC.catch.roles.includes(r.role)){retrieveHold(r);return;}',to:''},
+ {n:'the keeper hands its pin to the catch too',part:'guard',from:'if(AIC.catch.on&&AIC.catch.roles.includes(r.role)){retrieveHold(r);return;}',to:'if(AIC.catch.on){retrieveHold(r);return;}'},
+ {n:'the hand-over leaves the rod in retrieve',part:'hand',from:"r.act='catch';r.actT=0;r.retPh=null;",to:'r.actT=0;r.retPh=null;'},
+ {n:'the hand-over starts no hold',part:'hand',from:'CAS.pin++;\n pinPlayStart(r);',to:'CAS.pin++;'},
+ {n:'the hand-over sets no retrieve lockout',part:'hand',from:'r.retZ=null;r.retCd=AIC.retrieve.cd;',to:'r.retZ=null;'},
+ {n:'the hand-over is not counted',part:'hand',from:'BGS.retPin++;CAS.retHold++;',to:'BGS.retPin++;'},
+ {n:'the hand-over is not a hold',part:'hand',from:"r.catPh='hold';r.catT=0;",to:"r.catPh='tap';r.catT=0;"},
  {n:'an unreachable ball no longer ends the action',part:'guard',from:'if(!mn){retrieveEnd(r,RT.cd);return;}',to:'if(!mn){return;}'},
  {n:'ending leaves the pin held',part:'guard',from:' if(r.pinB)pinRelease(r);\n r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;',to:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;'},
  {n:'ending leaves the pin flags up',part:'guard',from:' r.pinOn=false;r.pinPose=false;r.pinA=null;r.pinFwd=false;\n r.act=null;',to:' r.act=null;'},

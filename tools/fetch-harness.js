@@ -26,7 +26,9 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "var RNGV=0.99; function rngAi(){return function(){return RNGV;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function seatOf(){return null;}",
+ slice(rd('js/rods.js'),'// --- hand (CONFIG.ai.hand)'),   // the hand arc's switch and helpers
  "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
 ].join(NL);
 
@@ -37,7 +39,7 @@ function boot(mut){
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,isFinite,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
  vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.ret,g.clr,g.lz,g.phys,g.catch,
-  ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
+  ';globalThis.X={S:S,AIC:AIC,FOOT_BOX:FOOT_BOX,SWINGS:SWINGS,SHOT:SHOT,SIM:SIM,F:F,BALL_R:BALL_R,ARM:ARM,rods:rods,KICKS:KICKS,CAS:CAS,CAW:CAW,V:V,pinUpdate:pinUpdate,pinBallStep:pinBallStep,pinRelease:pinRelease,'+
   'catchEnd:catchEnd,reseat:reseat,tapStep:tapStep,tapEval:tapEval,sidePick:sidePick,catchPick:catchPick,catchStep:catchStep,fetchPick:fetchPick,fetchStep:fetchStep,footAngle:footAngle,footBoxD:footBoxD,sideAngle:function(rel,fwd){const a=footAngle(rel,fwd);return a==null?AIC.catch.recv.lift.angle:a;},setPick:function(v){PICK=v;},setRng:function(v){RNGV=v;}};'].join(NL),ctx);
  return ctx.X;
 }
@@ -109,6 +111,20 @@ function suite(X){
   r.ftPh='up';r.ftT=0;r.offset=9;X.fetchStep(r,b);X.fetchStep(r,b);
   const bz=b.m.position.z;b.m.position.z=r.baseZ[2]+r.offset;X.fetchStep(r,b);
   ok('the ball rolls into the lane while the leg is going up: back to clearing',r.ftPh==='clear'||r.act===null);}
+ // ---- the hand arc (CONFIG.ai.hand.arc): the slide and the leg overlap ----
+ {const A=X.AIC.hand.arc,cz=X.FOOT_BOX.z+X.BALL_R+X.AIC.clearMargin+FE.clearPad,r=world(X),b=view(X,4,0);X.S.balls.push(b);
+  r.ftPh='up';r.ftT=0;r.offset=-7;r.angle=0;X.fetchStep(r,b);
+  const out=r.baseZ.every(z=>Math.abs(z+r.target)>=cz+A.lane-1e-6);
+  ok('arc: while the leg goes up the man already slides toward the ball...',r.ftPh==='up'&&r.target>r.offset,'tgt='+r.target);
+  ok('...but stops outside its lane until the leg is up',out&&Math.abs(r.target+cz+A.lane)<1e-6,'tgt='+r.target);
+  A.on=false;X.fetchStep(r,b);ok('...with the arc off it stands while the leg goes up',r.target===r.offset);A.on=true;
+  r.ftPh='over';r.angle=RV.lift.angle;r.offset=-0.6;r.slideV=30;r.hd={t:0,T:0.15,p1:0};X.fetchStep(r,b);
+  ok('...over the ball and still sliding in, the leg waits while the slide is far from landing',r.ftPh==='over');
+  r.hd.t=0.1;X.fetchStep(r,b);ok('...and starts down as it lands (arc.lead)',r.ftPh==='down','ph='+r.ftPh);
+  const q=world(X);q.ftPh='over';q.angle=RV.lift.angle;q.offset=-1.5;q.slideV=30;q.hd={t:0.1,T:0.15,p1:0};X.fetchStep(q,b);
+  ok('...not while the man is still further off than dropZ',q.ftPh==='over');
+  const w=world(X);w.ftPh='over';w.angle=RV.lift.angle;w.offset=-0.6;w.slideV=30;w.hd={t:0.1,T:0.15,p1:1.2};X.fetchStep(w,b);
+  ok('...nor when the slide will land off the ball',w.ftPh==='over');}
  {const mk=(f)=>{const r=world(X),b=view(X,4,0);X.S.balls.push(b);r.catPh='fetch';r.ftPh='over';f(r,b);X.fetchStep(r,b);return r;};
   ok('the ball lifts: ended',mk((r,b)=>{b.m.position.y=AIC_lowY(X)+1;}).act===null&&X.CAW['fetch:lifted']>=1);
   ok('...speeds up: ended',mk((r,b)=>{b.v.set(FE.bailV+2,0,0);}).act===null&&X.CAW['fetch:moved']>=1);
@@ -196,6 +212,11 @@ for(const t of base){total++;if(!t.ok){bad++;console.log('  FAIL  '+t.name+(t.in
 console.log('  '+(total-bad)+' passed, '+bad+' failed');
 
 const MUT=[
+ {n:'arc: the man slides into the lane while the leg goes up',part:'lz',from:'laneStop(r,bz,cz+AIC.hand.arc.lane,o1)',to:'o1'},
+ {n:'arc: the lane stop has no margin',part:'lz',from:'cz+AIC.hand.arc.lane',to:'cz'},
+ {n:'arc: the leg starts down however long the slide has to go',part:'lz',from:'h.T-h.t<=handBy(A.lead,r)&&',to:''},
+ {n:'arc: the leg starts down however far off the man is',part:'lz',from:'&&Math.abs(r.offset-o)<=A.dropZ',to:''},
+ {n:'arc: the landing spot is not checked',part:'lz',from:'&&Math.abs(h.p1-o)<=tol',to:''},
  {n:'the pin window ignores the forward flag',part:'phys',from:'front=fwd?P.fwdFront:P.front',to:'front=P.front'},
  {n:'a forward leg holds a ball it only touches on the side',part:'phys',from:'&&PIN_DN[0]>=(PIN_DN[1]>0?P.wallDown:P.down)',to:''},
  {n:'a forward leg holds a ball it hovers over',part:'phys',from:'d<=BALL_R*FOOT_BOX_REACH+P.touch&&',to:'d<=BALL_R*FOOT_BOX_REACH+P.touch+0.6&&'},
@@ -210,11 +231,11 @@ const MUT=[
  {n:'the leg goes up with the man on the lane',part:'catch',from:'  if(inLaneZ(r,bz,cz)){\n   const o=clearOffset',to:'  if(false){\n   const o=clearOffset'},
  {n:'clearing never ends (no room is not a reason to stop)',part:'catch',from:"if(o==null){catchEnd(r,CA.cd,'fetch:room');return;}",to:'if(o==null){return;}'},
  {n:'the leg is not posed forward going up',part:'catch',from:"if(r.ftPh==='up'){\n  r.pinOn=true;r.pinPose=true;r.pinFwd=fwd;",to:"if(r.ftPh==='up'){\n  r.pinOn=true;r.pinPose=true;r.pinFwd=false;"},
- {n:'the man slides under the leg while it goes up',part:'catch',from:'r.pinA=up*dir;r.target=r.offset;r.aiMan=-1;',to:'r.pinA=up*dir;r.target=r.target;r.aiMan=-1;'},
+ {n:'the man slides under the leg while it goes up',part:'catch',from:'r.pinA=up*dir;r.target=arcTo(r,bz,cz,mn.o);r.aiMan=-1;',to:'r.pinA=up*dir;r.target=mn.o;r.aiMan=-1;'},
  {n:'it does not wait for the leg to be up',part:'catch',from:'if((up-r.angle*dir)*Math.sign(up)>FE.upTol&&r.ftT<FE.downT)return;',to:''},
  {n:'it waits for the leg for ever',part:'catch',from:'if((up-r.angle*dir)*Math.sign(up)>FE.upTol&&r.ftT<FE.downT)return;',to:'if((up-r.angle*dir)*Math.sign(up)>FE.upTol)return;'},
- {n:'it does not wait to be over the ball',part:'catch',from:'if(align>FE.alignZ||Math.abs(r.slideV)>FE.slideV)return;',to:''},
- {n:'it does not wait for the slide to die',part:'catch',from:'||Math.abs(r.slideV)>FE.slideV)return;',to:')return;'},
+ {n:'it does not wait to be over the ball',part:'catch',from:'if((align>FE.alignZ||Math.abs(r.slideV)>FE.slideV)&&!arcDrop(r,mn.o,FE.alignZ))return;',to:''},
+ {n:'it does not wait for the slide to die',part:'catch',from:'||Math.abs(r.slideV)>FE.slideV)&&!arcDrop',to:')&&!arcDrop'},
  {n:'the leg comes down at the wrong angle',part:'catch',from:'r.pinA=(fa==null?lift:fa)*dir;r.target=mn.o;',to:'r.pinA=RV.lift.angle*dir;r.target=mn.o;'},
  {n:'the leg that never takes it stays down for ever',part:'catch',from:"if(r.ftT>FE.downT||fa==null)catchEnd(r,CA.cd,'fetch:nopin');",to:''},
  {n:'a ball that moved is still waited for',part:'catch',from:"else if(rb.v.length()>FE.bailV)why='moved';",to:''},
@@ -235,7 +256,7 @@ const MUT=[
  {n:'the leg is not up while the man slides off',part:'catch',from:'r.pinOn=false;r.pinPose=true;r.pinFwd=false;r.pinA=RV.lift.angle*dir;r.aiMan=-1;',to:'r.pinOn=false;r.pinPose=false;r.pinFwd=false;r.pinA=null;r.aiMan=-1;'},
  {n:'it does not wait for the leg to come down',part:'catch',from:'if(r.angle*dir>FE.downA&&r.ahT<FE.downWait)return;',to:''},
  {n:'it waits for the leg for ever',part:'catch',from:'if(r.angle*dir>FE.downA&&r.ahT<FE.downWait)return;',to:'if(r.angle*dir>FE.downA)return;'},
- {n:'the leg stays posed while it lowers',part:'catch',from:"r.pinOn=false;r.pinPose=false;r.pinA=null;r.target=r.offset;r.aiMan=-1;\n  if(r.angle*dir>FE.downA",to:"r.pinOn=false;r.pinPose=true;r.pinA=RV.lift.angle*dir;r.target=r.offset;r.aiMan=-1;\n  if(r.angle*dir>FE.downA"},
+ {n:'the leg stays posed while it lowers',part:'catch',from:"r.pinOn=false;r.pinPose=false;r.pinA=null;r.target=arcTo(r,bz,cz,mn.o);r.aiMan=-1;\n  if(r.angle*dir>FE.downA",to:"r.pinOn=false;r.pinPose=true;r.pinA=RV.lift.angle*dir;r.target=arcTo(r,bz,cz,mn.o);r.aiMan=-1;\n  if(r.angle*dir>FE.downA"},
  {n:'the man does not come back onto the ball',part:'catch',from:'r.target=mn.o;r.aiMan=mn.i;                 // back',to:'r.target=r.offset;r.aiMan=mn.i;                 // back'},
  {n:'it ends before it is on the ball',part:'catch',from:'if(Math.abs(bz-(r.baseZ[mn.i]+r.offset))<=FE.alignZ){r.ftCd',to:'if(true){r.ftCd'},
  {n:'it fetches the ball again at once',part:'catch',from:"r.ftCd=S.time+FE.cd;catchEnd(r,CA.cd,'ahead:done');",to:"catchEnd(r,CA.cd,'ahead:done');"},

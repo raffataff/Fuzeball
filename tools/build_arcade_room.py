@@ -800,8 +800,14 @@ for nm in ('arcade_avenger.screen', 'arcade_RP.001', 'arcade_OFF.banner'):
 if 'blank_screen' in idx: planar_uv(cab, idx['blank_screen']); retexture(cab.data.materials[idx['blank_screen']], im_sa, 1.0)
 if 'arcade_OFF.001' in idx: planar_uv(cab, idx['arcade_OFF.001']); retexture(cab.data.materials[idx['arcade_OFF.001']], im_sb, 1.0)
 if 'vender_front' in idx:
-    b = cab.data.materials[idx['vender_front']].node_tree.nodes['Principled BSDF']
-    b.inputs['Emission Color'].default_value = srgb(0x7ac8e8); b.inputs['Emission Strength'].default_value = 0.8
+    m = cab.data.materials[idx['vender_front']]; b = m.node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb(0x28616a)
+    b.inputs['Emission Strength'].default_value = 0.0
+    b.inputs['Metallic'].default_value = 0.25; b.inputs['Roughness'].default_value = 0.5
+    link_nrm(m.node_tree, b, SURF['paint']['n'])
+if 'vender_side' in idx:
+    b = cab.data.materials[idx['vender_side']].node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb(0x394d52)
 for nm in ('arcade_guardians', 'arcade_OFF', 'arcade_RP'):                      # vinyl side art over laminate: a little sheen, not chalk
     if nm in idx: cab.data.materials[idx[nm]].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.6
 # Keep the original cabinet artwork while giving its laminate a tactile surface.
@@ -817,7 +823,7 @@ bpy.context.view_layer.update()
 def b2g(v): return (v.x, v.z, -v.y)
 Mw = cab.matrix_world; R3 = Mw.to_3x3()
 for nm, h, st in (('arcade_avenger.screen', 0x82a6ff, 620), ('arcade_RP.001', 0xadd78d, 620), ('blank_screen', 0x6fd0c0, 620),
-                  ('arcade_OFF.001', 0xffb060, 620), ('vender_front', 0x7ac8e8, 200)):
+                  ('arcade_OFF.001', 0xffb060, 620)):
     ps = [p for p in cab.data.polygons if nm in idx and p.material_index == idx[nm]]
     if not ps: print('arcade: no faces for screen', nm); continue
     ar = sum(p.area for p in ps); c = sum(((Mw @ p.center) * p.area for p in ps), Vector()) / ar
@@ -825,9 +831,8 @@ for nm, h, st in (('arcade_avenger.screen', 0x82a6ff, 620), ('arcade_RP.001', 0x
     # Place the bounced spill just outside the controls, so the cabinet's
     # overhang still casts a shadow while light reaches the player aisle.
     c += n * 23.0
-    if nm != 'vender_front':
-        c.x = max(c.x, -193.0)
-        c.z -= 19.0
+    c.x = max(c.x, -193.0)
+    c.z -= 19.0
     SCREEN_LIGHTS.append((b2g(c), h, st))
 
 # =============================================================================================

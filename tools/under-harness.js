@@ -28,7 +28,7 @@ const stubs=[
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "var BGS={retEnter:0}; function retrievePhase(r,ph){r.retPh=ph;} function isUserRod(){return false;}",
  "function rngAi(){return function(){return 0.99;};}",
- "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function teamDiff(){return 'pro';}",
  "function V(x,y,z){return {x:x||0,y:y||0,z:z||0,set(a,b,c){this.x=a;this.y=b;this.z=c;return this;}};}"
 ].join(NL);
 

@@ -148,9 +148,9 @@ function lightAudit(){
 
 // AI debug state
 let dbgAIGroup=null,dbgAIPanel=null;
-let dbgAIOpts={gkPad:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,safeRaise:false,evade:false,makeWay:false,shotLanes:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
+let dbgAIOpts={gkPad:false,overFoot:false,underFoot:false,inFront:false,lowY:false,manHyst:false,footReach:false,aligned:false,serveZone:false,redropZones:false,dropSweep:false,footRange:false,safeRaise:false,evade:false,makeWay:false,shotLanes:false,shortLine:false,sweetSpot:false,deadzones:false,backPin:false,frontPin:false,rodZones:false};
 let dbgAIGKPad=[],dbgAIOverFoot=[],dbgAIUnderFoot=[],dbgAIInFront=[],dbgDropSweep=[],dbgFootRange=[],dbgSafeRaise=[],dbgEvade=[],dbgEvadeDead=[],dbgMakeWay=[],dbgDeadzones=[];
-let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null;
+let dbgShotLanes=[],dbgShotOpen=null,dbgShotBlock=null,dbgMarkOpen=null,dbgMarkBlock=null,dbgShort=[];
 let dbgAILowY=null,dbgAIManRings=[],dbgAITargetDots=[],dbgFootReach=[],dbgAlignRings=[],dbgAIServe=[],dbgAIRedrop=[];
 let dbgSweet=[],dbgSweetFlash=[],dbgSweetFlashMat=null,szCxOff=0,szW=0,szZ=0;
 let dbgPins=[],dbgPinPanel=null,dbgPinShown=false,dbgPinKey='',dbgPinNom=[null,null];
@@ -290,6 +290,7 @@ function buildAIPanel(){
    {key:'evade',label:'Evade',col:'#00d9a3'},
     {key:'makeWay',label:'Make Way',col:'#ffa1f0'},
     {key:'shotLanes',label:'Shot Lanes',col:'#2bff88'},
+    {key:'shortLine',label:'Short Line',col:'#4dd8ff'},
     {key:'sweetSpot',label:'Sweet Spot',col:'#ffe14d'},
     {key:'deadzones',label:'Dead Zones',col:'#ff4d4d'},
     {key:'backPin',label:'Back Pin',col:'#3ec6ff'},
@@ -960,6 +961,15 @@ function buildDebug(){
   dbgShotLanes.push(set);
  }
 
+ // shortLine: per team while its holder read is live, ball -> nearest mouth point (cyan held within cover.short.tol, red open), a disc where it crosses the keeper and the DEF (bright = the one holding it)
+ {const held=new THREE.LineBasicMaterial({color:0x4dd8ff,transparent:true,opacity:.95}),open=new THREE.LineBasicMaterial({color:0xff3b3b,transparent:true,opacity:.95});
+  const mk={held:dbgMat(0x4dd8ff,.9),open:dbgMat(0xff3b3b,.9),dim:dbgMat(0xeaeaea,.35)};
+  for(let t=0;t<2;t++){
+   const geo=keep(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+   const ln=new THREE.Line(geo,open);ln.frustumCulled=false;ln.visible=false;dbgAIGroup.add(ln);
+   dbgShort.push({t,ln,held,open,mk,discs:[disc(0.45,0.08,mk.dim),disc(0.45,0.08,mk.dim)]});
+  }}
+
   dbgAIGroup.visible=false;
 
   // backPin / frontPin: per man, pinUpdate's window (rel back..front or fwdFront, z the foot's width) with the leg's real footprint inside it; frontPin adds the fetch band (white strip)
@@ -1014,7 +1024,7 @@ function disposeDebug(){
  dbgCaps=[];dbgBalls=[];dbgFootS=[];dbgContourRings=[];
  dbgAIGKPad=[];dbgAIOverFoot=[];dbgAIUnderFoot=[];dbgAIInFront=[];
  dbgDropSweep=[];dbgFootRange=[];dbgSafeRaise=[];dbgEvade=[];dbgEvadeDead=[];
- dbgMakeWay=[];dbgDeadzones=[];dbgShotLanes=[];
+ dbgMakeWay=[];dbgDeadzones=[];dbgShotLanes=[];dbgShort=[];
  dbgAIManRings=[];dbgAITargetDots=[];dbgFootReach=[];dbgAlignRings=[];dbgAIServe=[];dbgAIRedrop=[];
  dbgSweet=[];dbgSweetFlash=[];dbgSweetFlashMat=null;dbgPins=[];
  dbgShotOpen=dbgShotBlock=dbgMarkOpen=dbgMarkBlock=null;
@@ -1172,6 +1182,24 @@ function updateAIVis(){
     sl.marker.position.set(ev.goalX,y,ev.best.tz);
     sl.marker.material=ev.best.clr>=SWINGS.shoot.open?dbgMarkOpen:dbgMarkBlock;
     sl.marker.visible=true;
+  }
+
+  // shortLine: the line the read holds against a held ball, as the keeper sees it
+  for(const e of dbgShort){
+   const rd=RD[e.t],SH=AIC.cover.short,vis=on&&dbgAIOpts.shortLine&&!!SH&&SH.on&&!!rd.live&&rd.bx!==undefined;
+   if(!vis){e.ln.visible=false;for(const d of e.discs)d.visible=false;continue;}
+   const gx=e.t===0?-F.L/2:F.L/2,gh=F.goalHalf*AIC.cover.mouth,gz=clamp(rd.bz,-gh,gh),y=0.17;
+   const pa=e.ln.geometry.attributes.position.array;
+   pa[0]=rd.bx;pa[1]=y;pa[2]=rd.bz;pa[3]=gx;pa[4]=y;pa[5]=gz;e.ln.geometry.attributes.position.needsUpdate=true;
+   const q=[];for(const o of rods)if(o.team===e.t&&(o.role==='GK'||o.role==='DEF')&&!o.trnHidden)q.push(o);
+   let bi=-1,bd=1e9;const ds=q.map(o=>shortOff(o,o.offset,rd.bx,rd.bz,gx,gz,1e9));
+   ds.forEach((d,i)=>{if(d<bd){bd=d;bi=i;}});
+   const ok=bd<=SH.tol;e.ln.material=ok?e.held:e.open;e.ln.visible=true;
+   e.discs.forEach((dc,i)=>{
+    const o=q[i];if(!o||ds[i]>=1e8){dc.visible=false;return;}
+    dc.position.set(o.x,y,rd.bz+(gz-rd.bz)*(o.x-rd.bx)/(gx-rd.bx||1e-3));
+    dc.material=i===bi?(ok?e.mk.held:e.mk.open):e.mk.dim;dc.visible=true;
+   });
   }
 
   // backPin / frontPin: the window (hot while that man holds a ball) and the footprint inside it (the live leg while posed for that pin, else its resting pose)

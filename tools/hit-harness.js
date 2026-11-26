@@ -13,6 +13,7 @@ const parts={
  manLive:slice(AI,'function manLive(r,i){',NL+'function inFootRange('),
  lane:slice(AI,'function laneObs(',NL+'// gap-aware shot evaluation'),
  fwd:slice(AI,'function fwdClr(',NL+'// best pass from (bx,bz)'),
+ lz:slice(AI,'function inLaneZ(r,lz,cz){',NL+'// --- hand arc'),
  catch:slice(AI,'// --- catch (CONFIG.ai.catch) ---',NL+'// the passive raise:')
 };
 const stubs=[
@@ -21,7 +22,7 @@ const stubs=[
  "function kickRod(){} function strikeOn(){return true;} function sweepClips(){return false;} function passPick(){return null;}",
  "function shotEval(team,bx,bz){return {lanes:[],best:{tz:0,clr:1},goalX:team===0?F.L/2:-F.L/2,ox:bx,oz:bz};}",
  "function isUserRod(){return false;} function retrieveMan(r,bz){return {i:1,o:0};} function retrievePhase(r,ph){r.retPh=ph;}",
- "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
+ "function stCd(){return 1;} function stReact(){return 1;} function aiR(r,a,b){return (a+b)/2;} function rodSpeedMult(){return 1;} function rodTopV(r){return DIFFS[teamDiff(r.team)].speed*rodSpeedMult(r);} function rodAcc(r){return AIC.slideAccel*(DIFFS[teamDiff(r.team)].acc||1)*stAgil(r);} function rodSeen(r){return {offset:r.offset,vz:r.vz||0,target:r.target,tgV:r.tgV||0};} function teamDiff(){return 'pro';}",
  (()=>{const s=rd('js/physics.js'),a=s.indexOf('function footBoxD('),b=s.indexOf(NL+'// the ball is under this man',a);return s.slice(a,b);})(),   // physics.js: the foot box ai.js footAngle measures against
 ].join(NL);
 
@@ -32,7 +33,7 @@ function boot(mut){
   if(g[mut.part]===before)throw new Error('mutation is a no-op (anchor drifted): '+mut.from);}
  const ctx={console,Math,JSON,Date,Object,Array,Set,Map,parseFloat,parseInt,isNaN,localStorage:{getItem:()=>null,setItem:()=>{}}};
  ctx.globalThis=ctx;
- vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.catch,
+ vm.runInNewContext([rd('js/core.js'),rd('js/config.js'),stubs,g.manLive,g.lane,g.fwd,g.lz,g.catch,
   ';globalThis.X={S:S,AIC:AIC,SWINGS:SWINGS,F:F,BALL_R:BALL_R,ARM:ARM,ROD_H:ROD_H,FOOT_BOX:FOOT_BOX,FOOT_BOX_OFF:FOOT_BOX_OFF,FOOT_T:FOOT_T,rods:rods,CAS:CAS,CAW:CAW,hitAngle:hitAngle,hitStand:hitStand,hitFits:hitFits,hitOk:hitOk,hitStart:hitStart,hitGo:hitGo,hitStep:hitStep,hitLoose:hitLoose,'+
   'tapStart:tapStart,tapSide:tapSide,fliftStep:fliftStep,catchStep:catchStep,catchEnd:catchEnd,catchPick:catchPick,'+
   'setOut:function(f){OUT=f;},setRng:function(v){RNGV=v;},released:function(){return RELEASED;}};'].join(NL),ctx);
@@ -175,7 +176,7 @@ function suite(X){
   const g=mk(-0.7,17);ok('...nor one beyond the last man (nobody to send it to)',X.hitLoose(g.r,g.b)===false);
   const h=mk(-0.7,6);X.setOut(()=>9);ok('...nor one a shot is open to (the kick takes it)',X.hitLoose(h.r,h.b)===false);
   const i=mk(-0.7,6);X.setOut(()=>-9);ok('...nor with every lane shut',X.hitLoose(i.r,i.b)===false);
-  const j=mk(0.5,6);ok('...nor a ball at a depth in the dead zone',X.hitLoose(j.r,j.b)===false);
+  const j=mk(0.5,6),j0=X.CAS.hitLoose;j.r.ttCd=1e9;X.hitLoose(j.r,j.b);ok('...no plain hit on a ball in the gap between the bands (the neighbour cannot catch it there; a tic-tac may work it)',X.CAS.hitLoose===j0&&j.r.tapHit!==true);
   const k=mk(-0.7,6,{role:'GK'});ok('...not the keeper',X.hitLoose(k.r,k.b)===false);
   LS.on=false;const l=mk(-0.7,6);ok('...and with the switch off none',X.hitLoose(l.r,l.b)===false);LS.on=true;
   HT.on=false;const m=mk(-0.7,6);ok('...nor with the hit off',X.hitLoose(m.r,m.b)===false);HT.on=true;
@@ -209,10 +210,10 @@ const MUT=[
  {n:'every tap is a hit',part:'catch',from:'return rngAi(r.idx)()<HT.share;\n}\nfunction hitStart',to:'return true;\n}\nfunction hitStart'},
  {n:'no tap is a hit',part:'catch',from:'return rngAi(r.idx)()<HT.share;\n}\nfunction hitStart',to:'return false;\n}\nfunction hitStart'},
  {n:'a hit is not started from a tap',part:'catch',from:'if(b&&hitOk(r,b)){hitStart(r,b);return;}',to:''},
- {n:'a hit is not counted',part:'catch',from:'r.tapHit=true;CAS.hit++;\n if(',to:'r.tapHit=true;\n if('},
+ {n:'a hit is not counted',part:'catch',from:'r.tapHit=true;r.hUp=false;CAS.hit++;\n if(',to:'r.tapHit=true;r.hUp=false;\n if('},
  {n:'a ball flush under a forward leg is let go in place',part:'catch',from:'if(r.angle*r.kickDir>CA.recv.fwdMin&&!r.hAhead){fliftStart(r,\'hit\');return;}',to:''},
  {n:'a deep ball is not marked deep',part:'catch',from:'r.hDeep=b.pinDx<CA.side.back;r.hAhead',to:'r.hDeep=false;r.hAhead'},
- {n:'a ball lying ahead is not marked ahead',part:'catch',from:'r.hAhead=b.pinDx>CA.side.aheadMin;r.tapHit=true;CAS.hit++;',to:'r.hAhead=false;r.tapHit=true;CAS.hit++;'},
+ {n:'a ball lying ahead is not marked ahead',part:'catch',from:'r.hAhead=b.pinDx>CA.side.aheadMin;r.tapHit=true;r.hUp=false;CAS.hit++;',to:'r.hAhead=false;r.tapHit=true;r.hUp=false;CAS.hit++;'},
  {n:'the lift does not hand over to the hit',part:'catch',from:"else if(r.flNext==='hit')hitGo(r);",to:''},
  {n:'the hit does not step off first',part:'catch',from:"function hitGo(r){r.catPh='hit';r.hPh='clear';",to:"function hitGo(r){r.catPh='hit';r.hPh='aim';"},
  {n:'the hit is routed after the pin hold',part:'catch',from:" if(r.catPh==='hit'){hitStep(r,best);return;}\n if(r.pinB){",to:" if(r.pinB){"},
@@ -255,18 +256,19 @@ const MUT=[
  {n:'a landing is not counted as a hit',part:'catch',from:'if(r.tapHit){CAS.hitOk++;r.tapHit=false;}',to:''},
  {n:'a loose ball is knocked by every role',part:'catch',from:'if(!HT.on||!LS||!LS.on||HT.roles.indexOf(r.role)<0||',to:'if(!HT.on||!LS||!LS.on||'},
  {n:'the loose switch is ignored',part:'catch',from:'if(!HT.on||!LS||!LS.on||HT.roles',to:'if(!HT.on||!LS||HT.roles'},
- {n:'a rolling ball is knocked',part:'catch',from:'||rb.v.length()>LS.maxV)return false;',to:')return false;'},
- {n:'a ball in the air is knocked',part:'catch',from:'(r.htT||0)>S.time||p.y>=AIC.lowY||rb.v.length()>LS.maxV',to:'(r.htT||0)>S.time||rb.v.length()>LS.maxV'},
- {n:'a ball a man is on is knocked',part:'catch',from:'if(Math.abs(p.z-z)<cz)return false;',to:''},
+ {n:'a rolling ball is knocked',part:'catch',from:'||rb.v.length()>LS.maxV||hitAngle(rel)==null)return false;',to:'||hitAngle(rel)==null)return false;'},
+ {n:'a ball in the air is knocked',part:'catch',from:'(r.htT||0)>S.time)||p.y>=AIC.lowY||rb.v.length()>LS.maxV',to:'(r.htT||0)>S.time)||rb.v.length()>LS.maxV'},
+ {n:'a ball a man is on is knocked',part:'catch',from:'if(Math.abs(p.z-z)<cz)on=true;',to:''},
+ {n:'the plain hit is offered in the gap',part:'catch',from:'if((on&&!own)||!band||!hitFits(',to:'if((on&&!own)||!hitFits('},
  {n:'a row with a man gone is trusted',part:'catch',from:"if(!manLive(r,i))return false;                                    // a man gone",to:"if(!manLive(r,i))continue;                                    // a man gone"},
  {n:'a shot open where it lies is not the kick\'s',part:'catch',from:'if(pinOutlet(r,p.x,p.z,obs,gx,0)>=SWINGS.pinShot.open)return false;       // a shot is open where it lies: that is the kick\'s',to:''},
  {n:'a lane that is shut will do',part:'catch',from:'if(out>=SWINGS.pinShot.open&&(!bs||out>bs.out))bs={mi,j,s,out};',to:'if(!bs||out>bs.out)bs={mi,j,s,out};'},
  {n:'the lane is judged at the wrong end',part:'catch',from:'const out=pinOutlet(r,p.x,clamp(r.baseZ[j]+hitStand(r,mi,p.z,s)+s*CA.tap.drift,-zl,zl),obs,gx,0);',to:'const out=pinOutlet(r,p.x,p.z,obs,gx,0);'},
  {n:'the sender is the man on the wrong side',part:'catch',from:'const mi=s>0?lo:lo+1,j=mi+s;',to:'const mi=s>0?lo+1:lo,j=mi+s;'},
- {n:'it decides every frame',part:'catch',from:'r.htT=S.time+LS.every;\n if(rngAi(r.idx)()>=LS.share)return false;',to:'if(rngAi(r.idx)()>=LS.share)return false;'},
- {n:'it never takes its chance',part:'catch',from:'if(rngAi(r.idx)()>=LS.share)return false;',to:'return false;'},
- {n:'it always takes its chance',part:'catch',from:'if(rngAi(r.idx)()>=LS.share)return false;',to:''},
- {n:'a loose hit does not start by stepping off',part:'catch',from:"r.tapHit=true;r.hPh='clear';r.hT=0;",to:"r.tapHit=true;r.hPh='rest';r.hT=0;"},
+ {n:'it decides every frame',part:'catch',from:'r.htT=S.time+LS.every;\n if(!own&&rngAi(r.idx)()>=LS.share)return false;',to:'if(!own&&rngAi(r.idx)()>=LS.share)return false;'},
+ {n:'it never takes its chance',part:'catch',from:'if(!own&&rngAi(r.idx)()>=LS.share)return false;',to:'return false;'},
+ {n:'it always takes its chance',part:'catch',from:'if(!own&&rngAi(r.idx)()>=LS.share)return false;',to:''},
+ {n:'a loose hit does not start by stepping off',part:'catch',from:"r.tapHit=true;r.hUp=false;r.hPh='clear';r.hT=0;",to:"r.tapHit=true;r.hUp=false;r.hPh='rest';r.hT=0;"},
  {n:'a loose hit is not counted',part:'catch',from:'CAS.hitLoose++;',to:''},
  {n:'the loose hit is taken after the iq gate',part:'catch',from:" if(hitLoose(r,best))return 'hit';                                  // a ball lying between two men is knocked to the one with the lane\n if(!smart)return fetchPick(r,best)?'fetch':null;",to:" if(!smart)return fetchPick(r,best)?'fetch':null;"}
 ];
